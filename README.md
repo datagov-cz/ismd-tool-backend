@@ -11,8 +11,13 @@ to access view using pgAdmin4:
 open pgAdmin
 
 add a new server:
+
 host: localhost
+
 port: 5432
+
 database: ismd_tool_db
+
 username: ismd_user
+
 password: ismd_password
