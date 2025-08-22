@@ -41,3 +41,16 @@ management:
   endpoint:
     health:
       show-details: always
+
+# Apache Jena TDB2 Configuration
+jena:
+  tdb2:
+    location: ./data/tdb2
+    dataset-name: ismd-tool-dataset
+  fuseki:
+    port: 3030
+    context-path: /fuseki
+    dataset-endpoint: /ismd
+    admin:
+      user: admin
+      password: admin123

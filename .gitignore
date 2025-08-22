@@ -39,3 +39,9 @@ build/
 
 ### General ###
 .DS_Store
+.codacy
+
+### Apache Jena TDB2 ###
+data/
+*.tdb2/
+fuseki-base/
