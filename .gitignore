@@ -45,3 +45,4 @@ build/
 data/
 *.tdb2/
 fuseki-base/
+*.md
