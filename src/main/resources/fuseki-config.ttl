@@ -8,7 +8,7 @@
 ## ISMD Dataset with TDB2 storage
 
 :service rdf:type fuseki:Service ;
-    fuseki:name "ismd-tool" ;
+    fuseki:name "ismd-tool-dataset" ;
     fuseki:serviceQuery "sparql", "query" ;
     fuseki:serviceUpdate "update" ;
     fuseki:serviceUpload "upload" ;
