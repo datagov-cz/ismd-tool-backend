@@ -67,13 +67,16 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
         }
 
+        log.info("Loaded model has {} statements", uploadedModel.size());
+        log.info("Writing to graph: {}", graphName);
+
         final String finalGraphName = graphName;
         jenaDataset.executeWrite(() -> {
             Model namedModel = jenaDataset.getNamedModel(finalGraphName);
             namedModel.removeAll();
             namedModel.add(uploadedModel);
+            log.info("After write: graph {} has {} statements", finalGraphName, namedModel.size());
         });
-
 
         OntologyMetadataDto ontologyMetadataDto = new OntologyMetadataDto();
         ontologyMetadataDto.setGraphName(finalGraphName);
