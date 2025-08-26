@@ -7,9 +7,9 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.springframework.stereotype.Service;
@@ -25,7 +25,7 @@ import java.io.IOException;
 @Transactional
 public class OntologyUploadServiceImpl implements OntologyUploadService {
 
-    private final Dataset jenaDataset;
+    private final String fusekiEndpoint;
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataRepository ontologyMetadataRepository;
 
@@ -70,16 +70,14 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         log.info("Loaded model has {} statements", uploadedModel.size());
         log.info("Writing to graph: {}", graphName);
 
-        final String finalGraphName = graphName;
-        jenaDataset.executeWrite(() -> {
-            Model namedModel = jenaDataset.getNamedModel(finalGraphName);
-            namedModel.removeAll();
-            namedModel.add(uploadedModel);
-            log.info("After write: graph {} has {} statements", finalGraphName, namedModel.size());
-        });
+        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            conn.put(graphName, uploadedModel);
+            log.info("Successfully uploaded {} statements to graph {}", uploadedModel.size(), graphName);
+        }
 
+        // TODO: testing only
         OntologyMetadataDto ontologyMetadataDto = new OntologyMetadataDto();
-        ontologyMetadataDto.setGraphName(finalGraphName);
+        ontologyMetadataDto.setGraphName(graphName);
         ontologyMetadataDto.setUserId("test_user");
         OntologyMetadata ontologyMetadata = ontologyMetadataMapper.toEntity(ontologyMetadataDto);
         OntologyMetadata savedOntologyMetadata = ontologyMetadataRepository.save(ontologyMetadata);
