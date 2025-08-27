@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend;
 
+import com.dia.ismdtoolbackend.config.TestJenaConfig;
 import com.dia.models.OFNBaseModel;
 import org.apache.jena.ontology.OntClass;
 import org.apache.jena.query.*;
@@ -9,6 +10,7 @@ import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Set;
@@ -17,7 +19,8 @@ import static com.dia.constants.ArchiConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
-@ActiveProfiles("local")
+@ActiveProfiles("test")
+@Import(TestJenaConfig.class)
 class OFNBaseModelSaveTest {
 
     @Autowired
