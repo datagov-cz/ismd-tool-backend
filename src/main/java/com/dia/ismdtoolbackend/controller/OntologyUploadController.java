@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
+import com.dia.ismdtoolbackend.entity.dto.UploadResponseDto;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,33 +27,33 @@ public class OntologyUploadController {
     private final OntologyUploadService ontologyUploadService;
 
     @PostMapping("/upload")
-    public ResponseEntity<?> uploadFromFile(
+    public ResponseEntity<UploadResponseDto> uploadFromFile(
             @RequestParam MultipartFile file,
-            @RequestParam(value = "graphName", required = false) String graphName
+            @RequestParam (name = "providedName", required = false) String providedName,
+            @RequestParam String userId
             ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology upload requested, fileName: {}, providedName: {}, userId: {}", file.getOriginalFilename(), providedName, userId);
 
         try {
             if (file.isEmpty()) {
-                return ResponseEntity.badRequest().body("File is empty");
+                log.error("Ontology upload file is empty");
+                return ResponseEntity.badRequest().body(new UploadResponseDto(null, "Soubor je prázdný."));
             }
 
             Lang rdfLang = ontologyUploadService.determineRDFFormat(file);
             if (rdfLang == null) {
-                return ResponseEntity.badRequest().body("RDF Language is not supported");
+                log.error("Ontology RDF language is not supported");
+                return ResponseEntity.badRequest().body(new UploadResponseDto(null, "RDF jazyk není podporován."));
             }
 
-            if (graphName == null || graphName.trim().isEmpty()) {
-                String fileName = file.getOriginalFilename();
-                String baseName = fileName != null ? fileName.replaceAll("\\.[^.]+$", "") : "uploaded-ontology";
-                graphName = "http://example.org/ontologies/" + baseName + "-" + System.currentTimeMillis();
-            }
+            OntologyMetadataDto savedOntology = ontologyUploadService.uploadFromFile(file, providedName, rdfLang, userId);
+            log.info("Ontology upload successful: {}", savedOntology);
 
-            OntologyMetadataDto savedOntology = ontologyUploadService.uploadFromFile(file, graphName, rdfLang);
-            return ResponseEntity.ok().body(savedOntology);
+            return ResponseEntity.ok().body(new UploadResponseDto(savedOntology, requestId));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(new UploadResponseDto(null, e.getMessage()));
         }
     }
 }
