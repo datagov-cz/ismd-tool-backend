@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: ismd-tool-backend
+
+  # Use H2 in-memory database for tests
+  datasource:
+    url: jdbc:h2:mem:testdb
+    username: sa
+    password: password
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    database: h2
+
+  h2:
+    console:
+      enabled: false
+
+# Disable Jena TDB2 for tests
+jena:
+  tdb2:
+    location: ./target/test-data/tdb2
+    dataset-name: test-dataset
+
+logging:
+  level:
+    root: WARN
+    com.dia: INFO
