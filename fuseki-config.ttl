@@ -3,7 +3,8 @@
 @prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix fuseki: <http://jena.apache.org/fuseki#> .
 
-# Only your custom service - remove duplicate ds service
+## ISMD Dataset with TDB2 storage
+
 :ismd-service rdf:type fuseki:Service ;
     fuseki:name "ismd-tool-dataset" ;
     fuseki:serviceQuery "sparql", "query" ;
