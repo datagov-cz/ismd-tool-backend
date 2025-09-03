@@ -2,13 +2,14 @@ package com.dia.ismdtoolbackend.entity;
 
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationResult;
-import com.dia.validation.ValidationSeverity;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.List;
@@ -18,13 +19,18 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
+@Slf4j
 public class ValidationReportEntity implements ValidationReport {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "ontology_iri")
-    private String ontologyIri;
+    @Column(name = "ontology_metadata_id")
+    private Long ontologyMetadataId;
+
+    @OneToOne
+    @JoinColumn(name = "ontology_metadata_id", insertable = false, updatable = false)
+    private OntologyMetadataEntity ontologyMetadata;
 
     @Column(name = "is_valid")
     private Boolean isValid;
@@ -32,42 +38,47 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "timestamp")
     private Instant timestamp;
 
-    @Column(name = "results_json", columnDefinition = "jsonb")
-    @JdbcTypeCode(SqlTypes.JSON)
-    private List<ValidationResult> results;
+    @Column(name = "results_json", columnDefinition = "text")
+    private String resultsJson;
 
-    @Column(name = "error_count")
-    private Long errorCount;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Column(name = "warning_count")
-    private Long warningCount;
-
-    @Column(name = "total_count")
-    private Integer totalCount;
-
-    @Column(name = "summary")
-    private String summary;
-
-    public ValidationReportEntity(ValidationReport report) {
-        this.ontologyIri = report.getOntologyIri();
+    public ValidationReportEntity(ValidationReport report, Long ontologyMetadataId) {
+        this.ontologyMetadataId = ontologyMetadataId;
         this.isValid = report.isValid();
         this.timestamp = report.getTimestamp();
-        this.results = report.getResults();
-
-        this.errorCount = report.getErrorCount();
-        this.warningCount = report.getWarningCount();
-        this.totalCount = report.getResults().size();
-        this.summary = report.getSummary();
+        this.resultsJson = convertResultsToJson(report.getResults());
     }
 
     @Override
     public List<ValidationResult> getResults() {
-        return results;
+        return convertJsonToResults(this.resultsJson);
+    }
+    
+    private String convertResultsToJson(List<ValidationResult> results) {
+        try {
+            return objectMapper.writeValueAsString(results);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to convert ValidationResults to JSON", e);
+            return "[]";
+        }
+    }
+    
+    private List<ValidationResult> convertJsonToResults(String json) {
+        if (json == null || json.trim().isEmpty()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            log.error("Failed to convert JSON to ValidationResults", e);
+            return List.of();
+        }
     }
 
     @Override
     public boolean isValid() {
-        return isValid != null ? isValid : false;
+        return isValid != null && isValid;
     }
 
     @Override
@@ -77,42 +88,6 @@ public class ValidationReportEntity implements ValidationReport {
 
     @Override
     public String getOntologyIri() {
-        return ontologyIri;
-    }
-
-    @Override
-    public List<ValidationResult> getErrors() {
-        if (results == null) return List.of();
-        return results.stream()
-                .filter(r -> r.severity() == ValidationSeverity.ERROR)
-                .toList();
-    }
-
-    @Override
-    public List<ValidationResult> getWarnings() {
-        if (results == null) return List.of();
-        return results.stream()
-                .filter(r -> r.severity() == ValidationSeverity.WARNING)
-                .toList();
-    }
-
-    @Override
-    public long getErrorCount() {
-        return errorCount != null ? errorCount : 0L;
-    }
-
-    @Override
-    public long getWarningCount() {
-        return warningCount != null ? warningCount : 0L;
-    }
-
-    @Override
-    public boolean hasErrors() {
-        return getErrorCount() > 0;
-    }
-
-    @Override
-    public String getSummary() {
-        return summary != null ? summary : "No summary available";
+        return ontologyMetadata != null ? ontologyMetadata.getGraphName() : null;
     }
 }

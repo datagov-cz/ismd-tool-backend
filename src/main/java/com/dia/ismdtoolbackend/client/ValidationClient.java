@@ -3,11 +3,8 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.controller.dto.ValidationRequestDto;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.rdf.model.Model;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.client.RestClient;
@@ -39,7 +36,7 @@ public class ValidationClient {
                     .body(ValidationReportDto.class);
 
             if (response != null) {
-                log.info("Validation completed for ontology {}: {}", iri, response.getSummary());
+                log.info("Validation completed for ontology {}", iri);
                 return Optional.of(response);
             }
 

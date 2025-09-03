@@ -28,7 +28,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -106,12 +105,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {
         try {
+            Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphName(iri);
+            if (ontologyOpt.isEmpty()) {
+                log.warn("Ontology metadata not found for graph name: {}", iri);
+                return;
+            }
+
             Optional<ValidationReport> report = validationClient.requestValidation(ontologyContent, iri);
             if (report.isPresent()) {
-                ValidationReportEntity entity = validationReportRepository.save(
-                        new ValidationReportEntity(report.get())
-                );
-                ontologyMetadataRepository.updateValidationReportId(iri, entity.getId());
+                OntologyMetadataEntity ontologyEntity = ontologyOpt.get();
+                ValidationReportEntity validationEntity = new ValidationReportEntity(report.get(), ontologyEntity.getId());
+                validationReportRepository.save(validationEntity);
             }
         } catch (Exception e) {
             log.warn("Validation failed for ontology {}: {}", iri, e.getMessage());
@@ -171,7 +175,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return uploadedModel;
     }
 
-    private String convertOntModelToTtl(OntModel model) {
+    private String convertOntModelToTtl(OntModel model) throws RuntimeException {
         try {
             StringWriter writer = new StringWriter();
             model.write(writer, "TTL");
