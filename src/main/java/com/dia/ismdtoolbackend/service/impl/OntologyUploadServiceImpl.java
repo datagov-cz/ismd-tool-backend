@@ -27,6 +27,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -76,18 +78,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Transactional
     public OntologyMetadataDto uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException {
         OntologyMetadataDto ontologyMetadataDto = uploadOntologyCore(file, providedName, rdfLang, userId);
+        OntModel model = getOntologyModel(file, rdfLang);
 
-        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyMetadataDto.getId()));
+        String ontologyContent = convertOntModelToTtl(model);
+
+        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(model)));
 
         return ontologyMetadataDto;
     }
 
     public OntologyMetadataDto uploadOntologyCore(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException {
-        OntModel uploadedModel = ModelFactory.createOntologyModel();
-
-        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
-            RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
-        }
+        OntModel uploadedModel = getOntologyModel(file, rdfLang);
 
         String graphName = determineGraphName(file, providedName, uploadedModel);
 
@@ -103,17 +104,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return createOntologyMetadataEntity(graphName, userId);
     }
 
-    public void requestAndSaveValidationReport(Long ontologyId) {
+    public void requestAndSaveValidationReport(String ontologyContent, String iri) {
         try {
-            Optional<ValidationReport> report = validationClient.requestValidation(ontologyId);
+            Optional<ValidationReport> report = validationClient.requestValidation(ontologyContent, iri);
             if (report.isPresent()) {
                 ValidationReportEntity entity = validationReportRepository.save(
                         new ValidationReportEntity(report.get())
                 );
-                ontologyMetadataRepository.updateValidationReportId(ontologyId, entity.getId());
+                ontologyMetadataRepository.updateValidationReportId(iri, entity.getId());
             }
         } catch (Exception e) {
-            log.warn("Validation failed for ontology {}: {}", ontologyId, e.getMessage());
+            log.warn("Validation failed for ontology {}: {}", iri, e.getMessage());
         }
     }
 
@@ -159,5 +160,25 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         OntologyMetadataEntity savedOntologyMetadataEntity = ontologyMetadataRepository.save(ontologyMetadataEntity);
         log.debug("Ontology metadata saved: {}", savedOntologyMetadataEntity);
         return ontologyMetadataMapper.toDto(savedOntologyMetadataEntity);
+    }
+
+    private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
+        OntModel uploadedModel = ModelFactory.createOntologyModel();
+
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
+            RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
+        }
+        return uploadedModel;
+    }
+
+    private String convertOntModelToTtl(OntModel model) {
+        try {
+            StringWriter writer = new StringWriter();
+            model.write(writer, "TTL");
+            return writer.toString();
+        } catch (Exception e) {
+            log.error("Failed to convert OntModel to TTL", e);
+            throw new RuntimeException("Failed to convert OntModel to TTL: " + e.getMessage(), e);
+        }
     }
 }

@@ -11,15 +11,15 @@ import java.util.Optional;
 
 public interface ValidationReportRepository extends JpaRepository<ValidationReportEntity, Long> {
 
-    Optional<ValidationReportEntity> findByOntologyId(String ontologyId);
+    Optional<ValidationReportEntity> findByOntologyIri(String ontologyIri);
 
-    @Query("SELECT v FROM ValidationReportEntity v WHERE v.ontologyId = :ontologyId AND v.isValid = false")
-    Optional<ValidationReportEntity> findFailedValidationByOntologyId(@Param("ontologyId") String ontologyId);
+    @Query("SELECT v FROM ValidationReportEntity v WHERE v.ontologyIri = :ontologyIri AND v.isValid = false")
+    Optional<ValidationReportEntity> findFailedValidationByOntologyId(@Param("ontologyIri") String ontologyIri);
 
     @Query("SELECT COUNT(v) FROM ValidationReportEntity v WHERE v.isValid = false")
     long countFailedValidations();
 
     @Modifying
-    @Query("UPDATE OntologyMetadataEntity o SET o.validationReportId = :validationReportId WHERE o.id = :ontologyId")
-    int updateValidationReportId(@Param("ontologyId") String ontologyId, @Param("validationReportId") Long validationReportId);
+    @Query("UPDATE OntologyMetadataEntity o SET o.validationReportId = :validationReportId WHERE o.id = :ontologyIri")
+    int updateValidationReportId(@Param("ontologyIri") String ontologyIri, @Param("validationReportId") Long validationReportId);
 }

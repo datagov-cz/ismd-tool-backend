@@ -23,8 +23,8 @@ public class ValidationReportEntity implements ValidationReport {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "ontology_id")
-    private String ontologyId;
+    @Column(name = "ontology_iri")
+    private String ontologyIri;
 
     @Column(name = "is_valid")
     private Boolean isValid;
@@ -49,7 +49,7 @@ public class ValidationReportEntity implements ValidationReport {
     private String summary;
 
     public ValidationReportEntity(ValidationReport report) {
-        this.ontologyId = report.getOntologyId();
+        this.ontologyIri = report.getOntologyIri();
         this.isValid = report.isValid();
         this.timestamp = report.getTimestamp();
         this.results = report.getResults();
@@ -76,8 +76,8 @@ public class ValidationReportEntity implements ValidationReport {
     }
 
     @Override
-    public String getOntologyId() {
-        return ontologyId;
+    public String getOntologyIri() {
+        return ontologyIri;
     }
 
     @Override

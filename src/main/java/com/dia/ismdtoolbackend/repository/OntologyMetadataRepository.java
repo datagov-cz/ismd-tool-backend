@@ -15,6 +15,6 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
 
     @Modifying
     @Transactional
-    @Query("UPDATE OntologyMetadataEntity o SET o.validationReportId = :validationReportId WHERE o.id = :ontologyId")
-    int updateValidationReportId(@Param("ontologyId") Long ontologyId, @Param("validationReportId") Long validationReportId);
+    @Query("UPDATE OntologyMetadataEntity o SET o.validationReportId = :validationReportId WHERE o.id = :iri")
+    int updateValidationReportId(@Param("iri") String iri, @Param("validationReportId") Long validationReportId);
 }
