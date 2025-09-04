@@ -155,6 +155,11 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     private OntologyMetadataDto createOntologyMetadataEntity(String graphName, String userId) {
+        Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphName(graphName);
+        if (ontologyOpt.isPresent()) {
+            return ontologyMetadataMapper.toDto(ontologyOpt.get());
+        }
+
         OntologyMetadataDto ontologyMetadataDto = new OntologyMetadataDto();
         ontologyMetadataDto.setGraphName(graphName);
         ontologyMetadataDto.setUser(new UserDto(userId));
