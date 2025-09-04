@@ -9,4 +9,6 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
 
     Optional<OntologyMetadataEntity> findByGraphName(String graphName);
 
+    Optional<OntologyMetadataEntity> findByGraphNameAndUserId(String graphName, String userId);
+
 }
