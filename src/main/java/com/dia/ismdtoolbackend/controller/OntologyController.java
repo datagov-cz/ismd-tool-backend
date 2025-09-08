@@ -19,7 +19,7 @@ import static com.dia.constants.ConverterControllerConstants.LOG_REQUEST_ID;
 @RequestMapping("/api/ontology")
 @RequiredArgsConstructor
 @Slf4j
-public class OntologyUploadController {
+public class OntologyController {
 
     private final OntologyUploadService ontologyUploadService;
 

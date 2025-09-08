@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
-class OntologyUploadControllerTest {
+class OntologyControllerTest {
 
     private MockMvc mockMvc;
 
@@ -29,11 +29,11 @@ class OntologyUploadControllerTest {
     private OntologyUploadService ontologyUploadService;
 
     @InjectMocks
-    private OntologyUploadController ontologyUploadController;
+    private OntologyController ontologyController;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(ontologyUploadController).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(ontologyController).build();
     }
     @Test
     void testUploadFromFile_Success() throws Exception {
