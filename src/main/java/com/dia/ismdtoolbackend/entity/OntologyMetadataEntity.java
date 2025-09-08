@@ -25,8 +25,8 @@ public class OntologyMetadataEntity {
     @Column(name = "is_published")
     private Boolean isPublished;
 
-    @OneToOne(mappedBy = "ontologyMetadata", cascade = CascadeType.ALL)
-    private ValidationReportEntity validationReport;
+    @Column(name = "validation_report_id")
+    private Long validationReportId;
 
     @Column(name = "ontology_level")
     @Enumerated(EnumType.STRING)

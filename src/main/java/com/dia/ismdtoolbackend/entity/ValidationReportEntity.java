@@ -28,10 +28,6 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "ontology_metadata_id")
     private Long ontologyMetadataId;
 
-    @OneToOne
-    @JoinColumn(name = "ontology_metadata_id", insertable = false, updatable = false)
-    private OntologyMetadataEntity ontologyMetadata;
-
     @Column(name = "is_valid")
     private Boolean isValid;
 
@@ -87,7 +83,7 @@ public class ValidationReportEntity implements ValidationReport {
     }
 
     @Override
-    public String getOntologyIri() {
-        return ontologyMetadata != null ? ontologyMetadata.getGraphName() : null;
+    public Long getOntologyId() {
+        return ontologyMetadataId;
     }
 }

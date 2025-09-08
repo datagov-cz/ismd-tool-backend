@@ -8,10 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.riot.Lang;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
@@ -51,7 +48,7 @@ public class OntologyUploadController {
             OntologyMetadataDto savedOntology = ontologyUploadService.uploadFromFile(file, providedName, rdfLang, userId);
             log.info("Ontology upload successful: {}", savedOntology);
 
-            return ResponseEntity.ok().body(new UploadResponseDto(savedOntology, requestId));
+            return ResponseEntity.ok().body(new UploadResponseDto(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(new UploadResponseDto(null, e.getMessage()));
         }
