@@ -1,9 +1,12 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
+import com.dia.ismdtoolbackend.entity.dto.UserDto;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdfconnection.RDFConnection;
@@ -20,6 +23,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -36,6 +40,12 @@ class OntologyUploadServiceImplTest {
     private OntologyMetadataRepository ontologyMetadataRepository;
 
     @Mock
+    private ValidationClient validationClient;
+
+    @Mock
+    private ValidationReportRepository validationReportRepository;
+
+    @Mock
     private MultipartFile multipartFile;
 
     @Mock
@@ -45,13 +55,14 @@ class OntologyUploadServiceImplTest {
     private OntologyUploadServiceImpl ontologyUploadService;
 
     private final String fusekiEndpoint = "http://localhost:3030/test";
-/*
     @BeforeEach
     void setUp() {
         ontologyUploadService = new OntologyUploadServiceImpl(
                 fusekiEndpoint, 
                 ontologyMetadataMapper, 
-                ontologyMetadataRepository
+                ontologyMetadataRepository,
+                validationClient,
+                validationReportRepository
         );
     }
 
@@ -142,11 +153,14 @@ class OntologyUploadServiceImplTest {
         
         OntologyMetadataDto expectedDto = new OntologyMetadataDto();
         expectedDto.setGraphName(providedName);
-        expectedDto.setUserId(userId);
+        expectedDto.setUser(new UserDto(userId));
         
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(providedName);
         savedEntity.setUserId(userId);
+
+        when(ontologyMetadataRepository.findByGraphNameAndUserId((providedName), (userId)))
+                .thenReturn(Optional.empty());
         
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
@@ -159,7 +173,7 @@ class OntologyUploadServiceImplTest {
             
             assertNotNull(result);
             assertEquals(providedName, result.getGraphName());
-            assertEquals(userId, result.getUserId());
+            assertEquals(userId, result.getUser().getUserId());
             
             verify(rdfConnection).put(eq(providedName), any(OntModel.class));
             verify(rdfConnection).close();
@@ -178,11 +192,14 @@ class OntologyUploadServiceImplTest {
         
         OntologyMetadataDto expectedDto = new OntologyMetadataDto();
         expectedDto.setGraphName(ontologyIRI);
-        expectedDto.setUserId(userId);
+        expectedDto.setUser(new UserDto(userId));
         
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setUserId(userId);
+
+        when(ontologyMetadataRepository.findByGraphNameAndUserId(eq(ontologyIRI), eq(userId)))
+                .thenReturn(Optional.empty());
         
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
@@ -195,7 +212,7 @@ class OntologyUploadServiceImplTest {
             
             assertNotNull(result);
             assertEquals(ontologyIRI, result.getGraphName());
-            assertEquals(userId, result.getUserId());
+            assertEquals(userId, result.getUser().getUserId());
             
             verify(rdfConnection).put(eq(ontologyIRI), any(OntModel.class));
         }
@@ -213,6 +230,8 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataDto expectedDto = new OntologyMetadataDto();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         
+        when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
+                .thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -241,6 +260,8 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataDto expectedDto = new OntologyMetadataDto();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         
+        when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
+                .thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -263,9 +284,7 @@ class OntologyUploadServiceImplTest {
         
         when(multipartFile.getBytes()).thenThrow(new IOException("File read error"));
         
-        assertThrows(IOException.class, () -> {
-            ontologyUploadService.uploadFromFile(multipartFile, "test", Lang.TURTLE, userId);
-        });
+        assertThrows(IOException.class, () -> ontologyUploadService.uploadFromFile(multipartFile, "test", Lang.TURTLE, userId));
         
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -281,6 +300,8 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataDto expectedDto = new OntologyMetadataDto();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         
+        when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
+                .thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -297,5 +318,6 @@ class OntologyUploadServiceImplTest {
         }
     }
 
- */
+
+
 }

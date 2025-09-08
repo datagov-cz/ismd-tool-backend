@@ -111,11 +111,16 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 return;
             }
 
+            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyId(ontologyOpt.get().getId());
+            validationReportOpt.ifPresent(validationReportRepository::delete);
+
             Optional<ValidationReport> report = validationClient.requestValidation(ontologyContent, iri);
             if (report.isPresent()) {
                 OntologyMetadataEntity ontologyEntity = ontologyOpt.get();
                 ValidationReportEntity validationEntity = new ValidationReportEntity(report.get(), ontologyEntity.getId());
                 validationReportRepository.save(validationEntity);
+                ontologyEntity.setValidationReportId(validationEntity.getId());
+                ontologyMetadataRepository.save(ontologyEntity);
             }
         } catch (Exception e) {
             log.warn("Validation failed for ontology {}: {}", iri, e.getMessage());

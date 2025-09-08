@@ -35,8 +35,6 @@ class OntologyUploadControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(ontologyUploadController).build();
     }
-    /*
-
     @Test
     void testUploadFromFile_Success() throws Exception {
         String userId = "user123";
@@ -63,7 +61,7 @@ class OntologyUploadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
-                .andExpect(jsonPath("$.ontologyMetadata.userId").value(userId))
+                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").isString());
     }
 
@@ -91,7 +89,7 @@ class OntologyUploadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.ontologyMetadata.graphName").value("generated-graph-name"))
-                .andExpect(jsonPath("$.ontologyMetadata.userId").value(userId))
+                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").isString());
     }
 
@@ -110,7 +108,7 @@ class OntologyUploadControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata").isEmpty())
+                .andExpect(jsonPath("$.ontologyMetadata").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Soubor je prázdný."));
     }
 
@@ -131,7 +129,7 @@ class OntologyUploadControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata").isEmpty())
+                .andExpect(jsonPath("$.ontologyMetadata").doesNotExist())
                 .andExpect(jsonPath("$.message").value("RDF jazyk není podporován."));
     }
 
@@ -154,7 +152,7 @@ class OntologyUploadControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata").isEmpty())
+                .andExpect(jsonPath("$.ontologyMetadata").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Parse error"));
     }
 
@@ -207,36 +205,7 @@ class OntologyUploadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
-                .andExpect(jsonPath("$.ontologyMetadata.userId").value(userId));
-    }
-
-    @Test
-    void testUploadFromFile_WithSpecialCharactersInProvidedName() throws Exception {
-        String userId = "user123";
-        String providedName = "test-ontologie-čeština";
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "test.ttl",
-                "text/turtle",
-                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
-        );
-
-        OntologyMetadataDto expectedMetadata = new OntologyMetadataDto();
-        expectedMetadata.setGraphName(providedName);
-        expectedMetadata.setUser(new UserDto(userId));
-
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
-                .thenReturn(expectedMetadata);
-
-        mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
-                .andExpect(jsonPath("$.ontologyMetadata.userId").value(userId));
+                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId));
     }
 
     @Test
@@ -271,8 +240,39 @@ class OntologyUploadControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.ontologyMetadata.graphName").value("large-ontology"))
-                .andExpect(jsonPath("$.ontologyMetadata.userId").value(userId));
+                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId));
     }
 
-     */
+    @Test
+    void testUploadFromFile_AlreadyExistsScenario() throws Exception {
+        String userId = "user123";
+        String providedName = "existing-ontology";
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.ttl",
+                "text/turtle",
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
+        );
+
+        OntologyMetadataDto existingMetadata = new OntologyMetadataDto();
+        existingMetadata.setId(1L);
+        existingMetadata.setGraphName(providedName);
+        existingMetadata.setUser(new UserDto(userId));
+
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
+                .thenReturn(existingMetadata);
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(file)
+                        .param("providedName", providedName)
+                        .param("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.ontologyMetadata.id").value(1))
+                .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
+                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
+                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + providedName));
+    }
+
 }
