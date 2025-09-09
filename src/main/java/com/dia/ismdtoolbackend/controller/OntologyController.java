@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
 import com.dia.ismdtoolbackend.entity.dto.UploadResponseDto;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
+import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ import static com.dia.constants.ConverterControllerConstants.LOG_REQUEST_ID;
 @Slf4j
 public class OntologyController {
 
+    private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
 
@@ -94,6 +96,21 @@ public class OntologyController {
             }
             log.error("Error downloading ontology: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/{ontologyId}/delete")
+    public ResponseEntity<String> deleteOntology(@PathVariable Long ontologyId) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology delete requested, ontologyId: {}", ontologyId);
+
+        try {
+            ontologyService.deleteOntology(ontologyId);
+            return ResponseEntity.ok().body("Slovník úspěšně smazán.");
+        } catch (Exception e) {
+            log.error("Error deleting ontology: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(e.getMessage());
         }
     }
 
