@@ -1,21 +1,17 @@
 @prefix :      <#> .
 @prefix tdb2:  <http://jena.apache.org/2016/tdb#> .
 @prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix ja:    <http://jena.hpl.hp.com/2005/11/Assembler#> .
-@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix fuseki: <http://jena.apache.org/fuseki#> .
 
 ## ISMD Dataset with TDB2 storage
 
-:service rdf:type fuseki:Service ;
+:ismd-service rdf:type fuseki:Service ;
     fuseki:name "ismd-tool-dataset" ;
     fuseki:serviceQuery "sparql", "query" ;
     fuseki:serviceUpdate "update" ;
     fuseki:serviceUpload "upload" ;
     fuseki:serviceReadWriteGraphStore "data" ;
-    fuseki:serviceReadGraphStore "get" ;
-    fuseki:dataset :dataset .
+    fuseki:dataset :ismd-dataset .
 
-:dataset rdf:type tdb2:DatasetTDB2 ;
-    tdb2:location "./data/tdb2" ;
-    tdb2:unionDefaultGraph true .
+:ismd-dataset rdf:type tdb2:DatasetTDB2 ;
+    tdb2:location "/opt/fuseki/databases/tdb2/ismd-tool-dataset" .
