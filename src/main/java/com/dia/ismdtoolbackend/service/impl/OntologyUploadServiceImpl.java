@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.exceptions.ConversionException;
+import com.dia.ismdtoolbackend.analyzer.AnalysisResult;
+import com.dia.ismdtoolbackend.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -9,6 +12,7 @@ import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.models.OFNBaseModel;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +33,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -44,6 +49,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
+    private final OntologyAnalyzer ontologyAnalyzer;
 
     @Override
     public Lang determineRDFFormat(MultipartFile file) {
@@ -77,11 +83,10 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Transactional
     public OntologyMetadataDto uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException {
         OntologyMetadataDto ontologyMetadataDto = uploadOntologyCore(file, providedName, rdfLang, userId);
-        OntModel model = getOntologyModel(file, rdfLang);
+        OntModel mergedModel = createMergedOntologyModel(file, rdfLang);
+        String ontologyContent = convertOntModelToTtl(mergedModel);
 
-        String ontologyContent = convertOntModelToTtl(model);
-
-        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(model)));
+        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(mergedModel)));
 
         return ontologyMetadataDto;
     }
@@ -101,6 +106,27 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
 
         return createOntologyMetadataEntity(graphName, userId);
+    }
+
+    private OntModel createMergedOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
+        OntModel uploadedModel = getOntologyModel(file, rdfLang);
+
+        AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
+        Set<String> requiredBaseClasses = analysisResult.requiredBaseClasses();
+        Set<String> requiredProperties = analysisResult.requiredProperties();
+
+        log.debug("Required base classes: {}", requiredBaseClasses);
+        log.debug("Required properties: {}", requiredProperties);
+
+        OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
+
+        OntModel mergedModel = baseModel.getOntModel();
+        mergedModel.add(uploadedModel);
+
+        log.info("Created merged model with {} statements (base: {}, uploaded: {})",
+                mergedModel.size(), baseModel.getOntModel().size(), uploadedModel.size());
+
+        return mergedModel;
     }
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {
@@ -192,7 +218,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             return writer.toString();
         } catch (Exception e) {
             log.error("Failed to convert OntModel to TTL", e);
-            throw new RuntimeException("Failed to convert OntModel to TTL: " + e.getMessage(), e);
+            throw new ConversionException("Failed to convert OntModel to TTL: " + e.getMessage(), e);
         }
     }
 }

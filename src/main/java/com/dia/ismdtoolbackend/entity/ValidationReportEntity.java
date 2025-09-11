@@ -50,7 +50,7 @@ public class ValidationReportEntity implements ValidationReport {
     public List<ValidationResult> getResults() {
         return convertJsonToResults(this.resultsJson);
     }
-    
+
     private String convertResultsToJson(List<ValidationResult> results) {
         try {
             return objectMapper.writeValueAsString(results);
@@ -59,7 +59,7 @@ public class ValidationReportEntity implements ValidationReport {
             return "[]";
         }
     }
-    
+
     private List<ValidationResult> convertJsonToResults(String json) {
         if (json == null || json.trim().isEmpty()) {
             return List.of();

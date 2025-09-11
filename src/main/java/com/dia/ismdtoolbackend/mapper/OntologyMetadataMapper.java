@@ -40,8 +40,8 @@ public interface OntologyMetadataMapper {
 
     @Named("validationReportToValidationReportId")
     default Long validationReportToValidationReportId(ValidationReportDto validationReport) {
-        return validationReport != null && validationReport.getId() != null ? 
-            validationReport.getId() : null;
+        return validationReport != null && validationReport.getId() != null ?
+                validationReport.getId() : null;
     }
 
     @Named("validationReportIdToValidationReport")

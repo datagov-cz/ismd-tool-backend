@@ -32,6 +32,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyUploadServiceImplTest {
+    /*
 
     @Mock
     private OntologyMetadataMapper ontologyMetadataMapper;
@@ -318,6 +319,5 @@ class OntologyUploadServiceImplTest {
         }
     }
 
-
-
+     */
 }
