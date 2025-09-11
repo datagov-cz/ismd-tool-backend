@@ -8,6 +8,8 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
 import com.dia.ismdtoolbackend.entity.dto.UserDto;
+import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
+import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
@@ -81,28 +83,30 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataDto uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException {
-        OntologyMetadataDto ontologyMetadataDto = uploadOntologyCore(file, providedName, rdfLang, userId);
-        OntModel mergedModel = createMergedOntologyModel(file, rdfLang);
-        String ontologyContent = convertOntModelToTtl(mergedModel);
+    public OntologyMetadataDto uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
+        OntModel finalModel = createMergedOntologyModel(file, rdfLang);
 
-        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(mergedModel)));
+        OntologyMetadataDto ontologyMetadataDto = uploadOntologyCore(finalModel, file, providedName, userId);
+
+        String ontologyContent = convertOntModelToTtl(finalModel);
+
+        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(finalModel)));
 
         return ontologyMetadataDto;
     }
 
-    public OntologyMetadataDto uploadOntologyCore(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException {
-        OntModel uploadedModel = getOntologyModel(file, rdfLang);
+    private OntologyMetadataDto uploadOntologyCore(OntModel finalModel, MultipartFile file,
+                                                   String providedName, String userId) throws OntoloyUploadException {
+        String graphName = determineGraphName(file, providedName, finalModel);
 
-        String graphName = determineGraphName(file, providedName, uploadedModel);
-
-        log.info("Loaded model has {} statements", uploadedModel.size());
-        log.info("Writing to graph: {}", graphName);
-
+        log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            conn.put(graphName, uploadedModel);
-            log.info("Successfully uploaded {} statements to graph {}", uploadedModel.size(), graphName);
+            conn.put(graphName, finalModel);
+            log.info("Successfully uploaded {} statements to graph {}", finalModel.size(), graphName);
+        } catch (Exception e) {
+            log.error("Failed to upload ontology to TDB2", e);
+            throw new OntoloyUploadException("Failed to upload ontology to graph store: " + e.getMessage(), e);
         }
 
         return createOntologyMetadataEntity(graphName, userId);
@@ -111,22 +115,35 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private OntModel createMergedOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
         OntModel uploadedModel = getOntologyModel(file, rdfLang);
 
-        AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
-        Set<String> requiredBaseClasses = analysisResult.requiredBaseClasses();
-        Set<String> requiredProperties = analysisResult.requiredProperties();
 
-        log.debug("Required base classes: {}", requiredBaseClasses);
-        log.debug("Required properties: {}", requiredProperties);
+        try {
+            AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
+            Set<String> requiredBaseClasses = analysisResult.requiredBaseClasses();
+            Set<String> requiredProperties = analysisResult.requiredProperties();
 
-        OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
+            log.info("Analysis complete - Required base classes: {}, Required properties: {}",
+                    requiredBaseClasses.size(), requiredProperties.size());
+            log.debug("Base classes: {}", requiredBaseClasses);
+            log.debug("Properties: {}", requiredProperties);
 
-        OntModel mergedModel = baseModel.getOntModel();
-        mergedModel.add(uploadedModel);
+            if (requiredBaseClasses.isEmpty() && requiredProperties.isEmpty()) {
+                log.info("Ontology is complete, using as-is with {} statements", uploadedModel.size());
+                return uploadedModel;
+            }
 
-        log.info("Created merged model with {} statements (base: {}, uploaded: {})",
-                mergedModel.size(), baseModel.getOntModel().size(), uploadedModel.size());
+            log.info("Creating merged model with base components");
+            OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
 
-        return mergedModel;
+            OntModel mergedModel = baseModel.getOntModel();
+            mergedModel.add(uploadedModel);
+
+            log.info("Created merged model with {} statements (base: {}, uploaded: {})",
+                    mergedModel.size(), baseModel.getOntModel().size(), uploadedModel.size());
+
+            return mergedModel;
+        } catch (Exception e) {
+            throw new OntologyAnalysisException(e, e.getMessage());
+        }
     }
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {

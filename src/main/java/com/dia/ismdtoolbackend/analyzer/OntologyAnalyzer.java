@@ -2,14 +2,17 @@ package com.dia.ismdtoolbackend.analyzer;
 
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntClass;
 import org.apache.jena.ontology.OntModel;
-import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.ontology.OntProperty;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.util.iterator.ExtendedIterator;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import static com.dia.constants.ArchiConstants.*;
@@ -24,6 +27,7 @@ public class OntologyAnalyzer {
         try {
             requiredBaseClasses.add(POJEM);
 
+
             analyzeTypeDeclarations(uploadedModel, requiredBaseClasses, requiredProperties);
         } catch (Exception e) {
             throw new OntologyAnalysisException(e);
@@ -31,62 +35,203 @@ public class OntologyAnalyzer {
         return new AnalysisResult(requiredBaseClasses, requiredProperties);
     }
 
-    private void analyzeTypeDeclarations(OntModel uploadedModel, Set<String> requiredBaseClasses, Set<String> requiredProperties) throws OntologyAnalysisException, IOException {
-        StmtIterator typeStmts = uploadedModel.listStatements();
+    private void analyzeTypeDeclarations(OntModel uploadedModel, Set<String> requiredBaseClasses, Set<String> requiredProperties) throws OntologyAnalysisException {
+        ExtendedIterator<OntClass> classes = uploadedModel.listClasses();
+        List<String> classURIs = new ArrayList<>();
 
-        while (typeStmts.hasNext()) {
-            Statement stmt = typeStmts.next();
-            Resource subject = stmt.getSubject();
-            Resource type = stmt.getObject().asResource();
+        while (classes.hasNext()) {
+            OntClass ontClass = classes.next();
+            
+            if (ontClass.isURIResource()) {
+                String classURI = ontClass.getURI();
+                classURIs.add(classURI);
 
-            if (type.isURIResource()) {
-                String typeUri = type.getURI();
-                if (isOFNClassType(typeUri)) {
-                    analyzeClassTypeNeeds(typeUri, requiredBaseClasses);
-                }
-
-                if (isOFNPropertyType(typeUri)) {
-                    analyzePropertyNeeds(subject, requiredProperties);
-                }
+                analyzeClassForOFNRequirements(ontClass, classURI, requiredBaseClasses);
             }
         }
+
+        for (String classURI : classURIs) {
+            log.debug("CLASS URI EXTRACTED - {}", classURI);
+        }
+        
+        analyzePropertiesForOFNRequirements(uploadedModel, requiredProperties);
 
         ensureClassHierarchy(requiredBaseClasses);
     }
 
-    private boolean isOFNClassType(String uri) {
-        return uri.contains("/pojem/třída") ||
-                uri.contains("/pojem/typ-subjektu-práva") ||
-                uri.contains("/pojem/typ-objektu-práva");
+    private void analyzeClassForOFNRequirements(OntClass ontClass, String classURI, Set<String> requiredBaseClasses) {
+        String localName = getLocalName(classURI);
+        
+        log.debug("Analyzing class: {} (localName: {})", classURI, localName);
+        
+        if (isOFNClass(classURI, localName)) {
+            log.debug("Class {} identified as OFN class, analyzing requirements", classURI);
+            determineRequiredClassesFromLabels(ontClass, classURI, requiredBaseClasses);
+        } else {
+            log.debug("Class {} not identified as OFN class", classURI);
+        }
+        
+        ExtendedIterator<OntClass> superClasses = ontClass.listSuperClasses(true);
+        while (superClasses.hasNext()) {
+            OntClass superClass = superClasses.next();
+            if (superClass.isURIResource()) {
+                String superClassURI = superClass.getURI();
+                String superLocalName = getLocalName(superClassURI);
+                log.debug("Checking superclass: {} (localName: {})", superClassURI, superLocalName);
+                if (isOFNClass(superClassURI, superLocalName)) {
+                    log.debug("Superclass {} identified as OFN class, analyzing requirements", superClassURI);
+                    determineRequiredClassesFromLabels(superClass, superClassURI, requiredBaseClasses);
+                }
+            }
+        }
     }
-
-    private void analyzeClassTypeNeeds(String typeUri, Set<String> requiredBaseClasses) {
-        if (typeUri.contains("/třída")) {
+    
+    private void analyzePropertiesForOFNRequirements(OntModel uploadedModel, Set<String> requiredProperties) {
+        ExtendedIterator<OntProperty> properties = uploadedModel.listOntProperties();
+        
+        while (properties.hasNext()) {
+            OntProperty ontProperty = properties.next();
+            if (ontProperty.isURIResource()) {
+                String propertyURI = ontProperty.getURI();
+                String localName = getLocalName(propertyURI);
+                
+                if (isOFNProperty(propertyURI, localName)) {
+                    requiredProperties.add(localName);
+                    log.debug("Found OFN property: {}", localName);
+                }
+            }
+        }
+    }
+    
+    private boolean isOFNClass(String classURI, String localName) {
+        boolean isOFN = classURI.startsWith(DEFAULT_NS) ||
+                       classURI.startsWith(CAS_NS) ||
+                       classURI.startsWith(SLOVNIKY_NS) ||
+                       localName.equals(TRIDA) ||
+                       localName.equals(TSP) ||
+                       localName.equals(TOP) ||
+                       localName.equals(UDAJ) ||
+                       localName.equals(VEREJNY_UDAJ) ||
+                       localName.equals(NEVEREJNY_UDAJ) ||
+                       localName.equals(DATOVY_TYP) ||
+                       localName.equals(POLOZKA_CISELNIKU) ||
+                       localName.equals(ZPUSOB_SDILENI_UDAJE) ||
+                       localName.equals(ZPUSOB_ZISKANI_UDAJE);
+        
+        if (isOFN) {
+            log.debug("Class {} (localName: {}) identified as OFN class", classURI, localName);
+        }
+        
+        return isOFN;
+    }
+    
+    private boolean isOFNProperty(String propertyURI, String localName) {
+        return propertyURI.startsWith(DEFAULT_NS) ||
+               propertyURI.startsWith(CAS_NS) ||
+               propertyURI.startsWith(SLOVNIKY_NS) ||
+               propertyURI.equals("http://schema.org/url") ||
+               localName.equals(NAZEV) ||
+               localName.equals(ALTERNATIVNI_NAZEV) ||
+               localName.equals(POPIS) ||
+               localName.equals(DEFINICE) ||
+               localName.equals(DEFINUJICI_USTANOVENI) ||
+               localName.equals(SOUVISEJICI_USTANOVENI) ||
+               localName.equals(DEFINUJICI_NELEGISLATIVNI_ZDROJ) ||
+               localName.equals(SOUVISEJICI_NELEGISLATIVNI_ZDROJ) ||
+               localName.equals(JE_PPDF) ||
+               localName.equals(AGENDA) ||
+               localName.equals(AIS) ||
+               localName.equals(USTANOVENI_NEVEREJNOST) ||
+               localName.equals(DEFINICNI_OBOR) ||
+               localName.equals(OBOR_HODNOT) ||
+               localName.equals(NADRAZENA_TRIDA) ||
+               localName.equals(ZPUSOB_SDILENI) ||
+               localName.equals(ZPUSOB_ZISKANI) ||
+               localName.equals(TYP_OBSAHU) ||
+               localName.equals(OKAMZIK_POSLEDNI_ZMENY) ||
+               localName.equals(OKAMZIK_VYTVORENI) ||
+               localName.equals(DATUM) ||
+               localName.equals(DATUM_A_CAS);
+    }
+    
+    private void determineRequiredClassesFromLabels(OntClass ontClass, String classURI, Set<String> requiredBaseClasses) {
+        log.debug("Determining required classes from RDF analysis for URI: {}", classURI);
+        analyzeRDFTypeStatements(ontClass, requiredBaseClasses);
+    }
+    
+    private void analyzeRDFTypeStatements(OntClass ontClass, Set<String> requiredBaseClasses) {
+        log.debug("Analyzing rdf:type statements for class: {}", ontClass.getURI());
+        
+        StmtIterator typeIter = ontClass.listProperties(org.apache.jena.vocabulary.RDF.type);
+        while (typeIter.hasNext()) {
+            Statement stmt = typeIter.next();
+            if (stmt.getObject().isURIResource()) {
+                String typeURI = stmt.getObject().asResource().getURI();
+                log.debug("Found rdf:type: {} -> {}", ontClass.getURI(), typeURI);
+                
+                matchTypeURIToOFNBaseClass(typeURI, requiredBaseClasses);
+            }
+        }
+    }
+    
+    private void matchTypeURIToOFNBaseClass(String typeURI, Set<String> requiredBaseClasses) {
+        log.debug("Matching type URI '{}' to OFN base classes", typeURI);
+        
+        if (typeURI.equals("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem")) {
+            log.debug("Type URI matches POJEM base class");
+        } else if (typeURI.equals("https://slovník.gov.cz/veřejný-sektor/pojem/typ-subjektu-práva")) {
+            log.debug("Type URI matches TSP base class");
+            addRequiredClass(requiredBaseClasses, TSP, "typ-subjektu-práva");
+            addRequiredClass(requiredBaseClasses, TRIDA, TRIDA);
+        } else if (typeURI.equals("https://slovník.gov.cz/veřejný-sektor/pojem/typ-objektu-práva")) {
+            log.debug("Type URI matches TOP base class");
+            addRequiredClass(requiredBaseClasses, TOP, "typ-objektu-práva");
+            addRequiredClass(requiredBaseClasses, TRIDA, TRIDA);
+        } else if (typeURI.contains("/pojem/údaj")) {
+            log.debug("Type URI appears to be an UDAJ variant");
+            addRequiredClass(requiredBaseClasses, UDAJ, "údaj");
+        } else if (typeURI.contains("datový-slovník-ofn") && typeURI.contains("/pojem/")) {
+            log.debug("Type URI appears to be a generic OFN concept, ensuring POJEM base class");
+        } else {
+            log.debug("Type URI '{}' does not match known OFN base class patterns", typeURI);
+        }
+    }
+    
+    private void ensureClassHierarchy(Set<String> requiredBaseClasses) {
+        if (requiredBaseClasses.contains(TRIDA)) {
+            requiredBaseClasses.add(POJEM);
+        }
+        if (requiredBaseClasses.contains(TSP)) {
             requiredBaseClasses.add(TRIDA);
-            log.debug("Found třída type, adding TRIDA to required classes");
-
-        } else if (typeUri.contains("/typ-subjektu-práva")) {
-            requiredBaseClasses.add(TSP);
+        }
+        if (requiredBaseClasses.contains(TOP)) {
             requiredBaseClasses.add(TRIDA);
-            log.debug("Found typ-subjektu-práva, adding TSP and TRIDA to required classes");
-
-        } else if (typeUri.contains("/typ-objektu-práva")) {
-            requiredBaseClasses.add(TOP);
-            requiredBaseClasses.add(TRIDA);
-            log.debug("Found typ-objektu-práva, adding TOP and TRIDA to required classes");
+        }
+        if (requiredBaseClasses.contains(UDAJ)) {
+            requiredBaseClasses.add(POJEM);
+        }
+        if ((requiredBaseClasses.contains(VEREJNY_UDAJ) || requiredBaseClasses.contains(NEVEREJNY_UDAJ))) {
+            requiredBaseClasses.add(UDAJ);
+        }
+        // TODO verify
+        if ((requiredBaseClasses.contains(ZPUSOB_SDILENI_UDAJE) || requiredBaseClasses.contains(ZPUSOB_ZISKANI_UDAJE))) {
+            requiredBaseClasses.add(POLOZKA_CISELNIKU);
         }
     }
 
-    private boolean isOFNPropertyType(String uri) {
-        // TODO
-        return true;
+    private String getLocalName(String uri) {
+        if (uri.contains("#")) {
+            return uri.substring(uri.lastIndexOf('#') + 1);
+        } else if (uri.contains("/")) {
+            return uri.substring(uri.lastIndexOf('/') + 1);
+        }
+        return uri;
     }
-
-    private void analyzePropertyNeeds(Resource subject, Set<String> requiredBaseClasses) {
-        // TODO
-    }
-
-    private void ensureClassHierarchy(Set<String> requiredBaseClasses) {
-        // TODO
+    
+    private void addRequiredClass(Set<String> requiredBaseClasses, String className, String displayName) {
+        if (!requiredBaseClasses.contains(className)) {
+            requiredBaseClasses.add(className);
+            log.debug("Found {} class, adding {} to required classes", displayName, className);
+        }
     }
 }
