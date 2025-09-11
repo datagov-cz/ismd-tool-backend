@@ -137,7 +137,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 return;
             }
 
-            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyId(ontologyOpt.get().getId());
+            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyMetadataId(ontologyOpt.get().getId());
             validationReportOpt.ifPresent(validationReportRepository::delete);
 
             Optional<ValidationReport> report = validationClient.requestValidation(ontologyContent, iri);

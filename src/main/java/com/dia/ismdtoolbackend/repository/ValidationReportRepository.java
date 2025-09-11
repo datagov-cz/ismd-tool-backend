@@ -7,5 +7,5 @@ import java.util.Optional;
 
 public interface ValidationReportRepository extends JpaRepository<ValidationReportEntity, Long> {
 
-    Optional<ValidationReportEntity> findByOntologyId(Long id);
+    Optional<ValidationReportEntity> findByOntologyMetadataId(Long id);
 }
