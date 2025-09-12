@@ -1,33 +1,9 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.client.ValidationClient;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
-import com.dia.ismdtoolbackend.entity.dto.UserDto;
-import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
-import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import org.apache.jena.ontology.OntModel;
-import org.apache.jena.rdfconnection.RDFConnection;
-import org.apache.jena.riot.Lang;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)

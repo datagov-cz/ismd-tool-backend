@@ -1,7 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     private final String fusekiEndpoint;
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final ValidationReportRepository validationReportRepository;
 
     @Override
     public void deleteOntology(Long ontologyId) throws OntologyException {
@@ -31,6 +34,11 @@ public class OntologyServiceImpl implements OntologyService {
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
+
+        Optional<ValidationReportEntity> validationReport =
+                validationReportRepository.findByOntologyMetadataId(ontologyId);
+        validationReport.ifPresent(validationReportRepository::delete);
+
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
             Model model = conn.fetch(graphName);
 

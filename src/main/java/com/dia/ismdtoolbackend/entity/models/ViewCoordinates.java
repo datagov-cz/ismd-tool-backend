@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.entity.dto;
+package com.dia.ismdtoolbackend.entity.models;
 
 import lombok.Data;
 import lombok.Getter;

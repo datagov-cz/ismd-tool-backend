@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.mapper;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
-import com.dia.ismdtoolbackend.entity.dto.UserDto;
-import com.dia.ismdtoolbackend.entity.dto.CommentDto;
+import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.entity.models.UserModel;
+import com.dia.ismdtoolbackend.entity.models.CommentModel;
 import com.dia.validation.ValidationReportDto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -21,21 +21,21 @@ public interface OntologyMetadataMapper {
     @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
     @Mapping(target = "validationReportId", source = "validationReport", qualifiedByName = "validationReportToValidationReportId")
     @Mapping(target = "commentsJson", source = "comments", qualifiedByName = "commentsToCommentsJson")
-    OntologyMetadataEntity toEntity(OntologyMetadataDto dto);
+    OntologyMetadataEntity toEntity(OntologyMetadataModel dto);
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "validationReport", source = "validationReportId", qualifiedByName = "validationReportIdToValidationReport")
     @Mapping(target = "comments", source = "commentsJson", qualifiedByName = "commentsJsonToComments")
-    OntologyMetadataDto toDto(OntologyMetadataEntity entity);
+    OntologyMetadataModel toDto(OntologyMetadataEntity entity);
 
     @Named("userToUserId")
-    default String userToUserId(UserDto user) {
+    default String userToUserId(UserModel user) {
         return user != null ? user.getUserId() : null;
     }
 
     @Named("userIdToUser")
-    default UserDto userIdToUser(String userId) {
-        return userId != null ? new UserDto(userId) : null;
+    default UserModel userIdToUser(String userId) {
+        return userId != null ? new UserModel(userId) : null;
     }
 
     @Named("validationReportToValidationReportId")
@@ -54,7 +54,7 @@ public interface OntologyMetadataMapper {
     }
 
     @Named("commentsToCommentsJson")
-    default String commentsToCommentsJson(List<CommentDto> comments) {
+    default String commentsToCommentsJson(List<CommentModel> comments) {
         if (comments == null || comments.isEmpty()) {
             return null;
         }
@@ -67,13 +67,13 @@ public interface OntologyMetadataMapper {
     }
 
     @Named("commentsJsonToComments")
-    default List<CommentDto> commentsJsonToComments(String commentsJson) {
+    default List<CommentModel> commentsJsonToComments(String commentsJson) {
         if (commentsJson == null || commentsJson.trim().isEmpty()) {
             return Collections.emptyList();
         }
         try {
             ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.readValue(commentsJson, new TypeReference<List<CommentDto>>() {});
+            return objectMapper.readValue(commentsJson, new TypeReference<List<CommentModel>>() {});
         } catch (JsonProcessingException e) {
             return Collections.emptyList();
         }

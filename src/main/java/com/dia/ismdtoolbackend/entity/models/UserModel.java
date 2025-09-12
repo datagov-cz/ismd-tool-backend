@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.entity.dto;
+package com.dia.ismdtoolbackend.entity.models;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,6 +9,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @AllArgsConstructor
-public class UserDto {
+public class UserModel {
     private String userId;
 }

@@ -1,8 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
-import com.dia.ismdtoolbackend.entity.dto.UserDto;
-import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
+import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.entity.models.UserModel;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,8 +14,6 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import java.io.IOException;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -49,9 +46,9 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataDto expectedMetadata = new OntologyMetadataDto();
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName(providedName);
-        expectedMetadata.setUser(new UserDto(userId));
+        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
@@ -78,9 +75,9 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataDto expectedMetadata = new OntologyMetadataDto();
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("generated-graph-name");
-        expectedMetadata.setUser(new UserDto(userId));
+        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(Lang.TURTLE), eq(userId)))
@@ -193,9 +190,9 @@ class OntologyControllerTest {
                 "{\"@context\":{\"owl\":\"http://www.w3.org/2002/07/owl#\"},\"@type\":\"owl:Ontology\"}".getBytes()
         );
 
-        OntologyMetadataDto expectedMetadata = new OntologyMetadataDto();
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName(providedName);
-        expectedMetadata.setUser(new UserDto(userId));
+        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
         when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.JSONLD), eq(userId)))
@@ -229,9 +226,9 @@ class OntologyControllerTest {
                 largeContent.toString().getBytes()
         );
 
-        OntologyMetadataDto expectedMetadata = new OntologyMetadataDto();
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("large-ontology");
-        expectedMetadata.setUser(new UserDto(userId));
+        expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(Lang.TURTLE), eq(userId)))
@@ -257,10 +254,10 @@ class OntologyControllerTest {
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
         );
 
-        OntologyMetadataDto existingMetadata = new OntologyMetadataDto();
+        OntologyMetadataModel existingMetadata = new OntologyMetadataModel();
         existingMetadata.setId(1L);
         existingMetadata.setGraphName(providedName);
-        existingMetadata.setUser(new UserDto(userId));
+        existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))

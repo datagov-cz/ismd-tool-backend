@@ -6,8 +6,8 @@ import com.dia.ismdtoolbackend.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
-import com.dia.ismdtoolbackend.entity.dto.UserDto;
+import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.entity.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
 import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
@@ -83,20 +83,20 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataDto uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
         OntModel finalModel = createMergedOntologyModel(file, rdfLang);
 
-        OntologyMetadataDto ontologyMetadataDto = uploadOntologyCore(finalModel, file, providedName, userId);
+        OntologyMetadataModel ontologyMetadataModel = uploadOntologyCore(finalModel, file, providedName, userId);
 
         String ontologyContent = convertOntModelToTtl(finalModel);
 
         CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(finalModel)));
 
-        return ontologyMetadataDto;
+        return ontologyMetadataModel;
     }
 
-    private OntologyMetadataDto uploadOntologyCore(OntModel finalModel, MultipartFile file,
-                                                   String providedName, String userId) throws OntoloyUploadException {
+    private OntologyMetadataModel uploadOntologyCore(OntModel finalModel, MultipartFile file,
+                                                     String providedName, String userId) throws OntoloyUploadException {
         String graphName = determineGraphName(file, providedName, finalModel);
 
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
@@ -202,18 +202,18 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return null;
     }
 
-    private OntologyMetadataDto createOntologyMetadataEntity(String graphName, String userId) {
+    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
         Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphNameAndUserId(graphName, userId);
         if (ontologyOpt.isPresent()) {
             return ontologyMetadataMapper.toDto(ontologyOpt.get());
         }
 
-        OntologyMetadataDto ontologyMetadataDto = new OntologyMetadataDto();
-        ontologyMetadataDto.setGraphName(graphName);
-        ontologyMetadataDto.setUser(new UserDto(userId));
+        OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
+        ontologyMetadataModel.setGraphName(graphName);
+        ontologyMetadataModel.setUser(new UserModel(userId));
 
-        log.debug("Ontology metadata entity name: {}, userId: {}", ontologyMetadataDto.getGraphName(), userId);
-        OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataDto);
+        log.debug("Ontology metadata entity name: {}, userId: {}", ontologyMetadataModel.getGraphName(), userId);
+        OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataModel);
         OntologyMetadataEntity savedOntologyMetadataEntity = ontologyMetadataRepository.save(ontologyMetadataEntity);
         log.debug("Ontology metadata saved: {}", savedOntologyMetadataEntity);
         return ontologyMetadataMapper.toDto(savedOntologyMetadataEntity);

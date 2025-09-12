@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.entity.dto;
+package com.dia.ismdtoolbackend.entity.models;
 
 import com.dia.ismdtoolbackend.enums.OntologyLevel;
 import com.dia.validation.ValidationReportDto;
@@ -11,12 +11,12 @@ import java.util.List;
 @Getter
 @Setter
 @Data
-public class OntologyMetadataDto {
+public class OntologyMetadataModel {
     private Long id;
     private String graphName;
-    private UserDto user;
+    private UserModel user;
     private Boolean isPublished;
     private ValidationReportDto validationReport;
     private OntologyLevel ontologyLevel;
-    private List<CommentDto> comments;
+    private List<CommentModel> comments;
 }
