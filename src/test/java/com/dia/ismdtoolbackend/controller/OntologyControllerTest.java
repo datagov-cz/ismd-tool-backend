@@ -35,6 +35,7 @@ class OntologyControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(ontologyController).build();
     }
+
     @Test
     void testUploadFromFile_Success() throws Exception {
         String userId = "user123";
@@ -214,7 +215,7 @@ class OntologyControllerTest {
         StringBuilder largeContent = new StringBuilder();
         largeContent.append("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         largeContent.append("<http://example.org/test> a owl:Ontology .");
-        
+
         for (int i = 0; i < 1000; i++) {
             largeContent.append(String.format("<http://example.org/entity%d> a owl:Class .", i));
         }
@@ -274,5 +275,4 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + providedName));
     }
-
 }

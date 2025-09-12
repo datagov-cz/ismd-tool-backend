@@ -1,14 +1,40 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.analyzer.AnalysisResult;
+import com.dia.ismdtoolbackend.analyzer.OntologyAnalyzer;
+import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.entity.models.UserModel;
+import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
+import org.apache.jena.ontology.OntModel;
+import org.apache.jena.rdfconnection.RDFConnection;
+import org.apache.jena.riot.Lang;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyUploadServiceImplTest {
-    /*
 
     @Mock
     private OntologyMetadataMapper ontologyMetadataMapper;
@@ -21,6 +47,9 @@ class OntologyUploadServiceImplTest {
 
     @Mock
     private ValidationReportRepository validationReportRepository;
+
+    @Mock
+    private OntologyAnalyzer ontologyAnalyzer;
 
     @Mock
     private MultipartFile multipartFile;
@@ -39,7 +68,8 @@ class OntologyUploadServiceImplTest {
                 ontologyMetadataMapper, 
                 ontologyMetadataRepository,
                 validationClient,
-                validationReportRepository
+                validationReportRepository,
+                ontologyAnalyzer
         );
     }
 
@@ -128,9 +158,9 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         
-        OntologyMetadataDto expectedDto = new OntologyMetadataDto();
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         expectedDto.setGraphName(providedName);
-        expectedDto.setUser(new UserDto(userId));
+        expectedDto.setUser(new UserModel(userId));
         
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(providedName);
@@ -139,14 +169,17 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataRepository.findByGraphNameAndUserId((providedName), (userId)))
                 .thenReturn(Optional.empty());
         
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
         try (MockedStatic<RDFConnection> mockedRDFConnection = mockStatic(RDFConnection.class)) {
             mockedRDFConnection.when(() -> RDFConnection.connect(fusekiEndpoint)).thenReturn(rdfConnection);
             
-            OntologyMetadataDto result = ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId);
+            OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId);
             
             assertNotNull(result);
             assertEquals(providedName, result.getGraphName());
@@ -167,25 +200,28 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         
-        OntologyMetadataDto expectedDto = new OntologyMetadataDto();
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         expectedDto.setGraphName(ontologyIRI);
-        expectedDto.setUser(new UserDto(userId));
+        expectedDto.setUser(new UserModel(userId));
         
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setUserId(userId);
 
-        when(ontologyMetadataRepository.findByGraphNameAndUserId(eq(ontologyIRI), eq(userId)))
+        when(ontologyMetadataRepository.findByGraphNameAndUserId(ontologyIRI, userId))
                 .thenReturn(Optional.empty());
         
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
         try (MockedStatic<RDFConnection> mockedRDFConnection = mockStatic(RDFConnection.class)) {
             mockedRDFConnection.when(() -> RDFConnection.connect(fusekiEndpoint)).thenReturn(rdfConnection);
             
-            OntologyMetadataDto result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
+            OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
             
             assertNotNull(result);
             assertEquals(ontologyIRI, result.getGraphName());
@@ -204,19 +240,22 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn(filename);
         
-        OntologyMetadataDto expectedDto = new OntologyMetadataDto();
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         
         when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
                 .thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
         try (MockedStatic<RDFConnection> mockedRDFConnection = mockStatic(RDFConnection.class)) {
             mockedRDFConnection.when(() -> RDFConnection.connect(fusekiEndpoint)).thenReturn(rdfConnection);
             
-            OntologyMetadataDto result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
+            OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
             
             assertNotNull(result);
             verify(rdfConnection).put(argThat(graphName -> 
@@ -234,19 +273,22 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn(filename);
         
-        OntologyMetadataDto expectedDto = new OntologyMetadataDto();
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         
         when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
                 .thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
         try (MockedStatic<RDFConnection> mockedRDFConnection = mockStatic(RDFConnection.class)) {
             mockedRDFConnection.when(() -> RDFConnection.connect(fusekiEndpoint)).thenReturn(rdfConnection);
             
-            OntologyMetadataDto result = ontologyUploadService.uploadFromFile(multipartFile, "  ", Lang.TURTLE, userId);
+            OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, "  ", Lang.TURTLE, userId);
             
             assertNotNull(result);
             verify(rdfConnection).put(argThat(graphName -> 
@@ -274,19 +316,22 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn(null);
         
-        OntologyMetadataDto expectedDto = new OntologyMetadataDto();
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         
         when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
                 .thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataDto.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
         try (MockedStatic<RDFConnection> mockedRDFConnection = mockStatic(RDFConnection.class)) {
             mockedRDFConnection.when(() -> RDFConnection.connect(fusekiEndpoint)).thenReturn(rdfConnection);
             
-            OntologyMetadataDto result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
+            OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
             
             assertNotNull(result);
             verify(rdfConnection).put(argThat(graphName -> 
@@ -294,6 +339,4 @@ class OntologyUploadServiceImplTest {
             ), any(OntModel.class));
         }
     }
-
-     */
 }
