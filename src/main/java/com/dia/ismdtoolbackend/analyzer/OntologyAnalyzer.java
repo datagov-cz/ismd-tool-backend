@@ -104,54 +104,20 @@ public class OntologyAnalyzer {
     }
     
     private boolean isOFNClass(String classURI, String localName) {
-        boolean isOFN = classURI.startsWith(DEFAULT_NS) ||
-                       classURI.startsWith(CAS_NS) ||
-                       classURI.startsWith(SLOVNIKY_NS) ||
-                       localName.equals(TRIDA) ||
-                       localName.equals(TSP) ||
-                       localName.equals(TOP) ||
-                       localName.equals(UDAJ) ||
-                       localName.equals(VEREJNY_UDAJ) ||
-                       localName.equals(NEVEREJNY_UDAJ) ||
-                       localName.equals(DATOVY_TYP) ||
-                       localName.equals(POLOZKA_CISELNIKU) ||
-                       localName.equals(ZPUSOB_SDILENI_UDAJE) ||
-                       localName.equals(ZPUSOB_ZISKANI_UDAJE);
-        
+        boolean isOFN = OFNSets.OFN_NAMESPACES.stream().anyMatch(classURI::startsWith) ||
+                OFNSets.OFN_CLASSES.contains(localName);
+
         if (isOFN) {
             log.debug("Class {} (localName: {}) identified as OFN class", classURI, localName);
         }
-        
+
         return isOFN;
     }
     
     private boolean isOFNProperty(String propertyURI, String localName) {
-        return propertyURI.startsWith(DEFAULT_NS) ||
-               propertyURI.startsWith(CAS_NS) ||
-               propertyURI.startsWith(SLOVNIKY_NS) ||
-               propertyURI.equals("http://schema.org/url") ||
-               localName.equals(NAZEV) ||
-               localName.equals(ALTERNATIVNI_NAZEV) ||
-               localName.equals(POPIS) ||
-               localName.equals(DEFINICE) ||
-               localName.equals(DEFINUJICI_USTANOVENI) ||
-               localName.equals(SOUVISEJICI_USTANOVENI) ||
-               localName.equals(DEFINUJICI_NELEGISLATIVNI_ZDROJ) ||
-               localName.equals(SOUVISEJICI_NELEGISLATIVNI_ZDROJ) ||
-               localName.equals(JE_PPDF) ||
-               localName.equals(AGENDA) ||
-               localName.equals(AIS) ||
-               localName.equals(USTANOVENI_NEVEREJNOST) ||
-               localName.equals(DEFINICNI_OBOR) ||
-               localName.equals(OBOR_HODNOT) ||
-               localName.equals(NADRAZENA_TRIDA) ||
-               localName.equals(ZPUSOB_SDILENI) ||
-               localName.equals(ZPUSOB_ZISKANI) ||
-               localName.equals(TYP_OBSAHU) ||
-               localName.equals(OKAMZIK_POSLEDNI_ZMENY) ||
-               localName.equals(OKAMZIK_VYTVORENI) ||
-               localName.equals(DATUM) ||
-               localName.equals(DATUM_A_CAS);
+        return OFNSets.OFN_NAMESPACES.stream().anyMatch(propertyURI::startsWith) ||
+                OFNSets.OFN_SPECIAL_PROPERTIES.contains(propertyURI) ||
+                OFNSets.OFN_PROPERTIES.contains(localName);
     }
     
     private void determineRequiredClassesFromLabels(OntClass ontClass, String classURI, Set<String> requiredBaseClasses) {
@@ -213,7 +179,6 @@ public class OntologyAnalyzer {
         if ((requiredBaseClasses.contains(VEREJNY_UDAJ) || requiredBaseClasses.contains(NEVEREJNY_UDAJ))) {
             requiredBaseClasses.add(UDAJ);
         }
-        // TODO verify
         if ((requiredBaseClasses.contains(ZPUSOB_SDILENI_UDAJE) || requiredBaseClasses.contains(ZPUSOB_ZISKANI_UDAJE))) {
             requiredBaseClasses.add(POLOZKA_CISELNIKU);
         }
