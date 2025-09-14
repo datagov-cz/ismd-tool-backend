@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exporter.TurtleExporter;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
@@ -38,11 +39,13 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
             }
 
+            Model filteredModel = TurtleExporter.createFilteredModel(model);
+
             StringWriter writer = new StringWriter();
             if ("json-ld".equalsIgnoreCase(format)) {
-                model.write(writer, "JSON-LD");
+                filteredModel.write(writer, "JSON-LD");
             } else if ("ttl".equalsIgnoreCase(format)) {
-                model.write(writer, "TTL");
+                filteredModel.write(writer, "TTL");
             } else {
                 log.error("Output format {} not supported.", format);
                 throw new IllegalArgumentException("Nepodporovaný formát: " + format);
