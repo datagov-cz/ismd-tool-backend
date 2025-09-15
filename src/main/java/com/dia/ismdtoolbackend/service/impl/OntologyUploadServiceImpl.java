@@ -131,14 +131,14 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 return uploadedModel;
             }
 
-            log.info("Creating merged model with base components");
             OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
 
-            OntModel mergedModel = baseModel.getOntModel();
+            OntModel mergedModel = ModelFactory.createOntologyModel();
             mergedModel.add(uploadedModel);
+            mergedModel.add(baseModel.getOntModel());
 
-            log.info("Created merged model with {} statements (base: {}, uploaded: {})",
-                    mergedModel.size(), baseModel.getOntModel().size(), uploadedModel.size());
+            log.info("Created merged model with {} statements (uploaded: {}, base: {})",
+                    mergedModel.size(), uploadedModel.size(), baseModel.getOntModel().size());
 
             return mergedModel;
         } catch (Exception e) {
