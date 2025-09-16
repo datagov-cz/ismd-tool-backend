@@ -1,12 +1,15 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.exceptions.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.exporter.TurtleFilterUtil;
-import com.dia.ismdtoolbackend.exporter.TurtleFormatterUtil;
+import com.dia.ismdtoolbackend.exporter.json.JsonExporter;
+import com.dia.ismdtoolbackend.exporter.turtle.TurtleFilterUtil;
+import com.dia.ismdtoolbackend.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
@@ -17,6 +20,8 @@ import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
 
 import java.io.StringWriter;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.dia.constants.ArchiConstants.SLOVNIKY_NS;
@@ -28,6 +33,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
 
     private final String fusekiEndpoint;
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final JsonExporter jsonExporter;
 
     @Override
     public String downloadOntology(Long ontologyId, String format) {
@@ -52,7 +58,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
 
             StringWriter writer = new StringWriter();
             if ("json-ld".equalsIgnoreCase(format)) {
-                processedModel.write(writer, "JSON-LD");
+                return exportToOFNJson(processedModel);
             } else if ("ttl".equalsIgnoreCase(format)) {
                 processedModel.write(writer, "TTL");
             } else {
@@ -95,6 +101,15 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 log.warn("Duplicate type assertion detected for {}: {} times",
                         subject.getURI(), count);
             }
+        }
+    }
+
+    private String exportToOFNJson(Model processedModel) {
+        try {
+            return jsonExporter.exportToJson(processedModel);
+        } catch (Exception e) {
+            log.error("Error exporting to OFN JSON format: {}", e.getMessage(), e);
+            throw new JsonExportException("Chyba při exportu do JSON formátu: " + e.getMessage(), e);
         }
     }
 }
