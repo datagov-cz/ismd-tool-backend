@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.*;
-import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
@@ -114,12 +113,12 @@ public class TurtleFormatterUtil {
         Property slovnikyVlastnost = model.getProperty(SLOVNIKY_NS + "vlastnost");
 
         List<Resource> properties = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDF.type, OWL.DatatypeProperty);
+        StmtIterator iter = model.listStatements(null, RDF.type, OWL2.DatatypeProperty);
         while (iter.hasNext()) {
             properties.add(iter.next().getSubject());
         }
 
-        iter = model.listStatements(null, RDF.type, OWL.ObjectProperty);
+        iter = model.listStatements(null, RDF.type, OWL2.ObjectProperty);
         while (iter.hasNext()) {
             properties.add(iter.next().getSubject());
         }
@@ -209,15 +208,24 @@ public class TurtleFormatterUtil {
         }
 
         Property oldDefinition = model.getProperty(DCT_NS + "description");
+        Property skosConceptSchemeProperty = model.getProperty(SKOS_NS + "ConceptScheme");
+
+        List<Statement> descriptionStatements = new ArrayList<>();
         iter = model.listStatements(null, oldDefinition, (RDFNode) null);
         while (iter.hasNext()) {
-            Statement stmt = iter.next();
+            descriptionStatements.add(iter.next());
+        }
+
+        for (Statement stmt : descriptionStatements) {
             Resource subject = stmt.getSubject();
 
             if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + "Concept")) && !subject.hasProperty(skosDefinition)) {
-                    subject.addProperty(skosDefinition, stmt.getObject());
-                }
-
+                subject.addProperty(skosDefinition, stmt.getObject());
+                model.remove(stmt);
+            }
+            else if (!subject.hasProperty(RDF.type, skosConceptSchemeProperty) && subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + "Concept"))) {
+                    model.remove(stmt);
+            }
         }
     }
 
