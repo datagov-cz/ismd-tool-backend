@@ -9,36 +9,50 @@ import org.apache.jena.vocabulary.RDFS;
 import java.util.*;
 
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
 @Slf4j
 public class ModelAnalyzer {
 
     public ModelStructure analyzeModel(Model model) {
+        if (model == null) {
+            throw new ModelProcessingException("Model cannot be null");
+        }
+
         log.debug("Analyzing model structure - extracting metadata from RDF");
 
-        Resource vocabularyResource = findVocabularyResource(model);
-        String effectiveNamespace = determineEffectiveNamespace(model, vocabularyResource);
-        String ontologyIRI = extractOntologyIRI(model, vocabularyResource);
-        Map<String, Resource> resourceMap = buildResourceMap(model);
+        try {
+            Resource vocabularyResource = findVocabularyResource(model);
+            String effectiveNamespace = determineEffectiveNamespace(model, vocabularyResource);
+            String ontologyIRI = extractOntologyIRI(model, vocabularyResource);
+            Map<String, Resource> resourceMap = buildResourceMap(model);
 
-        String modelName = extractModelName(vocabularyResource, model);
-        String modelDescription = extractModelDescription(vocabularyResource, model);
-        String creationDate = extractTemporalMetadata(vocabularyResource, model, OKAMZIK_VYTVORENI);
-        String modificationDate = extractTemporalMetadata(vocabularyResource, model, OKAMZIK_POSLEDNI_ZMENY);
+            String modelName = extractModelName(vocabularyResource, model);
+            String modelDescription = extractModelDescription(vocabularyResource, model);
+            String creationDate = extractTemporalMetadata(vocabularyResource, model, OKAMZIK_VYTVORENI);
+            String modificationDate = extractTemporalMetadata(vocabularyResource, model, OKAMZIK_POSLEDNI_ZMENY);
 
-        List<String> vocabularyTypes = determineVocabularyTypes(model);
+            List<String> vocabularyTypes = determineVocabularyTypes(model);
 
-        return ModelStructure.builder()
-                .modelName(modelName)
-                .modelDescription(modelDescription)
-                .effectiveNamespace(effectiveNamespace)
-                .ontologyIRI(ontologyIRI)
-                .vocabularyResource(vocabularyResource)
-                .resourceMap(resourceMap)
-                .creationDate(creationDate)
-                .modificationDate(modificationDate)
-                .vocabularyTypes(vocabularyTypes)
-                .build();
+            log.debug("Model analysis completed successfully. Found {} resources, vocabulary resource: {}",
+                    resourceMap.size(), vocabularyResource != null ? vocabularyResource.getURI() : "none");
+
+            return ModelStructure.builder()
+                    .modelName(modelName)
+                    .modelDescription(modelDescription)
+                    .effectiveNamespace(effectiveNamespace)
+                    .ontologyIRI(ontologyIRI)
+                    .vocabularyResource(vocabularyResource)
+                    .resourceMap(resourceMap)
+                    .creationDate(creationDate)
+                    .modificationDate(modificationDate)
+                    .vocabularyTypes(vocabularyTypes)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Error during model analysis: {}", e.getMessage(), e);
+            throw new ModelProcessingException("Failed to analyze model structure: " + e.getMessage(), e);
+        }
     }
 
     private String determineEffectiveNamespace(Model model, Resource vocabularyResource) {

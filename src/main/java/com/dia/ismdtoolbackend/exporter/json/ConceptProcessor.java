@@ -10,32 +10,53 @@ import org.apache.jena.vocabulary.SKOS;
 import java.util.*;
 
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
 @Slf4j
 public class ConceptProcessor {
 
     public ConceptData processAllConcepts(OntModel ontModel, ModelStructure structure) {
-        log.debug("Processing concepts for JSON export");
-
-        Set<Resource> conceptTypes = getConceptTypes(ontModel);
-        List<Map<String, Object>> concepts = new ArrayList<>();
-
-        for (Resource resource : structure.getResourceMap().values()) {
-            if (isConceptResource(resource, conceptTypes)) {
-                try {
-                    Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
-                    concepts.add(conceptObject);
-                } catch (Exception e) {
-                    log.warn("Could not process concept: {}", resource.getURI(), e);
-                }
-            }
+        if (ontModel == null) {
+            throw new ModelProcessingException("OntModel cannot be null");
+        }
+        if (structure == null) {
+            throw new ModelProcessingException("ModelStructure cannot be null");
         }
 
-        log.debug("Processed {} concepts", concepts.size());
-        return ConceptData.builder()
-                .concepts(concepts)
-                .totalConceptCount(concepts.size())
-                .build();
+        log.debug("Processing concepts for JSON export");
+
+        try {
+            Set<Resource> conceptTypes = getConceptTypes(ontModel);
+            List<Map<String, Object>> concepts = new ArrayList<>();
+            int failedConceptCount = 0;
+
+            for (Resource resource : structure.getResourceMap().values()) {
+                if (isConceptResource(resource, conceptTypes)) {
+                    try {
+                        Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
+                        concepts.add(conceptObject);
+                    } catch (Exception e) {
+                        failedConceptCount++;
+                        log.warn("Failed to process concept: {} - {}", resource.getURI(), e.getMessage(), e);
+                    }
+                }
+            }
+
+            if (failedConceptCount > 0) {
+                log.warn("Failed to process {} concepts out of {} total resources",
+                        failedConceptCount, structure.getResourceMap().size());
+            }
+
+            log.debug("Successfully processed {} concepts", concepts.size());
+            return ConceptData.builder()
+                    .concepts(concepts)
+                    .totalConceptCount(concepts.size())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Critical error during concept processing: {}", e.getMessage(), e);
+            throw new ModelProcessingException("Failed to process concepts: " + e.getMessage(), e);
+        }
     }
 
     private Set<Resource> getConceptTypes(OntModel ontModel) {

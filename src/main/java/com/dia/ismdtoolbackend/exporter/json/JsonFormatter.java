@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.exporter.json;
 
-import com.dia.exceptions.JsonExportException;
+import com.dia.ismdtoolbackend.exception.JsonExportException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import lombok.extern.slf4j.Slf4j;
