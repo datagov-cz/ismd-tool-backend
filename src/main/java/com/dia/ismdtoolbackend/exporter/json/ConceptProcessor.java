@@ -267,9 +267,6 @@ public class ConceptProcessor {
 
     private void addSourceProperties(Resource concept, Map<String, Object> conceptObj,
                                      OntModel ontModel, String effectiveNamespace) {
-        log.debug("SOURCE PROPERTY DEBUG: Processing source properties for concept: {}", concept.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: Effective namespace: {}", effectiveNamespace);
-
         addSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
                 DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU, DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
         addSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
@@ -278,11 +275,6 @@ public class ConceptProcessor {
                 DEFINUJICI_NELEGISLATIVNI_ZDROJ, DEFINUJICI_NELEGISLATIVNI_ZDROJ);
         addNonLegislativeSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
                 SOUVISEJICI_NELEGISLATIVNI_ZDROJ, SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
-
-        log.debug("SOURCE PROPERTY DEBUG: After processing, concept object contains: {}",
-                conceptObj.keySet().stream().filter(key ->
-                        key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu"))
-                        .toArray());
     }
 
     private void addSourceProperty(Resource concept, Map<String, Object> conceptObj, OntModel ontModel,
@@ -291,38 +283,16 @@ public class ConceptProcessor {
         Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
         Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
 
-        log.debug("SOURCE PROPERTY DEBUG: Looking for property '{}' on concept {}", propertyName, concept.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: Custom property URI: {}", customProperty.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: Default property URI: {}", defaultProperty.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: OFN property URI: {}", ofnProperty.getURI());
-
         Property sourceProperty = null;
         if (concept.hasProperty(customProperty)) {
             sourceProperty = customProperty;
-            log.info("SOURCE PROPERTY DEBUG: Found custom property {} on concept {}", propertyName, concept.getURI());
         } else if (concept.hasProperty(defaultProperty)) {
             sourceProperty = defaultProperty;
-            log.info("SOURCE PROPERTY DEBUG: Found default property {} on concept {}", propertyName, concept.getURI());
         } else if (concept.hasProperty(ofnProperty)) {
             sourceProperty = ofnProperty;
-            log.info("SOURCE PROPERTY DEBUG: Found OFN property {} on concept {}", propertyName, concept.getURI());
-        } else {
-            log.debug("SOURCE PROPERTY DEBUG: Property {} NOT FOUND on concept {}", propertyName, concept.getURI());
-
-            // Let's also check what properties this concept actually has
-            StmtIterator allProps = concept.listProperties();
-            log.debug("SOURCE PROPERTY DEBUG: All properties for concept {}:", concept.getURI());
-            while (allProps.hasNext()) {
-                Statement stmt = allProps.next();
-                String propUri = stmt.getPredicate().getURI();
-                if (propUri.contains("zdroj") || propUri.contains("ustanovení") || propUri.contains("legislative")) {
-                    log.info("SOURCE PROPERTY DEBUG: Found related property: {} -> {}", propUri, stmt.getObject());
-                }
-            }
         }
 
         if (sourceProperty != null) {
-            log.info("SOURCE PROPERTY DEBUG: Adding property {} to JSON field {}", sourceProperty.getURI(), jsonFieldName);
             addResourceArrayProperty(concept, sourceProperty, jsonFieldName, conceptObj);
         }
     }
@@ -334,23 +304,13 @@ public class ConceptProcessor {
         Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
         Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
 
-        log.debug("SOURCE PROPERTY DEBUG: Looking for non-legislative property '{}' on concept {}", propertyName, concept.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: Custom property URI: {}", customProperty.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: Default property URI: {}", defaultProperty.getURI());
-        log.debug("SOURCE PROPERTY DEBUG: OFN property URI: {}", ofnProperty.getURI());
-
         Property sourceProperty = null;
         if (concept.hasProperty(customProperty)) {
             sourceProperty = customProperty;
-            log.info("SOURCE PROPERTY DEBUG: Found custom non-legislative property {} on concept {}", propertyName, concept.getURI());
         } else if (concept.hasProperty(defaultProperty)) {
             sourceProperty = defaultProperty;
-            log.info("SOURCE PROPERTY DEBUG: Found default non-legislative property {} on concept {}", propertyName, concept.getURI());
         } else if (concept.hasProperty(ofnProperty)) {
             sourceProperty = ofnProperty;
-            log.info("SOURCE PROPERTY DEBUG: Found OFN non-legislative property {} on concept {}", propertyName, concept.getURI());
-        } else {
-            log.debug("SOURCE PROPERTY DEBUG: Non-legislative property {} NOT FOUND on concept {}", propertyName, concept.getURI());
         }
 
         if (sourceProperty == null) {
@@ -371,27 +331,18 @@ public class ConceptProcessor {
                 String digitalDocIri = digitalDoc.getURI();
 
                 if (digitalDocIri != null && !digitalDocIri.trim().isEmpty()) {
-                    log.info("SOURCE PROPERTY DEBUG: Adding non-legislative source digital document IRI: {}", digitalDocIri);
                     sourceArray.add(digitalDocIri);
-                } else {
-                    log.warn("SOURCE PROPERTY DEBUG: Digital document resource has no IRI: {}", digitalDoc);
                 }
             } else if (propStmt.getObject().isLiteral()) {
                 String literalValue = propStmt.getString();
                 if (literalValue != null && !literalValue.trim().isEmpty()) {
-                    log.info("SOURCE PROPERTY DEBUG: Adding non-legislative source literal value: {}", literalValue);
                     sourceArray.add(literalValue);
                 }
             }
         }
 
         if (!sourceArray.isEmpty()) {
-            log.info("SOURCE PROPERTY DEBUG: Adding {} non-legislative sources to field '{}' for concept {}",
-                    sourceArray.size(), jsonFieldName, concept.getURI());
             conceptObj.put(jsonFieldName, sourceArray);
-        } else {
-            log.debug("SOURCE PROPERTY DEBUG: No non-legislative sources found for property '{}' on concept {}",
-                    jsonFieldName, concept.getURI());
         }
     }
 

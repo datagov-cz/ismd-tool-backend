@@ -24,39 +24,15 @@ public class JsonExporter {
 
     public String exportToJson(Model model) {
         try {
-            log.info("SOURCE PROPERTY DEBUG: Starting OFN JSON export");
-            log.info("SOURCE PROPERTY DEBUG: Input model has {} statements", model.size());
-
-            // Log some sample statements to see what we're working with
-            StmtIterator sampleIter = model.listStatements();
-            int count = 0;
-            while (sampleIter.hasNext() && count < 10) {
-                Statement stmt = sampleIter.next();
-                String predUri = stmt.getPredicate().getURI();
-                if (predUri.contains("zdroj") || predUri.contains("ustanovení") || predUri.contains("legislative")) {
-                    log.info("SOURCE PROPERTY DEBUG: Found source property in input model: {} -> {}", predUri, stmt.getObject());
-                }
-                count++;
-            }
+            log.debug("Starting OFN JSON export");
 
             OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, model);
-            log.info("SOURCE PROPERTY DEBUG: Created OntModel with {} statements", ontModel.size());
 
             ModelStructure structure = modelAnalyzer.analyzeModel(model);
-            log.info("SOURCE PROPERTY DEBUG: Model structure analysis complete - namespace: {}", structure.getEffectiveNamespace());
 
             ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
-            log.info("SOURCE PROPERTY DEBUG: Processed {} concepts", conceptData.getTotalConceptCount());
 
             String jsonResult = jsonFormatter.formatAsJson(structure, conceptData);
-            log.info("SOURCE PROPERTY DEBUG: JSON formatting complete, result length: {} chars", jsonResult.length());
-
-            // Log if source properties made it to the final result
-            if (jsonResult.contains("nelegislativní-zdroj") || jsonResult.contains("ustanovení-právního-předpisu")) {
-                log.info("SOURCE PROPERTY DEBUG: SUCCESS - Source properties found in final JSON output");
-            } else {
-                log.warn("SOURCE PROPERTY DEBUG: WARNING - No source properties found in final JSON output");
-            }
 
             log.debug("OFN JSON export completed successfully");
             return jsonResult;

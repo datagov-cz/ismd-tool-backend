@@ -41,33 +41,24 @@ public class ModelAnalyzer {
     }
 
     private String determineEffectiveNamespace(Model model, Resource vocabularyResource) {
-        log.info("SOURCE PROPERTY DEBUG: Determining effective namespace");
-
         if (vocabularyResource != null && vocabularyResource.getURI() != null) {
             String uri = vocabularyResource.getURI();
-            log.info("SOURCE PROPERTY DEBUG: Vocabulary resource URI: {}", uri);
             int lastSlash = uri.lastIndexOf('/');
             if (lastSlash > 0) {
-                String namespace = uri.substring(0, lastSlash + 1);
-                log.info("SOURCE PROPERTY DEBUG: Extracted namespace from vocabulary resource: {}", namespace);
-                return namespace;
+                return uri.substring(0, lastSlash + 1);
             }
         }
 
         Map<String, String> prefixes = model.getNsPrefixMap();
-        log.info("SOURCE PROPERTY DEBUG: Available prefixes: {}", prefixes);
-
         for (Map.Entry<String, String> entry : prefixes.entrySet()) {
             String prefix = entry.getKey();
             String namespace = entry.getValue();
 
             if (!prefix.isEmpty() && !isStandardPrefix(prefix)) {
-                log.info("SOURCE PROPERTY DEBUG: Using custom prefix '{}' with namespace: {}", prefix, namespace);
                 return namespace;
             }
         }
 
-        log.info("SOURCE PROPERTY DEBUG: Using default namespace: {}", DEFAULT_NS);
         return DEFAULT_NS;
     }
 
