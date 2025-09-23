@@ -40,7 +40,7 @@ public class JsonFormatter {
     }
 
     private void addModelMetadata(Map<String, Object> root, ModelStructure structure) {
-        root.put(JSON_CONTEXT, CONTEXT);
+        root.put(JSON_CONTEXT, CONTEXT_JSONLD);
         root.put(JSON_IRI, structure.getOntologyIRI());
         root.put(JSON_TYP, createTypeArray());
 
@@ -113,39 +113,77 @@ public class JsonFormatter {
 
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             Object value = entry.getValue();
+            String key = entry.getKey();
+
+            // Enhanced logging for source properties
+            if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                log.info("SOURCE PROPERTY DEBUG: Filtering field '{}' with value: {}", key, value);
+            }
 
             if (value == null) {
+                if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                    log.warn("SOURCE PROPERTY DEBUG: Removing NULL source property field: {}", key);
+                }
                 continue;
             }
 
             if (value instanceof String && ((String) value).isEmpty()) {
+                if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                    log.warn("SOURCE PROPERTY DEBUG: Removing EMPTY STRING source property field: {}", key);
+                }
                 continue;
             }
 
             if (value instanceof Map) {
                 Map<String, Object> mapValue = (Map<String, Object>) value;
                 if (mapValue.isEmpty()) {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.warn("SOURCE PROPERTY DEBUG: Removing EMPTY MAP source property field: {}", key);
+                    }
                     continue;
                 }
 
                 if (isEmptyMultilingualField(mapValue)) {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.warn("SOURCE PROPERTY DEBUG: Removing EMPTY MULTILINGUAL source property field: {}", key);
+                    }
                     continue;
                 }
 
                 Map<String, Object> filteredMap = filterEmptyValues(mapValue);
                 if (!filteredMap.isEmpty()) {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.info("SOURCE PROPERTY DEBUG: Keeping MAP source property field '{}' with filtered content", key);
+                    }
                     filtered.put(entry.getKey(), filteredMap);
+                } else {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.warn("SOURCE PROPERTY DEBUG: Removing source property field '{}' after filtering resulted in empty map", key);
+                    }
                 }
             } else if (value instanceof List<?> listValue) {
                 if (listValue.isEmpty()) {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.warn("SOURCE PROPERTY DEBUG: Removing EMPTY LIST source property field: {}", key);
+                    }
                     continue;
                 }
 
                 List<Object> filteredList = filterEmptyListItems(listValue);
                 if (!filteredList.isEmpty()) {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.info("SOURCE PROPERTY DEBUG: Keeping LIST source property field '{}' with {} items", key, filteredList.size());
+                    }
                     filtered.put(entry.getKey(), filteredList);
+                } else {
+                    if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                        log.warn("SOURCE PROPERTY DEBUG: Removing source property field '{}' after filtering resulted in empty list", key);
+                    }
                 }
             } else {
+                if (key.contains("nelegislativní-zdroj") || key.contains("ustanovení-právního-předpisu")) {
+                    log.info("SOURCE PROPERTY DEBUG: Keeping source property field '{}' with value: {}", key, value);
+                }
                 filtered.put(entry.getKey(), value);
             }
         }
