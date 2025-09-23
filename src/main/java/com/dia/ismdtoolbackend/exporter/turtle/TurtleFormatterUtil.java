@@ -128,7 +128,10 @@ public class TurtleFormatterUtil {
                 if (!property.hasProperty(RDF.type, slovnikyPojem)) {
                     property.addProperty(RDF.type, slovnikyPojem);
                 }
-                if (!property.hasProperty(RDF.type, slovnikyVlastnost)) {
+
+                Property slovnikyVztah = model.getProperty(SLOVNIKY_NS + "vztah");
+                if (!property.hasProperty(RDF.type, slovnikyVztah) &&
+                        !property.hasProperty(RDF.type, slovnikyVlastnost)) {
                     property.addProperty(RDF.type, slovnikyVlastnost);
                 }
             }

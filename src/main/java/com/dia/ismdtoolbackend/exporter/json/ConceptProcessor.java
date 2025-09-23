@@ -103,8 +103,13 @@ public class ConceptProcessor {
                 {NEVEREJNY_UDAJ, NEVEREJNY_UDAJ_JSON_LD}
         };
 
+        boolean isVztah = concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH));
+
         for (String[] mapping : typeMapping) {
             if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + mapping[0]))) {
+                if (mapping[0].equals(VLASTNOST) && isVztah) {
+                    continue;
+                }
                 types.add(mapping[1]);
             }
         }
