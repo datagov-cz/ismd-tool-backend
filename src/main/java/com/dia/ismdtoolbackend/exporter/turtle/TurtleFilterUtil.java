@@ -92,7 +92,7 @@ public class TurtleFilterUtil {
             Statement stmt = stmtIter.next();
             originalCount++;
 
-            if (shouldFilterStatement(stmt)) {
+            if (shouldFilterStatement(stmt) || isEmptyLiteralStatement(stmt)) {
                 filteredCount++;
                 log.debug("Filtering statement: {}", stmt);
                 continue;
@@ -100,8 +100,6 @@ public class TurtleFilterUtil {
 
             filteredModel.add(stmt);
         }
-
-        removeEmptyLiterals(filteredModel);
 
         log.debug("Filtered {} out of {} statements", filteredCount, originalCount);
         return filteredModel;
@@ -120,9 +118,6 @@ public class TurtleFilterUtil {
             return true;
         }
 
-        if (isEmptyLiteralStatement(stmt)) {
-            return true;
-        }
 
         if (isVocabularySelfReference(stmt)) {
             return true;
@@ -245,18 +240,4 @@ public class TurtleFilterUtil {
                 subject.equals(stmt.getObject().asResource());
     }
 
-    private static void removeEmptyLiterals(Model model) {
-        List<Statement> toRemove = new ArrayList<>();
-
-        StmtIterator stmtIter = model.listStatements();
-        while (stmtIter.hasNext()) {
-            Statement stmt = stmtIter.next();
-            if (isEmptyLiteralStatement(stmt)) {
-                toRemove.add(stmt);
-                log.debug("Post-processing: removing empty literal statement: {}", stmt);
-            }
-        }
-
-        model.remove(toRemove);
-    }
 }

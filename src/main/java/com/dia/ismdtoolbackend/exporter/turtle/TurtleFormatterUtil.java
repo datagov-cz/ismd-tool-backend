@@ -13,12 +13,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+
 @Slf4j
 public class TurtleFormatterUtil {
 
-    private static final String SLOVNIKY_NS = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";
-    private static final String DCT_NS = "http://purl.org/dc/terms/";
-    private static final String SKOS_NS = "http://www.w3.org/2004/02/skos/core#";
     private static final String NADRAZENA_TRIDA = "https://slovník.gov.cz/nadřazená-třída";
 
     private static final Map<String, String> OFN_PREFIXES = new HashMap<>();
@@ -29,10 +28,10 @@ public class TurtleFormatterUtil {
         OFN_PREFIXES.put("rdf", RDF.getURI());
         OFN_PREFIXES.put("rdfs", RDFS.getURI());
         OFN_PREFIXES.put("skos", SKOS_NS);
-        OFN_PREFIXES.put("slovníky", SLOVNIKY_NS);
+        OFN_PREFIXES.put("slovníky", OFN_NAMESPACE);
         OFN_PREFIXES.put("vsgov", "https://slovník.gov.cz/veřejný-sektor/pojem/");
-        OFN_PREFIXES.put("xsd", "http://www.w3.org/2001/XMLSchema#");
-        OFN_PREFIXES.put("čas", "https://slovník.gov.cz/generický/čas/pojem/");
+        OFN_PREFIXES.put("xsd", XSD);
+        OFN_PREFIXES.put("čas", CAS_NS);
         OFN_PREFIXES.put("a104", "https://slovník.gov.cz/agendový/104/pojem/");
         OFN_PREFIXES.put("l111-2009", "https://slovník.gov.cz/legislativním/sbírka/111/2009/pojem/");
     }
@@ -71,8 +70,8 @@ public class TurtleFormatterUtil {
     }
 
     private static void transformToSKOSConcepts(OntModel model) {
-        Property slovnikyPojem = model.getProperty(SLOVNIKY_NS + "pojem");
-        Property slovnikyTridaProperty = model.getProperty(SLOVNIKY_NS + "třída");
+        Property slovnikyPojem = model.getProperty(OFN_NAMESPACE + "pojem");
+        Property slovnikyTridaProperty = model.getProperty(OFN_NAMESPACE + "třída");
         Property skosConceptProperty = model.getProperty(SKOS_NS + "Concept");
         Property skosInScheme = model.getProperty(SKOS_NS + "inScheme");
 
@@ -80,9 +79,7 @@ public class TurtleFormatterUtil {
         StmtIterator iter = model.listStatements(null, RDF.type, OWL2.Class);
         while (iter.hasNext()) {
             Resource subject = iter.next().getSubject();
-            if (subject.getURI() != null &&
-                    subject.getURI().contains("/pojem/") &&
-                    !isBaseVocabularyClass(subject.getURI())) {
+            if (isConceptResource(subject)) {
                 classesToTransform.add(subject);
             }
         }
@@ -109,8 +106,8 @@ public class TurtleFormatterUtil {
     }
 
     private static void transformPropertiesToOFNFormat(OntModel model) {
-        Property slovnikyPojem = model.getProperty(SLOVNIKY_NS + "pojem");
-        Property slovnikyVlastnost = model.getProperty(SLOVNIKY_NS + "vlastnost");
+        Property slovnikyPojem = model.getProperty(OFN_NAMESPACE + "pojem");
+        Property slovnikyVlastnost = model.getProperty(OFN_NAMESPACE + "vlastnost");
 
         List<Resource> properties = new ArrayList<>();
         StmtIterator iter = model.listStatements(null, RDF.type, OWL2.DatatypeProperty);
@@ -129,7 +126,7 @@ public class TurtleFormatterUtil {
                     property.addProperty(RDF.type, slovnikyPojem);
                 }
 
-                Property slovnikyVztah = model.getProperty(SLOVNIKY_NS + "vztah");
+                Property slovnikyVztah = model.getProperty(OFN_NAMESPACE + "vztah");
                 if (!property.hasProperty(RDF.type, slovnikyVztah) &&
                         !property.hasProperty(RDF.type, slovnikyVlastnost)) {
                     property.addProperty(RDF.type, slovnikyVlastnost);
@@ -155,7 +152,7 @@ public class TurtleFormatterUtil {
 
     private static void transformConformsToProperties(OntModel model) {
         Property conformsTo = model.getProperty(DCT_NS + "conformsTo");
-        Property ofnDefinujiciUstanoveni = model.getProperty(SLOVNIKY_NS + "definující-ustanovení-právního-předpisu");
+        Property ofnDefinujiciUstanoveni = model.getProperty(OFN_NAMESPACE + "definující-ustanovení-právního-předpisu");
 
         List<Statement> toReplace = new ArrayList<>();
         StmtIterator iter = model.listStatements(null, conformsTo, (RDFNode) null);
@@ -238,7 +235,7 @@ public class TurtleFormatterUtil {
             Resource ontology = iter.next().getSubject();
 
             Property skosConceptScheme = model.getProperty(SKOS_NS + "ConceptScheme");
-            Property slovnikType = model.getProperty(SLOVNIKY_NS + "slovník");
+            Property slovnikType = model.getProperty(OFN_NAMESPACE + "slovník");
             Property ofnSlovnikType = model.createProperty("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/slovník");
 
             if (!ontology.hasProperty(RDF.type, skosConceptScheme)) {
@@ -251,6 +248,12 @@ public class TurtleFormatterUtil {
                 ontology.addProperty(RDF.type, ofnSlovnikType);
             }
         }
+    }
+
+    private static boolean isConceptResource(Resource resource) {
+        return resource.getURI() != null &&
+               resource.getURI().contains("/pojem/") &&
+               !isBaseVocabularyClass(resource.getURI());
     }
 
     private static boolean isBaseVocabularyClass(String uri) {

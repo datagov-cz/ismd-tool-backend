@@ -148,40 +148,40 @@ public class ModelAnalyzer {
 
     private Map<String, Resource> buildResourceMap(Model model) {
         Map<String, Resource> resourceMap = new HashMap<>();
+        Set<String> conceptTypeURIs = buildConceptTypeURIs();
 
-        StmtIterator iter = model.listStatements(null, RDF.type, OWL2.Ontology);
-        if (iter.hasNext()) {
-            resourceMap.put("ontology", iter.next().getSubject());
-        }
+        StmtIterator iter = model.listStatements(null, RDF.type, (RDFNode) null);
+        while (iter.hasNext()) {
+            Statement stmt = iter.next();
+            RDFNode object = stmt.getObject();
+            Resource subject = stmt.getSubject();
 
-        addConceptResources(model, resourceMap);
+            if (object.isResource()) {
+                String objectURI = object.asResource().getURI();
 
-        return resourceMap;
-    }
-
-    private void addConceptResources(Model model, Map<String, Resource> resourceMap) {
-        String[] conceptTypes = {POJEM, TRIDA, VZTAH, VLASTNOST, TSP, TOP, VEREJNY_UDAJ, NEVEREJNY_UDAJ};
-
-        for (String conceptType : conceptTypes) {
-            Resource typeResource = model.getResource(OFN_NAMESPACE + conceptType);
-            StmtIterator iter = model.listStatements(null, RDF.type, typeResource);
-
-            while (iter.hasNext()) {
-                Resource resource = iter.next().getSubject();
-                if (resource.getURI() != null) {
-                    resourceMap.put(resource.getURI(), resource);
+                if (objectURI != null) {
+                    if (objectURI.equals(OWL2.Ontology.getURI()) && subject.getURI() != null) {
+                        resourceMap.put("ontology", subject);
+                    } else if (conceptTypeURIs.contains(objectURI) && subject.getURI() != null) {
+                        resourceMap.put(subject.getURI(), subject);
+                    }
                 }
             }
         }
 
-        Property skosConceptProperty = model.createProperty(SKOS_NS + "Concept");
-        StmtIterator iter = model.listStatements(null, RDF.type, skosConceptProperty);
-        while (iter.hasNext()) {
-            Resource resource = iter.next().getSubject();
-            if (resource.getURI() != null) {
-                resourceMap.put(resource.getURI(), resource);
-            }
+        return resourceMap;
+    }
+
+    private Set<String> buildConceptTypeURIs() {
+        Set<String> conceptTypeURIs = new HashSet<>();
+        String[] conceptTypes = {POJEM, TRIDA, VZTAH, VLASTNOST, TSP, TOP, VEREJNY_UDAJ, NEVEREJNY_UDAJ};
+
+        for (String conceptType : conceptTypes) {
+            conceptTypeURIs.add(OFN_NAMESPACE + conceptType);
         }
+        conceptTypeURIs.add(SKOS_NS + "Concept");
+
+        return conceptTypeURIs;
     }
 
     private String extractTemporalMetadata(Resource vocabularyResource, Model model, String propertyName) {
@@ -189,7 +189,7 @@ public class ModelAnalyzer {
             return null;
         }
 
-        Property temporalProperty = model.getProperty(SLOVNIKY_NS + propertyName);
+        Property temporalProperty = model.getProperty(OFN_NAMESPACE + propertyName);
         if (!vocabularyResource.hasProperty(temporalProperty)) {
             return null;
         }
@@ -248,7 +248,6 @@ public class ModelAnalyzer {
 
     private boolean hasConceptOfType(Model model, String conceptType) {
         Resource typeResource = model.getResource(OFN_NAMESPACE + conceptType);
-        StmtIterator iter = model.listStatements(null, RDF.type, typeResource);
-        return iter.hasNext();
+        return model.listStatements(null, RDF.type, typeResource).hasNext();
     }
 }

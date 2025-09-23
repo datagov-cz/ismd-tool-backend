@@ -16,10 +16,14 @@ public class JsonExporter {
     private final ConceptProcessor conceptProcessor;
     private final JsonFormatter jsonFormatter;
 
+    public JsonExporter(ModelAnalyzer modelAnalyzer, ConceptProcessor conceptProcessor, JsonFormatter jsonFormatter) {
+        this.modelAnalyzer = modelAnalyzer;
+        this.conceptProcessor = conceptProcessor;
+        this.jsonFormatter = jsonFormatter;
+    }
+
     public JsonExporter() {
-        this.modelAnalyzer = new ModelAnalyzer();
-        this.conceptProcessor = new ConceptProcessor();
-        this.jsonFormatter = new JsonFormatter();
+        this(new ModelAnalyzer(), new ConceptProcessor(), new JsonFormatter());
     }
 
     public String exportToJson(Model model) {

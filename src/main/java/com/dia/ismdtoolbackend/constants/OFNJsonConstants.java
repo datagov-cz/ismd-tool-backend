@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.constants;
 
 public class OFNJsonConstants {
     // Namespaces
-    public static final String SLOVNIKY_NS = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";
     public static final String OFN_NAMESPACE = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";
     public static final String DEFAULT_NS = "https://slovník.gov.cz/";
     public static final String DCT_NS = "http://purl.org/dc/terms/";
