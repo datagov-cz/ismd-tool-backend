@@ -26,6 +26,8 @@ public class OFNJsonConstants {
     public static final String DATUM_A_CAS = "datum-a-čas";
     public static final String DATUM = "datum";
     public static final String LOKALNI_KATALOG = "lokální-katalog";
+    public static final String NADRAZENY_VZTAH = "nadřazený-vztah";
+    public static final String NADRAZENA_VLASTNOST = "nadřazená-vlastnost";
 
     // Governance properties
     public static final String ZPUSOB_SDILENI = "způsob-sdílení-údajů";

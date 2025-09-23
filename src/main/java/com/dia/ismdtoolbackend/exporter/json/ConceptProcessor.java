@@ -62,14 +62,14 @@ public class ConceptProcessor {
         conceptObj.put("iri", concept.getURI());
         conceptObj.put("typ", getConceptTypes(concept, ontModel));
 
-        addMultilingualProperty(concept, SKOS.prefLabel, NAZEV, conceptObj, ontModel);
+        addMultilingualProperty(concept, SKOS.prefLabel, NAZEV, conceptObj);
         addAlternativeNames(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
 
         Property definitionProperty = ontModel.createProperty(SKOS_NS + "definition");
-        addMultilingualProperty(concept, definitionProperty, DEFINICE, conceptObj, ontModel);
+        addMultilingualProperty(concept, definitionProperty, DEFINICE, conceptObj);
 
         Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
-        addMultilingualProperty(concept, descriptionProperty, POPIS, conceptObj, ontModel);
+        addMultilingualProperty(concept, descriptionProperty, POPIS, conceptObj);
 
         Property identifierProperty = ontModel.createProperty(DCT_NS + "identifier");
         addResourceArrayProperty(concept, identifierProperty, IDENTIFIKATOR, conceptObj);
@@ -113,7 +113,7 @@ public class ConceptProcessor {
     }
 
     private void addMultilingualProperty(Resource concept, Property property, String jsonProperty,
-                                         Map<String, Object> conceptObj, OntModel ontModel) {
+                                         Map<String, Object> conceptObj) {
         StmtIterator propIter = concept.listProperties(property);
         if (!propIter.hasNext()) {
             return;
@@ -394,9 +394,9 @@ public class ConceptProcessor {
 
             if (!superPropertyArray.isEmpty()) {
                 if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH))) {
-                    conceptObj.put("nadřazený-vztah", superPropertyArray);
+                    conceptObj.put(NADRAZENY_VZTAH, superPropertyArray);
                 } else if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST))) {
-                    conceptObj.put("nadřazená-vlastnost", superPropertyArray);
+                    conceptObj.put(NADRAZENA_VLASTNOST, superPropertyArray);
                 }
             }
         }
@@ -404,9 +404,9 @@ public class ConceptProcessor {
 
     private void addGovernanceProperties(Resource concept, Map<String, Object> conceptObj,
                                          OntModel ontModel, String namespace) {
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_SDILENI, "způsob-sdílení-údajů");
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, "způsob-získání-údajů");
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, "typ-obsahu-údajů");
+        addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_SDILENI, ZPUSOB_SDILENI);
+        addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI);
+        addGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU);
     }
 
     private void addGovernanceProperty(Resource concept, Map<String, Object> conceptObj,

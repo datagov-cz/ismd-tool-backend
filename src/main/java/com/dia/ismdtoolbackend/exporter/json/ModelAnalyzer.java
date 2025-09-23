@@ -6,9 +6,7 @@ import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 
@@ -28,6 +26,8 @@ public class ModelAnalyzer {
         String creationDate = extractTemporalMetadata(vocabularyResource, model, OKAMZIK_VYTVORENI);
         String modificationDate = extractTemporalMetadata(vocabularyResource, model, OKAMZIK_POSLEDNI_ZMENY);
 
+        List<String> vocabularyTypes = determineVocabularyTypes(model);
+
         return ModelStructure.builder()
                 .modelName(modelName)
                 .modelDescription(modelDescription)
@@ -37,6 +37,7 @@ public class ModelAnalyzer {
                 .resourceMap(resourceMap)
                 .creationDate(creationDate)
                 .modificationDate(modificationDate)
+                .vocabularyTypes(vocabularyTypes)
                 .build();
     }
 
@@ -220,5 +221,34 @@ public class ModelAnalyzer {
         }
 
         return null;
+    }
+
+    private List<String> determineVocabularyTypes(Model model) {
+        List<String> types = new ArrayList<>();
+
+        types.add(TYPE_SLOVNIK);
+
+        boolean hasPojem = hasConceptOfType(model, POJEM);
+
+        boolean hasConceptualModelTypes = hasConceptOfType(model, TSP) ||
+                                         hasConceptOfType(model, TOP) ||
+                                         hasConceptOfType(model, VLASTNOST) ||
+                                         hasConceptOfType(model, VZTAH);
+
+        if (hasPojem || hasConceptualModelTypes) {
+            types.add(TYPE_TEZAURUS);
+        }
+
+        if (hasConceptualModelTypes) {
+            types.add(TYPE_KM);
+        }
+
+        return types;
+    }
+
+    private boolean hasConceptOfType(Model model, String conceptType) {
+        Resource typeResource = model.getResource(OFN_NAMESPACE + conceptType);
+        StmtIterator iter = model.listStatements(null, RDF.type, typeResource);
+        return iter.hasNext();
     }
 }

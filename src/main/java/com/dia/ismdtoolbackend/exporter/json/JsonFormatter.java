@@ -42,7 +42,7 @@ public class JsonFormatter {
     private void addModelMetadata(Map<String, Object> root, ModelStructure structure) {
         root.put(JSON_CONTEXT, CONTEXT_JSONLD);
         root.put(JSON_IRI, structure.getOntologyIRI());
-        root.put(JSON_TYP, createTypeArray());
+        root.put(JSON_TYP, structure.getVocabularyTypes());
 
         if (structure.getModelName() != null && !structure.getModelName().isEmpty()) {
             Map<String, String> nameObj = new LinkedHashMap<>();
@@ -69,9 +69,6 @@ public class JsonFormatter {
         }
     }
 
-    private List<String> createTypeArray() {
-        return Arrays.asList(TYPE_SLOVNIK, TYPE_TEZAURUS, TYPE_KM);
-    }
 
     private Map<String, String> createEmptyMultilingualField() {
         Map<String, String> emptyField = new LinkedHashMap<>();

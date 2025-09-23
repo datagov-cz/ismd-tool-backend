@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 import org.apache.jena.rdf.model.Resource;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -18,4 +19,5 @@ public class ModelStructure {
     private final Map<String, Resource> resourceMap;
     private final String creationDate;
     private final String modificationDate;
+    private final List<String> vocabularyTypes;
 }
