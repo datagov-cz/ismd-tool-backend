@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import com.dia.ismdtoolbackend.exception.TurtleExportException;
+
 @Slf4j
 public class TurtleFilterUtil {
 
@@ -81,28 +83,40 @@ public class TurtleFilterUtil {
     private TurtleFilterUtil() {}
 
     public static Model createFilteredModel(Model originalModel) {
-        Model filteredModel = ModelFactory.createDefaultModel();
-        filteredModel.setNsPrefixes(originalModel.getNsPrefixMap());
-
-        StmtIterator stmtIter = originalModel.listStatements();
-        int originalCount = 0;
-        int filteredCount = 0;
-
-        while (stmtIter.hasNext()) {
-            Statement stmt = stmtIter.next();
-            originalCount++;
-
-            if (shouldFilterStatement(stmt) || isEmptyLiteralStatement(stmt)) {
-                filteredCount++;
-                log.debug("Filtering statement: {}", stmt);
-                continue;
-            }
-
-            filteredModel.add(stmt);
+        if (originalModel == null) {
+            throw new TurtleExportException("Original model cannot be null");
         }
 
-        log.debug("Filtered {} out of {} statements", filteredCount, originalCount);
-        return filteredModel;
+        log.debug("Starting model filtering");
+
+        try {
+            Model filteredModel = ModelFactory.createDefaultModel();
+            filteredModel.setNsPrefixes(originalModel.getNsPrefixMap());
+
+            StmtIterator stmtIter = originalModel.listStatements();
+            int originalCount = 0;
+            int filteredCount = 0;
+
+            while (stmtIter.hasNext()) {
+                Statement stmt = stmtIter.next();
+                originalCount++;
+
+                if (shouldFilterStatement(stmt) || isEmptyLiteralStatement(stmt)) {
+                    filteredCount++;
+                    log.debug("Filtering statement: {}", stmt);
+                    continue;
+                }
+
+                filteredModel.add(stmt);
+            }
+
+            log.debug("Model filtering completed. Filtered {} out of {} statements", filteredCount, originalCount);
+            return filteredModel;
+
+        } catch (Exception e) {
+            log.error("Error during model filtering: {}", e.getMessage(), e);
+            throw new TurtleExportException("Failed to filter model: " + e.getMessage(), e);
+        }
     }
 
     public static boolean shouldFilterStatement(Statement stmt) {

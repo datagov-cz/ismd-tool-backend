@@ -40,28 +40,38 @@ public class TurtleFormatterUtil {
     private TurtleFormatterUtil() {}
 
     public static Model transformToOFNFormat(Model filteredModel) {
-        log.debug("Starting OFN format transformation");
-
-        OntModel ofnModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
-
-        setupOFNPrefixes(ofnModel);
-
-        StmtIterator stmtIter = filteredModel.listStatements();
-        while (stmtIter.hasNext()) {
-            Statement stmt = stmtIter.next();
-            ofnModel.add(stmt);
+        if (filteredModel == null) {
+            throw new TurtleExportException("Filtered model cannot be null");
         }
 
-        transformToSKOSConcepts(ofnModel);
-        transformPropertiesToOFNFormat(ofnModel);
-        transformDescriptionProperties(ofnModel);
-        transformConformsToProperties(ofnModel);
-        transformSubClassRelationships(ofnModel);
-        transformLabelsToSKOS(ofnModel);
-        ensureConceptSchemeFormat(ofnModel);
+        log.debug("Starting OFN format transformation");
 
-        log.debug("OFN format transformation completed");
-        return ofnModel;
+        try {
+            OntModel ofnModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
+
+            setupOFNPrefixes(ofnModel);
+
+            StmtIterator stmtIter = filteredModel.listStatements();
+            while (stmtIter.hasNext()) {
+                Statement stmt = stmtIter.next();
+                ofnModel.add(stmt);
+            }
+
+            transformToSKOSConcepts(ofnModel);
+            transformPropertiesToOFNFormat(ofnModel);
+            transformDescriptionProperties(ofnModel);
+            transformConformsToProperties(ofnModel);
+            transformSubClassRelationships(ofnModel);
+            transformLabelsToSKOS(ofnModel);
+            ensureConceptSchemeFormat(ofnModel);
+
+            log.debug("OFN format transformation completed successfully");
+            return ofnModel;
+
+        } catch (Exception e) {
+            log.error("Error during OFN format transformation: {}", e.getMessage(), e);
+            throw new TurtleExportException("Failed to transform to OFN format: " + e.getMessage(), e);
+        }
     }
 
     private static void setupOFNPrefixes(OntModel model) {
