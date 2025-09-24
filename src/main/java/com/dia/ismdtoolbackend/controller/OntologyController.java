@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.entity.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -76,6 +77,29 @@ public class OntologyController {
         } catch (Exception e) {
             log.error("Unexpected error deleting ontology: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při mazání slovníku."));
+        }
+    }
+
+    @PostMapping("/create")
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
+            @RequestPart OntologyCreateModel ontologyCreateModel,
+            @RequestParam String userId
+            ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}",
+                ontologyCreateModel.getNamespace(),
+                ontologyCreateModel.getName(),
+                ontologyCreateModel.getDescription(),
+                userId
+        );
+
+        try {
+
+            return ResponseEntity.ok().body(ApiResponseDto.success(""));
+        } catch (Exception e) {
+            log.error("Unexpected error creating ontology: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
         }
     }
 }
