@@ -61,8 +61,8 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
-                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
+                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").isString());
     }
 
@@ -89,8 +89,8 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.graphName").value("generated-graph-name"))
-                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
+                .andExpect(jsonPath("$.data.graphName").value("generated-graph-name"))
+                .andExpect(jsonPath("$.data.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").isString());
     }
 
@@ -109,7 +109,7 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata").doesNotExist())
+                .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Soubor je prázdný."));
     }
 
@@ -130,7 +130,7 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata").doesNotExist())
+                .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("RDF jazyk není podporován."));
     }
 
@@ -153,7 +153,7 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata").doesNotExist())
+                .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Parse error"));
     }
 
@@ -205,8 +205,8 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
-                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId));
+                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.user.userId").value(userId));
     }
 
     @Test
@@ -240,8 +240,8 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.graphName").value("large-ontology"))
-                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId));
+                .andExpect(jsonPath("$.data.graphName").value("large-ontology"))
+                .andExpect(jsonPath("$.data.user.userId").value(userId));
     }
 
     @Test
@@ -270,9 +270,9 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.id").value(1))
-                .andExpect(jsonPath("$.ontologyMetadata.graphName").value(providedName))
-                .andExpect(jsonPath("$.ontologyMetadata.user.userId").value(userId))
+                .andExpect(jsonPath("$.data.id").value(1))
+                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + providedName));
     }
 }
