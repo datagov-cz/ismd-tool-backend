@@ -27,11 +27,7 @@ public class OntologyController {
     private final OntologyUploadService ontologyUploadService;
 
     @PostMapping("/upload")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
-            @RequestParam MultipartFile file,
-            @RequestParam (name = "providedName", required = false) String providedName,
-            @RequestParam String userId
-            ) {
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(@RequestParam MultipartFile file, @RequestParam(name = "providedName", required = false) String providedName, @RequestParam String userId) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology upload requested, fileName: {}, providedName: {}, userId: {}", file.getOriginalFilename(), providedName, userId);
@@ -81,25 +77,47 @@ public class OntologyController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
-            @RequestPart OntologyCreateModel ontologyCreateModel,
-            @RequestParam String userId
-            ) {
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(@RequestBody OntologyCreateModel ontologyCreateModel, @RequestParam String userId) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}",
-                ontologyCreateModel.getNamespace(),
-                ontologyCreateModel.getName(),
-                ontologyCreateModel.getDescription(),
-                userId
-        );
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getName(), ontologyCreateModel.getDescription(), userId);
 
         try {
+            if (userId == null || userId.trim().isEmpty()) {
+                log.error("UserId is null or empty");
+                return ResponseEntity.badRequest().body(ApiResponseDto.error("ID uživatele je povinné."));
+            }
 
-            return ResponseEntity.ok().body(ApiResponseDto.success(""));
+            OntologyMetadataModel createdOntology = ontologyService.createOntology(ontologyCreateModel, userId);
+            log.info("Ontology create successful: {}", createdOntology);
+
+            return ResponseEntity.ok().body(ApiResponseDto.success(createdOntology, "Slovník úspěšně vytvořen: " + createdOntology.getGraphName()));
+        } catch (org.apache.jena.ontology.OntologyException e) {
+            if (e.getMessage().contains("není platné")) {
+                log.error("Invalid ontology IRI: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("povinný")) {
+                log.error("Validation error: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("Data pro vytvoření slovníku jsou prázdná")) {
+                log.error("Create model validation failed: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("může obsahovat pouze písmena")) {
+                log.error("Name validation failed: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("Nepodařilo se uložit")) {
+                log.error("Storage error: {}", e.getMessage());
+                return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
+            }
+            log.error("Error creating ontology: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
         } catch (Exception e) {
             log.error("Unexpected error creating ontology: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při vytváření slovníku."));
         }
     }
 }
