@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
+import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
 import com.dia.models.OFNBaseModel;
@@ -21,6 +22,7 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,9 +30,11 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.dia.constants.ArchiConstants.CASOVY_OKAMZIK;
-import static com.dia.constants.ArchiConstants.SLOVNIKY_NS;
+import static com.dia.constants.ArchiConstants.*;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.CAS_NS;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DATUM_A_CAS;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.OKAMZIK_VYTVORENI;
 
 @Service
 @RequiredArgsConstructor
@@ -133,18 +137,21 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) throws OntologyException {
-        Set<String> baseClasses = Set.of(POJEM);
-        Set<String> baseProperties = Set.of(NAZEV, POPIS, OKAMZIK_VYTVORENI, DATUM_A_CAS);
-        OFNBaseModel ofnModel = new OFNBaseModel(baseClasses, baseProperties);
+        OFNBaseModel ofnModel = new OFNBaseModel();
 
         OntModel model = ofnModel.getOntModel();
-        Resource ontologyResource = model.createResource(ontologyIRI);
+        model.createOntology(ontologyIRI);
+        Resource ontologyResource = model.getResource(ontologyIRI);
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
         ontologyResource.addProperty(prefLabel, ontologyCreateModel.getName(), "cs");
+        ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
+        ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
+        ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
 
         if (ontologyCreateModel.getDescription() != null && !ontologyCreateModel.getDescription().trim().isEmpty()) {
-            ontologyResource.addProperty(DCTerms.description, ontologyCreateModel.getDescription(), "cs");
+            Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
+            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescription(), "cs", model);
         }
 
         String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
