@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.analyzer;
+package com.dia.ismdtoolbackend.utility.analyzer;
 
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
 import lombok.extern.slf4j.Slf4j;

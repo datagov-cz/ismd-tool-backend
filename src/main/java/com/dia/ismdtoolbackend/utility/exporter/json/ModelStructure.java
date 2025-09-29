@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.exporter.json;
+package com.dia.ismdtoolbackend.utility.exporter.json;
 
 import lombok.Builder;
 import lombok.Data;

@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.exporter.common;
+package com.dia.ismdtoolbackend.utility.exporter.common;
 
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;

@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.exporter.json;
+package com.dia.ismdtoolbackend.utility.exporter.json;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;

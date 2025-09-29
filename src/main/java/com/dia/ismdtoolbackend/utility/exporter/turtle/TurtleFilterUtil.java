@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.exporter.turtle;
+package com.dia.ismdtoolbackend.utility.exporter.turtle;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;

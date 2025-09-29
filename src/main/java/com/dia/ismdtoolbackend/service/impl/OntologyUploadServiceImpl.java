@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
-import com.dia.ismdtoolbackend.analyzer.AnalysisResult;
-import com.dia.ismdtoolbackend.analyzer.OntologyAnalyzer;
+import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
+import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
