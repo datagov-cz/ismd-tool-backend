@@ -55,9 +55,12 @@ public class OntologyController {
             log.info("Ontology upload successful: {}", savedOntology);
 
             return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
-        } catch (Exception e) {
-            log.error("Error uploading ontology: {}", e.getMessage());
+        } catch (IllegalArgumentException | SecurityException e) {
+            log.error("Client error uploading ontology: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error uploading ontology: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při nahrávání slovníku."));
         }
     }
 
