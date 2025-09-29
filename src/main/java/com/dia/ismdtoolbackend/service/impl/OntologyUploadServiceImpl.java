@@ -1,10 +1,21 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.entity.OntologyMetadata;
-import com.dia.ismdtoolbackend.entity.dto.OntologyMetadataDto;
+import com.dia.exceptions.ConversionException;
+import com.dia.ismdtoolbackend.analyzer.AnalysisResult;
+import com.dia.ismdtoolbackend.analyzer.OntologyAnalyzer;
+import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.entity.models.UserModel;
+import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
+import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.models.OFNBaseModel;
+import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -22,19 +33,25 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static com.dia.constants.ArchiConstants.DEFAULT_NS;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     private final String fusekiEndpoint;
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final ValidationClient validationClient;
+    private final ValidationReportRepository validationReportRepository;
+    private final OntologyAnalyzer ontologyAnalyzer;
 
     @Override
     public Lang determineRDFFormat(MultipartFile file) {
@@ -65,24 +82,92 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     @Override
-    public OntologyMetadataDto uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException {
-        OntModel uploadedModel = ModelFactory.createOntologyModel();
+    @Transactional
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
+        OntModel finalModel = createMergedOntologyModel(file, rdfLang);
 
-        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
-            RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
-        }
+        OntologyMetadataModel ontologyMetadataModel = uploadOntologyCore(finalModel, file, providedName, userId);
 
-        String graphName = determineGraphName(file, providedName, uploadedModel);
+        String ontologyContent = convertOntModelToTtl(finalModel);
 
-        log.info("Loaded model has {} statements", uploadedModel.size());
-        log.info("Writing to graph: {}", graphName);
+        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(finalModel)));
+
+        return ontologyMetadataModel;
+    }
+
+    private OntologyMetadataModel uploadOntologyCore(OntModel finalModel, MultipartFile file,
+                                                     String providedName, String userId) throws OntoloyUploadException {
+        String graphName = determineGraphName(file, providedName, finalModel);
+
+        log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            conn.put(graphName, uploadedModel);
-            log.info("Successfully uploaded {} statements to graph {}", uploadedModel.size(), graphName);
+            conn.put(graphName, finalModel);
+            log.info("Successfully uploaded {} statements to graph {}", finalModel.size(), graphName);
+        } catch (Exception e) {
+            log.error("Failed to upload ontology to TDB2", e);
+            throw new OntoloyUploadException("Failed to upload ontology to graph store: " + e.getMessage(), e);
         }
 
         return createOntologyMetadataEntity(graphName, userId);
+    }
+
+    private OntModel createMergedOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
+        OntModel uploadedModel = getOntologyModel(file, rdfLang);
+
+
+        try {
+            AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
+            Set<String> requiredBaseClasses = analysisResult.requiredBaseClasses();
+            Set<String> requiredProperties = analysisResult.requiredProperties();
+
+            log.info("Analysis complete - Required base classes: {}, Required properties: {}",
+                    requiredBaseClasses.size(), requiredProperties.size());
+            log.debug("Base classes: {}", requiredBaseClasses);
+            log.debug("Properties: {}", requiredProperties);
+
+            if (requiredBaseClasses.isEmpty() && requiredProperties.isEmpty()) {
+                log.info("Ontology is complete, using as-is with {} statements", uploadedModel.size());
+                return uploadedModel;
+            }
+
+            OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
+
+            OntModel mergedModel = ModelFactory.createOntologyModel();
+            mergedModel.add(uploadedModel);
+            mergedModel.add(baseModel.getOntModel());
+
+            log.info("Created merged model with {} statements (uploaded: {}, base: {})",
+                    mergedModel.size(), uploadedModel.size(), baseModel.getOntModel().size());
+
+            return mergedModel;
+        } catch (Exception e) {
+            throw new OntologyAnalysisException(e, e.getMessage());
+        }
+    }
+
+    public void requestAndSaveValidationReport(String ontologyContent, String iri) {
+        try {
+            Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphName(iri);
+            if (ontologyOpt.isEmpty()) {
+                log.warn("Ontology metadata not found for graph name: {}", iri);
+                return;
+            }
+
+            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyMetadataId(ontologyOpt.get().getId());
+            validationReportOpt.ifPresent(validationReportRepository::delete);
+
+            Optional<ValidationReport> report = validationClient.requestValidation(ontologyContent, iri);
+            if (report.isPresent()) {
+                OntologyMetadataEntity ontologyEntity = ontologyOpt.get();
+                ValidationReportEntity validationEntity = new ValidationReportEntity(report.get(), ontologyEntity.getId());
+                validationReportRepository.save(validationEntity);
+                ontologyEntity.setValidationReportId(validationEntity.getId());
+                ontologyMetadataRepository.save(ontologyEntity);
+            }
+        } catch (Exception e) {
+            log.warn("Validation failed for ontology {}: {}", iri, e.getMessage());
+        }
     }
 
     private String determineGraphName(MultipartFile file, String providedName, OntModel model) {
@@ -117,15 +202,41 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return null;
     }
 
-    private OntologyMetadataDto createOntologyMetadataEntity(String graphName, String userId) {
-        OntologyMetadataDto ontologyMetadataDto = new OntologyMetadataDto();
-        ontologyMetadataDto.setGraphName(graphName);
-        ontologyMetadataDto.setUserId(userId);
+    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
+        Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphNameAndUserId(graphName, userId);
+        if (ontologyOpt.isPresent()) {
+            return ontologyMetadataMapper.toDto(ontologyOpt.get());
+        }
 
-        log.debug("Ontology metadata entity name: {}, userId: {}", ontologyMetadataDto.getGraphName(), userId);
-        OntologyMetadata ontologyMetadata = ontologyMetadataMapper.toEntity(ontologyMetadataDto);
-        OntologyMetadata savedOntologyMetadata = ontologyMetadataRepository.save(ontologyMetadata);
-        log.debug("Ontology metadata saved: {}", savedOntologyMetadata);
-        return ontologyMetadataMapper.toDto(savedOntologyMetadata);
+        OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
+        ontologyMetadataModel.setGraphName(graphName);
+        ontologyMetadataModel.setUser(new UserModel(userId));
+        ontologyMetadataModel.setIsPublished(false);
+
+        log.debug("Ontology metadata entity name: {}, userId: {}", ontologyMetadataModel.getGraphName(), userId);
+        OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataModel);
+        OntologyMetadataEntity savedOntologyMetadataEntity = ontologyMetadataRepository.save(ontologyMetadataEntity);
+        log.debug("Ontology metadata saved: {}", savedOntologyMetadataEntity);
+        return ontologyMetadataMapper.toDto(savedOntologyMetadataEntity);
+    }
+
+    private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
+        OntModel uploadedModel = ModelFactory.createOntologyModel();
+
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
+            RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
+        }
+        return uploadedModel;
+    }
+
+    private String convertOntModelToTtl(OntModel model) throws RuntimeException {
+        try {
+            StringWriter writer = new StringWriter();
+            model.write(writer, "TTL");
+            return writer.toString();
+        } catch (Exception e) {
+            log.error("Failed to convert OntModel to TTL", e);
+            throw new ConversionException("Failed to convert OntModel to TTL: " + e.getMessage(), e);
+        }
     }
 }

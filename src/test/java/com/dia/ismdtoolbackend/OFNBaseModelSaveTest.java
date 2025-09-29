@@ -43,7 +43,7 @@ class OFNBaseModelSaveTest {
     @Test
     void testCreateCompleteOFNModel() {
         Set<String> requiredClasses = Set.of(
-                POJEM, TRIDA, TSP, TOP, VLASTNOST, VZTAH,
+                POJEM, TRIDA, TSP, TOP,
                 DATOVY_TYP, VEREJNY_UDAJ, NEVEREJNY_UDAJ
         );
 
@@ -51,7 +51,7 @@ class OFNBaseModelSaveTest {
                 NAZEV, ALTERNATIVNI_NAZEV, POPIS, DEFINICE,
                 DEFINUJICI_USTANOVENI, SOUVISEJICI_USTANOVENI,
                 DEFINUJICI_NELEGISLATIVNI_ZDROJ, SOUVISEJICI_NELEGISLATIVNI_ZDROJ,
-                "schema:url", JE_PPDF, AGENDA, AIS,
+                SCHEMA_URL, JE_PPDF, AGENDA, AIS,
                 USTANOVENI_NEVEREJNOST, DEFINICNI_OBOR, OBOR_HODNOT,
                 NADRAZENA_TRIDA, ZPUSOB_SDILENI, ZPUSOB_ZISKANI, TYP_OBSAHU,
                 OKAMZIK_POSLEDNI_ZMENY, OKAMZIK_VYTVORENI, DATUM, DATUM_A_CAS
@@ -78,7 +78,7 @@ class OFNBaseModelSaveTest {
 
     @Test
     void testSaveModelToTDB2Database() {
-        Set<String> testClasses = Set.of(POJEM, TRIDA, VLASTNOST);
+        Set<String> testClasses = Set.of(POJEM, TRIDA, TSP);
         Set<String> testProperties = Set.of(NAZEV, POPIS, DEFINICE, JE_PPDF);
 
         OFNBaseModel testModel = new OFNBaseModel(testClasses, testProperties);
@@ -110,12 +110,12 @@ class OFNBaseModelSaveTest {
             ), "TRIDA should be subclass of POJEM in saved model");
         });
 
-        System.out.println("✓ Model successfully saved and verified in TDB2 database");
+        System.out.println("Model successfully saved and verified in TDB2 database");
     }
 
     @Test
     void testQuerySavedModel() {
-        Set<String> testClasses = Set.of(POJEM, TRIDA, VLASTNOST, VZTAH);
+        Set<String> testClasses = Set.of(POJEM, TRIDA, TSP, TOP);
         Set<String> testProperties = Set.of(NAZEV, POPIS, DEFINICE);
 
         OFNBaseModel testModel = new OFNBaseModel(testClasses, testProperties);
@@ -160,8 +160,8 @@ class OFNBaseModelSaveTest {
                     classCount++;
                 }
 
-                assertTrue(classCount >= 4, "Should find at least 4 classes (POJEM, TRIDA, VLASTNOST, VZTAH)");
-                System.out.println("✓ Successfully queried " + classCount + " classes from saved model");
+                assertTrue(classCount >= 4, "Should find at least 4 classes (POJEM, TRIDA, TSP, TOP)");
+                System.out.println("Successfully queried " + classCount + " classes from saved model");
             }
         });
     }
@@ -185,19 +185,19 @@ class OFNBaseModelSaveTest {
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
             PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            
+           \s
             SELECT ?property ?label ?domain ?range
             FROM <%s>
             WHERE {
                 ?property a ?propertyType .
-                FILTER(?propertyType = owl:ObjectProperty || ?propertyType = owl:DatatypeProperty || 
+                FILTER(?propertyType = owl:ObjectProperty || ?propertyType = owl:DatatypeProperty ||\s
                        ?propertyType = owl:FunctionalProperty || ?propertyType = rdf:Property)
                 OPTIONAL { ?property rdfs:label ?label FILTER(lang(?label) = 'cs') }
                 OPTIONAL { ?property rdfs:domain ?domain }
                 OPTIONAL { ?property rdfs:range ?range }
             }
             ORDER BY ?property
-            """, DEFAULT_NS, namedGraphURI);
+           \s""", DEFAULT_NS, namedGraphURI);
 
         jenaDataset.executeRead(() -> {
             try (QueryExecution qexec = QueryExecutionFactory.create(sparqlQuery, jenaDataset)) {
@@ -220,7 +220,7 @@ class OFNBaseModelSaveTest {
                 }
 
                 assertTrue(propertyCount >= 5, "Should find at least 5 properties");
-                System.out.println("✓ Successfully queried " + propertyCount + " properties from saved model");
+                System.out.println("Successfully queried " + propertyCount + " properties from saved model");
             }
         });
     }
@@ -236,7 +236,7 @@ class OFNBaseModelSaveTest {
         assertEquals(CAS_NS, model.getOntModel().getNsPrefixURI("čas"));
         assertEquals(SLOVNIKY_NS, model.getOntModel().getNsPrefixURI("slovníky"));
 
-        System.out.println("✓ All namespace prefixes correctly configured");
+        System.out.println("All namespace prefixes correctly configured");
     }
 
     @Test
@@ -245,6 +245,8 @@ class OFNBaseModelSaveTest {
         Set<String> testProperties = Set.of(NAZEV, POPIS);
 
         OFNBaseModel testModel = new OFNBaseModel(testClasses, testProperties);
+        assertNotNull(testModel.getOntModel(), "Model should not be null");
+        assertFalse(testModel.getOntModel().isEmpty(), "Model should contain triples");
 
         System.out.println("\n=== Model in Turtle format ===");
         testModel.getOntModel().write(System.out, "TURTLE");
@@ -259,9 +261,10 @@ class OFNBaseModelSaveTest {
         System.out.println("\n=== Model exported from TDB2 database ===");
         jenaDataset.executeRead(() -> {
             Model savedModel = jenaDataset.getNamedModel(namedGraphURI);
+            assertFalse(savedModel.isEmpty(), "Saved model should not be empty");
             savedModel.write(System.out, "TURTLE");
         });
 
-        System.out.println("✓ Model successfully exported in Turtle format");
+        System.out.println("Model successfully exported in Turtle format");
     }
 }

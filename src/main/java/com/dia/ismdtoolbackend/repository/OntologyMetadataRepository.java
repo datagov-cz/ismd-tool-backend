@@ -1,7 +1,14 @@
 package com.dia.ismdtoolbackend.repository;
 
-import com.dia.ismdtoolbackend.entity.OntologyMetadata;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface OntologyMetadataRepository extends JpaRepository<OntologyMetadata, Long> {
+import java.util.Optional;
+
+public interface OntologyMetadataRepository extends JpaRepository<OntologyMetadataEntity, Long> {
+
+    Optional<OntologyMetadataEntity> findByGraphName(String graphName);
+
+    Optional<OntologyMetadataEntity> findByGraphNameAndUserId(String graphName, String userId);
+
 }
