@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.entity.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.entity.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final ConceptCreator conceptCreator;
+    private final JenaTDB2Repository jenaTDB2Repository;
 
     @Override
     @Transactional
@@ -43,10 +45,10 @@ public class ConceptServiceImpl implements ConceptService {
 
         String conceptUri = conceptResource.getURI();
 
-        if (jenaTDB2Repository.conceptExists(conceptUri)) {
+        /*if (jenaTDB2Repository.conceptExists(conceptUri)) {
             log.error("Concept already exists in TDB2: {}", conceptUri);
             throw new OntologyException("Pojem s daným IRI již existuje: " + conceptUri);
-        }
+        }*/
 
         ConceptMetadataEntity savedEntity;
         try {
@@ -58,7 +60,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         try {
-            jenaTDB2Repository.saveConcept(conceptResource, createModel.getNamespace());
+            //jenaTDB2Repository.saveConcept(conceptResource, createModel.getNamespace());
             log.info("Concept saved to TDB2 successfully: {}", conceptUri);
         } catch (Exception e) {
             log.error("Failed to save concept to TDB2, rolling back metadata", e);
