@@ -38,7 +38,7 @@ public class ConceptCreator {
     private OntModel ontModel;
     private final URIGenerator uriGenerator = new URIGenerator();
 
-    public Resource transformSingleConcept(ConceptCreateModel createModel) {
+    public Resource createSingleConcept(ConceptCreateModel createModel) {
         initializeModel(createModel);
         String effectiveNamespace = determineEffectiveNamespace(createModel.getNamespace());
         uriGenerator.setEffectiveNamespace(effectiveNamespace);
