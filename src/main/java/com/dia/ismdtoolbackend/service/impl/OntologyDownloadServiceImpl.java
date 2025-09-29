@@ -9,7 +9,6 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
@@ -20,8 +19,6 @@ import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
 
 import java.io.StringWriter;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 
 import static com.dia.constants.ArchiConstants.SLOVNIKY_NS;

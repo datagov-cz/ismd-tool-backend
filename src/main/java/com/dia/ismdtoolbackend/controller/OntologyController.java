@@ -2,16 +2,22 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.riot.Lang;
 import org.slf4j.MDC;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static com.dia.constants.ConverterControllerConstants.LOG_REQUEST_ID;
@@ -24,6 +30,7 @@ public class OntologyController {
 
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
+    private final OntologyDownloadService ontologyDownloadService;
 
     @PostMapping("/upload")
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
@@ -77,5 +84,57 @@ public class OntologyController {
             log.error("Unexpected error deleting ontology: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při mazání slovníku."));
         }
+    }
+
+    @GetMapping("/{ontologyId}/download")
+    public ResponseEntity<Resource> downloadFile(
+            @PathVariable Long ontologyId,
+            @RequestParam String format
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
+
+        try {
+            String content = ontologyDownloadService.downloadOntology(ontologyId, format);
+
+            String filename = "ontology_" + ontologyId + "." + getFileExtension(format);
+            String contentType = getContentType(format);
+
+            ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .contentLength(resource.contentLength())
+                    .body(resource);
+
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid format: {}", format);
+            return ResponseEntity.badRequest().build();
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("not found")) {
+                log.error("Ontology not found: {}", ontologyId);
+                return ResponseEntity.notFound().build();
+            }
+            log.error("Error downloading ontology: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    private String getFileExtension(String format) {
+        return switch (format.toLowerCase()) {
+            case "json-ld" -> "jsonld";
+            case "ttl" -> "ttl";
+            default -> "txt";
+        };
+    }
+
+    private String getContentType(String format) {
+        return switch (format.toLowerCase()) {
+            case "json-ld" -> "application/ld+json";
+            case "ttl" -> "text/turtle";
+            default -> "text/plain";
+        };
     }
 }
