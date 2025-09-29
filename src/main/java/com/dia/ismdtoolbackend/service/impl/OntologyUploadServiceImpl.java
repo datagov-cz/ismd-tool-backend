@@ -211,6 +211,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
         ontologyMetadataModel.setGraphName(graphName);
         ontologyMetadataModel.setUser(new UserModel(userId));
+        ontologyMetadataModel.setIsPublished(false);
 
         log.debug("Ontology metadata entity name: {}, userId: {}", ontologyMetadataModel.getGraphName(), userId);
         OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataModel);
