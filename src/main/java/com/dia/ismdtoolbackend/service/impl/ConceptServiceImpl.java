@@ -45,10 +45,10 @@ public class ConceptServiceImpl implements ConceptService {
 
         String conceptUri = conceptResource.getURI();
 
-        /*if (jenaTDB2Repository.conceptExists(conceptUri)) {
+        if (jenaTDB2Repository.conceptExists(conceptUri)) {
             log.error("Concept already exists in TDB2: {}", conceptUri);
             throw new OntologyException("Pojem s daným IRI již existuje: " + conceptUri);
-        }*/
+        }
 
         ConceptMetadataEntity savedEntity;
         try {
@@ -60,7 +60,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         try {
-            //jenaTDB2Repository.saveConcept(conceptResource, createModel.getNamespace());
+            jenaTDB2Repository.saveConcept(conceptResource);
             log.info("Concept saved to TDB2 successfully: {}", conceptUri);
         } catch (Exception e) {
             log.error("Failed to save concept to TDB2, rolling back metadata", e);
