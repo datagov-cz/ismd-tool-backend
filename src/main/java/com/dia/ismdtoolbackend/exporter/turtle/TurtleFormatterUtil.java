@@ -247,16 +247,12 @@ public class TurtleFormatterUtil {
 
             Property skosConceptScheme = model.getProperty(SKOS_NS + "ConceptScheme");
             Property slovnikType = model.getProperty(OFN_NAMESPACE + "slovník");
-            Property ofnSlovnikType = model.createProperty("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/slovník");
 
             if (!ontology.hasProperty(RDF.type, skosConceptScheme)) {
                 ontology.addProperty(RDF.type, skosConceptScheme);
             }
             if (!ontology.hasProperty(RDF.type, slovnikType)) {
                 ontology.addProperty(RDF.type, slovnikType);
-            }
-            if (!ontology.hasProperty(RDF.type, ofnSlovnikType)) {
-                ontology.addProperty(RDF.type, ofnSlovnikType);
             }
         }
     }

@@ -6,8 +6,6 @@ import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 
 import com.dia.ismdtoolbackend.exception.TurtleExportException;
@@ -253,5 +251,4 @@ public class TurtleFilterUtil {
                 stmt.getObject().isResource() &&
                 subject.equals(stmt.getObject().asResource());
     }
-
 }
