@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.mapper;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.models.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.entity.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.entity.models.UserModel;
 import com.dia.ismdtoolbackend.entity.models.CommentModel;
 import com.dia.validation.ValidationReportDto;
