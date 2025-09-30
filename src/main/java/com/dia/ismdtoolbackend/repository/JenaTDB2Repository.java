@@ -5,7 +5,6 @@ import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,59 +39,56 @@ public class JenaTDB2Repository {
     }
 
     public String saveConcept(Resource conceptResource) {
-        if (conceptResource == null) {
-            throw new IllegalArgumentException("Concept resource cannot be null");
-        }
-
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
             Model conceptModel = conceptResource.getModel();
 
-            log.debug("Saving concept with {} statements to Fuseki default graph",
-                    conceptModel.size());
+            log.info("Saving concept: {} ({} statements)",
+                    conceptResource.getURI(), conceptModel.size());
 
-            Model existingModel = conn.fetch();
-            existingModel.add(conceptModel);
-            conn.put(existingModel);
+            StringBuilder insertQuery = new StringBuilder("INSERT DATA { \n");
 
-            String conceptURI = conceptResource.getURI();
-            log.info("Successfully saved concept to Fuseki: {}", conceptURI);
+            conceptModel.listStatements().forEachRemaining(stmt -> {
+                String subject = formatNode(stmt.getSubject());
+                String predicate = "<" + stmt.getPredicate().getURI() + ">";
+                String object = formatNode(stmt.getObject());
 
-            return conceptURI;
+                insertQuery.append(String.format("  %s %s %s .%n", subject, predicate, object));
+            });
+
+            insertQuery.append("}");
+
+            conn.update(insertQuery.toString());
+
+            log.info("Successfully saved concept to Fuseki: {}", conceptResource.getURI());
+            return conceptResource.getURI();
 
         } catch (Exception e) {
-            log.error("Failed to save concept to Fuseki: {}", conceptResource.getURI(), e);
+            log.error("Failed to save concept", e);
             throw new JenaTDB2Exception("Nepodařilo se uložit pojem do Fuseki", e);
         }
     }
 
-    public String saveConceptToGraph(Resource conceptResource, String graphName) {
-        if (conceptResource == null) {
-            throw new IllegalArgumentException("Concept resource cannot be null");
-        }
+    private String formatNode(org.apache.jena.rdf.model.RDFNode node) {
+        if (node.isURIResource()) {
+            return "<" + node.asResource().getURI() + ">";
+        } else if (node.isLiteral()) {
+            org.apache.jena.rdf.model.Literal lit = node.asLiteral();
+            String lexical = lit.getLexicalForm()
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("\n", "\\n");
 
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            Model conceptModel = conceptResource.getModel();
-
-            log.debug("Saving concept with {} statements to Fuseki graph: {}",
-                    conceptModel.size(), graphName);
-
-            Model existingModel = conn.fetch(graphName);
-            if (existingModel == null) {
-                existingModel = ModelFactory.createDefaultModel();
+            if (lit.getLanguage() != null && !lit.getLanguage().isEmpty()) {
+                return "\"" + lexical + "\"@" + lit.getLanguage();
+            } else if (lit.getDatatypeURI() != null) {
+                return "\"" + lexical + "\"^^<" + lit.getDatatypeURI() + ">";
+            } else {
+                return "\"" + lexical + "\"";
             }
-            existingModel.add(conceptModel);
-            conn.put(graphName, existingModel);
-
-            String conceptURI = conceptResource.getURI();
-            log.info("Successfully saved concept to Fuseki graph {}: {}", graphName, conceptURI);
-
-            return conceptURI;
-
-        } catch (Exception e) {
-            log.error("Failed to save concept to Fuseki graph {}: {}",
-                    graphName, conceptResource.getURI(), e);
-            throw new JenaTDB2Exception("Nepodařilo se uložit pojem do Fuseki", e);
+        } else if (node.isAnon()) {
+            return "_:" + node.asResource().getId().getLabelString();
         }
+        return node.toString();
     }
 
     public boolean conceptExists(String conceptUri) {

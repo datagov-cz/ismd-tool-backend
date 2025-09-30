@@ -25,6 +25,10 @@ public class ClassConceptModel extends ConceptCreateModel {
 
     @Override
     protected void validateSpecificFields() {
+        if (type == null || type.isEmpty()) {
+            throw new OntologyException("Typ třídy je povinný.");
+        }
+
         if (!"TRIDA".equalsIgnoreCase(conceptType)) {
             throw new OntologyException("ConceptType musí být 'TRIDA'");
         }

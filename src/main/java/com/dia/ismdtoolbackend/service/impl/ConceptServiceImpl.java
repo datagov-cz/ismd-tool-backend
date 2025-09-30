@@ -60,8 +60,8 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         try {
-            jenaTDB2Repository.saveConcept(conceptResource);
-            log.info("Concept saved to TDB2 successfully: {}", conceptUri);
+            String conceptIRI = jenaTDB2Repository.saveConcept(conceptResource);
+            log.info("Concept saved to TDB2 successfully: {}", conceptIRI);
         } catch (Exception e) {
             log.error("Failed to save concept to TDB2, rolling back metadata", e);
 
