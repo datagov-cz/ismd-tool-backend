@@ -10,7 +10,6 @@ import org.apache.jena.ontology.OntologyException;
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class RelationshipConceptModel extends ConceptCreateModel {
-    private String conceptType;
     private String domain;
     private String range;
     private String superRelation;

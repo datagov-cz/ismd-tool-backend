@@ -62,6 +62,9 @@ public class ConceptController {
             }
             log.error("Error creating concept: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (IllegalArgumentException | SecurityException e) {
+            log.error("Client error creating concept: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
         } catch (Exception e) {
             log.error("Unexpected error creating concept: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při vytváření pojmu."));
