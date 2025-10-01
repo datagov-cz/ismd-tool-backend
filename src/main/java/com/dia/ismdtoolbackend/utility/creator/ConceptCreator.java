@@ -13,8 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntProperty;
-import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
@@ -34,21 +33,43 @@ import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 @Slf4j
 public class ConceptCreator {
 
+    private final URIGenerator uriGenerator = new URIGenerator();
     @Getter
     private OntModel ontModel;
-    private final URIGenerator uriGenerator = new URIGenerator();
 
     public Resource createSingleConcept(ConceptCreateModel createModel) {
         initializeModel(createModel);
         String effectiveNamespace = determineEffectiveNamespace(createModel.getNamespace());
         uriGenerator.setEffectiveNamespace(effectiveNamespace);
 
-        return switch (createModel.getConceptTypeEnum()) {
+        Resource concept = switch (createModel.getConceptTypeEnum()) {
             case TRIDA -> createClassResource((ClassConceptModel) createModel);
             case VLASTNOST -> createPropertyResource((PropertyConceptModel) createModel);
             case VZTAH -> createRelationshipResource((RelationshipConceptModel) createModel);
-            default -> throw new IllegalArgumentException("Nepodporovaný typ pojmu: " + createModel.getConceptType());
+            default -> throw new IllegalArgumentException("Nepodporovaný typ pojmu");
         };
+
+        String conceptURI = concept.getURI();
+
+        Model cleanModel = ModelFactory.createDefaultModel();
+
+        ontModel.listStatements(concept, null, (RDFNode) null).forEachRemaining(stmt -> {
+            Resource subj = cleanModel.createResource(conceptURI);
+            Property pred = cleanModel.createProperty(stmt.getPredicate().getURI());
+
+            RDFNode obj;
+            if (stmt.getObject().isResource()) {
+                obj = cleanModel.createResource(stmt.getObject().asResource().getURI());
+            } else {
+                obj = stmt.getObject();
+            }
+
+            cleanModel.add(subj, pred, obj);
+        });
+
+        log.info("Created clean model with {} statements for: {}", cleanModel.size(), conceptURI);
+
+        return cleanModel.getResource(conceptURI);
     }
 
     private void initializeModel(ConceptCreateModel createModel) {
@@ -193,7 +214,7 @@ public class ConceptCreator {
 
     private void addCommonMetadata(Resource resource, ConceptCreateModel model) {
         if (model.getConceptName() != null && !model.getConceptName().trim().isEmpty()) {
-            DataTypeConverter.addTypedProperty(resource, RDFS.label,
+            DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
                     model.getConceptName(), DEFAULT_LANG, ontModel);
         }
 
@@ -243,11 +264,9 @@ public class ConceptCreator {
         if (classModel.getAgendaCode() != null && !classModel.getAgendaCode().trim().isEmpty()) {
             addAgenda(classResource, classModel.getAgendaCode());
         }
-
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             addAIS(classResource, classModel.getAgendaSystemCode());
         }
-
         if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().trim().isEmpty()) {
             addGovernanceProperty(classResource, classModel.getSharingMethod(), ZPUSOB_SDILENI);
         }
@@ -264,6 +283,7 @@ public class ConceptCreator {
             addBroaderConcept(classResource, classModel.getBroaderConcept());
         }
     }
+
 
     private void addPropertySpecificMetadata(Resource propertyResource, PropertyConceptModel propModel) {
         if (propModel.getDomain() != null && !propModel.getDomain().trim().isEmpty()) {
@@ -378,8 +398,10 @@ public class ConceptCreator {
         String sanitizedValue = UtilityMethods.sanitizeForIRI(value);
         String governanceIRI = switch (propertyName) {
             case TYP_OBSAHU -> "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/" + sanitizedValue;
-            case ZPUSOB_SDILENI -> "https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/" + sanitizedValue;
-            case ZPUSOB_ZISKANI -> "https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/" + sanitizedValue;
+            case ZPUSOB_SDILENI ->
+                    "https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/" + sanitizedValue;
+            case ZPUSOB_ZISKANI ->
+                    "https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/" + sanitizedValue;
             default -> null;
         };
 
@@ -401,7 +423,6 @@ public class ConceptCreator {
                 classResource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
             }
         }
-
     }
 
     private void addBroaderConcept(Resource resource, String broaderConcept) {
@@ -469,19 +490,19 @@ public class ConceptCreator {
             String trimmed = dataType.trim();
             return !trimmed.startsWith("xsd:") &&
                     !trimmed.startsWith("http://www.w3.org/2001/XMLSchema#") &&
-                    !isCzechDataType(trimmed);
+                    !isValidDataType(trimmed);
         }
         return false;
     }
 
-    private boolean isCzechDataType(String type) {
-        String[] czechTypes = {
+    private boolean isValidDataType(String type) {
+        String[] validTypes = {
                 "Ano či ne", "Datum", "Čas", "Datum a čas",
                 "Celé číslo", "Desetinné číslo", "URI, IRI, URL",
                 "Řetězec", "Text"
         };
-        for (String czechType : czechTypes) {
-            if (czechType.equalsIgnoreCase(type)) {
+        for (String validType : validTypes) {
+            if (validType.equalsIgnoreCase(type)) {
                 return true;
             }
         }

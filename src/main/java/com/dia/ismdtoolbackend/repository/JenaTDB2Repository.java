@@ -42,22 +42,16 @@ public class JenaTDB2Repository {
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
             Model conceptModel = conceptResource.getModel();
 
-            log.info("Saving concept: {} ({} statements)",
-                    conceptResource.getURI(), conceptModel.size());
+            log.info("=== SAVING CONCEPT ===");
+            log.info("Concept URI: {}", conceptResource.getURI());
+            log.info("Model size: {} statements", conceptModel.size());
 
-            StringBuilder insertQuery = new StringBuilder("INSERT DATA { \n");
+            conceptModel.listStatements().forEachRemaining(stmt -> log.info("  {} --{}--> {}",
+                    stmt.getSubject(),
+                    stmt.getPredicate().getLocalName(),
+                    stmt.getObject()));
 
-            conceptModel.listStatements().forEachRemaining(stmt -> {
-                String subject = formatNode(stmt.getSubject());
-                String predicate = "<" + stmt.getPredicate().getURI() + ">";
-                String object = formatNode(stmt.getObject());
-
-                insertQuery.append(String.format("  %s %s %s .%n", subject, predicate, object));
-            });
-
-            insertQuery.append("}");
-
-            conn.update(insertQuery.toString());
+            conn.load(conceptModel);
 
             log.info("Successfully saved concept to Fuseki: {}", conceptResource.getURI());
             return conceptResource.getURI();
@@ -66,29 +60,6 @@ public class JenaTDB2Repository {
             log.error("Failed to save concept", e);
             throw new JenaTDB2Exception("Nepodařilo se uložit pojem do Fuseki", e);
         }
-    }
-
-    private String formatNode(org.apache.jena.rdf.model.RDFNode node) {
-        if (node.isURIResource()) {
-            return "<" + node.asResource().getURI() + ">";
-        } else if (node.isLiteral()) {
-            org.apache.jena.rdf.model.Literal lit = node.asLiteral();
-            String lexical = lit.getLexicalForm()
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\n", "\\n");
-
-            if (lit.getLanguage() != null && !lit.getLanguage().isEmpty()) {
-                return "\"" + lexical + "\"@" + lit.getLanguage();
-            } else if (lit.getDatatypeURI() != null) {
-                return "\"" + lexical + "\"^^<" + lit.getDatatypeURI() + ">";
-            } else {
-                return "\"" + lexical + "\"";
-            }
-        } else if (node.isAnon()) {
-            return "_:" + node.asResource().getId().getLabelString();
-        }
-        return node.toString();
     }
 
     public boolean conceptExists(String conceptUri) {
