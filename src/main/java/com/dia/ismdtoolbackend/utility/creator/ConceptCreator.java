@@ -46,7 +46,6 @@ public class ConceptCreator {
             case TRIDA -> createClassResource((ClassConceptModel) createModel);
             case VLASTNOST -> createPropertyResource((PropertyConceptModel) createModel);
             case VZTAH -> createRelationshipResource((RelationshipConceptModel) createModel);
-            default -> throw new IllegalArgumentException("Nepodporovaný typ pojmu");
         };
 
         String conceptURI = concept.getURI();
@@ -88,21 +87,7 @@ public class ConceptCreator {
         classes.add(POJEM);
 
         if (createModel instanceof ClassConceptModel classModel) {
-            classes.add(TRIDA);
-
-            String type = classModel.getType();
-            if (type != null && type.contains("subjekt")) {
-                classes.add(TSP);
-            } else if (type != null && type.contains("objekt")) {
-                classes.add(TOP);
-            }
-
-            if (hasPublicData(classModel)) {
-                classes.add(VEREJNY_UDAJ);
-            }
-            if (hasPrivateData(classModel)) {
-                classes.add(NEVEREJNY_UDAJ);
-            }
+            addClassBaseClasses(classes, classModel);
         } else if (createModel instanceof PropertyConceptModel) {
             classes.add(VLASTNOST);
         } else if (createModel instanceof RelationshipConceptModel) {
@@ -112,13 +97,49 @@ public class ConceptCreator {
         return classes;
     }
 
+    private void addClassBaseClasses(Set<String> classes, ClassConceptModel classModel) {
+        classes.add(TRIDA);
+        addTypeSpecificClass(classes, classModel.getType());
+        addDataClassificationClasses(classes, classModel);
+    }
+
+    private void addTypeSpecificClass(Set<String> classes, String type) {
+        if (type == null) {
+            return;
+        }
+        if (type.contains("subjekt")) {
+            classes.add(TSP);
+        } else if (type.contains("objekt")) {
+            classes.add(TOP);
+        }
+    }
+
+    private void addDataClassificationClasses(Set<String> classes, ClassConceptModel classModel) {
+        if (hasPublicData(classModel)) {
+            classes.add(VEREJNY_UDAJ);
+        }
+        if (hasPrivateData(classModel)) {
+            classes.add(NEVEREJNY_UDAJ);
+        }
+    }
+
     private Set<String> determineRequiredProperties(ConceptCreateModel createModel) {
         Set<String> properties = new HashSet<>();
 
+        addCommonProperties(properties);
+        addConditionalCommonProperties(properties, createModel);
+        addConceptTypeSpecificProperties(properties, createModel);
+
+        return properties;
+    }
+
+    private void addCommonProperties(Set<String> properties) {
         properties.add(NAZEV);
         properties.add(POPIS);
         properties.add(DEFINICE);
+    }
 
+    private void addConditionalCommonProperties(Set<String> properties, ConceptCreateModel createModel) {
         if (createModel.getAltName() != null && !createModel.getAltName().trim().isEmpty()) {
             properties.add(ALTERNATIVNI_NAZEV);
         }
@@ -133,27 +154,37 @@ public class ConceptCreator {
             properties.add(SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
             properties.add("schema:url");
         }
+    }
 
+    private void addConceptTypeSpecificProperties(Set<String> properties, ConceptCreateModel createModel) {
         if (createModel instanceof ClassConceptModel classModel) {
-            if (classModel.getAgendaCode() != null && !classModel.getAgendaCode().trim().isEmpty()) {
-                properties.add(AGENDA);
-            }
-            if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
-                properties.add(AIS);
-            }
-            if (hasPrivateData(classModel)) {
-                properties.add(USTANOVENI_NEVEREJNOST);
-            }
-            if (hasGovernanceProperties(classModel)) {
-                properties.add(ZPUSOB_SDILENI);
-                properties.add(ZPUSOB_ZISKANI);
-                properties.add(TYP_OBSAHU);
-            }
-        } else if (createModel instanceof PropertyConceptModel propModel && propModel.getIsInPPDF() != null) {
+            addClassSpecificProperties(properties, classModel);
+        } else if (createModel instanceof PropertyConceptModel propModel) {
+            addPropertySpecificProperties(properties, propModel);
+        }
+    }
+
+    private void addClassSpecificProperties(Set<String> properties, ClassConceptModel classModel) {
+        if (classModel.getAgendaCode() != null && !classModel.getAgendaCode().trim().isEmpty()) {
+            properties.add(AGENDA);
+        }
+        if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
+            properties.add(AIS);
+        }
+        if (hasPrivateData(classModel)) {
+            properties.add(USTANOVENI_NEVEREJNOST);
+        }
+        if (hasGovernanceProperties(classModel)) {
+            properties.add(ZPUSOB_SDILENI);
+            properties.add(ZPUSOB_ZISKANI);
+            properties.add(TYP_OBSAHU);
+        }
+    }
+
+    private void addPropertySpecificProperties(Set<String> properties, PropertyConceptModel propModel) {
+        if (propModel.getIsInPPDF() != null) {
             properties.add(JE_PPDF);
         }
-
-        return properties;
     }
 
     private Resource createClassResource(ClassConceptModel classModel) {
@@ -213,6 +244,12 @@ public class ConceptCreator {
     }
 
     private void addCommonMetadata(Resource resource, ConceptCreateModel model) {
+        addBasicMetadata(resource, model);
+        addSourceMetadata(resource, model);
+        addMatchMetadata(resource, model);
+    }
+
+    private void addBasicMetadata(Resource resource, ConceptCreateModel model) {
         if (model.getConceptName() != null && !model.getConceptName().trim().isEmpty()) {
             DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
                     model.getConceptName(), DEFAULT_LANG, ontModel);
@@ -232,21 +269,32 @@ public class ConceptCreator {
         if (model.getAltName() != null && !model.getAltName().trim().isEmpty()) {
             addAlternativeNames(resource, model.getAltName());
         }
+    }
 
+    private void addSourceMetadata(Resource resource, ConceptCreateModel model) {
+        addLegalSourceMetadata(resource, model);
+        addNonLegalSourceMetadata(resource, model);
+    }
+
+    private void addLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
         if (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().trim().isEmpty()) {
             processLegalSource(resource, model.getDefiningLegalSource(), true);
         }
         if (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().trim().isEmpty()) {
             processLegalSource(resource, model.getRelatedLegalSource(), false);
         }
+    }
 
+    private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
         if (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().trim().isEmpty()) {
             processNonLegalSource(resource, model.getDefiningNonLegalSource(), true);
         }
         if (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().trim().isEmpty()) {
             processNonLegalSource(resource, model.getRelatedNonLegalSource(), false);
         }
+    }
 
+    private void addMatchMetadata(Resource resource, ConceptCreateModel model) {
         if (model.getExactMatch() != null && !model.getExactMatch().trim().isEmpty()) {
             addExactMatch(resource, model.getExactMatch());
         }
