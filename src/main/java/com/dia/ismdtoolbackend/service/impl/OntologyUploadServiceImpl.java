@@ -85,36 +85,29 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Transactional
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
         OntModel finalModel = createMergedOntologyModel(file, rdfLang);
-
-        OntologyMetadataModel ontologyMetadataModel = uploadOntologyCore(finalModel, file, providedName, userId);
-
-        String ontologyContent = convertOntModelToTtl(finalModel);
-
-        CompletableFuture.runAsync(() -> requestAndSaveValidationReport(ontologyContent, extractOntologyIRI(finalModel)));
-
-        return ontologyMetadataModel;
-    }
-
-    private OntologyMetadataModel uploadOntologyCore(OntModel finalModel, MultipartFile file,
-                                                     String providedName, String userId) throws OntoloyUploadException {
         String graphName = determineGraphName(file, providedName, finalModel);
-
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
+        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
+
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
             conn.put(graphName, finalModel);
-            log.info("Successfully uploaded {} statements to graph {}", finalModel.size(), graphName);
         } catch (Exception e) {
-            log.error("Failed to upload ontology to TDB2", e);
-            throw new OntoloyUploadException("Failed to upload ontology to graph store: " + e.getMessage(), e);
+            ontologyMetadataRepository.deleteById(metadata.getId());
+            throw new OntoloyUploadException("Failed to upload to TDB2", e);
         }
 
-        return createOntologyMetadataEntity(graphName, userId);
+        String ontologyContent = convertOntModelToTtl(finalModel);
+        CompletableFuture.runAsync(() ->
+                requestAndSaveValidationReport(ontologyContent, graphName)
+        );
+
+        return metadata;
     }
 
     private OntModel createMergedOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
         OntModel uploadedModel = getOntologyModel(file, rdfLang);
-
 
         try {
             AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
