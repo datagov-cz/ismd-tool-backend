@@ -50,6 +50,16 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Pojem s daným IRI již existuje: " + conceptUri);
         }
 
+        String existingGraph = jenaTDB2Repository.findGraphContainingConcept(conceptUri);
+        if (existingGraph != null) {
+            log.error("Concept already exists in ontology graph: {} in graph: {}", conceptUri, existingGraph);
+            throw new OntologyException(
+                    "Pojem s daným IRI již existuje ve slovníku.\n" +
+                            "IRI pojmu: " + conceptUri + "\n" +
+                            "Slovník: " + existingGraph
+            );
+        }
+
         ConceptMetadataEntity savedEntity;
         try {
             savedEntity = saveMetadata(createModel, userId, conceptUri);

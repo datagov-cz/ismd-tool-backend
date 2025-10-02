@@ -4,6 +4,8 @@ import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdfconnection.RDFConnection;
@@ -80,6 +82,33 @@ public class JenaTDB2Repository {
         } catch (Exception e) {
             log.error("Error checking concept existence for URI: {}", conceptUri, e);
             return false;
+        }
+    }
+
+    public String findGraphContainingConcept(String conceptUri) {
+        if (conceptUri == null || conceptUri.trim().isEmpty()) {
+        return null;
+    }
+
+        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            String selectQuery = String.format(
+                    "SELECT ?g WHERE { GRAPH ?g { <%s> ?p ?o } } LIMIT 1",
+                    conceptUri
+            );
+
+            try (QueryExecution qExec = conn.query(selectQuery)) {
+                ResultSet results = qExec.execSelect();
+                if (results.hasNext()) {
+                    String graphUri = results.next().getResource("g").getURI();
+                    log.debug("Found concept '{}' in graph: {}", conceptUri, graphUri);
+                    return graphUri;
+                }
+            }
+
+            return null;
+        } catch (Exception e) {
+            log.error("Error searching for concept in graphs for URI: {}", conceptUri, e);
+            return null;
         }
     }
 
