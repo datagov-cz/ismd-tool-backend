@@ -23,6 +23,9 @@ public class ConceptMetadataEntity {
     @Enumerated(EnumType.STRING)
     private ConceptType conceptType;
 
+    @Column(name = "concept_iri", unique = true)
+    private String conceptIri;
+
     @Column(name = "user_id")
     private String userId;
 

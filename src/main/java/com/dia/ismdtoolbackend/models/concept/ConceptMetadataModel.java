@@ -17,6 +17,7 @@ public class ConceptMetadataModel {
     private Long id;
     private String conceptName;
     private ConceptType conceptType;
+    private String conceptIri;
     private UserModel user;
     private Boolean isPublished;
     private String inTezaurus;

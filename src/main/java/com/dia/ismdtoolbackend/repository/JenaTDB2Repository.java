@@ -135,6 +135,68 @@ public class JenaTDB2Repository {
         }
     }
 
+    public void deleteConcept(String conceptUri) {
+        if (conceptUri == null || conceptUri.trim().isEmpty()) {
+            throw new IllegalArgumentException("Concept URI cannot be null or empty");
+        }
+
+        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            log.info("=== DELETING CONCEPT ===");
+            log.info("Concept URI: {}", conceptUri);
+
+            if (!conceptExists(conceptUri)) {
+                log.warn("Cannot delete concept - not found: {}", conceptUri);
+                return;
+            }
+
+            String deleteUpdate = String.format(
+                    "DELETE WHERE { <%s> ?p ?o }; " +
+                            "DELETE WHERE { ?s ?p <%s> }",
+                    conceptUri, conceptUri
+            );
+
+            conn.update(deleteUpdate);
+            log.info("Successfully deleted concept from TDB2: {}", conceptUri);
+
+        } catch (Exception e) {
+            log.error("Failed to delete concept from TDB2: {}", conceptUri, e);
+            throw new JenaTDB2Exception("Nepodařilo se odstranit pojem z TDB2", e);
+        }
+    }
+
+    public void deleteConceptFromGraph(String conceptUri, String graphName) {
+        if (conceptUri == null || conceptUri.trim().isEmpty()) {
+            throw new IllegalArgumentException("Concept URI cannot be null or empty");
+        }
+
+        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            log.info("=== DELETING CONCEPT FROM GRAPH ===");
+            log.info("Concept URI: {}", conceptUri);
+            log.info("Graph name: {}", graphName);
+
+            if (!conceptExistsInGraph(conceptUri, graphName)) {
+                log.warn("Cannot delete concept - not found in graph {}: {}",
+                        graphName, conceptUri);
+                return;
+            }
+
+            String deleteUpdate = String.format(
+                    "DELETE WHERE { GRAPH <%s> { <%s> ?p ?o } }; " +
+                            "DELETE WHERE { GRAPH <%s> { ?s ?p <%s> } }",
+                    graphName, conceptUri, graphName, conceptUri
+            );
+
+            conn.update(deleteUpdate);
+            log.info("Successfully deleted concept from TDB2 graph {}: {}",
+                    graphName, conceptUri);
+
+        } catch (Exception e) {
+            log.error("Failed to delete concept from TDB2 graph {}: {}",
+                    graphName, conceptUri, e);
+            throw new JenaTDB2Exception("Nepodařilo se odstranit pojem z TDB2", e);
+        }
+    }
+
     public void saveOntologyModel(String graphName, Model model) {
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
             log.info("=== SAVING ONTOLOGY ===");
