@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
-import com.dia.ismdtoolbackend.entity.models.concept.ClassConceptModel;
-import com.dia.ismdtoolbackend.entity.models.concept.ConceptCreateModel;
-import com.dia.ismdtoolbackend.entity.models.concept.PropertyConceptModel;
-import com.dia.ismdtoolbackend.entity.models.concept.RelationshipConceptModel;
+import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
+import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
+import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
 import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;

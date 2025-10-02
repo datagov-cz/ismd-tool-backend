@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.mapper;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.models.concept.ConceptMetadataModel;
-import com.dia.ismdtoolbackend.entity.models.UserModel;
-import com.dia.ismdtoolbackend.entity.models.CommentModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.models.UserModel;
+import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.validation.ValidationReportDto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;

@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import org.apache.jena.riot.Lang;
 import org.springframework.web.multipart.MultipartFile;

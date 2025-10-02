@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.models.concept.ConceptCreateModel;
-import com.dia.ismdtoolbackend.entity.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;

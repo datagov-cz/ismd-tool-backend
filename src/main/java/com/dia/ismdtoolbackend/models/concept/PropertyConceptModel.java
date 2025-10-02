@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.entity.models.concept;
+package com.dia.ismdtoolbackend.models.concept;
 
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.utility.DataTypeConverter;

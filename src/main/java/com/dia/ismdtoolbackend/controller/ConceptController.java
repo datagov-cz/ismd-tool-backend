@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
-import com.dia.ismdtoolbackend.entity.models.concept.ConceptCreateModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
-import com.dia.ismdtoolbackend.entity.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

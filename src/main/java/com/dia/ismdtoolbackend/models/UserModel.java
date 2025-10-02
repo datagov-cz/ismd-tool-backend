@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.entity.models;
+package com.dia.ismdtoolbackend.models;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

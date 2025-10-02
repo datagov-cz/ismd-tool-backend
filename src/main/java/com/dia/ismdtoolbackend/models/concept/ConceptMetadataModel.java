@@ -1,7 +1,7 @@
-package com.dia.ismdtoolbackend.entity.models.concept;
+package com.dia.ismdtoolbackend.models.concept;
 
-import com.dia.ismdtoolbackend.entity.models.CommentModel;
-import com.dia.ismdtoolbackend.entity.models.UserModel;
+import com.dia.ismdtoolbackend.models.CommentModel;
+import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.validation.ValidationReportDto;
 import lombok.Data;

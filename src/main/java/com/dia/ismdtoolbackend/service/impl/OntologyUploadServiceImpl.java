@@ -6,11 +6,12 @@ import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.entity.models.UserModel;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
 import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -22,7 +23,6 @@ import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.vocabulary.OWL2;
@@ -52,6 +52,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
     private final OntologyAnalyzer ontologyAnalyzer;
+    private final JenaTDB2Repository jenaTDB2Repository;
 
     @Override
     public Lang determineRDFFormat(MultipartFile file) {
@@ -90,9 +91,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
         OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
 
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
-            conn.put(graphName, finalModel);
+        try {
+            jenaTDB2Repository.putOntologyModel(graphName, finalModel);
         } catch (Exception e) {
             ontologyMetadataRepository.deleteById(metadata.getId());
             throw new OntoloyUploadException("Failed to upload to TDB2", e);

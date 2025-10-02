@@ -2,9 +2,10 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.entity.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -19,7 +20,6 @@ import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
@@ -43,6 +43,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
+    private final JenaTDB2Repository jenaTDB2Repository;
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
 
@@ -61,16 +62,14 @@ public class OntologyServiceImpl implements OntologyService {
                 validationReportRepository.findByOntologyMetadataId(ontologyId);
         validationReport.ifPresent(validationReportRepository::delete);
 
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            Model model = conn.fetch(graphName);
+        Model model = jenaTDB2Repository.fetchGraph(graphName);
 
-            if (model.isEmpty()) {
-                log.error("Ontology model is empty.");
-                throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
-            }
-
-            conn.delete(graphName);
+        if (model.isEmpty()) {
+            log.error("Ontology model is empty.");
+            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        jenaTDB2Repository.deleteGraph(graphName);
         ontologyMetadataRepository.deleteById(ontologyId);
     }
 
@@ -163,13 +162,7 @@ public class OntologyServiceImpl implements OntologyService {
         Property okamzikVytvoreniProperty = model.createProperty(SLOVNIKY_NS + OKAMZIK_VYTVORENI);
         ontologyResource.addProperty(okamzikVytvoreniProperty, temporalMoment);
 
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            conn.load(ontologyIRI, model);
-            log.info("Successfully saved ontology model to TDB2 with graph name: {}", ontologyIRI);
-        } catch (Exception e) {
-            log.error("Failed to save ontology model to TDB2: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit slovník do databáze: " + e.getMessage());
-        }
+        jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
     private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
@@ -182,12 +175,6 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private void cleanupTDB2Graph(String graphName) {
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            conn.delete(graphName);
-            log.info("Successfully cleaned up TDB2 graph: {}", graphName);
-        } catch (Exception e) {
-            log.error("Failed to cleanup TDB2 graph: {}", graphName, e);
-            throw new OntologyException("Failed to cleanup TDB2 graph: " + e.getMessage());
-        }
+        jenaTDB2Repository.deleteGraph(graphName);
     }
 }

@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 /**
- * Repository for managing RDF concepts in Fuseki TDB2 via HTTP connection.
+ * Repository for managing RDF resources in Fuseki TDB2 via HTTP connection.
  * Uses RDFConnection to connect to Fuseki server instead of direct TDB2 file access.
  */
 @Repository
@@ -53,12 +53,12 @@ public class JenaTDB2Repository {
 
             conn.load(conceptModel);
 
-            log.info("Successfully saved concept to Fuseki: {}", conceptResource.getURI());
+            log.info("Successfully saved concept to TDB2: {}", conceptResource.getURI());
             return conceptResource.getURI();
 
         } catch (Exception e) {
             log.error("Failed to save concept", e);
-            throw new JenaTDB2Exception("Nepodařilo se uložit pojem do Fuseki", e);
+            throw new JenaTDB2Exception("Nepodařilo se uložit pojem do databáze", e);
         }
     }
 
@@ -106,60 +106,54 @@ public class JenaTDB2Repository {
         }
     }
 
-    public boolean deleteConcept(String conceptUri) {
-        if (conceptUri == null || conceptUri.trim().isEmpty()) {
-            throw new IllegalArgumentException("Concept URI cannot be null or empty");
-        }
-
+    public void saveOntologyModel(String graphName, Model model) {
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            if (!conceptExists(conceptUri)) {
-                log.warn("Cannot delete concept - not found: {}", conceptUri);
-                return false;
-            }
+            log.info("=== SAVING ONTOLOGY ===");
+            log.info("Graph name: {}", graphName);
+            log.info("Model size: {} statements", model.size());
 
-            String deleteUpdate = String.format(
-                    "DELETE WHERE { <%s> ?p ?o }; " +
-                            "DELETE WHERE { ?s ?p <%s> }",
-                    conceptUri, conceptUri
-            );
-
-            conn.update(deleteUpdate);
-            log.info("Successfully deleted concept from Fuseki: {}", conceptUri);
-            return true;
-
+            conn.load(graphName, model);
+            log.info("Successfully saved ontology model to TDB2 with graph name: {}", graphName);
         } catch (Exception e) {
-            log.error("Failed to delete concept from Fuseki: {}", conceptUri, e);
-            throw new JenaTDB2Exception("Nepodařilo se odstranit pojem z Fuseki", e);
+            log.error("Failed to save ontology model to TDB2: {}", e.getMessage());
+            throw new JenaTDB2Exception("Nepodařilo se uložit slovník do databáze: " + e.getMessage(), e);
         }
     }
 
-    public boolean deleteConceptFromGraph(String conceptUri, String graphName) {
-        if (conceptUri == null || conceptUri.trim().isEmpty()) {
-            throw new IllegalArgumentException("Concept URI cannot be null or empty");
-        }
-
+    public void putOntologyModel(String graphName, Model model) {
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            if (!conceptExistsInGraph(conceptUri, graphName)) {
-                log.warn("Cannot delete concept - not found in graph {}: {}",
-                        graphName, conceptUri);
-                return false;
-            }
+            log.info("=== UPLOADING ONTOLOGY ===");
+            log.info("Graph name: {}", graphName);
+            log.info("Model size: {} statements", model.size());
 
-            String deleteUpdate = String.format(
-                    "DELETE WHERE { GRAPH <%s> { <%s> ?p ?o } }; " +
-                            "DELETE WHERE { GRAPH <%s> { ?s ?p <%s> } }",
-                    graphName, conceptUri, graphName, conceptUri
-            );
-
-            conn.update(deleteUpdate);
-            log.info("Successfully deleted concept from Fuseki graph {}: {}",
-                    graphName, conceptUri);
-            return true;
-
+            conn.put(graphName, model);
         } catch (Exception e) {
-            log.error("Failed to delete concept from Fuseki graph {}: {}",
-                    graphName, conceptUri, e);
-            throw new JenaTDB2Exception("Nepodařilo se odstranit pojem z Fuseki", e);
+            log.error("Failed to put ontology model to TDB2: {}", e.getMessage());
+            throw new JenaTDB2Exception("Failed to upload to TDB2", e);
+        }
+    }
+
+    public void deleteGraph(String graphName) {
+        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            log.info("=== DELETING ONTOLOGY ===");
+            log.info("Graph name: {}", graphName);
+
+            conn.delete(graphName);
+            log.info("Successfully deleted graph: {}", graphName);
+        } catch (Exception e) {
+            log.error("Failed to delete graph: {}", graphName, e);
+            throw new JenaTDB2Exception("Failed to delete graph: " + e.getMessage(), e);
+        }
+    }
+
+    public Model fetchGraph(String graphName) {
+        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+            Model model = conn.fetch(graphName);
+            log.debug("Fetched graph '{}' with {} statements", graphName, model.size());
+            return model;
+        } catch (Exception e) {
+            log.error("Failed to fetch graph: {}", graphName, e);
+            throw new JenaTDB2Exception("Failed to fetch graph: " + e.getMessage(), e);
         }
     }
 }
