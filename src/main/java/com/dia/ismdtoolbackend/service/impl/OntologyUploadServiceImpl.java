@@ -46,7 +46,6 @@ import static com.dia.constants.ArchiConstants.DEFAULT_NS;
 @Slf4j
 public class OntologyUploadServiceImpl implements OntologyUploadService {
 
-    private final String fusekiEndpoint;
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ValidationClient validationClient;

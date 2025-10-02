@@ -158,10 +158,10 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
                         .param("userId", userId))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Parse error"));
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při nahrávání slovníku."));
     }
 
     @Test

@@ -18,7 +18,7 @@ public class TestJenaConfig {
         // Create a temporary directory for test TDB2 database
         Path tempDir = Files.createTempDirectory("test-tdb2-");
         tempDir.toFile().deleteOnExit();
-        
+
         // Create an in-memory TDB2 dataset for testing
         return TDB2Factory.createDataset();
     }
