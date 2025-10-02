@@ -301,9 +301,9 @@ public class ConceptCreator {
     }
 
     private void addSpecificClassType(Resource classResource, String type) {
-        if ("Subjekt práva".contains(type)) {
+        if (type.contains("subjekt")) {
             classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TSP));
-        } else if ("Objekt práva".contains(type)) {
+        } else if (type.contains("objekt")) {
             classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TOP));
         }
     }
