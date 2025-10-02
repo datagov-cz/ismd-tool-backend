@@ -18,6 +18,7 @@ public class ConceptMetadataModel {
     private String conceptName;
     private ConceptType conceptType;
     private String conceptIri;
+    private String graphName;
     private UserModel user;
     private Boolean isPublished;
     private String inTezaurus;

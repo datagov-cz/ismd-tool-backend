@@ -40,12 +40,17 @@ public class JenaTDB2Repository {
         }
     }
 
-    public String saveConcept(Resource conceptResource) {
+    public String saveConcept(Resource conceptResource, String graphName) {
+        if (graphName == null || graphName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Graph name is required - concepts cannot be saved to the default graph");
+        }
+
         try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
             Model conceptModel = conceptResource.getModel();
 
             log.info("=== SAVING CONCEPT ===");
             log.info("Concept URI: {}", conceptResource.getURI());
+            log.info("Graph name: {}", graphName);
             log.info("Model size: {} statements", conceptModel.size());
 
             conceptModel.listStatements().forEachRemaining(stmt -> log.info("  {} --{}--> {}",
@@ -53,13 +58,13 @@ public class JenaTDB2Repository {
                     stmt.getPredicate().getLocalName(),
                     stmt.getObject()));
 
-            conn.load(conceptModel);
+            conn.load(graphName, conceptModel);
 
-            log.info("Successfully saved concept to TDB2: {}", conceptResource.getURI());
+            log.info("Successfully saved concept to TDB2 graph {}: {}", graphName, conceptResource.getURI());
             return conceptResource.getURI();
 
         } catch (Exception e) {
-            log.error("Failed to save concept", e);
+            log.error("Failed to save concept to graph {}", graphName, e);
             throw new JenaTDB2Exception("Nepodařilo se uložit pojem do databáze", e);
         }
     }

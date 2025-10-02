@@ -53,11 +53,12 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptMetadataMapper.toDto(existingConcept.get());
         }
 
+        String ontologyGraphName = createModel.getOntologyGraphName();
         try {
-            String conceptIRI = jenaTDB2Repository.saveConcept(conceptResource);
-            log.info("Concept saved to TDB2 successfully: {}", conceptIRI);
+            String conceptIRI = jenaTDB2Repository.saveConcept(conceptResource, ontologyGraphName);
+            log.info("Concept saved to TDB2 graph {} successfully: {}", ontologyGraphName, conceptIRI);
         } catch (Exception e) {
-            log.error("Failed to save concept to TDB2", e);
+            log.error("Failed to save concept to TDB2 graph {}", ontologyGraphName, e);
             throw new OntologyException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage());
         }
 
@@ -72,11 +73,11 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("Failed to save concept metadata, rolling back TDB2 data", e);
 
             try {
-                jenaTDB2Repository.deleteConcept(conceptUri);
-                log.info("Successfully rolled back TDB2 data for failed metadata save");
+                jenaTDB2Repository.deleteConceptFromGraph(conceptUri, ontologyGraphName);
+                log.info("Successfully rolled back TDB2 data from graph {} for failed metadata save", ontologyGraphName);
             } catch (Exception rollbackException) {
-                log.error("CRITICAL: Failed to rollback TDB2 data after metadata failure. " +
-                        "Manual cleanup required for concept IRI: {}", conceptUri, rollbackException);
+                log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
+                        "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
             }
 
             throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
@@ -120,6 +121,7 @@ public class ConceptServiceImpl implements ConceptService {
         entity.setConceptName(createModel.getConceptName());
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
+        entity.setGraphName(createModel.getOntologyGraphName());
         entity.setUserId(userId);
         entity.setIsPublished(false);
         entity.setInTezaurus(createModel.getInTezaurus());

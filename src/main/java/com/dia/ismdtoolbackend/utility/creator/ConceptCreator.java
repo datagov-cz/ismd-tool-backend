@@ -39,7 +39,7 @@ public class ConceptCreator {
 
     public Resource createSingleConcept(ConceptCreateModel createModel) {
         initializeModel(createModel);
-        String effectiveNamespace = determineEffectiveNamespace(createModel.getNamespace());
+        String effectiveNamespace = determineEffectiveNamespace(createModel.getOntologyGraphName());
         uriGenerator.setEffectiveNamespace(effectiveNamespace);
 
         Resource concept = switch (createModel.getConceptTypeEnum()) {
@@ -558,7 +558,7 @@ public class ConceptCreator {
     }
 
     private String determineEffectiveNamespace(String namespace) {
-        if (namespace != null && !namespace.trim().isEmpty() && UtilityMethods.isValidUrl(namespace)) {
+        if (namespace != null && !namespace.trim().isEmpty() && UtilityMethods.isValidIRI(namespace)) {
             return UtilityMethods.ensureNamespaceEndsWithDelimiter(namespace);
         }
         return DEFAULT_NS;

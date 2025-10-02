@@ -19,6 +19,7 @@ import org.apache.jena.ontology.OntologyException;
         @JsonSubTypes.Type(value = RelationshipConceptModel.class, name = "VZTAH")
 })
 public abstract class ConceptCreateModel {
+    protected String ontologyGraphName;
     protected String conceptType;
     protected String namespace;
     protected String conceptName;
@@ -36,6 +37,9 @@ public abstract class ConceptCreateModel {
     public abstract ConceptType getConceptTypeEnum();
 
     public void validate() {
+        if (ontologyGraphName == null || ontologyGraphName.isEmpty()) {
+            throw new OntologyException("Slovník pojmu je povinný");
+        }
         if (conceptType == null || conceptType.trim().isEmpty()) {
             throw new OntologyException("Typ pojmu je povinný");
         }
