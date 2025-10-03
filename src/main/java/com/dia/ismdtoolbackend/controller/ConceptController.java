@@ -70,4 +70,26 @@ public class ConceptController {
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při vytváření pojmu."));
         }
     }
+
+    @DeleteMapping("/{conceptId}/delete")
+    public ResponseEntity<ApiResponseDto<Void>> deleteConcept(@PathVariable Long conceptId) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology delete requested, ontologyId: {}", conceptId);
+
+        try {
+            conceptService.deleteConcept(conceptId);
+            return ResponseEntity.ok(ApiResponseDto.success("Pojem úspěšně smazán."));
+        } catch (org.apache.jena.ontology.OntologyException e) {
+            if (e.getMessage().contains("nebyl nalezen")) {
+                log.error("Concept not found: {}", conceptId);
+                return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
+            }
+            log.error("Error deleting concept: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error deleting concept: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při mazání pojmu."));
+        }
+    }
 }

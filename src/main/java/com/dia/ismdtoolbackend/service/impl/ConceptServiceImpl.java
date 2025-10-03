@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
+import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -82,6 +83,35 @@ public class ConceptServiceImpl implements ConceptService {
 
             throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
         }
+    }
+
+    @Override
+    @Transactional
+    public void deleteConcept(Long conceptId) {
+        Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findById(conceptId);
+        if (conceptMetadataOpt.isEmpty()) {
+            log.error("conceptId {} not found", conceptId);
+            throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
+        }
+
+        String graphName = conceptMetadataOpt.get().getGraphName();
+        String conceptUri = conceptMetadataOpt.get().getConceptIri();
+
+        Model model = jenaTDB2Repository.fetchGraph(graphName);
+
+        if (model.isEmpty()) {
+            log.error("Ontology model is empty.");
+            throw new OntologyException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
+        }
+
+        Resource conceptResource = model.getResource(conceptUri);
+        if (conceptResource == null || !model.containsResource(conceptResource)) {
+            log.error("Concept resource {} not found in graph {}", conceptUri, graphName);
+            throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
+        }
+
+        jenaTDB2Repository.deleteConceptFromGraph(conceptUri, graphName);
+        conceptMetadataRepository.deleteById(conceptId);
     }
 
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,

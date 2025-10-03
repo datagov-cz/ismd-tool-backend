@@ -5,4 +5,5 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 
 public interface ConceptService {
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId);
+    void deleteConcept(Long conceptId);
 }
