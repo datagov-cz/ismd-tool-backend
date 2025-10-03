@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -156,6 +157,26 @@ public class OntologyController {
                 return ResponseEntity.notFound().build();
             }
             log.error("Error downloading ontology: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{ontologyId}/detail")
+    public ResponseEntity<OntologyDetailModel> getOntologyDetail(@PathVariable Long ontologyId) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology detail requested, ontologyId: {}", ontologyId);
+
+        try {
+            OntologyDetailModel detailModel = ontologyService.getOntologyDetailModel(ontologyId);
+
+            return ResponseEntity.ok().body(detailModel);
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("not found")) {
+                log.error("Ontology not found: {}", ontologyId);
+                return ResponseEntity.notFound().build();
+            }
+            log.error("Error creating ontology detail model: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
