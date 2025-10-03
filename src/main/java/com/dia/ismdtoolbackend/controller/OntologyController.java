@@ -90,7 +90,7 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(@RequestBody OntologyCreateModel ontologyCreateModel, @RequestParam String userId) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getNameModel(), ontologyCreateModel.getDescription(), userId);
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getNameModel(), ontologyCreateModel.getDescriptionModel().getDescription(), userId);
 
         try {
             if (userId == null || userId.trim().isEmpty()) {
@@ -132,10 +132,7 @@ public class OntologyController {
     }
 
     @GetMapping("/{ontologyId}/download")
-    public ResponseEntity<Resource> downloadFile(
-            @PathVariable Long ontologyId,
-            @RequestParam String format
-    ) {
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long ontologyId, @RequestParam String format) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
@@ -148,11 +145,7 @@ public class OntologyController {
 
             ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
 
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .contentLength(resource.contentLength())
-                    .body(resource);
+            return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"").contentType(MediaType.parseMediaType(contentType)).contentLength(resource.contentLength()).body(resource);
 
         } catch (IllegalArgumentException e) {
             log.error("Invalid format: {}", format);

@@ -375,7 +375,6 @@ public class ConceptCreator {
     }
 
     private void addAlternativeNames(Resource resource, com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel) {
-        Property altNameProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + ALTERNATIVNI_NAZEV);
         String altNames = altNameModel.getAltName();
         String languageTag = altNameModel.getLanguageTag() != null ? altNameModel.getLanguageTag() : DEFAULT_LANG;
 
@@ -384,11 +383,11 @@ public class ConceptCreator {
             for (String name : names) {
                 String trimmedName = name.trim();
                 if (!trimmedName.isEmpty()) {
-                    resource.addProperty(altNameProperty, trimmedName, languageTag);
+                    DataTypeConverter.addTypedProperty(resource, SKOS.altLabel, trimmedName, languageTag, ontModel);
                 }
             }
         } else {
-            resource.addProperty(altNameProperty, altNames.trim(), languageTag);
+            DataTypeConverter.addTypedProperty(resource, SKOS.altLabel, altNames.trim(), languageTag, ontModel);
         }
     }
 

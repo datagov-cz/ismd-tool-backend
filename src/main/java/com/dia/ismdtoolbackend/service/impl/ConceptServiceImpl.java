@@ -105,20 +105,13 @@ public class ConceptServiceImpl implements ConceptService {
         if (userId == null || userId.trim().isEmpty()) {
             throw new OntologyException("ID uživatele je povinné");
         }
-
-        try {
-            createModel.validate();
-        } catch (OntologyException e) {
-            log.error("Validation failed for concept: {}", e.getMessage());
-            throw e;
-        }
     }
 
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
                                                        String userId,
                                                        String conceptIri) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setConceptName(createModel.getNameModel());
+        entity.setConceptName(createModel.getNameModel().getName());
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
         entity.setGraphName(createModel.getOntologyGraphName());

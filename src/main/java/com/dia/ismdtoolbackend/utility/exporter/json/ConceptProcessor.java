@@ -32,13 +32,7 @@ public class ConceptProcessor {
 
             for (Resource resource : structure.getResourceMap().values()) {
                 if (isConceptResource(resource, conceptTypes)) {
-                    try {
-                        Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
-                        concepts.add(conceptObject);
-                    } catch (Exception e) {
-                        failedConceptCount++;
-                        log.warn("Failed to process concept: {} - {}", resource.getURI(), e.getMessage(), e);
-                    }
+                    failedConceptCount += processSingleConcept(resource, ontModel, structure, concepts);
                 }
             }
 
@@ -56,6 +50,17 @@ public class ConceptProcessor {
         } catch (Exception e) {
             log.error("Critical error during concept processing: {}", e.getMessage(), e);
             throw new ModelProcessingException("Failed to process concepts: " + e.getMessage(), e);
+        }
+    }
+
+    private int processSingleConcept(Resource resource, OntModel ontModel, ModelStructure structure, List<Map<String, Object>> concepts) {
+        try {
+            Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
+            concepts.add(conceptObject);
+            return 0;
+        } catch (Exception e) {
+            log.warn("Failed to process concept: {} - {}", resource.getURI(), e.getMessage(), e);
+            return 1;
         }
     }
 
@@ -155,25 +160,8 @@ public class ConceptProcessor {
                 continue;
             }
 
-            String lang = propStmt.getLanguage();
-            if (lang == null || lang.isEmpty()) {
-                lang = "cs";
-            }
-
-            if (propObj.containsKey(lang)) {
-                Object existingValue = propObj.get(lang);
-                List<Object> langArray;
-                if (existingValue instanceof List) {
-                    langArray = (List<Object>) existingValue;
-                } else {
-                    langArray = new ArrayList<>();
-                    langArray.add(existingValue);
-                }
-                langArray.add(value);
-                propObj.put(lang, langArray);
-            } else {
-                propObj.put(lang, value);
-            }
+            String lang = getLanguageOrDefault(propStmt);
+            addValueToLanguageMap(propObj, lang, value);
             hasNonEmptyValue = true;
         }
 
@@ -182,21 +170,65 @@ public class ConceptProcessor {
         }
     }
 
+    private String getLanguageOrDefault(Statement stmt) {
+        String lang = stmt.getLanguage();
+        return (lang == null || lang.isEmpty()) ? "cs" : lang;
+    }
+
+    private void addValueToLanguageMap(Map<String, Object> languageMap, String lang, String value) {
+        if (languageMap.containsKey(lang)) {
+            Object existingValue = languageMap.get(lang);
+            List<Object> langArray = convertToList(existingValue);
+            langArray.add(value);
+            languageMap.put(lang, langArray);
+        } else {
+            languageMap.put(lang, value);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Object> convertToList(Object existingValue) {
+        if (existingValue instanceof List<?>) {
+            return (List<Object>) existingValue;
+        }
+        List<Object> langArray = new ArrayList<>();
+        langArray.add(existingValue);
+        return langArray;
+    }
+
     private void addAlternativeNames(Resource concept, Map<String, Object> conceptObj,
                                      OntModel ontModel, String effectiveNamespace) {
-        Property anPropDefault = ontModel.getProperty(DEFAULT_NS + ALTERNATIVNI_NAZEV);
-        Property anPropCustom = ontModel.getProperty(effectiveNamespace + ALTERNATIVNI_NAZEV);
-
-        StmtIterator stmtIter = concept.listProperties(anPropDefault);
-        if (!stmtIter.hasNext()) {
-            stmtIter = concept.listProperties(anPropCustom);
-        }
+        StmtIterator stmtIter = getAlternativeNameIterator(concept, ontModel, effectiveNamespace);
 
         if (!stmtIter.hasNext()) {
             return;
         }
 
         Map<String, Object> altNamesObj = new LinkedHashMap<>();
+        boolean hasNonEmptyValue = processAlternativeNameStatements(stmtIter, altNamesObj);
+
+        if (hasNonEmptyValue && !altNamesObj.isEmpty()) {
+            conceptObj.put(ALTERNATIVNI_NAZEV, altNamesObj);
+        }
+    }
+
+    private StmtIterator getAlternativeNameIterator(Resource concept, OntModel ontModel, String effectiveNamespace) {
+        StmtIterator stmtIter = concept.listProperties(SKOS.altLabel);
+
+        if (!stmtIter.hasNext()) {
+            Property anPropDefault = ontModel.getProperty(DEFAULT_NS + ALTERNATIVNI_NAZEV);
+            Property anPropCustom = ontModel.getProperty(effectiveNamespace + ALTERNATIVNI_NAZEV);
+
+            stmtIter = concept.listProperties(anPropDefault);
+            if (!stmtIter.hasNext()) {
+                stmtIter = concept.listProperties(anPropCustom);
+            }
+        }
+
+        return stmtIter;
+    }
+
+    private boolean processAlternativeNameStatements(StmtIterator stmtIter, Map<String, Object> altNamesObj) {
         boolean hasNonEmptyValue = false;
 
         while (stmtIter.hasNext()) {
@@ -206,31 +238,12 @@ public class ConceptProcessor {
                 continue;
             }
 
-            String lang = stmt.getLanguage();
-            if (lang == null || lang.isEmpty()) {
-                lang = "cs";
-            }
-
-            if (altNamesObj.containsKey(lang)) {
-                Object existingValue = altNamesObj.get(lang);
-                List<Object> langArray;
-                if (existingValue instanceof List) {
-                    langArray = (List<Object>) existingValue;
-                } else {
-                    langArray = new ArrayList<>();
-                    langArray.add(existingValue);
-                }
-                langArray.add(value);
-                altNamesObj.put(lang, langArray);
-            } else {
-                altNamesObj.put(lang, value);
-            }
+            String lang = getLanguageOrDefault(stmt);
+            addValueToLanguageMap(altNamesObj, lang, value);
             hasNonEmptyValue = true;
         }
 
-        if (hasNonEmptyValue && !altNamesObj.isEmpty()) {
-            conceptObj.put(ALTERNATIVNI_NAZEV, altNamesObj);
-        }
+        return hasNonEmptyValue;
     }
 
     private void addResourceArrayProperty(Resource concept, Property property, String jsonProperty,
@@ -326,18 +339,7 @@ public class ConceptProcessor {
     private void addNonLegislativeSourceProperty(Resource concept, Map<String, Object> conceptObj,
                                                  OntModel ontModel, String namespace,
                                                  String propertyName, String jsonFieldName) {
-        Property customProperty = ontModel.getProperty(namespace + propertyName);
-        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
-        Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
-
-        Property sourceProperty = null;
-        if (concept.hasProperty(customProperty)) {
-            sourceProperty = customProperty;
-        } else if (concept.hasProperty(defaultProperty)) {
-            sourceProperty = defaultProperty;
-        } else if (concept.hasProperty(ofnProperty)) {
-            sourceProperty = ofnProperty;
-        }
+        Property sourceProperty = findSourceProperty(concept, ontModel, namespace, propertyName);
 
         if (sourceProperty == null) {
             return;
@@ -348,28 +350,51 @@ public class ConceptProcessor {
             return;
         }
 
-        List<String> sourceArray = new ArrayList<>();
-
-        while (propIter.hasNext()) {
-            Statement propStmt = propIter.next();
-            if (propStmt.getObject().isResource()) {
-                Resource digitalDoc = propStmt.getObject().asResource();
-                String digitalDocIri = digitalDoc.getURI();
-
-                if (digitalDocIri != null && !digitalDocIri.trim().isEmpty()) {
-                    sourceArray.add(digitalDocIri);
-                }
-            } else if (propStmt.getObject().isLiteral()) {
-                String literalValue = propStmt.getString();
-                if (literalValue != null && !literalValue.trim().isEmpty()) {
-                    sourceArray.add(literalValue);
-                }
-            }
-        }
+        List<String> sourceArray = extractNonLegislativeSourceValues(propIter);
 
         if (!sourceArray.isEmpty()) {
             conceptObj.put(jsonFieldName, sourceArray);
         }
+    }
+
+    private Property findSourceProperty(Resource concept, OntModel ontModel, String namespace, String propertyName) {
+        Property customProperty = ontModel.getProperty(namespace + propertyName);
+        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
+        Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
+
+        if (concept.hasProperty(customProperty)) {
+            return customProperty;
+        } else if (concept.hasProperty(defaultProperty)) {
+            return defaultProperty;
+        } else if (concept.hasProperty(ofnProperty)) {
+            return ofnProperty;
+        }
+        return null;
+    }
+
+    private List<String> extractNonLegislativeSourceValues(StmtIterator propIter) {
+        List<String> sourceArray = new ArrayList<>();
+
+        while (propIter.hasNext()) {
+            Statement propStmt = propIter.next();
+            String value = extractSourceValue(propStmt);
+            if (value != null) {
+                sourceArray.add(value);
+            }
+        }
+
+        return sourceArray;
+    }
+
+    private String extractSourceValue(Statement propStmt) {
+        if (propStmt.getObject().isResource()) {
+            String digitalDocIri = propStmt.getObject().asResource().getURI();
+            return (digitalDocIri != null && !digitalDocIri.trim().isEmpty()) ? digitalDocIri : null;
+        } else if (propStmt.getObject().isLiteral()) {
+            String literalValue = propStmt.getString();
+            return (literalValue != null && !literalValue.trim().isEmpty()) ? literalValue : null;
+        }
+        return null;
     }
 
     private void addDomainAndRange(Resource concept, Map<String, Object> conceptObj) {
@@ -391,41 +416,59 @@ public class ConceptProcessor {
     }
 
     private void addHierarchicalRelationships(Resource concept, Map<String, Object> conceptObj, OntModel ontModel) {
+        addSubClassRelationships(concept, conceptObj);
+        addSubPropertyRelationships(concept, conceptObj, ontModel);
+    }
+
+    private void addSubClassRelationships(Resource concept, Map<String, Object> conceptObj) {
         StmtIterator subClassIter = concept.listProperties(RDFS.subClassOf);
-        if (subClassIter.hasNext()) {
-            List<String> hierarchyArray = new ArrayList<>();
-
-            while (subClassIter.hasNext()) {
-                Statement stmt = subClassIter.next();
-                if (stmt.getObject().isResource()) {
-                    hierarchyArray.add(stmt.getObject().asResource().getURI());
-                }
-            }
-
-            if (!hierarchyArray.isEmpty()) {
-                conceptObj.put(NADRAZENA_TRIDA, hierarchyArray);
-            }
+        if (!subClassIter.hasNext()) {
+            return;
         }
 
+        List<String> hierarchyArray = extractResourceURIs(subClassIter);
+
+        if (!hierarchyArray.isEmpty()) {
+            conceptObj.put(NADRAZENA_TRIDA, hierarchyArray);
+        }
+    }
+
+    private void addSubPropertyRelationships(Resource concept, Map<String, Object> conceptObj, OntModel ontModel) {
         StmtIterator subPropertyIter = concept.listProperties(RDFS.subPropertyOf);
-        if (subPropertyIter.hasNext()) {
-            List<String> superPropertyArray = new ArrayList<>();
+        if (!subPropertyIter.hasNext()) {
+            return;
+        }
 
-            while (subPropertyIter.hasNext()) {
-                Statement stmt = subPropertyIter.next();
-                if (stmt.getObject().isResource()) {
-                    superPropertyArray.add(stmt.getObject().asResource().getURI());
-                }
-            }
+        List<String> superPropertyArray = extractResourceURIs(subPropertyIter);
 
-            if (!superPropertyArray.isEmpty()) {
-                if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH))) {
-                    conceptObj.put(NADRAZENY_VZTAH, superPropertyArray);
-                } else if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST))) {
-                    conceptObj.put(NADRAZENA_VLASTNOST, superPropertyArray);
-                }
+        if (!superPropertyArray.isEmpty()) {
+            String propertyKey = determinePropertyKey(concept, ontModel);
+            if (propertyKey != null) {
+                conceptObj.put(propertyKey, superPropertyArray);
             }
         }
+    }
+
+    private List<String> extractResourceURIs(StmtIterator stmtIter) {
+        List<String> uriArray = new ArrayList<>();
+
+        while (stmtIter.hasNext()) {
+            Statement stmt = stmtIter.next();
+            if (stmt.getObject().isResource()) {
+                uriArray.add(stmt.getObject().asResource().getURI());
+            }
+        }
+
+        return uriArray;
+    }
+
+    private String determinePropertyKey(Resource concept, OntModel ontModel) {
+        if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH))) {
+            return NADRAZENY_VZTAH;
+        } else if (concept.hasProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST))) {
+            return NADRAZENA_VLASTNOST;
+        }
+        return null;
     }
 
     private void addGovernanceProperties(Resource concept, Map<String, Object> conceptObj,
@@ -438,52 +481,67 @@ public class ConceptProcessor {
     private void addGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
                                        OntModel ontModel, String namespace,
                                        String propertyName, String jsonFieldName) {
-        Property customProperty = ontModel.getProperty(namespace + propertyName);
-        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
-
-        Property property = null;
-        if (concept.hasProperty(customProperty)) {
-            property = customProperty;
-        } else if (concept.hasProperty(defaultProperty)) {
-            property = defaultProperty;
-        }
+        Property property = findGovernanceProperty(concept, ontModel, namespace, propertyName);
 
         if (property == null) {
             return;
         }
 
-        List<String> allValues = new ArrayList<>();
         StmtIterator propIter = concept.listProperties(property);
-
-        while (propIter.hasNext()) {
-            Statement propStmt = propIter.next();
-            String value;
-
-            if (propStmt.getObject().isLiteral()) {
-                value = propStmt.getString();
-            } else if (propStmt.getObject().isResource()) {
-                value = propStmt.getObject().asResource().getURI();
-            } else {
-                continue;
-            }
-
-            if (value != null && !value.trim().isEmpty()) {
-                if (value.contains(";")) {
-                    String[] splitValues = value.split(";");
-                    for (String singleValue : splitValues) {
-                        String trimmedValue = singleValue.trim();
-                        if (!trimmedValue.isEmpty()) {
-                            allValues.add(trimmedValue);
-                        }
-                    }
-                } else {
-                    allValues.add(value.trim());
-                }
-            }
-        }
+        List<String> allValues = extractGovernanceValues(propIter);
 
         if (!allValues.isEmpty()) {
             conceptObj.put(jsonFieldName, allValues);
+        }
+    }
+
+    private Property findGovernanceProperty(Resource concept, OntModel ontModel, String namespace, String propertyName) {
+        Property customProperty = ontModel.getProperty(namespace + propertyName);
+        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
+
+        if (concept.hasProperty(customProperty)) {
+            return customProperty;
+        } else if (concept.hasProperty(defaultProperty)) {
+            return defaultProperty;
+        }
+        return null;
+    }
+
+    private List<String> extractGovernanceValues(StmtIterator propIter) {
+        List<String> allValues = new ArrayList<>();
+
+        while (propIter.hasNext()) {
+            Statement propStmt = propIter.next();
+            String value = extractStatementValue(propStmt);
+
+            if (value != null && !value.trim().isEmpty()) {
+                addSplitValues(value, allValues);
+            }
+        }
+
+        return allValues;
+    }
+
+    private String extractStatementValue(Statement propStmt) {
+        if (propStmt.getObject().isLiteral()) {
+            return propStmt.getString();
+        } else if (propStmt.getObject().isResource()) {
+            return propStmt.getObject().asResource().getURI();
+        }
+        return null;
+    }
+
+    private void addSplitValues(String value, List<String> targetList) {
+        if (value.contains(";")) {
+            String[] splitValues = value.split(";");
+            for (String singleValue : splitValues) {
+                String trimmedValue = singleValue.trim();
+                if (!trimmedValue.isEmpty()) {
+                    targetList.add(trimmedValue);
+                }
+            }
+        } else {
+            targetList.add(value.trim());
         }
     }
 

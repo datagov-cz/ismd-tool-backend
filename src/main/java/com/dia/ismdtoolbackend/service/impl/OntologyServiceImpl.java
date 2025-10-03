@@ -120,18 +120,6 @@ public class OntologyServiceImpl implements OntologyService {
         if (model == null) {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
         }
-
-        if (model.getNameModel() == null || model.getNameModel().getName() == null || model.getNameModel().getName().trim().isEmpty()) {
-            throw new OntologyException("Název slovníku je povinný");
-        }
-
-        if (model.getDescriptionModel() == null || model.getDescriptionModel().getDescription() == null || model.getDescriptionModel().getDescription().trim().isEmpty()) {
-            throw new OntologyException("Popis slovníku je povinný");
-        }
-
-        if (!model.getNameModel().getName().matches("^[a-zA-Z0-9\\-_]+$")) {
-            throw new OntologyException("Název může obsahovat pouze písmena, čísla, pomlčky a podtržítka");
-        }
     }
 
     private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) throws OntologyException {
