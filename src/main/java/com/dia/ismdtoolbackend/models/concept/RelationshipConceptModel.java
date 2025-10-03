@@ -27,7 +27,7 @@ public class RelationshipConceptModel extends ConceptCreateModel {
 
         if ((domain == null || domain.trim().isEmpty()) ||
                 (range == null || range.trim().isEmpty())) {
-            log.warn("Relationship '{}' without domain/range", conceptName);
+            log.warn("Relationship '{}' without domain/range", nameModel);
         }
     }
 }

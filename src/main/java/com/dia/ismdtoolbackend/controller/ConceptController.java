@@ -27,7 +27,7 @@ public class ConceptController {
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(@RequestBody ConceptCreateModel conceptCreateModel, @RequestParam String userId) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getConceptName(), conceptCreateModel.getDescription(), userId);
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), userId);
 
         try {
             if (userId == null || userId.trim().isEmpty()) {

@@ -15,10 +15,10 @@ import java.util.List;
 @Data
 public class ConceptMetadataModel {
     private Long id;
-    private String conceptName;
     private ConceptType conceptType;
     private String conceptIri;
     private String graphName;
+    private String conceptName;
     private UserModel user;
     private Boolean isPublished;
     private String inTezaurus;

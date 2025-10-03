@@ -90,7 +90,7 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(@RequestBody OntologyCreateModel ontologyCreateModel, @RequestParam String userId) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getName(), ontologyCreateModel.getDescription(), userId);
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getNameModel(), ontologyCreateModel.getDescription(), userId);
 
         try {
             if (userId == null || userId.trim().isEmpty()) {

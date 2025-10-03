@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static com.dia.constants.ArchiConstants.*;
+import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.CAS_NS;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DATUM_A_CAS;
@@ -79,10 +80,10 @@ public class OntologyServiceImpl implements OntologyService {
         validateOntologyCreateModel(ontologyCreateModel);
 
         URIGenerator uriGenerator = new URIGenerator();
-        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(ontologyCreateModel.getName(), ontologyCreateModel.getNamespace());
+        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(ontologyCreateModel.getNameModel().getName(), ontologyCreateModel.getNamespace());
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
-            log.error("ontologyIRI {} not valid", ontologyCreateModel.getName());
+            log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
             throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
@@ -120,15 +121,15 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
         }
 
-        if (model.getName() == null || model.getName().trim().isEmpty()) {
+        if (model.getNameModel() == null || model.getNameModel().getName() == null || model.getNameModel().getName().trim().isEmpty()) {
             throw new OntologyException("Název slovníku je povinný");
         }
 
-        if (model.getDescription() == null || model.getDescription().trim().isEmpty()) {
+        if (model.getDescriptionModel() == null || model.getDescriptionModel().getDescription() == null || model.getDescriptionModel().getDescription().trim().isEmpty()) {
             throw new OntologyException("Popis slovníku je povinný");
         }
 
-        if (!model.getName().matches("^[a-zA-Z0-9\\-_]+$")) {
+        if (!model.getNameModel().getName().matches("^[a-zA-Z0-9\\-_]+$")) {
             throw new OntologyException("Název může obsahovat pouze písmena, čísla, pomlčky a podtržítka");
         }
     }
@@ -141,14 +142,20 @@ public class OntologyServiceImpl implements OntologyService {
         Resource ontologyResource = model.getResource(ontologyIRI);
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getName(), "cs");
+        String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
+            ? ontologyCreateModel.getNameModel().getLanguageTag()
+            : DEFAULT_LANG;
+        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), nameLanguageTag);
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
         ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
 
-        if (ontologyCreateModel.getDescription() != null && !ontologyCreateModel.getDescription().trim().isEmpty()) {
+        if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescription(), "cs", model);
+            String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
+                ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
+                : DEFAULT_LANG;
+            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), descLanguageTag, model);
         }
 
         String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";

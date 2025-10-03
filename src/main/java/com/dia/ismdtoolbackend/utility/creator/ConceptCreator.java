@@ -140,7 +140,7 @@ public class ConceptCreator {
     }
 
     private void addConditionalCommonProperties(Set<String> properties, ConceptCreateModel createModel) {
-        if (createModel.getAltName() != null && !createModel.getAltName().trim().isEmpty()) {
+        if (createModel.getAltNameModel() != null && createModel.getAltNameModel().getAltName() != null && !createModel.getAltNameModel().getAltName().trim().isEmpty()) {
             properties.add(ALTERNATIVNI_NAZEV);
         }
 
@@ -188,7 +188,7 @@ public class ConceptCreator {
     }
 
     private Resource createClassResource(ClassConceptModel classModel) {
-        String classURI = uriGenerator.generateConceptURI(classModel.getConceptName(), classModel.getIdentifier());
+        String classURI = uriGenerator.generateConceptURI(classModel.getNameModel().getName(), classModel.getIdentifier());
         Resource classResource = ontModel.createResource(classURI);
 
         classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
@@ -206,7 +206,7 @@ public class ConceptCreator {
     }
 
     private Resource createPropertyResource(PropertyConceptModel propModel) {
-        String propertyURI = uriGenerator.generateConceptURI(propModel.getConceptName(), propModel.getIdentifier());
+        String propertyURI = uriGenerator.generateConceptURI(propModel.getNameModel().getName(), propModel.getIdentifier());
 
         OntProperty propertyResource;
         if (isObjectProperty(propModel)) {
@@ -227,7 +227,7 @@ public class ConceptCreator {
     }
 
     private Resource createRelationshipResource(RelationshipConceptModel relModel) {
-        String relationshipURI = uriGenerator.generateConceptURI(relModel.getConceptName(), relModel.getIdentifier());
+        String relationshipURI = uriGenerator.generateConceptURI(relModel.getNameModel().getName(), relModel.getIdentifier());
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
 
@@ -250,24 +250,33 @@ public class ConceptCreator {
     }
 
     private void addBasicMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getConceptName() != null && !model.getConceptName().trim().isEmpty()) {
+        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
+            String nameLanguageTag = model.getNameModel().getLanguageTag() != null
+                ? model.getNameModel().getLanguageTag()
+                : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
-                    model.getConceptName(), DEFAULT_LANG, ontModel);
+                    model.getNameModel().getName(), nameLanguageTag, ontModel);
         }
 
-        if (model.getDescription() != null && !model.getDescription().trim().isEmpty()) {
+        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
+            String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
+                ? model.getDescriptionModel().getLanguageTag()
+                : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, descProperty,
-                    model.getDescription(), DEFAULT_LANG, ontModel);
+                    model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
         }
 
-        if (model.getDefinition() != null && !model.getDefinition().trim().isEmpty()) {
+        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().trim().isEmpty()) {
+            String defLanguageTag = model.getDefinitionModel().getLanguageTag() != null
+                ? model.getDefinitionModel().getLanguageTag()
+                : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, SKOS.definition,
-                    model.getDefinition(), DEFAULT_LANG, ontModel);
+                    model.getDefinitionModel().getDefinition(), defLanguageTag, ontModel);
         }
 
-        if (model.getAltName() != null && !model.getAltName().trim().isEmpty()) {
-            addAlternativeNames(resource, model.getAltName());
+        if (model.getAltNameModel() != null && model.getAltNameModel().getAltName() != null && !model.getAltNameModel().getAltName().trim().isEmpty()) {
+            addAlternativeNames(resource, model.getAltNameModel());
         }
     }
 
@@ -365,19 +374,21 @@ public class ConceptCreator {
         }
     }
 
-    private void addAlternativeNames(Resource resource, String altNames) {
+    private void addAlternativeNames(Resource resource, com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel) {
         Property altNameProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + ALTERNATIVNI_NAZEV);
+        String altNames = altNameModel.getAltName();
+        String languageTag = altNameModel.getLanguageTag() != null ? altNameModel.getLanguageTag() : DEFAULT_LANG;
 
         if (altNames.contains(";")) {
             String[] names = altNames.split(";");
             for (String name : names) {
                 String trimmedName = name.trim();
                 if (!trimmedName.isEmpty()) {
-                    resource.addProperty(altNameProperty, trimmedName, DEFAULT_LANG);
+                    resource.addProperty(altNameProperty, trimmedName, languageTag);
                 }
             }
         } else {
-            resource.addProperty(altNameProperty, altNames.trim(), DEFAULT_LANG);
+            resource.addProperty(altNameProperty, altNames.trim(), languageTag);
         }
     }
 
@@ -410,9 +421,20 @@ public class ConceptCreator {
     }
 
     private void addExactMatch(Resource resource, String exactMatch) {
-        if (UtilityMethods.isValidIRI(exactMatch)) {
-            Property exactMatchProperty = ontModel.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch");
-            resource.addProperty(exactMatchProperty, ontModel.createResource(exactMatch));
+        Property exactMatchProperty = ontModel.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch");
+
+        if (exactMatch.contains(";")) {
+            String[] iris = exactMatch.split(";");
+            for (String iri : iris) {
+                String trimmedIri = iri.trim();
+                if (!trimmedIri.isEmpty() && UtilityMethods.isValidIRI(trimmedIri)) {
+                    resource.addProperty(exactMatchProperty, ontModel.createResource(trimmedIri));
+                }
+            }
+        } else {
+            if (UtilityMethods.isValidIRI(exactMatch)) {
+                resource.addProperty(exactMatchProperty, ontModel.createResource(exactMatch));
+            }
         }
     }
 
@@ -474,18 +496,34 @@ public class ConceptCreator {
     }
 
     private void addBroaderConcept(Resource resource, String broaderConcept) {
-        String broaderURI;
-        if (DataTypeConverter.isUri(broaderConcept)) {
-            broaderURI = broaderConcept;
-        } else {
-            broaderURI = uriGenerator.generateConceptURI(broaderConcept, null);
-        }
-
-        resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
-
         Property hierarchyProperty = ontModel.createProperty(
                 uriGenerator.getEffectiveNamespace() + "nadřazená-třída");
-        resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
+
+        if (broaderConcept.contains(";")) {
+            String[] concepts = broaderConcept.split(";");
+            for (String concept : concepts) {
+                String trimmedConcept = concept.trim();
+                if (!trimmedConcept.isEmpty()) {
+                    String broaderURI;
+                    if (DataTypeConverter.isUri(trimmedConcept)) {
+                        broaderURI = trimmedConcept;
+                    } else {
+                        broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
+                    }
+                    resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
+                    resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
+                }
+            }
+        } else {
+            String broaderURI;
+            if (DataTypeConverter.isUri(broaderConcept)) {
+                broaderURI = broaderConcept;
+            } else {
+                broaderURI = uriGenerator.generateConceptURI(broaderConcept, null);
+            }
+            resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
+            resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
+        }
     }
 
     private void addSuperProperty(Resource resource, String superProperty) {

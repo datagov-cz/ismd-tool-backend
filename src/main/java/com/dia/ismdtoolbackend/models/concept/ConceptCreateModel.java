@@ -1,10 +1,12 @@
 package com.dia.ismdtoolbackend.models.concept;
 
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.models.DescriptionModel;
+import com.dia.ismdtoolbackend.models.NameModel;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import lombok.Data;
-import org.apache.jena.ontology.OntologyException;
+import org.apache.logging.log4j.core.config.plugins.validation.constraints.NotBlank;
 
 @Data
 @JsonTypeInfo(
@@ -19,39 +21,26 @@ import org.apache.jena.ontology.OntologyException;
         @JsonSubTypes.Type(value = RelationshipConceptModel.class, name = "VZTAH")
 })
 public abstract class ConceptCreateModel {
+    @NotBlank
     protected String ontologyGraphName;
+    @NotBlank
     protected String conceptType;
     protected String namespace;
-    protected String conceptName;
+    @NotBlank
+    protected NameModel nameModel;
     protected String identifier;
-    protected String altName;
-    protected String description;
-    protected String definition;
+    protected AltNameModel altNameModel;
+    protected DescriptionModel descriptionModel;
+    protected DefinitionModel definitionModel;
     protected String definingNonLegalSource;
     protected String definingLegalSource;
     protected String relatedNonLegalSource;
     protected String relatedLegalSource;
     protected String exactMatch;
     protected String inTezaurus;
+    // TODO digitální objekt: název, popis
 
     public abstract ConceptType getConceptTypeEnum();
-
-    public void validate() {
-        if (ontologyGraphName == null || ontologyGraphName.isEmpty()) {
-            throw new OntologyException("Slovník pojmu je povinný");
-        }
-        if (conceptType == null || conceptType.trim().isEmpty()) {
-            throw new OntologyException("Typ pojmu je povinný");
-        }
-        if (conceptName == null || conceptName.trim().isEmpty()) {
-            throw new OntologyException("Název pojmu je povinný");
-        }
-        if (description == null || description.trim().isEmpty()) {
-            throw new OntologyException("Popis pojmu je povinný");
-        }
-
-        validateSpecificFields();
-    }
 
     protected abstract void validateSpecificFields();
 }

@@ -29,7 +29,7 @@ public class PropertyConceptModel extends ConceptCreateModel {
 
         if ((domain == null || domain.trim().isEmpty()) &&
                 (dataType == null || dataType.trim().isEmpty())) {
-            log.warn("Property '{}' without domain or dataType", conceptName);
+            log.warn("Property '{}' without domain or dataType", nameModel);
         }
 
         if (dataType != null && !dataType.trim().isEmpty()) {

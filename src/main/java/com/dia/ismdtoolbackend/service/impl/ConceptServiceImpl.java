@@ -31,7 +31,7 @@ public class ConceptServiceImpl implements ConceptService {
     @Transactional
     public ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
         log.info("Creating concept: type={}, name={}, namespace={}, userId={}",
-                createModel.getConceptType(), createModel.getConceptName(),
+                createModel.getConceptType(), createModel.getNameModel(),
                 createModel.getNamespace(), userId);
 
         validateInput(createModel, userId);
@@ -118,7 +118,7 @@ public class ConceptServiceImpl implements ConceptService {
                                                        String userId,
                                                        String conceptIri) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setConceptName(createModel.getConceptName());
+        entity.setConceptName(createModel.getNameModel());
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
         entity.setGraphName(createModel.getOntologyGraphName());

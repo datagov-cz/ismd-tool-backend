@@ -9,7 +9,7 @@ import org.apache.logging.log4j.core.config.plugins.validation.constraints.NotBl
 public class OntologyCreateModel {
     private String namespace;
     @NotBlank
-    private String name;
+    private NameModel nameModel;
     @NotBlank
-    private String description;
+    private DescriptionModel descriptionModel;
 }
