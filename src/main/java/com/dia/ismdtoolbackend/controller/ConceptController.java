@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
+import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import lombok.RequiredArgsConstructor;
@@ -90,6 +91,34 @@ public class ConceptController {
         } catch (Exception e) {
             log.error("Unexpected error deleting concept: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při mazání pojmu."));
+        }
+    }
+
+    @PatchMapping("/edit")
+    public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
+            @RequestBody ConceptEditModel conceptEditModel,
+            @RequestParam String userId
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Concept edit requested, concept IRI: {}", conceptEditModel.getConceptIRI());
+
+        try {
+            if (userId == null || userId.trim().isEmpty()) {
+                log.error("UserId is null or empty");
+                return ResponseEntity.badRequest().body(ApiResponseDto.error("ID uživatele je povinné."));
+            }
+
+            ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptEditModel);
+            log.info("Concept edit successful: {}", editedConceptModel);
+
+            return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
+        }catch (IllegalArgumentException | SecurityException e) {
+            log.error("Client error editing concept: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error editing concept: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při úpravě pojmu."));
         }
     }
 }

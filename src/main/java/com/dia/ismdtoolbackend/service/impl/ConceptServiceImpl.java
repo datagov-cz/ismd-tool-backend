@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -112,6 +113,11 @@ public class ConceptServiceImpl implements ConceptService {
 
         jenaTDB2Repository.deleteConceptFromGraph(conceptUri, graphName);
         conceptMetadataRepository.deleteById(conceptId);
+    }
+
+    @Override
+    public ConceptMetadataModel editConcept(ConceptEditModel conceptEditModel) {
+        return null;
     }
 
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,
