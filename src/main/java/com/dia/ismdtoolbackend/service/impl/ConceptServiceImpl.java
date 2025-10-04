@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
+import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -27,6 +28,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final ConceptCreator conceptCreator;
+    private final ConceptEditor conceptEditor;
     private final JenaTDB2Repository jenaTDB2Repository;
 
     @Override
@@ -116,8 +118,71 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
+    @Transactional
     public ConceptMetadataModel editConcept(ConceptEditModel conceptEditModel) {
-        return null;
+        log.info("Editing concept: IRI={}, type={}",
+                conceptEditModel.getConceptIRI(), conceptEditModel.getConceptType());
+        String conceptIRI = conceptEditModel.getConceptIRI();
+
+        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findByConceptIri(conceptIRI);
+        if (metadataOpt.isEmpty()) {
+            log.error("Concept metadata not found for IRI: {}", conceptIRI);
+            throw new OntologyException("Metadata pojmu s IRI " + conceptIRI + " nebyla nalezena.");
+        }
+
+        ConceptMetadataEntity metadata = metadataOpt.get();
+        String graphName = metadata.getGraphName();
+
+        Model model = jenaTDB2Repository.fetchGraph(graphName);
+        if (model.isEmpty()) {
+            log.error("Graph {} is empty or not found", graphName);
+            throw new OntologyException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
+        }
+
+        Resource conceptResource = model.getResource(conceptIRI);
+        if (conceptResource == null || !model.containsResource(conceptResource)) {
+            log.error("Concept {} not found in graph {}", conceptIRI, graphName);
+            throw new OntologyException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
+        }
+
+        ConceptEditor.EditResult editResult;
+        try {
+            editResult = conceptEditor.editConcept(conceptEditModel, model, graphName);
+            log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
+                    editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
+        } catch (Exception e) {
+            log.error("Failed to edit concept", e);
+            throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
+        }
+
+        try {
+            jenaTDB2Repository.putOntologyModel(graphName, model);
+            log.info("Updated model saved to TDB2 graph: {}", graphName);
+        } catch (Exception e) {
+            log.error("Failed to save updated model to TDB2", e);
+            throw new OntologyException("Nepodařilo se uložit upravený pojem do TDB2: " + e.getMessage());
+        }
+
+        if (editResult.iriChanged) {
+            metadata.setConceptIri(editResult.newConceptIRI);
+        }
+
+        if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
+            metadata.setConceptName(conceptEditModel.getNameModel().getName());
+        }
+
+        if (conceptEditModel.getInTezaurus() != null) {
+            metadata.setInTezaurus(conceptEditModel.getInTezaurus());
+        }
+
+        try {
+            ConceptMetadataEntity savedMetadata = conceptMetadataRepository.save(metadata);
+            log.info("Metadata updated successfully for concept: {}", editResult.newConceptIRI);
+            return conceptMetadataMapper.toDto(savedMetadata);
+        } catch (Exception e) {
+            log.error("Failed to update concept metadata", e);
+            throw new OntologyException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage());
+        }
     }
 
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,
