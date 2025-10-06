@@ -9,6 +9,7 @@ import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
@@ -242,7 +243,91 @@ public class ConceptEditor {
     private void updateStringProperty(Resource newConcept, String propertyName, String newValue,
                                        Resource oldConcept, Model model, Set<Statement> toRemove,
                                        Set<Statement> toAdd) {
-        // TODO implement
+        switch (propertyName) {
+            case "type" -> updateClassType(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case "agendaCode" -> updateAgenda(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case "agendaSystemCode" -> updateAIS(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case "isPublic", "privacyProvision" -> updatePrivacyProvision(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case "inTezaurus", "namespace" -> {
+            }
+            default -> log.warn("Unknown string property: {}", propertyName);
+        }
+    }
+
+    private void updateClassType(Resource newConcept, String newType, Resource oldConcept,
+                                  Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        if (newType == null) return;
+
+        Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
+        Resource topType = model.getResource(OFN_NAMESPACE + TOP);
+
+        boolean oldHasTSP = oldConcept.hasProperty(RDF.type, tspType);
+        boolean oldHasTOP = oldConcept.hasProperty(RDF.type, topType);
+
+        boolean newHasTSP = newType.toLowerCase().contains("subjekt");
+        boolean newHasTOP = newType.toLowerCase().contains("objekt");
+
+        if (oldHasTSP && !newHasTSP) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, tspType));
+        }
+        if (oldHasTOP && !newHasTOP) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, topType));
+        }
+        if (!oldHasTSP && newHasTSP) {
+            toAdd.add(model.createStatement(newConcept, RDF.type, tspType));
+        }
+        if (!oldHasTOP && newHasTOP) {
+            toAdd.add(model.createStatement(newConcept, RDF.type, topType));
+        }
+    }
+
+    private void updateAgenda(Resource newConcept, String agendaCode, Resource oldConcept,
+                              Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        Property agendaProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA);
+
+        removeAllByPredicate(oldConcept, agendaProperty, toRemove);
+
+        if (agendaCode != null && UtilityMethods.isValidAgendaValue(agendaCode)) {
+            String transformed = UtilityMethods.transformAgendaValue(agendaCode);
+            if (DataTypeConverter.isUri(transformed)) {
+                toAdd.add(model.createStatement(newConcept, agendaProperty, model.createResource(transformed)));
+            } else {
+                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AGENDA);
+                toAdd.add(model.createStatement(newConcept, agendaProperty, typedLiteral));
+            }
+        }
+    }
+
+    private void updateAIS(Resource newConcept, String aisCode, Resource oldConcept,
+                           Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        Property aisProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AIS);
+
+        removeAllByPredicate(oldConcept, aisProperty, toRemove);
+
+        if (aisCode != null && UtilityMethods.isValidAISValue(aisCode)) {
+            String transformed = UtilityMethods.transformAISValue(aisCode);
+            if (DataTypeConverter.isUri(transformed)) {
+                toAdd.add(model.createStatement(newConcept, aisProperty, model.createResource(transformed)));
+            } else {
+                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AIS);
+                toAdd.add(model.createStatement(newConcept, aisProperty, typedLiteral));
+            }
+        }
+    }
+
+    private void updatePrivacyProvision(Resource newConcept, String privacyProvision, Resource oldConcept,
+                                        Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        Property provisionProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+
+        removeAllByPredicate(oldConcept, provisionProperty, toRemove);
+
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
+            String eliPart = UtilityMethods.extractEliPart(privacyProvision);
+            if (eliPart != null) {
+                String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                toAdd.add(model.createStatement(newConcept, provisionProperty, model.createResource(transformedProvision)));
+            }
+        }
     }
 
     private void updateGovernanceProperty(Resource newConcept, String newValue, String propertyName,
@@ -299,7 +384,6 @@ public class ConceptEditor {
         if (dataType == null) return;
 
         String oldRangeURI = getResourceURI(oldConcept, RDFS.range);
-        // TODO implement
         String newRangeURI = DataTypeConverter.getXSDTypeURI(dataType.trim());
 
         if (!Objects.equals(oldRangeURI, newRangeURI)) {
