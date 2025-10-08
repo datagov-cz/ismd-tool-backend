@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyDownloadServiceImpl;
+import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.vocabulary.RDF;
@@ -355,23 +356,78 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_OntologyNotFound_ReturnsErrorMessage() {
-        // TODO:
         // Mock repository.findById() to return Optional.empty()
         // Assert result equals "Slovník nebyl nalezen"
+        // Arrange - repozitář vrací prázdný výsledek
+        when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
+
+        // Act
+        String result = service.downloadOntology(ONTOLOGY_ID, "ttl");
+
+        // Assert - služba vrací lokalizovanou chybu bez výjimky
+        assertEquals("Slovník nebyl nalezen", result);
     }
 
     @Test
     void downloadOntology_EmptyModel_ThrowsOntologyException() {
-        // TODO:
         // Mock model.isEmpty() to return true
         // Assert OntologyException is thrown with message "Slovník je prázdný, nebo nebyl nalezen."
+        // Arrange
+        OntologyMetadataEntity metadata = createOntologyMetadata();
+        when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
+
+        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
+            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+            when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
+            when(rawModel.isEmpty()).thenReturn(true);
+
+            // Act
+            OntologyException ex = assertThrows(OntologyException.class,
+                    () -> service.downloadOntology(ONTOLOGY_ID, "ttl"));
+
+            // Assert
+            assertTrue(ex.getMessage().contains("Slovník je prázdný, nebo nebyl nalezen."));
+        }
     }
 
     @Test
     void downloadOntology_UnsupportedFormat_ThrowsIllegalArgumentException() {
-        // TODO:
         // Use format "xml" or "csv"
         // Assert IllegalArgumentException is thrown with message containing "Nepodporovaný formát"
+        // Arrange
+        OntologyMetadataEntity metadata = createOntologyMetadata();
+        when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
+
+        // Mock
+        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
+            rdfConnStatic.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+            when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
+            when(rawModel.isEmpty()).thenReturn(false);
+
+            try (MockedStatic<TurtleFilterUtil> filterUtil = mockStatic(TurtleFilterUtil.class);
+                 MockedStatic<TurtleFormatterUtil> fmtUtil = mockStatic(TurtleFormatterUtil.class)) {
+
+                filterUtil.when(() -> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
+                fmtUtil.when(() -> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
+
+                mockValidationNoDuplicates(ofnFormattedModel);
+
+                // Act
+                IllegalArgumentException ex = assertThrows(
+                        IllegalArgumentException.class, () -> service.downloadOntology(ONTOLOGY_ID, "xml")
+                );
+
+                // Assert
+                assertTrue(ex.getMessage().contains("Nepodporovaný formát"),
+                        "Zpráva výjimky musí obsahovat 'Nepodporovaný formát'");
+
+                // Verify
+                verifyNoInteractions(jsonExporter);
+                verify(rdfConnection).fetch(GRAPH_NAME);
+                verify(rdfConnection).close();
+                verifyNoMoreInteractions(rdfConnection);
+            }
+        }
     }
 
     @Test
