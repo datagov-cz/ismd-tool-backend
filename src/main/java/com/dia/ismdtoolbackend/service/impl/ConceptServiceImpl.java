@@ -40,52 +40,18 @@ public class ConceptServiceImpl implements ConceptService {
 
         validateInput(createModel, userId);
 
-        Resource conceptResource;
-        try {
-            conceptResource = conceptCreator.createSingleConcept(createModel);
-            log.debug("Successfully transformed concept to Jena Resource: {}", conceptResource.getURI());
-        } catch (Exception e) {
-            log.error("Failed to transform concept to Jena Resource", e);
-            throw new OntologyException("Nepodařilo se transformovat pojem: " + e.getMessage());
-        }
-
+        Resource conceptResource = createConceptResource(createModel);
         String conceptUri = conceptResource.getURI();
 
-        Optional<ConceptMetadataEntity> existingConcept = conceptMetadataRepository.findByConceptIri(conceptUri);
-        if (existingConcept.isPresent()) {
-            log.error("Concept already exists with IRI: {}", conceptUri);
-            return conceptMetadataMapper.toDto(existingConcept.get());
+        ConceptMetadataModel existingConcept = checkForExistingConcept(conceptUri);
+        if (existingConcept != null) {
+            return existingConcept;
         }
 
         String ontologyGraphName = createModel.getOntologyGraphName();
-        try {
-            String conceptIRI = jenaTDB2Repository.saveConcept(conceptResource, ontologyGraphName);
-            log.info("Concept saved to TDB2 graph {} successfully: {}", ontologyGraphName, conceptIRI);
-        } catch (Exception e) {
-            log.error("Failed to save concept to TDB2 graph {}", ontologyGraphName, e);
-            throw new OntologyException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage());
-        }
+        saveConceptToTDB2(conceptResource, ontologyGraphName);
 
-        try {
-            ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
-            log.info("Metadata saved successfully with ID: {}", savedEntity.getId());
-
-            ConceptMetadataModel result = conceptMetadataMapper.toDto(savedEntity);
-            log.info("Concept creation completed successfully: {}", conceptUri);
-            return result;
-        } catch (Exception e) {
-            log.error("Failed to save concept metadata, rolling back TDB2 data", e);
-
-            try {
-                jenaTDB2Repository.deleteConceptFromGraph(conceptUri, ontologyGraphName);
-                log.info("Successfully rolled back TDB2 data from graph {} for failed metadata save", ontologyGraphName);
-            } catch (Exception rollbackException) {
-                log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
-                        "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
-            }
-
-            throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
-        }
+        return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
     }
 
     @Override
@@ -245,6 +211,62 @@ public class ConceptServiceImpl implements ConceptService {
         } catch (Exception e) {
             log.error("Failed to update concept metadata", e);
             throw new OntologyException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage());
+        }
+    }
+
+    private Resource createConceptResource(ConceptCreateModel createModel) {
+        try {
+            Resource conceptResource = conceptCreator.createSingleConcept(createModel);
+            log.debug("Successfully transformed concept to Jena Resource: {}", conceptResource.getURI());
+            return conceptResource;
+        } catch (Exception e) {
+            log.error("Failed to transform concept to Jena Resource", e);
+            throw new OntologyException("Nepodařilo se transformovat pojem: " + e.getMessage());
+        }
+    }
+
+    private ConceptMetadataModel checkForExistingConcept(String conceptUri) {
+        Optional<ConceptMetadataEntity> existingConcept = conceptMetadataRepository.findByConceptIri(conceptUri);
+        if (existingConcept.isPresent()) {
+            log.error("Concept already exists with IRI: {}", conceptUri);
+            return conceptMetadataMapper.toDto(existingConcept.get());
+        }
+        return null;
+    }
+
+    private void saveConceptToTDB2(Resource conceptResource, String ontologyGraphName) {
+        try {
+            String conceptIRI = jenaTDB2Repository.saveConcept(conceptResource, ontologyGraphName);
+            log.info("Concept saved to TDB2 graph {} successfully: {}", ontologyGraphName, conceptIRI);
+        } catch (Exception e) {
+            log.error("Failed to save concept to TDB2 graph {}", ontologyGraphName, e);
+            throw new OntologyException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage());
+        }
+    }
+
+    private ConceptMetadataModel saveMetadataWithRollback(ConceptCreateModel createModel, String userId,
+                                                          String conceptUri, String ontologyGraphName) {
+        try {
+            ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
+            log.info("Metadata saved successfully with ID: {}", savedEntity.getId());
+
+            ConceptMetadataModel result = conceptMetadataMapper.toDto(savedEntity);
+            log.info("Concept creation completed successfully: {}", conceptUri);
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to save concept metadata, rolling back TDB2 data", e);
+            rollbackTDB2Data(conceptUri, ontologyGraphName);
+            throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
+        }
+    }
+
+    private void rollbackTDB2Data(String conceptUri, String ontologyGraphName) {
+        try {
+            jenaTDB2Repository.deleteConceptFromGraph(conceptUri, ontologyGraphName);
+            log.info("Successfully rolled back TDB2 data from graph {} for failed metadata save", ontologyGraphName);
+        } catch (Exception rollbackException) {
+            log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
+                    "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
     }
 }
