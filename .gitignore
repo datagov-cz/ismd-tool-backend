@@ -46,3 +46,12 @@ data/
 *.tdb2/
 fuseki-base/
 *.md
+
+### Security - Certificates and Keys ###
+*.key
+*.crt
+*.pem
+*.p12
+*.jks
+*.pfx
+src/main/resources/certs/*.p12
