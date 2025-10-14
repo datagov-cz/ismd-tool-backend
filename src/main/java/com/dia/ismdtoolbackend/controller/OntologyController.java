@@ -1,8 +1,9 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
-import com.dia.ismdtoolbackend.entity.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyEditModel;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -90,7 +91,7 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(@RequestBody OntologyCreateModel ontologyCreateModel, @RequestParam String userId) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getName(), ontologyCreateModel.getDescription(), userId);
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getNameModel(), ontologyCreateModel.getDescriptionModel().getDescription(), userId);
 
         try {
             if (userId == null || userId.trim().isEmpty()) {
@@ -131,11 +132,40 @@ public class OntologyController {
         }
     }
 
+    @PatchMapping("/edit")
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(@RequestBody OntologyEditModel ontologyEditModel) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology edit requested, ontologyIRI: {}", ontologyEditModel.getOntologyIRI());
+
+        try {
+            OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyEditModel);
+            log.info("Ontology edit successful: {}", updatedOntology);
+
+            return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
+        } catch (org.apache.jena.ontology.OntologyException e) {
+            if (e.getMessage().contains("nebyl nalezen")) {
+                log.error("Ontology not found: {}", ontologyEditModel.getOntologyIRI());
+                return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("povinné")) {
+                log.error("Validation error: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("Data pro úpravu slovníku jsou prázdná")) {
+                log.error("Edit model validation failed: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            log.error("Error editing ontology: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error editing ontology: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při úpravě slovníku."));
+        }
+    }
+
     @GetMapping("/{ontologyId}/download")
-    public ResponseEntity<Resource> downloadFile(
-            @PathVariable Long ontologyId,
-            @RequestParam String format
-    ) {
+    public ResponseEntity<Resource> downloadFile(@PathVariable Long ontologyId, @RequestParam String format) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
@@ -148,11 +178,7 @@ public class OntologyController {
 
             ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
 
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .contentLength(resource.contentLength())
-                    .body(resource);
+            return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"").contentType(MediaType.parseMediaType(contentType)).contentLength(resource.contentLength()).body(resource);
 
         } catch (IllegalArgumentException e) {
             log.error("Invalid format: {}", format);

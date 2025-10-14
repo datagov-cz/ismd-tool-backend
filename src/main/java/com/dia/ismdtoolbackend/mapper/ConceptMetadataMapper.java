@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.mapper;
 
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.validation.ValidationReportDto;
@@ -16,17 +16,17 @@ import java.util.Collections;
 import java.util.List;
 
 @Mapper(componentModel = "spring")
-public interface OntologyMetadataMapper {
+public interface ConceptMetadataMapper {
 
     @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
     @Mapping(target = "validationReportId", source = "validationReport", qualifiedByName = "validationReportToValidationReportId")
     @Mapping(target = "commentsJson", source = "comments", qualifiedByName = "commentsToCommentsJson")
-    OntologyMetadataEntity toEntity(OntologyMetadataModel dto);
+    ConceptMetadataEntity toEntity(ConceptMetadataModel dto);
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "validationReport", source = "validationReportId", qualifiedByName = "validationReportIdToValidationReport")
     @Mapping(target = "comments", source = "commentsJson", qualifiedByName = "commentsJsonToComments")
-    OntologyMetadataModel toDto(OntologyMetadataEntity entity);
+    ConceptMetadataModel toDto(ConceptMetadataEntity entity);
 
     @Named("userToUserId")
     default String userToUserId(UserModel user) {

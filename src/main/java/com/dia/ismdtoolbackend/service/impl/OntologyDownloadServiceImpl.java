@@ -2,9 +2,9 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.exporter.json.JsonExporter;
-import com.dia.ismdtoolbackend.exporter.turtle.TurtleFilterUtil;
-import com.dia.ismdtoolbackend.exporter.turtle.TurtleFormatterUtil;
+import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
+import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
+import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
