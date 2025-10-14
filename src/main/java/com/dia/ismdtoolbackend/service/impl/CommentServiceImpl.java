@@ -55,6 +55,28 @@ public class CommentServiceImpl implements CommentService {
         throw new CommentException("Předmět komentáře nebyl nalezen, nebo není specifikován");
     }
 
+    @Override
+    @Transactional
+    public void deleteComment(Long commentId) {
+        log.info("Deleting comment with ID: {}", commentId);
+
+        CommentEntity commentEntity = commentRepository.findById(commentId)
+                .orElseThrow(() -> new CommentException("Komentář s ID " + commentId + " nebyl nalezen"));
+
+        Object subject = findCommentSubject(commentEntity);
+
+        if (subject instanceof OntologyMetadataEntity ontologyMetadata) {
+            removeCommentFromOntology(ontologyMetadata, commentId);
+        } else if (subject instanceof ConceptMetadataEntity conceptMetadata) {
+            removeCommentFromConcept(conceptMetadata, commentId);
+        } else {
+            log.warn("Comment {} has no associated subject, deleting from database only", commentId);
+        }
+
+        commentRepository.deleteById(commentId);
+        log.info("Successfully deleted comment {}", commentId);
+    }
+
     private void validateInput(CommentCreateModel commentCreateModel, String userId) {
         if (commentCreateModel == null) {
             throw new CommentException("Data pro vytvoření komentáře jsou prázdná");
@@ -144,6 +166,48 @@ public class CommentServiceImpl implements CommentService {
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize comments to JSON", e);
             throw new CommentException("Nepodařilo se uložit komentář: " + e.getMessage());
+        }
+    }
+
+    private Object findCommentSubject(CommentEntity commentEntity) {
+        if (commentEntity.getOntologyIRI() != null && !commentEntity.getOntologyIRI().isEmpty()) {
+            return ontologyMetadataRepository.findByGraphName(commentEntity.getOntologyIRI()).orElse(null);
+        }
+
+        if (commentEntity.getConceptIRI() != null && !commentEntity.getConceptIRI().isEmpty()) {
+            return conceptMetadataRepository.findByConceptIri(commentEntity.getConceptIRI()).orElse(null);
+        }
+
+        return null;
+    }
+
+    private void removeCommentFromOntology(OntologyMetadataEntity subject, Long commentId) {
+        List<CommentEntity> commentsList = getCommentsListFromJson(subject.getCommentsJson());
+
+        boolean removed = commentsList.removeIf(comment -> comment.getId().equals(commentId));
+
+        if (removed) {
+            String updatedCommentsJson = serializeCommentsToJson(commentsList);
+            subject.setCommentsJson(updatedCommentsJson);
+            ontologyMetadataRepository.save(subject);
+            log.info("Removed comment {} from ontology {}", commentId, subject.getGraphName());
+        } else {
+            log.warn("Comment {} not found in ontology {} JSON list", commentId, subject.getGraphName());
+        }
+    }
+
+    private void removeCommentFromConcept(ConceptMetadataEntity subject, Long commentId) {
+        List<CommentEntity> commentsList = getCommentsListFromJson(subject.getCommentsJson());
+
+        boolean removed = commentsList.removeIf(comment -> comment.getId().equals(commentId));
+
+        if (removed) {
+            String updatedCommentsJson = serializeCommentsToJson(commentsList);
+            subject.setCommentsJson(updatedCommentsJson);
+            conceptMetadataRepository.save(subject);
+            log.info("Removed comment {} from concept {}", commentId, subject.getConceptIri());
+        } else {
+            log.warn("Comment {} not found in concept {} JSON list", commentId, subject.getConceptIri());
         }
     }
 }

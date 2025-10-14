@@ -46,4 +46,28 @@ public class CommentController {
             return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
         }
     }
+
+    @DeleteMapping("/{commentId}/delete")
+    public ResponseEntity<ApiResponseDto<Void>> deleteComment(@PathVariable Long commentId) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Comment delete requested, commentId: {}", commentId);
+
+        try {
+            commentService.deleteComment(commentId);
+            log.info("Comment delete successful: {}", commentId);
+
+            return ResponseEntity.ok(ApiResponseDto.success("Komentář úspěšně smazán."));
+        } catch (com.dia.ismdtoolbackend.exception.CommentException e) {
+            if (e.getMessage().contains("nebyl nalezen")) {
+                log.error("Comment not found: {}", commentId);
+                return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
+            }
+            log.error("Error deleting comment: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error deleting comment: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při mazání komentáře."));
+        }
+    }
 }
