@@ -48,7 +48,7 @@ public class MtlsKeystoreValidator {
             KeyStore keyStore = KeyStore.getInstance(keystoreType);
 
             if (!keystorePath.exists()) {
-                log.error("❌ Keystore file not found: {}", keystorePath.getDescription());
+                log.error("Keystore file not found: {}", keystorePath.getDescription());
                 return;
             }
 
@@ -58,7 +58,7 @@ public class MtlsKeystoreValidator {
 
             // Validate alias exists
             if (!keyStore.containsAlias(keystoreAlias)) {
-                log.error("❌ Keystore does not contain alias: {}", keystoreAlias);
+                log.error("Keystore does not contain alias: {}", keystoreAlias);
                 log.info("Available aliases: {}", listAliases(keyStore));
                 return;
             }
@@ -66,34 +66,34 @@ public class MtlsKeystoreValidator {
             // Get certificate
             X509Certificate certificate = (X509Certificate) keyStore.getCertificate(keystoreAlias);
             if (certificate == null) {
-                log.error("❌ No certificate found for alias: {}", keystoreAlias);
+                log.error("No certificate found for alias: {}", keystoreAlias);
                 return;
             }
 
             // Validate private key exists
             if (!keyStore.isKeyEntry(keystoreAlias)) {
-                log.error("❌ No private key found for alias: {}", keystoreAlias);
+                log.error("No private key found for alias: {}", keystoreAlias);
                 return;
             }
 
             // Log certificate details
-            log.info("✅ Keystore loaded successfully");
-            log.info("📜 Certificate Details:");
-            log.info("   Subject: {}", certificate.getSubjectX500Principal().getName());
-            log.info("   Issuer: {}", certificate.getIssuerX500Principal().getName());
-            log.info("   Valid From: {}", certificate.getNotBefore());
-            log.info("   Valid Until: {}", certificate.getNotAfter());
-            log.info("   Serial Number: {}", certificate.getSerialNumber());
+            log.info("Keystore loaded successfully");
+            log.info("Certificate Details:");
+            log.info("*Subject: {}", certificate.getSubjectX500Principal().getName());
+            log.info("*Issuer: {}", certificate.getIssuerX500Principal().getName());
+            log.info("*Valid From: {}", certificate.getNotBefore());
+            log.info("*Valid Until: {}", certificate.getNotAfter());
+            log.info("*Serial Number: {}", certificate.getSerialNumber());
 
             // Validate certificate expiry
             certificate.checkValidity();
-            log.info("✅ Certificate is valid (not expired)");
+            log.info("Certificate is valid (not expired)");
 
             // Validate SSL Context can be created
             validateSslContext(keyStore);
 
         } catch (Exception e) {
-            log.error("❌ Failed to validate mTLS keystore: {}", e.getMessage(), e);
+            log.error("Failed to validate mTLS keystore: {}", e.getMessage(), e);
         }
     }
 
@@ -109,12 +109,12 @@ public class MtlsKeystoreValidator {
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init((KeyStore) null); // Use default trust store
 
-            SSLContext sslContext = SSLContext.getInstance("TLS");
+            SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
 
-            log.info("✅ SSL Context created successfully - mTLS configuration is valid");
+            log.info("SSL Context created successfully - mTLS configuration is valid");
         } catch (Exception e) {
-            log.error("❌ Failed to create SSL Context: {}", e.getMessage(), e);
+            log.error("Failed to create SSL Context: {}", e.getMessage(), e);
         }
     }
 
