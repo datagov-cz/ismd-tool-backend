@@ -1,7 +1,10 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.entity.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
 import org.apache.jena.ontology.OntologyException;
 
 public interface OntologyService {
     void deleteOntology(Long ontologyId) throws OntologyException;
+    OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) throws OntologyException;
 }
