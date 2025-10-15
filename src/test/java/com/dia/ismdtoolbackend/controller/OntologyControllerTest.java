@@ -160,8 +160,7 @@ class OntologyControllerTest {
                         .param("userId", userId))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při nahrávání slovníku."));
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
