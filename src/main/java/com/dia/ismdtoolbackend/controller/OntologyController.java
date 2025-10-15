@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
@@ -35,7 +36,11 @@ public class OntologyController {
     private final OntologyDownloadService ontologyDownloadService;
 
     @PostMapping("/upload")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(@RequestParam MultipartFile file, @RequestParam(name = "providedName", required = false) String providedName, @RequestParam String userId) {
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
+            @RequestParam MultipartFile file,
+            @RequestParam(name = "providedName", required = false) String providedName,
+            @RequestParam String userId
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology upload requested, fileName: {}, providedName: {}, userId: {}", file.getOriginalFilename(), providedName, userId);
@@ -88,7 +93,10 @@ public class OntologyController {
     }
 
     @PostMapping("/create")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(@RequestBody OntologyCreateModel ontologyCreateModel, @RequestParam String userId) {
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
+            @RequestBody OntologyCreateModel ontologyCreateModel,
+            @RequestParam String userId
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", ontologyCreateModel.getNamespace(), ontologyCreateModel.getNameModel(), ontologyCreateModel.getDescriptionModel().getDescription(), userId);
@@ -165,7 +173,10 @@ public class OntologyController {
     }
 
     @GetMapping("/{ontologyId}/download")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long ontologyId, @RequestParam String format) {
+    public ResponseEntity<Resource> downloadFile(
+            @PathVariable Long ontologyId,
+            @RequestParam String format
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
@@ -189,6 +200,26 @@ public class OntologyController {
                 return ResponseEntity.notFound().build();
             }
             log.error("Error downloading ontology: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/{ontologyId}/detail")
+    public ResponseEntity<OntologyDetailModel> getOntologyDetail(@PathVariable Long ontologyId) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology detail requested, ontologyId: {}", ontologyId);
+
+        try {
+            OntologyDetailModel detailModel = ontologyService.getOntologyDetailModel(ontologyId);
+
+            return ResponseEntity.ok().body(detailModel);
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("not found")) {
+                log.error("Ontology not found: {}", ontologyId);
+                return ResponseEntity.notFound().build();
+            }
+            log.error("Error creating ontology detail model: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }
