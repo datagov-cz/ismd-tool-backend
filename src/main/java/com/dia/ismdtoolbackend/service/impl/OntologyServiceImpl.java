@@ -1,11 +1,14 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
@@ -13,6 +16,7 @@ import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.utility.exporter.json.*;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
+import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
@@ -65,10 +69,12 @@ import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_ZISKANI;
 public class OntologyServiceImpl implements OntologyService {
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
+    private final OntologyEditor ontologyEditor;
 
     @Override
     @Transactional
@@ -284,6 +290,139 @@ public class OntologyServiceImpl implements OntologyService {
         metadataEntity.setIsPublished(false);
 
         return ontologyMetadataRepository.save(metadataEntity);
+    }
+
+    @Override
+    @Transactional
+    public OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel) throws OntologyException {
+        validateOntologyEditModel(ontologyEditModel);
+
+        String oldOntologyIRI = ontologyEditModel.getOntologyIRI();
+        OntologyMetadataEntity metadataEntity = fetchOntologyMetadata(oldOntologyIRI);
+        Model model = fetchOntologyModel(oldOntologyIRI);
+
+        String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+        OntologyEditor.EditResult editResult = performOntologyEdit(ontologyEditModel, model, oldNamespace);
+
+        log.info("Ontology edit completed: IRI changed={}", editResult.iriChanged);
+
+        if (editResult.iriChanged) {
+            metadataEntity = handleOntologyIRIChange(oldOntologyIRI, editResult.newOntologyIRI, model, metadataEntity);
+        } else {
+            saveOntologyModel(oldOntologyIRI, model);
+        }
+
+        return ontologyMetadataMapper.toDto(metadataEntity);
+    }
+
+    private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) throws OntologyException {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
+        if (ontologyMetadataOpt.isEmpty()) {
+            log.error("Ontology with IRI {} not found", ontologyIRI);
+            throw new OntologyException("Slovník s IRI " + ontologyIRI + " nebyl nalezen.");
+        }
+        return ontologyMetadataOpt.get();
+    }
+
+    private Model fetchOntologyModel(String ontologyIRI) throws OntologyException {
+        Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
+        if (model.isEmpty()) {
+            log.error("Ontology model is empty for IRI: {}", ontologyIRI);
+            throw new OntologyException("Model slovníku je prázdný nebo nebyl nalezen.");
+        }
+        return model;
+    }
+
+    private OntologyEditor.EditResult performOntologyEdit(OntologyEditModel editModel, Model model, String oldNamespace) {
+        return ontologyEditor.editOntology(editModel, model, oldNamespace);
+    }
+
+    private OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
+                                                           Model model, OntologyMetadataEntity metadataEntity)
+            throws OntologyException {
+        try {
+            String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+            String newNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(newOntologyIRI);
+
+            saveOntologyModel(newOntologyIRI, model);
+            log.info("Saved ontology to new graph: {}", newOntologyIRI);
+
+            updateConceptMetadataIRIs(oldOntologyIRI, newOntologyIRI, oldNamespace, newNamespace);
+
+            deleteOntologyGraph(oldOntologyIRI);
+            log.info("Deleted old graph: {}", oldOntologyIRI);
+
+            return updateOntologyMetadata(metadataEntity, newOntologyIRI);
+        } catch (Exception e) {
+            log.error("Failed to update ontology with new IRI: {}", e.getMessage());
+            throw new OntologyException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
+        }
+    }
+
+    private void updateConceptMetadataIRIs(String oldGraphName, String newGraphName,
+                                           String oldNamespace, String newNamespace) {
+        List<ConceptMetadataEntity> concepts = conceptMetadataRepository.findByGraphName(oldGraphName);
+
+        if (concepts.isEmpty()) {
+            log.info("No concepts found for ontology {}, skipping concept metadata updates", oldGraphName);
+            return;
+        }
+
+        log.info("Updating {} concept metadata entries for ontology namespace change", concepts.size());
+
+        // Create URI generator with the new ontology namespace
+        URIGenerator uriGenerator = new URIGenerator();
+        uriGenerator.setEffectiveNamespace(newGraphName);
+
+        int updatedCount = 0;
+        for (ConceptMetadataEntity concept : concepts) {
+            String oldConceptIRI = concept.getConceptIri();
+            String conceptName = concept.getConceptName();
+
+            if (oldConceptIRI != null && conceptName != null && oldConceptIRI.startsWith(oldNamespace)) {
+                // Use URIGenerator to properly regenerate the concept IRI with the new namespace
+                String newConceptIRI = uriGenerator.generateConceptURI(conceptName, null);
+
+                concept.setConceptIri(newConceptIRI);
+                concept.setGraphName(newGraphName);
+
+                log.debug("Updated concept metadata: {} -> {}", oldConceptIRI, newConceptIRI);
+                updatedCount++;
+            }
+        }
+
+        conceptMetadataRepository.saveAll(concepts);
+        log.info("Successfully updated {} concept metadata entries", updatedCount);
+    }
+
+    private void saveOntologyModel(String ontologyIRI, Model model) throws OntologyException {
+        try {
+            jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
+            log.info("Saved/updated ontology model for graph: {}", ontologyIRI);
+        } catch (Exception e) {
+            log.error("Failed to save ontology model: {}", e.getMessage());
+            throw new OntologyException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
+        }
+    }
+
+    private void deleteOntologyGraph(String ontologyIRI) {
+        jenaTDB2Repository.deleteGraph(ontologyIRI);
+    }
+
+    private OntologyMetadataEntity updateOntologyMetadata(OntologyMetadataEntity metadataEntity, String newGraphName) {
+        metadataEntity.setGraphName(newGraphName);
+        OntologyMetadataEntity updatedEntity = ontologyMetadataRepository.save(metadataEntity);
+        log.info("Updated metadata with new graph name: {}", newGraphName);
+        return updatedEntity;
+    }
+
+    private void validateOntologyEditModel(OntologyEditModel model) throws OntologyException {
+        if (model == null) {
+            throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
+        }
+        if (model.getOntologyIRI() == null || model.getOntologyIRI().trim().isEmpty()) {
+            throw new OntologyException("IRI slovníku je povinné");
+        }
     }
 
     private void cleanupTDB2Graph(String graphName) {
