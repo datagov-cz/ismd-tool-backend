@@ -93,14 +93,14 @@ public class OntologyDetailModel {
         @JsonProperty("související-nelegislativní-zdroj")
         private List<String> relatedNonLegalSources;
 
-        @JsonProperty("způsob-sdílení")
+        @JsonProperty("způsob-sdílení-údajů")
         private List<String> sharingMethods;
 
-        @JsonProperty("způsob-získání")
-        private List<String> acquisitionMethods;
+        @JsonProperty("způsob-získání-údajů")
+        private String acquisitionMethod;
 
-        @JsonProperty("typ-obsahu")
-        private List<String> contentTypes;
+        @JsonProperty("typ-obsahu-údajů")
+        private String contentType;
 
         @JsonProperty("je-ppdf")
         private Boolean isPpdf;
