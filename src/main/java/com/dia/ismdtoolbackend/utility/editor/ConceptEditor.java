@@ -103,6 +103,13 @@ public class ConceptEditor {
         updateDataTypeRange(conceptResource, editModel.getDataType(), existingConcept, model, toRemove, toAdd);
         updateSuperProperty(conceptResource, editModel.getSuperProperty(), existingConcept, model, toRemove, toAdd);
         updateBooleanProperty(conceptResource, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "agendaCode", editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "agendaSystemCode", editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "isPublic", editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "privacyProvision", editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
 
     private void editRelationshipConcept(RelationshipConceptEditModel editModel, Resource existingConcept,

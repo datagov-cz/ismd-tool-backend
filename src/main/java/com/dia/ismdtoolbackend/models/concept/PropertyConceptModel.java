@@ -15,6 +15,13 @@ public class PropertyConceptModel extends ConceptCreateModel {
     private String domain;
     private String superProperty;
     private Boolean isInPPDF;
+    private String agendaCode;
+    private String agendaSystemCode;
+    private String isPublic;
+    private String privacyProvision;
+    private String sharingMethod;
+    private String acquisitionMethod;
+    private String contentType;
 
     @Override
     public ConceptType getConceptTypeEnum() {
@@ -34,6 +41,50 @@ public class PropertyConceptModel extends ConceptCreateModel {
 
         if (dataType != null && !dataType.trim().isEmpty()) {
             DataTypeConverter.isValidXSDType(dataType.trim());
+        }
+
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublicTrue(isPublic)) {
+            throw new OntologyException(
+                    "Vlastnost nemůže být současně veřejná a mít ustanovení o neveřejnosti"
+            );
+        }
+
+        if (sharingMethod != null && !sharingMethod.trim().isEmpty()) {
+            validateGovernanceValue(sharingMethod, "způsob sdílení");
+        }
+        if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
+            validateGovernanceValue(acquisitionMethod, "způsob získání");
+        }
+        if (contentType != null && !contentType.trim().isEmpty()) {
+            validateGovernanceValue(contentType, "typ obsahu");
+        }
+    }
+
+    private boolean isPublicTrue(String value) {
+        return value.toLowerCase().contains("ano") ||
+                value.toLowerCase().contains("true") ||
+                value.equalsIgnoreCase("yes");
+    }
+
+    private void validateGovernanceValue(String value, String fieldName) {
+        String[] allowedValues = {
+                "veřejně přístupné", "poskytované na žádost", "nesdílené",
+                "základních registrů", "jiných agend", "vlastní",
+                "provozní", "identifikační", "evidenční", "statistické"
+        };
+
+        boolean valid = false;
+        for (String allowed : allowedValues) {
+            if (allowed.equalsIgnoreCase(value)) {
+                valid = true;
+                break;
+            }
+        }
+
+        if (!valid) {
+            throw new OntologyException(
+                    "Neplatná hodnota pro " + fieldName + ": " + value
+            );
         }
     }
 }
