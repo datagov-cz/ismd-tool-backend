@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -128,6 +129,38 @@ public class OntologyController {
         } catch (Exception e) {
             log.error("Unexpected error creating ontology: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při vytváření slovníku."));
+        }
+    }
+
+    @PatchMapping("/edit")
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(@RequestBody OntologyEditModel ontologyEditModel) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology edit requested, ontologyIRI: {}", ontologyEditModel.getOntologyIRI());
+
+        try {
+            OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyEditModel);
+            log.info("Ontology edit successful: {}", updatedOntology);
+
+            return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
+        } catch (org.apache.jena.ontology.OntologyException e) {
+            if (e.getMessage().contains("nebyl nalezen")) {
+                log.error("Ontology not found: {}", ontologyEditModel.getOntologyIRI());
+                return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("povinné")) {
+                log.error("Validation error: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            if (e.getMessage().contains("Data pro úpravu slovníku jsou prázdná")) {
+                log.error("Edit model validation failed: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            }
+            log.error("Error editing ontology: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error editing ontology: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při úpravě slovníku."));
         }
     }
 
