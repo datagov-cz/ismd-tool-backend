@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
-import com.dia.ismdtoolbackend.exporter.json.JsonExporter;
+import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 

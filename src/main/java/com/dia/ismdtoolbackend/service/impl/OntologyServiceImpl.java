@@ -2,9 +2,10 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.entity.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -19,7 +20,6 @@ import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static com.dia.constants.ArchiConstants.*;
+import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.CAS_NS;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DATUM_A_CAS;
@@ -43,6 +44,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
+    private final JenaTDB2Repository jenaTDB2Repository;
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
 
@@ -61,16 +63,14 @@ public class OntologyServiceImpl implements OntologyService {
                 validationReportRepository.findByOntologyMetadataId(ontologyId);
         validationReport.ifPresent(validationReportRepository::delete);
 
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            Model model = conn.fetch(graphName);
+        Model model = jenaTDB2Repository.fetchGraph(graphName);
 
-            if (model.isEmpty()) {
-                log.error("Ontology model is empty.");
-                throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
-            }
-
-            conn.delete(graphName);
+        if (model.isEmpty()) {
+            log.error("Ontology model is empty.");
+            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        jenaTDB2Repository.deleteGraph(graphName);
         ontologyMetadataRepository.deleteById(ontologyId);
     }
 
@@ -80,10 +80,10 @@ public class OntologyServiceImpl implements OntologyService {
         validateOntologyCreateModel(ontologyCreateModel);
 
         URIGenerator uriGenerator = new URIGenerator();
-        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(ontologyCreateModel.getName(), ontologyCreateModel.getNamespace());
+        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(ontologyCreateModel.getNameModel().getName(), ontologyCreateModel.getNamespace());
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
-            log.error("ontologyIRI {} not valid", ontologyCreateModel.getName());
+            log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
             throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
@@ -120,18 +120,6 @@ public class OntologyServiceImpl implements OntologyService {
         if (model == null) {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
         }
-
-        if (model.getName() == null || model.getName().trim().isEmpty()) {
-            throw new OntologyException("Název slovníku je povinný");
-        }
-
-        if (model.getDescription() == null || model.getDescription().trim().isEmpty()) {
-            throw new OntologyException("Popis slovníku je povinný");
-        }
-
-        if (!model.getName().matches("^[a-zA-Z0-9\\-_]+$")) {
-            throw new OntologyException("Název může obsahovat pouze písmena, čísla, pomlčky a podtržítka");
-        }
     }
 
     private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) throws OntologyException {
@@ -142,14 +130,20 @@ public class OntologyServiceImpl implements OntologyService {
         Resource ontologyResource = model.getResource(ontologyIRI);
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getName(), "cs");
+        String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
+            ? ontologyCreateModel.getNameModel().getLanguageTag()
+            : DEFAULT_LANG;
+        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), nameLanguageTag);
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
         ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
 
-        if (ontologyCreateModel.getDescription() != null && !ontologyCreateModel.getDescription().trim().isEmpty()) {
+        if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescription(), "cs", model);
+            String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
+                ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
+                : DEFAULT_LANG;
+            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), descLanguageTag, model);
         }
 
         String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
@@ -163,13 +157,7 @@ public class OntologyServiceImpl implements OntologyService {
         Property okamzikVytvoreniProperty = model.createProperty(SLOVNIKY_NS + OKAMZIK_VYTVORENI);
         ontologyResource.addProperty(okamzikVytvoreniProperty, temporalMoment);
 
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            conn.load(ontologyIRI, model);
-            log.info("Successfully saved ontology model to TDB2 with graph name: {}", ontologyIRI);
-        } catch (Exception e) {
-            log.error("Failed to save ontology model to TDB2: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit slovník do databáze: " + e.getMessage());
-        }
+        jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
     private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
@@ -182,12 +170,6 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private void cleanupTDB2Graph(String graphName) {
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
-            conn.delete(graphName);
-            log.info("Successfully cleaned up TDB2 graph: {}", graphName);
-        } catch (Exception e) {
-            log.error("Failed to cleanup TDB2 graph: {}", graphName, e);
-            throw new OntologyException("Failed to cleanup TDB2 graph: " + e.getMessage());
-        }
+        jenaTDB2Repository.deleteGraph(graphName);
     }
 }

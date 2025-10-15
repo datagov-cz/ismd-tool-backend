@@ -19,8 +19,10 @@ spring:
     console:
       enabled: false
 
-# Disable Jena TDB2 for tests
+# Jena configuration for tests
 jena:
+  fuseki:
+    url: http://localhost:3030/test-dataset
   tdb2:
     location: ./target/test-data/tdb2
     dataset-name: test-dataset

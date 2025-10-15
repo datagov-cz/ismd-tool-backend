@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.analyzer;
+package com.dia.ismdtoolbackend.utility.analyzer;
 
 import java.util.Set;
 
