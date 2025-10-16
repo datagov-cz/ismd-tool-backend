@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.entity.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.entity.models.UserModel;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import org.apache.jena.riot.Lang;
