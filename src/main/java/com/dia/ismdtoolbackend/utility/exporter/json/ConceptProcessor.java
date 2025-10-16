@@ -474,8 +474,8 @@ public class ConceptProcessor {
     private void addGovernanceProperties(Resource concept, Map<String, Object> conceptObj,
                                          OntModel ontModel, String namespace) {
         addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_SDILENI, ZPUSOB_SDILENI);
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI);
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU);
+        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI);
+        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU);
     }
 
     private void addGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
@@ -505,6 +505,24 @@ public class ConceptProcessor {
             return defaultProperty;
         }
         return null;
+    }
+
+    private void addSingleGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
+                                             OntModel ontModel, String namespace,
+                                             String propertyName, String jsonFieldName) {
+        Property property = findGovernanceProperty(concept, ontModel, namespace, propertyName);
+
+        if (property == null) {
+            return;
+        }
+
+        Statement stmt = concept.getProperty(property);
+        if (stmt != null) {
+            String value = extractStatementValue(stmt);
+            if (value != null && !value.trim().isEmpty()) {
+                conceptObj.put(jsonFieldName, value.trim());
+            }
+        }
     }
 
     private List<String> extractGovernanceValues(StmtIterator propIter) {

@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
@@ -12,6 +13,9 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
+import com.dia.ismdtoolbackend.utility.exporter.json.*;
+import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
+import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
@@ -20,8 +24,10 @@ import com.dia.models.OFNBaseModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
@@ -30,22 +36,37 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import static com.dia.constants.ArchiConstants.*;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.AGENDA;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.AIS;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ALTERNATIVNI_NAZEV;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.CAS_NS;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DATUM_A_CAS;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINICE;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINICNI_OBOR;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINUJICI_NELEGISLATIVNI_ZDROJ;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.EKVIVALENTNI_POJEM;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.IDENTIFIKATOR;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.JE_PPDF;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.NADRAZENA_TRIDA;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.NAZEV;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.OBOR_HODNOT;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.OKAMZIK_VYTVORENI;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.POPIS;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.SOUVISEJICI_NELEGISLATIVNI_ZDROJ;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.TYP_OBSAHU;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.USTANOVENI_NEVEREJNOST;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_ZISKANI;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OntologyServiceImpl implements OntologyService {
-
-    private final String fusekiEndpoint;
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
@@ -121,6 +142,101 @@ public class OntologyServiceImpl implements OntologyService {
             }
             throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
         }
+    }
+
+    @Override
+    public OntologyDetailModel getOntologyDetailModel(Long ontologyId) throws OntologyException {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
+        if (ontologyMetadataOpt.isEmpty()) {
+            log.error("ontologyId {} not found", ontologyId);
+            throw new OntologyException("Metadata slovníku s id " + ontologyId + " nebyla nalezena.");
+        }
+
+        String graphName = ontologyMetadataOpt.get().getGraphName();
+
+        Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
+
+        if (rawModel.isEmpty()) {
+            log.error("Ontology model is empty for graph: {}", graphName);
+            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+        }
+
+        Model processedModel = applyOFNTransformations(rawModel);
+
+        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+
+        ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
+        ConceptProcessor conceptProcessor = new ConceptProcessor();
+
+        ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
+        ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
+
+        return mapToOntologyDetailModel(structure, conceptData);
+    }
+
+    private Model applyOFNTransformations(Model rawModel) {
+        log.debug("Applying OFN transformations");
+        Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
+        Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
+        log.debug("OFN transformation complete: {} -> {} -> {} statements",
+                rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
+        return ofnFormattedModel;
+    }
+
+    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
+        List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
+                .map(this::mapToConceptDetailModel)
+                .toList();
+
+        return OntologyDetailModel.builder()
+                .context(CONTEXT_JSONLD)
+                .iri(structure.getOntologyIRI())
+                .types(structure.getVocabularyTypes())
+                .name(createMultilingualMap(structure.getModelName()))
+                .description(createMultilingualMap(structure.getModelDescription()))
+                .creationDate(structure.getCreationDate())
+                .modificationDate(structure.getModificationDate())
+                .concepts(concepts)
+                .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap) {
+        return OntologyDetailModel.ConceptDetailModel.builder()
+                .iri((String) conceptMap.get("iri"))
+                .types((List<String>) conceptMap.get("typ"))
+                .name((Map<String, Object>) conceptMap.get(NAZEV))
+                .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
+                .definition((Map<String, Object>) conceptMap.get(DEFINICE))
+                .description((Map<String, Object>) conceptMap.get(POPIS))
+                .identifiers((List<String>) conceptMap.get(IDENTIFIKATOR))
+                .exactMatches((List<Map<String, Object>>) conceptMap.get(EKVIVALENTNI_POJEM))
+                .domain((String) conceptMap.get(DEFINICNI_OBOR))
+                .range((String) conceptMap.get(OBOR_HODNOT))
+                .broaderClasses((List<String>) conceptMap.get(NADRAZENA_TRIDA))
+                .broaderRelations((List<String>) conceptMap.get(NADRAZENY_VZTAH))
+                .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
+                .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
+                .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
+                .definingNonLegalSources((List<String>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
+                .relatedNonLegalSources((List<String>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
+                .sharingMethods((List<String>) conceptMap.get(ZPUSOB_SDILENI))
+                .acquisitionMethod((String) conceptMap.get(ZPUSOB_ZISKANI))
+                .contentType((String) conceptMap.get(TYP_OBSAHU))
+                .isPpdf((Boolean) conceptMap.get(JE_PPDF))
+                .ais((String) conceptMap.get(AIS))
+                .agenda((String) conceptMap.get(AGENDA))
+                .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
+                .build();
+    }
+
+    private Map<String, String> createMultilingualMap(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("cs", value);
+        return map;
     }
 
     private void validateOntologyCreateModel(OntologyCreateModel model) throws OntologyException {
