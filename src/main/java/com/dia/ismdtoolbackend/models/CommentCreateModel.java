@@ -2,15 +2,11 @@ package com.dia.ismdtoolbackend.models;
 
 import lombok.Data;
 import lombok.Getter;
-import lombok.Setter;
 
-@Data
 @Getter
-@Setter
-public class CommentModel {
-    private Long id;
-    private String userId;
-    private String comment;
+@Data
+public class CommentCreateModel {
     private String ontologyIRI;
     private String conceptIRI;
+    private String comment;
 }
