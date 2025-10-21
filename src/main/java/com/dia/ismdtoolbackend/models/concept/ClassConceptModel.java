@@ -14,6 +14,7 @@ public class ClassConceptModel extends ConceptCreateModel {
     private String contentType;
     private String acquisitionMethod;
     private String sharingMethod;
+    private Boolean isInPPDF;
     private String isPublic;
     private String privacyProvision;
     private String broaderConcept;
