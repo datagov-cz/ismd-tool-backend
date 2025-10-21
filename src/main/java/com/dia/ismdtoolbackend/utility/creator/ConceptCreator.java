@@ -161,6 +161,8 @@ public class ConceptCreator {
             addClassSpecificProperties(properties, classModel);
         } else if (createModel instanceof PropertyConceptModel propModel) {
             addPropertySpecificProperties(properties, propModel);
+        } else if (createModel instanceof RelationshipConceptModel relModel) {
+            addRelationshipSpecificProperties(properties, relModel);
         }
     }
 
@@ -182,19 +184,33 @@ public class ConceptCreator {
     }
 
     private void addPropertySpecificProperties(Set<String> properties, PropertyConceptModel propModel) {
-        if (propModel.getIsInPPDF() != null) {
+        addCommonGovernanceProperties(properties, propModel.getIsInPPDF(), propModel.getAgendaCode(),
+                propModel.getAgendaSystemCode(), propModel.getIsPublic(), propModel.getPrivacyProvision(),
+                propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType());
+    }
+
+    private void addRelationshipSpecificProperties(Set<String> properties, RelationshipConceptModel relModel) {
+        addCommonGovernanceProperties(properties, relModel.getIsInPPDF(), relModel.getAgendaCode(),
+                relModel.getAgendaSystemCode(), relModel.getIsPublic(), relModel.getPrivacyProvision(),
+                relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType());
+    }
+
+    private void addCommonGovernanceProperties(Set<String> properties, Boolean isInPPDF, String agendaCode,
+                                                 String agendaSystemCode, String isPublic, String privacyProvision,
+                                                 String sharingMethod, String acquisitionMethod, String contentType) {
+        if (isInPPDF != null) {
             properties.add(JE_PPDF);
         }
-        if (propModel.getAgendaCode() != null && !propModel.getAgendaCode().trim().isEmpty()) {
+        if (agendaCode != null && !agendaCode.trim().isEmpty()) {
             properties.add(AGENDA);
         }
-        if (propModel.getAgendaSystemCode() != null && !propModel.getAgendaSystemCode().trim().isEmpty()) {
+        if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             properties.add(AIS);
         }
-        if (hasPrivateDataProperty(propModel)) {
+        if (hasPrivateDataValue(isPublic, privacyProvision)) {
             properties.add(USTANOVENI_NEVEREJNOST);
         }
-        if (hasGovernancePropertiesProperty(propModel)) {
+        if (hasGovernancePropertiesValues(sharingMethod, acquisitionMethod, contentType)) {
             properties.add(ZPUSOB_SDILENI);
             properties.add(ZPUSOB_ZISKANI);
             properties.add(TYP_OBSAHU);
@@ -377,37 +393,9 @@ public class ConceptCreator {
     }
 
     private void addPropertyGovernanceMetadata(Resource propertyResource, PropertyConceptModel propModel) {
-        if (propModel.getAgendaCode() != null && !propModel.getAgendaCode().trim().isEmpty()) {
-            addAgenda(propertyResource, propModel.getAgendaCode());
-        }
-        if (propModel.getAgendaSystemCode() != null && !propModel.getAgendaSystemCode().trim().isEmpty()) {
-            addAIS(propertyResource, propModel.getAgendaSystemCode());
-        }
-        if (propModel.getSharingMethod() != null && !propModel.getSharingMethod().trim().isEmpty()) {
-            addGovernanceProperty(propertyResource, propModel.getSharingMethod(), ZPUSOB_SDILENI);
-        }
-        if (propModel.getAcquisitionMethod() != null && !propModel.getAcquisitionMethod().trim().isEmpty()) {
-            addGovernanceProperty(propertyResource, propModel.getAcquisitionMethod(), ZPUSOB_ZISKANI);
-        }
-        if (propModel.getContentType() != null && !propModel.getContentType().trim().isEmpty()) {
-            addGovernanceProperty(propertyResource, propModel.getContentType(), TYP_OBSAHU);
-        }
-
-        addPropertyDataClassification(propertyResource, propModel);
-    }
-
-    private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
-        String privacyProvision = propModel.getPrivacyProvision();
-
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
-            String eliPart = UtilityMethods.extractEliPart(privacyProvision);
-            if (eliPart != null) {
-                String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
-                Property provisionProperty = ontModel.createProperty(
-                        uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
-                propertyResource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
-            }
-        }
+        addSharedGovernanceMetadata(propertyResource, propModel.getAgendaCode(), propModel.getAgendaSystemCode(),
+                propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType(),
+                propModel.getPrivacyProvision());
     }
 
     private void addRelationshipSpecificMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -421,6 +409,54 @@ public class ConceptCreator {
 
         if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().trim().isEmpty()) {
             addSuperProperty(relationshipResource, relModel.getSuperRelation());
+        }
+
+        if (relModel.getIsInPPDF() != null) {
+            Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
+            DataTypeConverter.addTypedProperty(relationshipResource, ppdfProperty,
+                    relModel.getIsInPPDF().toString(), null, ontModel);
+        }
+
+        addRelationshipGovernanceMetadata(relationshipResource, relModel);
+    }
+
+    private void addRelationshipGovernanceMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
+        addSharedGovernanceMetadata(relationshipResource, relModel.getAgendaCode(), relModel.getAgendaSystemCode(),
+                relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType(),
+                relModel.getPrivacyProvision());
+    }
+
+    private void addSharedGovernanceMetadata(Resource resource, String agendaCode, String agendaSystemCode,
+                                              String sharingMethod, String acquisitionMethod, String contentType,
+                                              String privacyProvision) {
+        if (agendaCode != null && !agendaCode.trim().isEmpty()) {
+            addAgenda(resource, agendaCode);
+        }
+        if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
+            addAIS(resource, agendaSystemCode);
+        }
+        if (sharingMethod != null && !sharingMethod.trim().isEmpty()) {
+            addGovernanceProperty(resource, sharingMethod, ZPUSOB_SDILENI);
+        }
+        if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
+            addGovernanceProperty(resource, acquisitionMethod, ZPUSOB_ZISKANI);
+        }
+        if (contentType != null && !contentType.trim().isEmpty()) {
+            addGovernanceProperty(resource, contentType, TYP_OBSAHU);
+        }
+
+        addPrivacyProvisionMetadata(resource, privacyProvision);
+    }
+
+    private void addPrivacyProvisionMetadata(Resource resource, String privacyProvision) {
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
+            String eliPart = UtilityMethods.extractEliPart(privacyProvision);
+            if (eliPart != null) {
+                String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                Property provisionProperty = ontModel.createProperty(
+                        uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+                resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+            }
         }
     }
 
@@ -685,16 +721,32 @@ public class ConceptCreator {
     }
 
     private boolean hasPrivateDataProperty(PropertyConceptModel model) {
-        return (model.getIsPublic() != null && (
-                model.getIsPublic().toLowerCase().contains("ne") ||
-                        model.getIsPublic().toLowerCase().contains("false") ||
-                        model.getIsPublic().equalsIgnoreCase("no")
-        )) || (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty());
+        return hasPrivateDataValue(model.getIsPublic(), model.getPrivacyProvision());
     }
 
     private boolean hasGovernancePropertiesProperty(PropertyConceptModel model) {
-        return (model.getSharingMethod() != null && !model.getSharingMethod().trim().isEmpty()) ||
-                (model.getAcquisitionMethod() != null && !model.getAcquisitionMethod().trim().isEmpty()) ||
-                (model.getContentType() != null && !model.getContentType().trim().isEmpty());
+        return hasGovernancePropertiesValues(model.getSharingMethod(), model.getAcquisitionMethod(), model.getContentType());
+    }
+
+    private boolean hasPrivateDataRelationship(RelationshipConceptModel model) {
+        return hasPrivateDataValue(model.getIsPublic(), model.getPrivacyProvision());
+    }
+
+    private boolean hasGovernancePropertiesRelationship(RelationshipConceptModel model) {
+        return hasGovernancePropertiesValues(model.getSharingMethod(), model.getAcquisitionMethod(), model.getContentType());
+    }
+
+    private boolean hasPrivateDataValue(String isPublic, String privacyProvision) {
+        return (isPublic != null && (
+                isPublic.toLowerCase().contains("ne") ||
+                        isPublic.toLowerCase().contains("false") ||
+                        isPublic.equalsIgnoreCase("no")
+        )) || (privacyProvision != null && !privacyProvision.trim().isEmpty());
+    }
+
+    private boolean hasGovernancePropertiesValues(String sharingMethod, String acquisitionMethod, String contentType) {
+        return (sharingMethod != null && !sharingMethod.trim().isEmpty()) ||
+                (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) ||
+                (contentType != null && !contentType.trim().isEmpty());
     }
 }

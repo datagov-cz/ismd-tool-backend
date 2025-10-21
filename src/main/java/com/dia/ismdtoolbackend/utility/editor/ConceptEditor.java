@@ -122,6 +122,14 @@ public class ConceptEditor {
         updateDomainRange(conceptResource, RDFS.domain, editModel.getDomain(), existingConcept, model, toRemove, toAdd);
         updateDomainRange(conceptResource, RDFS.range, editModel.getRange(), existingConcept, model, toRemove, toAdd);
         updateSuperProperty(conceptResource, editModel.getSuperRelation(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "agendaCode", editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "agendaSystemCode", editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "isPublic", editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, "privacyProvision", editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
 
     private void editCommonFields(ConceptEditModel editModel, Resource existingConcept,
