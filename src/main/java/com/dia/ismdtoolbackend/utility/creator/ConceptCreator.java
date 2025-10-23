@@ -720,22 +720,6 @@ public class ConceptCreator {
                 (model.getContentType() != null && !model.getContentType().trim().isEmpty());
     }
 
-    private boolean hasPrivateDataProperty(PropertyConceptModel model) {
-        return hasPrivateDataValue(model.getIsPublic(), model.getPrivacyProvision());
-    }
-
-    private boolean hasGovernancePropertiesProperty(PropertyConceptModel model) {
-        return hasGovernancePropertiesValues(model.getSharingMethod(), model.getAcquisitionMethod(), model.getContentType());
-    }
-
-    private boolean hasPrivateDataRelationship(RelationshipConceptModel model) {
-        return hasPrivateDataValue(model.getIsPublic(), model.getPrivacyProvision());
-    }
-
-    private boolean hasGovernancePropertiesRelationship(RelationshipConceptModel model) {
-        return hasGovernancePropertiesValues(model.getSharingMethod(), model.getAcquisitionMethod(), model.getContentType());
-    }
-
     private boolean hasPrivateDataValue(String isPublic, String privacyProvision) {
         return (isPublic != null && (
                 isPublic.toLowerCase().contains("ne") ||
