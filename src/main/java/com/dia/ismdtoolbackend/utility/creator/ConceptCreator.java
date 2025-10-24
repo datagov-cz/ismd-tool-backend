@@ -33,6 +33,7 @@ import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 @Slf4j
 public class ConceptCreator {
 
+    private static final String ELI_PATTERN = "https://opendata.eselpoint.cz/esel-esb/";
     private final URIGenerator uriGenerator = new URIGenerator();
     @Getter
     private OntModel ontModel;
@@ -280,33 +281,43 @@ public class ConceptCreator {
     }
 
     private void addBasicMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
-            String nameLanguageTag = model.getNameModel().getLanguageTag() != null
-                ? model.getNameModel().getLanguageTag()
-                : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
-                    model.getNameModel().getName(), nameLanguageTag, ontModel);
-        }
-
-        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
-            Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
-            String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
-                ? model.getDescriptionModel().getLanguageTag()
-                : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, descProperty,
-                    model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
-        }
-
-        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().trim().isEmpty()) {
-            String defLanguageTag = model.getDefinitionModel().getLanguageTag() != null
-                ? model.getDefinitionModel().getLanguageTag()
-                : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, SKOS.definition,
-                    model.getDefinitionModel().getDefinition(), defLanguageTag, ontModel);
-        }
+        addPrefLabel(resource, model);
+        addDescription(resource, model);
+        addDefinition(resource, model);
 
         if (model.getAltNameModel() != null && model.getAltNameModel().getAltName() != null && !model.getAltNameModel().getAltName().trim().isEmpty()) {
             addAlternativeNames(resource, model.getAltNameModel());
+        }
+    }
+
+    private void addPrefLabel(Resource resource, ConceptCreateModel model) {
+        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
+            String nameLanguageTag = model.getNameModel().getLanguageTag() != null
+                    ? model.getNameModel().getLanguageTag()
+                    : DEFAULT_LANG;
+            DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
+                    model.getNameModel().getName(), nameLanguageTag, ontModel);
+        }
+    }
+
+    private void addDescription(Resource resource, ConceptCreateModel model) {
+        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
+            Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
+            String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
+                    ? model.getDescriptionModel().getLanguageTag()
+                    : DEFAULT_LANG;
+            DataTypeConverter.addTypedProperty(resource, descProperty,
+                    model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
+        }
+    }
+
+    private void addDefinition(Resource resource, ConceptCreateModel model) {
+        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().trim().isEmpty()) {
+            String defLanguageTag = model.getDefinitionModel().getLanguageTag() != null
+                    ? model.getDefinitionModel().getLanguageTag()
+                    : DEFAULT_LANG;
+            DataTypeConverter.addTypedProperty(resource, SKOS.definition,
+                    model.getDefinitionModel().getDefinition(), defLanguageTag, ontModel);
         }
     }
 
@@ -399,25 +410,35 @@ public class ConceptCreator {
     }
 
     private void addRelationshipSpecificMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
+       addDomain(relationshipResource, relModel);
+       addRange(relationshipResource, relModel);
+       addSuperRelation(relationshipResource, relModel);
+
+       if (relModel.getIsInPPDF() != null) {
+           Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
+           DataTypeConverter.addTypedProperty(relationshipResource, ppdfProperty,
+                   relModel.getIsInPPDF().toString(), null, ontModel);
+       }
+
+       addRelationshipGovernanceMetadata(relationshipResource, relModel);
+    }
+
+    private void addDomain(Resource relationshipResource, RelationshipConceptModel relModel) {
         if (relModel.getDomain() != null && !relModel.getDomain().trim().isEmpty()) {
             addResourceReference(relationshipResource, RDFS.domain, relModel.getDomain());
         }
+    }
 
+    private void addRange(Resource relationshipResource, RelationshipConceptModel relModel) {
         if (relModel.getRange() != null && !relModel.getRange().trim().isEmpty()) {
             addResourceReference(relationshipResource, RDFS.range, relModel.getRange());
         }
+    }
 
+    private void addSuperRelation(Resource relationshipResource, RelationshipConceptModel relModel) {
         if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().trim().isEmpty()) {
             addSuperProperty(relationshipResource, relModel.getSuperRelation());
         }
-
-        if (relModel.getIsInPPDF() != null) {
-            Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
-            DataTypeConverter.addTypedProperty(relationshipResource, ppdfProperty,
-                    relModel.getIsInPPDF().toString(), null, ontModel);
-        }
-
-        addRelationshipGovernanceMetadata(relationshipResource, relModel);
     }
 
     private void addRelationshipGovernanceMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -452,7 +473,7 @@ public class ConceptCreator {
         if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
             String eliPart = UtilityMethods.extractEliPart(privacyProvision);
             if (eliPart != null) {
-                String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                String transformedProvision = ELI_PATTERN + eliPart;
                 Property provisionProperty = ontModel.createProperty(
                         uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
                 resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
@@ -484,7 +505,7 @@ public class ConceptCreator {
         if (UtilityMethods.containsEliPattern(source)) {
             String eliPart = UtilityMethods.extractEliPart(source);
             if (eliPart != null) {
-                String transformedUrl = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                String transformedUrl = ELI_PATTERN + eliPart;
                 resource.addProperty(property, ontModel.createResource(transformedUrl));
             }
         }
@@ -572,7 +593,7 @@ public class ConceptCreator {
         if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
             String eliPart = UtilityMethods.extractEliPart(privacyProvision);
             if (eliPart != null) {
-                String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                String transformedProvision = ELI_PATTERN + eliPart;
                 Property provisionProperty = ontModel.createProperty(
                         uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
                 classResource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
