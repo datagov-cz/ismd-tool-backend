@@ -1,9 +1,10 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.models.UserModel;
+import com.dia.ismdtoolbackend.models.*;
+import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,8 +21,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,12 +35,18 @@ class OntologyControllerTest {
     @Mock
     private OntologyService ontologyService;
 
+    @Mock
+    private OntologyDownloadService ontologyDownloadService;
+
     @InjectMocks
     private OntologyController ontologyController;
+
+    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(ontologyController).build();
+        objectMapper = new ObjectMapper();
     }
 
     @Test
@@ -299,28 +305,28 @@ class OntologyControllerTest {
     void testDeleteOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Ontologie s ID 999 nebyl nalezen"))
+        doThrow(new org.apache.jena.ontology.OntologyException("Slovník s ID 999 nebyl nalezen"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Ontologie s ID 999 nebyl nalezen"));
+                .andExpect(jsonPath("$.message").value("Slovník s ID 999 nebyl nalezen"));
     }
 
     @Test
     void testDeleteOntology_OntologyException() throws Exception {
         Long ontologyId = 1L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Chyba při mazání ontologie"))
+        doThrow(new org.apache.jena.ontology.OntologyException("Chyba při mazání slovníku"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Chyba při mazání ontologie"));
+                .andExpect(jsonPath("$.message").value("Chyba při mazání slovníku"));
     }
 
     @Test
@@ -335,5 +341,212 @@ class OntologyControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při mazání slovníku."));
+    }
+
+    // ========== Create Ontology Tests ==========
+
+    @Test
+    void testCreateOntology_Success() throws Exception {
+        String userId = "user123";
+        OntologyCreateModel createModel = new OntologyCreateModel();
+        createModel.setNamespace("http://example.org/");
+        NameModel nameModel = new NameModel();
+        nameModel.setName("test-ontology");
+        nameModel.setLanguageTag("cs");
+        createModel.setNameModel(nameModel);
+        DescriptionModel descModel = new DescriptionModel();
+        descModel.setDescription("Test description");
+        descModel.setLanguageTag("cs");
+        createModel.setDescriptionModel(descModel);
+
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        expectedMetadata.setGraphName("http://example.org/test-ontology");
+
+        when(ontologyService.createOntology(any(OntologyCreateModel.class), eq(userId)))
+                .thenReturn(expectedMetadata);
+
+        mockMvc.perform(post("/api/ontology/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createModel))
+                        .param("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data.graphName").value("http://example.org/test-ontology"))
+                .andExpect(jsonPath("$.message").isString());
+    }
+
+    @Test
+    void testCreateOntology_EmptyUserId() throws Exception {
+        OntologyCreateModel createModel = new OntologyCreateModel();
+        createModel.setNamespace("http://example.org/");
+        NameModel nameModel = new NameModel();
+        nameModel.setName("test-ontology");
+        nameModel.setLanguageTag("cs");
+        createModel.setNameModel(nameModel);
+        DescriptionModel descModel = new DescriptionModel();
+        descModel.setDescription("Test description");
+        descModel.setLanguageTag("cs");
+        createModel.setDescriptionModel(descModel);
+
+        mockMvc.perform(post("/api/ontology/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createModel))
+                        .param("userId", ""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("ID uživatele je povinné."));
+    }
+
+    @Test
+    void testCreateOntology_ValidationError() throws Exception {
+        String userId = "user123";
+        OntologyCreateModel createModel = new OntologyCreateModel();
+        NameModel nameModel = new NameModel();
+        nameModel.setName("test-ontology");
+        nameModel.setLanguageTag("cs");
+        createModel.setNameModel(nameModel);
+        DescriptionModel descModel = new DescriptionModel();
+        descModel.setDescription("Test description");
+        descModel.setLanguageTag("cs");
+        createModel.setDescriptionModel(descModel);
+
+        when(ontologyService.createOntology(any(), eq(userId)))
+                .thenThrow(new org.apache.jena.ontology.OntologyException("Namespace je povinný"));
+
+        mockMvc.perform(post("/api/ontology/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createModel))
+                        .param("userId", userId))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Namespace je povinný"));
+    }
+
+    // ========== Edit Ontology Tests ==========
+
+    @Test
+    void testEditOntology_Success() throws Exception {
+        OntologyEditModel editModel = new OntologyEditModel();
+        editModel.setOntologyIRI("http://example.org/test-ontology");
+
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        expectedMetadata.setGraphName("http://example.org/test-ontology");
+
+        when(ontologyService.editOntology(any(OntologyEditModel.class)))
+                .thenReturn(expectedMetadata);
+
+        mockMvc.perform(patch("/api/ontology/edit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(editModel)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data.graphName").value("http://example.org/test-ontology"))
+                .andExpect(jsonPath("$.message").isString());
+    }
+
+    @Test
+    void testEditOntology_NotFound() throws Exception {
+        OntologyEditModel editModel = new OntologyEditModel();
+        editModel.setOntologyIRI("http://example.org/nonexistent");
+
+        when(ontologyService.editOntology(any()))
+                .thenThrow(new org.apache.jena.ontology.OntologyException("Slovník nebyl nalezen"));
+
+        mockMvc.perform(patch("/api/ontology/edit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(editModel)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Slovník nebyl nalezen"));
+    }
+
+    // ========== Download Ontology Tests ==========
+
+    @Test
+    void testDownloadOntology_TurtleFormat() throws Exception {
+        Long ontologyId = 1L;
+        String ttlContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .";
+
+        when(ontologyDownloadService.downloadOntology(ontologyId, "ttl"))
+                .thenReturn(ttlContent);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "ttl"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"ontology_1.ttl\""))
+                .andExpect(content().contentType("text/turtle"))
+                .andExpect(content().string(ttlContent));
+    }
+
+    @Test
+    void testDownloadOntology_JsonLdFormat() throws Exception {
+        Long ontologyId = 1L;
+        String jsonLdContent = "{\"@context\":{},\"@graph\":[]}";
+
+        when(ontologyDownloadService.downloadOntology(ontologyId, "json-ld"))
+                .thenReturn(jsonLdContent);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "json-ld"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"ontology_1.jsonld\""))
+                .andExpect(content().contentType("application/ld+json"))
+                .andExpect(content().string(jsonLdContent));
+    }
+
+    @Test
+    void testDownloadOntology_InvalidFormat() throws Exception {
+        Long ontologyId = 1L;
+
+        when(ontologyDownloadService.downloadOntology(ontologyId, "invalid"))
+                .thenThrow(new IllegalArgumentException("Unsupported format"));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "invalid"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testDownloadOntology_NotFound() throws Exception {
+        Long ontologyId = 999L;
+
+        when(ontologyDownloadService.downloadOntology(ontologyId, "ttl"))
+                .thenThrow(new RuntimeException("Ontology not found"));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "ttl"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ========== Get Ontology Detail Tests ==========
+
+    @Test
+    void testGetOntologyDetail_Success() throws Exception {
+        Long ontologyId = 1L;
+        OntologyDetailModel detailModel = OntologyDetailModel.builder()
+                .context("http://example.org/context")
+                .iri("http://example.org/test-ontology")
+                .types(java.util.List.of())
+                .name(java.util.Map.of())
+                .description(java.util.Map.of())
+                .creationDate("")
+                .modificationDate("")
+                .concepts(java.util.List.of())
+                .build();
+
+        when(ontologyService.getOntologyDetailModel(ontologyId))
+                .thenReturn(detailModel);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+    }
+
+    @Test
+    void testGetOntologyDetail_NotFound() throws Exception {
+        Long ontologyId = 999L;
+
+        when(ontologyService.getOntologyDetailModel(ontologyId))
+                .thenThrow(new RuntimeException("Ontology not found"));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
+                .andExpect(status().isNotFound());
     }
 }

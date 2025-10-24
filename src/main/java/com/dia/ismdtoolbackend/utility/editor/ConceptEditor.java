@@ -19,6 +19,17 @@ import java.util.*;
 import static com.dia.constants.ArchiConstants.*;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.AGENDA;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFAULT_NS;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINUJICI_NELEGISLATIVNI_ZDROJ;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.SOUVISEJICI_NELEGISLATIVNI_ZDROJ;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.TOP;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.TSP;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.TYP_OBSAHU;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.USTANOVENI_NEVEREJNOST;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI;
+import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_ZISKANI;
 
 @Component
 @RequiredArgsConstructor
