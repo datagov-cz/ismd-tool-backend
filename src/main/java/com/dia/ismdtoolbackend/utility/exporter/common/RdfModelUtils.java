@@ -12,6 +12,7 @@ import java.util.Map;
 
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 
+@Deprecated
 public class RdfModelUtils {
 
     private static final String CONCEPT_LITERAL = "Concept";

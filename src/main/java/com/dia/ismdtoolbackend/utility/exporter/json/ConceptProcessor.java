@@ -473,15 +473,14 @@ public class ConceptProcessor {
 
     private void addGovernanceProperties(Resource concept, Map<String, Object> conceptObj,
                                          OntModel ontModel, String namespace) {
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_SDILENI, ZPUSOB_SDILENI);
+        addGovernanceProperty(concept, conceptObj, ontModel, namespace);
         addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI);
         addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU);
     }
 
     private void addGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
-                                       OntModel ontModel, String namespace,
-                                       String propertyName, String jsonFieldName) {
-        Property property = findGovernanceProperty(concept, ontModel, namespace, propertyName);
+                                       OntModel ontModel, String namespace) {
+        Property property = findGovernanceProperty(concept, ontModel, namespace, com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI);
 
         if (property == null) {
             return;
@@ -491,7 +490,7 @@ public class ConceptProcessor {
         List<String> allValues = extractGovernanceValues(propIter);
 
         if (!allValues.isEmpty()) {
-            conceptObj.put(jsonFieldName, allValues);
+            conceptObj.put(com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI, allValues);
         }
     }
 

@@ -104,57 +104,67 @@ public class JsonFormatter {
         return orderedConcept;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> filterEmptyValues(Map<String, Object> map) {
         Map<String, Object> filtered = new LinkedHashMap<>();
 
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             Object value = entry.getValue();
-            String key = entry.getKey();
 
-            if (value == null) {
+            if (shouldSkipValue(value)) {
                 continue;
             }
 
-            if (value instanceof String && ((String) value).isEmpty()) {
-                continue;
-            }
-
-            if (value instanceof Map) {
-                Map<String, Object> mapValue = (Map<String, Object>) value;
-                if (mapValue.isEmpty()) {
-                    continue;
-                }
-
-                if (isEmptyMultilingualField(mapValue)) {
-                    continue;
-                }
-
-                Map<String, Object> filteredMap = filterEmptyValues(mapValue);
-                if (!filteredMap.isEmpty()) {
-                    filtered.put(entry.getKey(), filteredMap);
-                }
-            } else if (value instanceof List<?> listValue) {
-                if (listValue.isEmpty()) {
-                    continue;
-                }
-
-                List<Object> filteredList = filterEmptyListItems(listValue);
-                if (!filteredList.isEmpty()) {
-                    filtered.put(entry.getKey(), filteredList);
-                }
-            } else {
-                filtered.put(entry.getKey(), value);
+            Object processedValue = processValue(value);
+            if (processedValue != null) {
+                filtered.put(entry.getKey(), processedValue);
             }
         }
 
         return filtered;
     }
 
+    private boolean shouldSkipValue(Object value) {
+        if (value == null) {
+            return true;
+        }
+
+        return value instanceof String string && string.isEmpty();
+    }
+
     @SuppressWarnings("unchecked")
+    private Object processValue(Object value) {
+        if (value instanceof Map) {
+            return processMapValue((Map<String, Object>) value);
+        }
+
+        if (value instanceof List<?>) {
+            return processListValue((List<?>) value);
+        }
+
+        return value;
+    }
+
+    private Object processMapValue(Map<String, Object> mapValue) {
+        if (mapValue.isEmpty() || isEmptyMultilingualField(mapValue)) {
+            return null;
+        }
+
+        Map<String, Object> filteredMap = filterEmptyValues(mapValue);
+        return filteredMap.isEmpty() ? null : filteredMap;
+    }
+
+    private Object processListValue(List<?> listValue) {
+        if (listValue.isEmpty()) {
+            return null;
+        }
+
+        List<Object> filteredList = filterEmptyListItems(listValue);
+        return filteredList.isEmpty() ? null : filteredList;
+    }
+
     private boolean isEmptyMultilingualField(Map<String, Object> map) {
         for (Object value : map.values()) {
-            if (value instanceof String && !((String) value).isEmpty()) {
+            if (value instanceof String string && !string.isEmpty()) {
                 return false;
             }
             if (value instanceof List && !((List<?>) value).isEmpty()) {
@@ -164,34 +174,39 @@ public class JsonFormatter {
         return true;
     }
 
-    @SuppressWarnings("unchecked")
     private List<Object> filterEmptyListItems(List<?> list) {
         List<Object> filtered = new ArrayList<>();
 
         for (Object item : list) {
-            if (item == null) {
-                continue;
-            }
-
-            if (item instanceof String && ((String) item).isEmpty()) {
-                continue;
-            }
-
-            if (item instanceof Map) {
-                Map<String, Object> mapItem = (Map<String, Object>) item;
-                if (mapItem.isEmpty()) {
-                    continue;
-                }
-
-                Map<String, Object> filteredMap = filterEmptyValues(mapItem);
-                if (!filteredMap.isEmpty()) {
-                    filtered.add(filteredMap);
-                }
-            } else {
-                filtered.add(item);
+            Object processedItem = processListItem(item);
+            if (processedItem != null) {
+                filtered.add(processedItem);
             }
         }
 
         return filtered;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object processListItem(Object item) {
+        if (item == null) {
+            return null;
+        }
+
+        if (item instanceof String string && string.isEmpty()) {
+            return null;
+        }
+
+        if (item instanceof Map) {
+            Map<String, Object> mapItem = (Map<String, Object>) item;
+            if (mapItem.isEmpty()) {
+                return null;
+            }
+
+            Map<String, Object> filteredMap = filterEmptyValues(mapItem);
+            return filteredMap.isEmpty() ? null : filteredMap;
+        }
+
+        return item;
     }
 }
