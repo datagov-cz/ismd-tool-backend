@@ -20,6 +20,8 @@ import com.dia.ismdtoolbackend.exception.TurtleExportException;
 public class TurtleFormatterUtil {
 
     private static final String NADRAZENA_TRIDA = "https://slovník.gov.cz/nadřazená-třída";
+    private static final String POJEM_URI = "/pojem/";
+    private static final String CONCEPT = "Concept";
 
     private static final Map<String, String> OFN_PREFIXES = new HashMap<>();
 
@@ -83,7 +85,7 @@ public class TurtleFormatterUtil {
     private static void transformToSKOSConcepts(OntModel model) {
         Property slovnikyPojem = model.getProperty(OFN_NAMESPACE + "pojem");
         Property slovnikyTridaProperty = model.getProperty(OFN_NAMESPACE + "třída");
-        Property skosConceptProperty = model.getProperty(SKOS_NS + "Concept");
+        Property skosConceptProperty = model.getProperty(SKOS_NS + CONCEPT);
         Property skosInScheme = model.getProperty(SKOS_NS + "inScheme");
 
         List<Resource> classesToTransform = new ArrayList<>();
@@ -132,7 +134,7 @@ public class TurtleFormatterUtil {
         }
 
         for (Resource property : properties) {
-            if (property.getURI() != null && property.getURI().contains("/pojem/")) {
+            if (property.getURI() != null && property.getURI().contains(POJEM_URI)) {
                 if (!property.hasProperty(RDF.type, slovnikyPojem)) {
                     property.addProperty(RDF.type, slovnikyPojem);
                 }
@@ -208,7 +210,7 @@ public class TurtleFormatterUtil {
             Statement stmt = iter.next();
             Resource subject = stmt.getSubject();
 
-            if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + "Concept"))) {
+            if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + CONCEPT))) {
                 labelStatements.add(stmt);
             }
         }
@@ -230,11 +232,11 @@ public class TurtleFormatterUtil {
         for (Statement stmt : descriptionStatements) {
             Resource subject = stmt.getSubject();
 
-            if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + "Concept")) && !subject.hasProperty(skosDefinition)) {
+            if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + CONCEPT)) && !subject.hasProperty(skosDefinition)) {
                 subject.addProperty(skosDefinition, stmt.getObject());
                 model.remove(stmt);
             }
-            else if (!subject.hasProperty(RDF.type, skosConceptSchemeProperty) && subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + "Concept"))) {
+            else if (!subject.hasProperty(RDF.type, skosConceptSchemeProperty) && subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + CONCEPT))) {
                     model.remove(stmt);
             }
         }
@@ -259,7 +261,7 @@ public class TurtleFormatterUtil {
 
     private static boolean isConceptResource(Resource resource) {
         return resource.getURI() != null &&
-               resource.getURI().contains("/pojem/") &&
+               resource.getURI().contains(POJEM_URI) &&
                !isBaseVocabularyClass(resource.getURI());
     }
 
@@ -272,8 +274,8 @@ public class TurtleFormatterUtil {
     }
 
     private static String extractOntologyIRI(String resourceURI) {
-        if (resourceURI.contains("/pojem/")) {
-            return resourceURI.substring(0, resourceURI.lastIndexOf("/pojem/"));
+        if (resourceURI.contains(POJEM_URI)) {
+            return resourceURI.substring(0, resourceURI.lastIndexOf(POJEM_URI));
         }
         return null;
     }
