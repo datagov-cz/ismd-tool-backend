@@ -16,8 +16,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 
-import static com.dia.constants.ArchiConstants.DEFINUJICI_USTANOVENI;
-import static com.dia.constants.ArchiConstants.SOUVISEJICI_USTANOVENI;
+import static com.dia.constants.ArchiConstants.*;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 
@@ -25,6 +24,14 @@ import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 @RequiredArgsConstructor
 @Slf4j
 public class ConceptEditor {
+
+    private static final String TYPE = "type";
+    private static final String AGENDA_CODE = "agendaCode";
+    private static final String AIS = "agendaSystemCode";
+    private static final String IS_PUBLIC = "isPublic";
+    private static final String PRIVACY_PROVISION = "privacyProvision";
+    private static final String IN_TEZAURUS = "inTezaurus";
+    private static final String NAMESPACE = "namespace";
 
     private final URIGenerator uriGenerator = new URIGenerator();
 
@@ -81,14 +88,14 @@ public class ConceptEditor {
 
         Resource conceptResource = model.getResource(newConceptIRI);
 
-        updateStringProperty(conceptResource, "type", editModel.getType(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "agendaCode", editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "agendaSystemCode", editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, TYPE, editModel.getType(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "isPublic", editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "privacyProvision", editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
         updateBroaderConcept(conceptResource, editModel.getBroaderConcept(), existingConcept, model, toRemove, toAdd);
     }
 
@@ -103,13 +110,13 @@ public class ConceptEditor {
         updateDataTypeRange(conceptResource, editModel.getDataType(), existingConcept, model, toRemove, toAdd);
         updateSuperProperty(conceptResource, editModel.getSuperProperty(), existingConcept, model, toRemove, toAdd);
         updateBooleanProperty(conceptResource, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "agendaCode", editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "agendaSystemCode", editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "isPublic", editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "privacyProvision", editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
 
     private void editRelationshipConcept(RelationshipConceptEditModel editModel, Resource existingConcept,
@@ -123,13 +130,13 @@ public class ConceptEditor {
         updateDomainRange(conceptResource, RDFS.range, editModel.getRange(), existingConcept, model, toRemove, toAdd);
         updateSuperProperty(conceptResource, editModel.getSuperRelation(), existingConcept, model, toRemove, toAdd);
         updateBooleanProperty(conceptResource, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "agendaCode", editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "agendaSystemCode", editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "isPublic", editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "privacyProvision", editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
 
     private void editCommonFields(ConceptEditModel editModel, Resource existingConcept,
@@ -144,8 +151,8 @@ public class ConceptEditor {
         updateLegalSources(conceptResource, editModel, existingConcept, model, toRemove, toAdd);
         updateNonLegalSources(conceptResource, editModel, existingConcept, model, toRemove, toAdd);
         updateExactMatch(conceptResource, editModel.getExactMatch(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "inTezaurus", editModel.getInTezaurus(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, "namespace", editModel.getNamespace(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, IN_TEZAURUS, editModel.getInTezaurus(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(conceptResource, NAMESPACE, editModel.getNamespace(), existingConcept, model, toRemove, toAdd);
     }
 
     private void updateNameModel(Resource newConcept, NameModel nameModel, Resource oldConcept,
@@ -271,12 +278,10 @@ public class ConceptEditor {
                                        Resource oldConcept, Model model, Set<Statement> toRemove,
                                        Set<Statement> toAdd) {
         switch (propertyName) {
-            case "type" -> updateClassType(newConcept, newValue, oldConcept, model, toRemove, toAdd);
-            case "agendaCode" -> updateAgenda(newConcept, newValue, oldConcept, model, toRemove, toAdd);
-            case "agendaSystemCode" -> updateAIS(newConcept, newValue, oldConcept, model, toRemove, toAdd);
-            case "isPublic", "privacyProvision" -> updatePrivacyProvision(newConcept, newValue, oldConcept, model, toRemove, toAdd);
-            case "inTezaurus", "namespace" -> {
-            }
+            case TYPE -> updateClassType(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case AGENDA_CODE -> updateAgenda(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case AIS -> updateAIS(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case IS_PUBLIC, PRIVACY_PROVISION -> updatePrivacyProvision(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             default -> log.warn("Unknown string property: {}", propertyName);
         }
     }
