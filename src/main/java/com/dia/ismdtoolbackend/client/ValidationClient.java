@@ -26,6 +26,14 @@ public class ValidationClient {
         try {
             log.debug("Requesting TTL validation for ontology: {}", iri);
 
+            if (ttlContent == null || ttlContent.trim().isEmpty()) {
+                throw new IllegalArgumentException("TTL obsah nesmí být prázdný");
+            }
+
+            if (iri == null || iri.trim().isEmpty()) {
+                throw new IllegalArgumentException("IRI slovníku nesmí být prázdné");
+            }
+
             ValidationRequestDto requestDto = new ValidationRequestDto(ttlContent, iri);
 
             ValidationReportDto response = restClient.post()
