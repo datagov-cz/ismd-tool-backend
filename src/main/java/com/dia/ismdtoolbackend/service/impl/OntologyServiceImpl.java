@@ -342,12 +342,11 @@ public class OntologyServiceImpl implements OntologyService {
             throws OntologyException {
         try {
             String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
-            String newNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(newOntologyIRI);
 
             saveOntologyModel(newOntologyIRI, model);
             log.info("Saved ontology to new graph: {}", newOntologyIRI);
 
-            updateConceptMetadataIRIs(oldOntologyIRI, newOntologyIRI, oldNamespace, newNamespace);
+            updateConceptMetadataIRIs(oldOntologyIRI, newOntologyIRI, oldNamespace);
 
             deleteOntologyGraph(oldOntologyIRI);
             log.info("Deleted old graph: {}", oldOntologyIRI);
@@ -360,7 +359,7 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private void updateConceptMetadataIRIs(String oldGraphName, String newGraphName,
-                                           String oldNamespace, String newNamespace) {
+                                           String oldNamespace) {
         List<ConceptMetadataEntity> concepts = conceptMetadataRepository.findByGraphName(oldGraphName);
 
         if (concepts.isEmpty()) {
@@ -370,7 +369,6 @@ public class OntologyServiceImpl implements OntologyService {
 
         log.info("Updating {} concept metadata entries for ontology namespace change", concepts.size());
 
-        // Create URI generator with the new ontology namespace
         URIGenerator uriGenerator = new URIGenerator();
         uriGenerator.setEffectiveNamespace(newGraphName);
 
@@ -380,7 +378,6 @@ public class OntologyServiceImpl implements OntologyService {
             String conceptName = concept.getConceptName();
 
             if (oldConceptIRI != null && conceptName != null && oldConceptIRI.startsWith(oldNamespace)) {
-                // Use URIGenerator to properly regenerate the concept IRI with the new namespace
                 String newConceptIRI = uriGenerator.generateConceptURI(conceptName, null);
 
                 concept.setConceptIri(newConceptIRI);
