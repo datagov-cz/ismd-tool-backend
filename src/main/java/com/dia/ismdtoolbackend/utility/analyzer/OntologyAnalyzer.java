@@ -21,6 +21,10 @@ import static com.dia.constants.ArchiConstants.*;
 @Slf4j
 public class OntologyAnalyzer {
 
+    private static final String POJEM_GENERIC_IRI = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
+    private static final String TSP_GENERIC_IRI = "https://slovník.gov.cz/veřejný-sektor/pojem/typ-subjektu-práva";
+    private static final String TOP_GENERIC_IRI = "https://slovník.gov.cz/veřejný-sektor/pojem/typ-objektu-práva";
+
     public AnalysisResult analyzeUploadedOntology(OntModel uploadedModel) throws OntologyAnalysisException {
         Set<String> requiredBaseClasses = new HashSet<>();
         Set<String> requiredProperties = new HashSet<>();
@@ -143,19 +147,19 @@ public class OntologyAnalyzer {
     private void matchTypeURIToOFNBaseClass(String typeURI, Set<String> requiredBaseClasses) {
         log.debug("Matching type URI '{}' to OFN base classes", typeURI);
         
-        if (typeURI.equals("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem")) {
+        if (typeURI.equals(POJEM_GENERIC_IRI)) {
             log.debug("Type URI matches POJEM base class");
-        } else if (typeURI.equals("https://slovník.gov.cz/veřejný-sektor/pojem/typ-subjektu-práva")) {
+        } else if (typeURI.equals(TSP_GENERIC_IRI)) {
             log.debug("Type URI matches TSP base class");
-            addRequiredClass(requiredBaseClasses, TSP, "typ-subjektu-práva");
+            addRequiredClass(requiredBaseClasses, TSP, TSP);
             addRequiredClass(requiredBaseClasses, TRIDA, TRIDA);
-        } else if (typeURI.equals("https://slovník.gov.cz/veřejný-sektor/pojem/typ-objektu-práva")) {
+        } else if (typeURI.equals(TOP_GENERIC_IRI)) {
             log.debug("Type URI matches TOP base class");
-            addRequiredClass(requiredBaseClasses, TOP, "typ-objektu-práva");
+            addRequiredClass(requiredBaseClasses, TOP, TOP);
             addRequiredClass(requiredBaseClasses, TRIDA, TRIDA);
         } else if (typeURI.contains("/pojem/údaj")) {
             log.debug("Type URI appears to be an UDAJ variant");
-            addRequiredClass(requiredBaseClasses, UDAJ, "údaj");
+            addRequiredClass(requiredBaseClasses, UDAJ, UDAJ);
         } else if (typeURI.contains("datový-slovník-ofn") && typeURI.contains("/pojem/")) {
             log.debug("Type URI appears to be a generic OFN concept, ensuring POJEM base class");
         } else {
