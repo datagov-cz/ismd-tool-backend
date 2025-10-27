@@ -10,7 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./docker/init-scripts:/docker-entrypoint-initdb.d
     networks:
       - ismd-network
     restart: unless-stopped
@@ -19,6 +19,28 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: ismd-keycloak-dev
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://ismd-postgres-dev:5432/keycloak_db
+      KC_DB_USERNAME: ismd_user
+      KC_DB_PASSWORD: ismd_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/keycloak/:/opt/keycloak/data/import/
+    networks:
+      - ismd-network
+    depends_on:
+      - postgres
 
   fuseki:
     image: secoresearch/fuseki:latest
@@ -32,6 +54,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  postgres_keycloak_data:
     driver: local
   fuseki_data:
     driver: local

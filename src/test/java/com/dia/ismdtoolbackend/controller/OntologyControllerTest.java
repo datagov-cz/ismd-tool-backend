@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -27,12 +28,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(MockitoExtension.class)
 class OntologyControllerTest {
 
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     private MockMvc mockMvc;
 
-    @Mock
+    @Mock(lenient = true)
     private OntologyUploadService ontologyUploadService;
 
-    @Mock
+    @Mock(lenient = true)
     private OntologyService ontologyService;
 
     @Mock
@@ -70,8 +76,7 @@ class OntologyControllerTest {
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
+                        .param("providedName", providedName))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value(providedName))
@@ -98,8 +103,7 @@ class OntologyControllerTest {
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("userId", userId))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("generated-graph-name"))
@@ -109,7 +113,6 @@ class OntologyControllerTest {
 
     @Test
     void testUploadFromFile_EmptyFile() throws Exception {
-        String userId = "user123";
         MockMultipartFile emptyFile = new MockMultipartFile(
                 "file",
                 "empty.ttl",
@@ -118,8 +121,7 @@ class OntologyControllerTest {
         );
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(emptyFile)
-                        .param("userId", userId))
+                        .file(emptyFile))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -128,7 +130,6 @@ class OntologyControllerTest {
 
     @Test
     void testUploadFromFile_UnsupportedRDFFormat() throws Exception {
-        String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.unknown",
@@ -139,8 +140,7 @@ class OntologyControllerTest {
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(null);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("userId", userId))
+                        .file(file))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -162,33 +162,15 @@ class OntologyControllerTest {
                 .thenThrow(new RuntimeException("Parse error"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("userId", userId))
+                        .file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
-    void testUploadFromFile_MissingUserId() throws Exception {
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "test.ttl",
-                "text/turtle",
-                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
-        );
-
-        mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void testUploadFromFile_MissingFile() throws Exception {
-        String userId = "user123";
-
-        mockMvc.perform(multipart("/api/ontology/upload")
-                        .param("userId", userId))
+        mockMvc.perform(multipart("/api/ontology/upload"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -213,8 +195,7 @@ class OntologyControllerTest {
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
+                        .param("providedName", providedName))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value(providedName))
@@ -248,8 +229,7 @@ class OntologyControllerTest {
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(largeFile)
-                        .param("userId", userId))
+                        .file(largeFile))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("large-ontology"))
@@ -278,8 +258,7 @@ class OntologyControllerTest {
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
+                        .param("providedName", providedName))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.id").value(1))
@@ -316,7 +295,7 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testDeleteOntology_OntologyException() throws Exception {
+    void testDeleteOntology_AccessDenied() throws Exception {
         Long ontologyId = 1L;
 
         doThrow(new org.apache.jena.ontology.OntologyException("Chyba při mazání slovníku"))

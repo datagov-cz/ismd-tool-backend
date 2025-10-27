@@ -3,24 +3,28 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
-import com.dia.ismdtoolbackend.utility.exporter.json.*;
+import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
+import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
+import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
+import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
+import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
-import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
+import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
-import com.dia.models.OFNBaseModel;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -82,7 +86,7 @@ public class OntologyServiceImpl implements OntologyService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
-            throw new OntologyException("Slovník s id " + ontologyId + "nebyl nalezen.");
+            throw new EntityNotFoundException("Slovník s id " + ontologyId + " nebyl nalezen.");
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
@@ -95,7 +99,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (model.isEmpty()) {
             log.error("Ontology model is empty.");
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new EntityNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
         jenaTDB2Repository.deleteGraph(graphName);
@@ -254,8 +258,8 @@ public class OntologyServiceImpl implements OntologyService {
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
         String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
-            ? ontologyCreateModel.getNameModel().getLanguageTag()
-            : DEFAULT_LANG;
+                ? ontologyCreateModel.getNameModel().getLanguageTag()
+                : DEFAULT_LANG;
         ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), nameLanguageTag);
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
@@ -264,8 +268,8 @@ public class OntologyServiceImpl implements OntologyService {
         if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
             String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
-                ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
-                : DEFAULT_LANG;
+                    ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
+                    : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), descLanguageTag, model);
         }
 
