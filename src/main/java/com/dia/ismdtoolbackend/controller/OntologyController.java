@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.riot.Lang;
 import org.slf4j.MDC;
 import org.springframework.core.io.ByteArrayResource;
@@ -61,7 +62,7 @@ public class OntologyController {
             log.info("Ontology upload successful: {}", savedOntology);
 
             return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
-        } catch (IllegalArgumentException | SecurityException e) {
+        } catch (IllegalArgumentException | SecurityException | OntologyException e) {
             log.error("Client error uploading ontology: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
         } catch (Exception e) {

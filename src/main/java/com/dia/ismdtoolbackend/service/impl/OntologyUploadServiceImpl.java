@@ -20,6 +20,7 @@ import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
@@ -197,7 +198,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
         Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphNameAndUserId(graphName, userId);
         if (ontologyOpt.isPresent()) {
-            return ontologyMetadataMapper.toDto(ontologyOpt.get());
+            throw new OntologyException("Slovník se stejným IRI již v Nástroji existuje: {}" + graphName);
         }
 
         OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
