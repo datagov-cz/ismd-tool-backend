@@ -9,7 +9,7 @@ import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
-import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -84,7 +84,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntologyUploadException {
         OntModel finalModel = createMergedOntologyModel(file, rdfLang);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
@@ -95,7 +95,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
         } catch (Exception e) {
             ontologyMetadataRepository.deleteById(metadata.getId());
-            throw new OntoloyUploadException("Failed to upload to TDB2", e);
+            throw new OntologyUploadException("Failed to upload to TDB2", e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
