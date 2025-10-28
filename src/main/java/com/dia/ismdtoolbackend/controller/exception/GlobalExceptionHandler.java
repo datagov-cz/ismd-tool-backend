@@ -61,6 +61,36 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.UNAUTHORIZED);
     }
 
+    @ExceptionHandler(ConceptNotFoundException.class)
+    public ResponseEntity<ApiResponseDto> handleConceptNotFoundException(ConceptNotFoundException e) {
+        log.warn("Concept not found: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(ConceptValidationException.class)
+    public ResponseEntity<ApiResponseDto> handleConceptValidationException(ConceptValidationException e) {
+        log.warn("Concept validation failed: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ConceptStorageException.class)
+    public ResponseEntity<ApiResponseDto> handleConceptStorageException(ConceptStorageException e) {
+        log.error("Concept storage failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(CommentNotFoundException.class)
+    public ResponseEntity<ApiResponseDto> handleCommentNotFoundException(CommentNotFoundException e) {
+        log.warn("Comment not found: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(CommentException.class)
+    public ResponseEntity<ApiResponseDto> handleCommentException(CommentException e) {
+        log.warn("Comment operation failed: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(OntologyException.class)
     public ResponseEntity<ApiResponseDto> handleOntologyException(OntologyException e) {
         log.error("Operation failed: {}", e.getMessage(), e);

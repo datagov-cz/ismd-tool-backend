@@ -1,7 +1,11 @@
 package com.dia.ismdtoolbackend.service.security;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
+import com.dia.ismdtoolbackend.entity.CommentEntity;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.repository.CommentRepository;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.utils.SecurityUtils;
 import jakarta.persistence.EntityNotFoundException;
@@ -19,6 +23,8 @@ import org.springframework.stereotype.Service;
 public class OntologySecurityService {
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final ConceptMetadataRepository conceptMetadataRepository;
+    private final CommentRepository commentRepository;
 
     /**
      * Checks if the current authenticated user can update or delete the specified ontology.
@@ -81,6 +87,64 @@ public class OntologySecurityService {
             log.debug("User {} is owner - modify permitted for ontology {}", currentUser.getUserId(), ontologyIRI);
         } else {
             log.warn("User {} attempted to modify ontology {} owned by {}", currentUser.getUserId(), ontologyIRI, entity.getUserId());
+        }
+
+        return isOwner;
+    }
+
+    public boolean canModifyConcept(Long conceptId) {
+        log.debug("Checking modify permission for concept: {}", conceptId);
+
+        // Get current authenticated user
+        SecurityUser currentUser = SecurityUtils.getCurrentUser();
+
+        // Admin can modify anything
+        if (currentUser.isAdmin()) {
+            log.debug("User {} is admin - modify permitted for concept {}", currentUser.getUserId(), conceptId);
+            return true;
+        }
+
+        // Non-admin: check ownership
+        ConceptMetadataEntity entity = conceptMetadataRepository.findById(conceptId).orElseThrow(() -> {
+            log.error("Concept not found: {}", conceptId);
+            return new EntityNotFoundException("Pojem s id " + conceptId + " nebyl nalezen.");
+        });
+
+        boolean isOwner = entity.getUserId().equals(currentUser.getUserId());
+
+        if (isOwner) {
+            log.debug("User {} is owner - modify permitted for concept {}", currentUser.getUserId(), conceptId);
+        } else {
+            log.warn("User {} attempted to modify concept {} owned by {}", currentUser.getUserId(), conceptId, entity.getUserId());
+        }
+
+        return isOwner;
+    }
+
+    public boolean canModifyComment(Long commentId) {
+        log.debug("Checking modify permission for comment: {}", commentId);
+
+        // Get current authenticated user
+        SecurityUser currentUser = SecurityUtils.getCurrentUser();
+
+        // Admin can modify anything
+        if (currentUser.isAdmin()) {
+            log.debug("User {} is admin - modify permitted for comment {}", currentUser.getUserId(), commentId);
+            return true;
+        }
+
+        // Non-admin: check ownership
+        CommentEntity entity = commentRepository.findById(commentId).orElseThrow(() -> {
+            log.error("comment not found: {}", commentId);
+            return new EntityNotFoundException("Komentář s id " + commentId + " nebyl nalezen.");
+        });
+
+        boolean isOwner = entity.getUserId().equals(currentUser.getUserId());
+
+        if (isOwner) {
+            log.debug("User {} is owner - modify permitted for comment {}", currentUser.getUserId(), commentId);
+        } else {
+            log.warn("User {} attempted to modify comment {} owned by {}", currentUser.getUserId(), commentId, entity.getUserId());
         }
 
         return isOwner;
