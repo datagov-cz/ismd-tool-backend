@@ -2,12 +2,13 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.exceptions.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.EmptyDataException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyDownloadServiceImpl;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.vocabulary.RDF;
@@ -357,17 +358,18 @@ class OntologyDownloadServiceImplTest {
     // ========== PROSÍM DOKONČI TYTO TESTY ==========
 
     @Test
-    void downloadOntology_OntologyNotFound_ReturnsErrorMessage() {
+    void downloadOntology_OntologyNotFound_ThrowsOntologyNotFoundException() {
         // Mock repository.findById() to return Optional.empty()
-        // Assert result equals "Slovník nebyl nalezen"
+        // Assert OntologyNotFoundException is thrown
         // Arrange - repozitář vrací prázdný výsledek
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
-        // Act
-        String result = service.downloadOntology(ONTOLOGY_ID, "ttl");
+        // Act & Assert
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
+                () -> service.downloadOntology(ONTOLOGY_ID, "ttl"));
 
-        // Assert - služba vrací lokalizovanou chybu bez výjimky
-        assertEquals("Slovník nebyl nalezen", result);
+        // Assert - ověření zprávy výjimky
+        assertEquals("Metadata slovníku nebyla nalezena", exception.getMessage());
     }
 
     @Test
@@ -384,7 +386,7 @@ class OntologyDownloadServiceImplTest {
             when(rawModel.isEmpty()).thenReturn(true);
 
             // Act
-            OntologyException ex = assertThrows(OntologyException.class,
+            EmptyDataException ex = assertThrows(EmptyDataException.class,
                     () -> service.downloadOntology(ONTOLOGY_ID, "ttl"));
 
             // Assert

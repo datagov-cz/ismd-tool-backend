@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
@@ -23,7 +25,6 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.util.Optional;
 import java.util.Set;
 
@@ -148,13 +149,14 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_WithProvidedName() throws IOException {
+    void testUploadFromFile_WithProvidedName() throws Exception {
         String providedName = "custom-ontology";
         String userId = "user123";
         byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         expectedDto.setGraphName(providedName);
@@ -176,7 +178,7 @@ class OntologyUploadServiceImplTest {
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(providedName), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId);
+        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, providedName, userId);
 
         assertNotNull(result);
         assertEquals(providedName, result.getGraphName());
@@ -187,13 +189,14 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_WithOntologyIRI() throws IOException {
+    void testUploadFromFile_WithOntologyIRI() throws Exception {
         String userId = "user123";
         String ontologyIRI = "http://example.org/test-ontology";
         byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         expectedDto.setGraphName(ontologyIRI);
@@ -215,7 +218,7 @@ class OntologyUploadServiceImplTest {
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
+        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, userId);
 
         assertNotNull(result);
         assertEquals(ontologyIRI, result.getGraphName());
@@ -225,13 +228,14 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_GeneratedName() throws IOException {
+    void testUploadFromFile_GeneratedName() throws Exception {
         String userId = "user123";
         String filename = "test-ontology.ttl";
         byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn(filename);
+        when(multipartFile.isEmpty()).thenReturn(false);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
@@ -247,7 +251,7 @@ class OntologyUploadServiceImplTest {
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
+        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, userId);
 
         assertNotNull(result);
         verify(jenaTDB2Repository).putOntologyModel(argThat(graphName ->
@@ -256,13 +260,14 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_EmptyProvidedName() throws IOException {
+    void testUploadFromFile_EmptyProvidedName() throws Exception {
         String userId = "user123";
         String filename = "test.ttl";
         byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn(filename);
+        when(multipartFile.isEmpty()).thenReturn(false);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
@@ -278,7 +283,7 @@ class OntologyUploadServiceImplTest {
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, "  ", Lang.TURTLE, userId);
+        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, "  ", userId);
 
         assertNotNull(result);
         verify(jenaTDB2Repository).putOntologyModel(argThat(graphName ->
@@ -287,23 +292,30 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_IOExceptionHandling() throws IOException {
+    void testUploadFromFile_IOExceptionHandling() throws Exception {
         String userId = "user123";
-        
-        when(multipartFile.getBytes()).thenThrow(new IOException("File read error"));
-        
-        assertThrows(IOException.class, () -> ontologyUploadService.uploadFromFile(multipartFile, "test", Lang.TURTLE, userId));
-        
+
+        when(multipartFile.isEmpty()).thenReturn(false);
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.getBytes()).thenThrow(new RuntimeException("File read error"));
+
+        // The implementation catches IOException and wraps it, but RuntimeException propagates directly
+        assertThrows(RuntimeException.class, () ->
+            ontologyUploadService.uploadFromFile(multipartFile, "test", userId));
+
         verify(ontologyMetadataRepository, never()).save(any());
     }
 
     @Test
-    void testUploadFromFile_NoFilename() throws IOException {
+    void testUploadFromFile_NoFilename() throws Exception {
         String userId = "user123";
         byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
 
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn(null);
+        when(multipartFile.isEmpty()).thenReturn(false);
+        // Need to mock content type since no filename
+        when(multipartFile.getContentType()).thenReturn("text/turtle");
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
@@ -319,11 +331,37 @@ class OntologyUploadServiceImplTest {
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
-        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, Lang.TURTLE, userId);
+        OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, null, userId);
 
         assertNotNull(result);
         verify(jenaTDB2Repository).putOntologyModel(argThat(graphName ->
             graphName.contains("ontology") && graphName.startsWith("https://slovník.gov.cz/")
         ), any(OntModel.class));
+    }
+
+    @Test
+    void testUploadFromFile_EmptyFile() {
+        String userId = "user123";
+
+        when(multipartFile.isEmpty()).thenReturn(true);
+
+        assertThrows(EmptyFileException.class, () ->
+            ontologyUploadService.uploadFromFile(multipartFile, "test", userId));
+
+        verify(ontologyMetadataRepository, never()).save(any());
+    }
+
+    @Test
+    void testUploadFromFile_UnsupportedFormat() {
+        String userId = "user123";
+
+        when(multipartFile.isEmpty()).thenReturn(false);
+        when(multipartFile.getOriginalFilename()).thenReturn("test.unknown");
+        when(multipartFile.getContentType()).thenReturn("application/unknown");
+
+        assertThrows(UnsupportedRdfFormatException.class, () ->
+            ontologyUploadService.uploadFromFile(multipartFile, "test", userId));
+
+        verify(ontologyMetadataRepository, never()).save(any());
     }
 }

@@ -2,6 +2,9 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
+import com.dia.ismdtoolbackend.exception.ConceptStorageException;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
@@ -120,7 +123,7 @@ class ConceptServiceImplTest {
     void createConcept_NullUserId() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptValidationException exception = assertThrows(ConceptValidationException.class,
                 () -> conceptService.createConcept(createModel, null));
 
         assertTrue(exception.getMessage().contains("povinné"));
@@ -131,7 +134,7 @@ class ConceptServiceImplTest {
     void createConcept_EmptyUserId() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptValidationException exception = assertThrows(ConceptValidationException.class,
                 () -> conceptService.createConcept(createModel, "  "));
 
         assertTrue(exception.getMessage().contains("povinné"));
@@ -144,7 +147,7 @@ class ConceptServiceImplTest {
 
         when(conceptCreator.createSingleConcept(createModel)).thenThrow(new RuntimeException("Creator error"));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptValidationException exception = assertThrows(ConceptValidationException.class,
                 () -> conceptService.createConcept(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se transformovat pojem"));
@@ -160,7 +163,7 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME))
                 .thenThrow(new RuntimeException("TDB2 error"));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptStorageException exception = assertThrows(ConceptStorageException.class,
                 () -> conceptService.createConcept(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit pojem do TDB2"));
@@ -177,7 +180,7 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
                 .thenThrow(new RuntimeException("DB error"));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptStorageException exception = assertThrows(ConceptStorageException.class,
                 () -> conceptService.createConcept(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit metadata pojmu"));
@@ -228,7 +231,7 @@ class ConceptServiceImplTest {
     void deleteConcept_ConceptNotFound() {
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptNotFoundException exception = assertThrows(ConceptNotFoundException.class,
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
@@ -241,7 +244,7 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptNotFoundException exception = assertThrows(ConceptNotFoundException.class,
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -257,7 +260,7 @@ class ConceptServiceImplTest {
         emptyModel.add(emptyModel.createResource("http://other.org/resource"),
                       emptyModel.createProperty("http://example.org/prop"), "value");
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptNotFoundException exception = assertThrows(ConceptNotFoundException.class,
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
@@ -361,7 +364,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptNotFoundException exception = assertThrows(ConceptNotFoundException.class,
                 () -> conceptService.editConcept(editModel));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
@@ -375,7 +378,7 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptNotFoundException exception = assertThrows(ConceptNotFoundException.class,
                 () -> conceptService.editConcept(editModel));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -392,7 +395,7 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(emptyModel);
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptNotFoundException exception = assertThrows(ConceptNotFoundException.class,
                 () -> conceptService.editConcept(editModel));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
@@ -410,7 +413,7 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
                 .thenThrow(new RuntimeException("Editor error"));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptStorageException exception = assertThrows(ConceptStorageException.class,
                 () -> conceptService.editConcept(editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se upravit pojem"));
@@ -429,7 +432,7 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         doThrow(new RuntimeException("TDB2 error")).when(jenaTDB2Repository).putOntologyModel(TEST_GRAPH_NAME, testModel);
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptStorageException exception = assertThrows(ConceptStorageException.class,
                 () -> conceptService.editConcept(editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit upravený pojem do TDB2"));
@@ -449,7 +452,7 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
                 .thenThrow(new RuntimeException("DB error"));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        ConceptStorageException exception = assertThrows(ConceptStorageException.class,
                 () -> conceptService.editConcept(editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se aktualizovat metadata pojmu"));
