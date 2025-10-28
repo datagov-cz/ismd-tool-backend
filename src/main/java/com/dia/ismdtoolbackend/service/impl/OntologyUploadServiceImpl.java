@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
+import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.exception.*;
 import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
@@ -8,8 +10,6 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
-import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
-import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -28,6 +28,7 @@ import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -84,8 +85,27 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntologyUploadException {
-        OntModel finalModel = createMergedOntologyModel(file, rdfLang);
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) {
+        if (file.isEmpty()) {
+            log.error("Ontology upload file is empty");
+            throw new EmptyFileException("Ontology upload file is empty");
+        }
+
+        Lang rdfLang = determineRDFFormat(file);
+        if (rdfLang == null) {
+            log.error("Ontology RDF language is not supported");
+            throw new UnsupportedRdfFormatException("Ontology RDF language is not supported");
+        }
+
+        OntModel finalModel;
+        try {
+            finalModel = createMergedOntologyModel(file, rdfLang);
+        } catch (IOException e) {
+            log.error("Failed to read uploaded file: {}", e.getMessage(), e);
+            throw new OntologyUploadException("Nepodařilo se načíst nahraný soubor: " + e.getMessage(), e);
+        }
+
+
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
@@ -95,7 +115,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
         } catch (Exception e) {
             ontologyMetadataRepository.deleteById(metadata.getId());
-            throw new OntologyUploadException("Failed to upload to TDB2", e);
+            throw new OntologyStorageException("Failed to upload to TDB2", e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
@@ -198,7 +218,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
         Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphNameAndUserId(graphName, userId);
         if (ontologyOpt.isPresent()) {
-            throw new OntologyException("Slovník se stejným IRI již v Nástroji existuje: {}" + graphName);
+            throw new OntologyValidationException("Slovník se stejným IRI již v Nástroji existuje: {}" + graphName);
         }
 
         OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();

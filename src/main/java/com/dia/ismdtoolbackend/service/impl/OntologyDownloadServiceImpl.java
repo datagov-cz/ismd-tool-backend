@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.EmptyDataException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
@@ -37,7 +39,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
-            return "Slovník nebyl nalezen";
+            throw new OntologyNotFoundException("Metadata slovníku nebyla nalezena");
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
@@ -46,7 +48,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
 
             if (model.isEmpty()) {
                 log.error("Ontology model is empty.");
-                throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+                throw new EmptyDataException("Slovník je prázdný, nebo nebyl nalezen.");
             }
 
             Model processedModel = applyAllOFNTransformations(model);

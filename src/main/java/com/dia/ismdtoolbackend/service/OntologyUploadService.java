@@ -9,5 +9,5 @@ import java.io.IOException;
 
 public interface OntologyUploadService {
     Lang determineRDFFormat(MultipartFile file);
-    OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntologyUploadException;
+    OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId);
 }

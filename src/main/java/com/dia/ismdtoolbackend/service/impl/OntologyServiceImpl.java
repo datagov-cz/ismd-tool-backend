@@ -3,6 +3,10 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.exception.EmptyDataException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyStorageException;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -82,11 +86,11 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public void deleteOntology(Long ontologyId) throws OntologyException {
+    public void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
-            throw new EntityNotFoundException("Slovník s id " + ontologyId + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s id " + ontologyId + " nebyl nalezen.");
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
@@ -108,7 +112,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) throws OntologyException {
+    public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
         URIGenerator uriGenerator = new URIGenerator();
@@ -116,7 +120,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
             log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
-            throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
+            throw new OntologyValidationException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
@@ -130,7 +134,7 @@ public class OntologyServiceImpl implements OntologyService {
             log.info("Successfully saved RDF model to TDB2 with graph name: {}", ontologyIRI);
         } catch (Exception e) {
             log.error("Failed to save RDF model to TDB2", e);
-            throw new OntologyException("Nepodařilo se uložit RDF model: " + e.getMessage());
+            throw new OntologyStorageException("Nepodařilo se uložit RDF model: " + e.getMessage());
         }
 
         try {
@@ -144,16 +148,16 @@ public class OntologyServiceImpl implements OntologyService {
             } catch (Exception cleanupException) {
                 log.error("Failed to cleanup TDB2 graph {}: {}", ontologyIRI, cleanupException.getMessage());
             }
-            throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+            throw new OntologyStorageException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
         }
     }
 
     @Override
-    public OntologyDetailModel getOntologyDetailModel(Long ontologyId) throws OntologyException {
+    public OntologyDetailModel getOntologyDetailModel(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
-            throw new OntologyException("Metadata slovníku s id " + ontologyId + " nebyla nalezena.");
+            throw new OntologyNotFoundException("Metadata slovníku s id " + ontologyId + " nebyla nalezena.");
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
@@ -162,7 +166,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (rawModel.isEmpty()) {
             log.error("Ontology model is empty for graph: {}", graphName);
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
         Model processedModel = applyOFNTransformations(rawModel);
@@ -243,13 +247,13 @@ public class OntologyServiceImpl implements OntologyService {
         return map;
     }
 
-    private void validateOntologyCreateModel(OntologyCreateModel model) throws OntologyException {
+    private void validateOntologyCreateModel(OntologyCreateModel model) {
         if (model == null) {
-            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
+            throw new OntologyValidationException("Data pro vytvoření slovníku jsou prázdná");
         }
     }
 
-    private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) throws OntologyException {
+    private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
         OFNBaseModel ofnModel = new OFNBaseModel();
 
         OntModel model = ofnModel.getOntModel();
@@ -287,7 +291,7 @@ public class OntologyServiceImpl implements OntologyService {
         jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
-    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
+    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
         metadataEntity.setGraphName(ontologyIRI);
         metadataEntity.setUserId(userId);
@@ -298,7 +302,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel) throws OntologyException {
+    public OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel, Long ontologyId) {
         validateOntologyEditModel(ontologyEditModel);
 
         String oldOntologyIRI = ontologyEditModel.getOntologyIRI();
@@ -319,11 +323,11 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataMapper.toDto(metadataEntity);
     }
 
-    private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) throws OntologyException {
+    private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("Ontology with IRI {} not found", ontologyIRI);
-            throw new OntologyException("Slovník s IRI " + ontologyIRI + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s IRI " + ontologyIRI + " nebyl nalezen.");
         }
         return ontologyMetadataOpt.get();
     }
@@ -332,7 +336,7 @@ public class OntologyServiceImpl implements OntologyService {
         Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
         if (model.isEmpty()) {
             log.error("Ontology model is empty for IRI: {}", ontologyIRI);
-            throw new OntologyException("Model slovníku je prázdný nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Model slovníku je prázdný nebo nebyl nalezen.");
         }
         return model;
     }
@@ -343,7 +347,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
                                                            Model model, OntologyMetadataEntity metadataEntity)
-            throws OntologyException {
+    {
         try {
             String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
 
@@ -358,7 +362,7 @@ public class OntologyServiceImpl implements OntologyService {
             return updateOntologyMetadata(metadataEntity, newOntologyIRI);
         } catch (Exception e) {
             log.error("Failed to update ontology with new IRI: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
+            throw new OntologyStorageException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
         }
     }
 
@@ -396,13 +400,13 @@ public class OntologyServiceImpl implements OntologyService {
         log.info("Successfully updated {} concept metadata entries", updatedCount);
     }
 
-    private void saveOntologyModel(String ontologyIRI, Model model) throws OntologyException {
+    private void saveOntologyModel(String ontologyIRI, Model model) {
         try {
             jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
             log.info("Saved/updated ontology model for graph: {}", ontologyIRI);
         } catch (Exception e) {
             log.error("Failed to save ontology model: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
+            throw new OntologyStorageException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
         }
     }
 
@@ -419,10 +423,10 @@ public class OntologyServiceImpl implements OntologyService {
 
     private void validateOntologyEditModel(OntologyEditModel model) throws OntologyException {
         if (model == null) {
-            throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
+            throw new EmptyDataException("Data pro úpravu slovníku jsou prázdná");
         }
         if (model.getOntologyIRI() == null || model.getOntologyIRI().trim().isEmpty()) {
-            throw new OntologyException("IRI slovníku je povinné");
+            throw new OntologyValidationException("IRI slovníku je povinné");
         }
     }
 
