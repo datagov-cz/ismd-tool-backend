@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Custom UserDetails implementation for CAAIS OAuth2 authenticated users.
- * Extracts userId and roles from JWT claims (sub and role).
+ * Custom UserDetails implementation for Keycloak OAuth2/OIDC authenticated users.
+ * Extracts userId and roles from JWT claims (preferred_username/sub and roles).
  */
 @Getter
 public class SecurityUser implements UserDetails {
@@ -21,10 +21,10 @@ public class SecurityUser implements UserDetails {
     private final Collection<? extends GrantedAuthority> authorities;
 
     /**
-     * Creates a SecurityUser from CAAIS JWT claims.
+     * Creates a SecurityUser from Keycloak JWT claims.
      *
-     * @param userId User identifier from JWT "sub" claim
-     * @param roles List of role strings from JWT "role" claim
+     * @param userId User identifier from JWT "preferred_username" or "sub" claim
+     * @param roles List of role strings extracted from JWT "realm_access.roles" claim
      */
     public SecurityUser(String userId, List<String> roles) {
         this.userId = userId;

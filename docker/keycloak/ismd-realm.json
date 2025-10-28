@@ -3,11 +3,11 @@
   "enabled": true,
   "clients": [
     {
-      "clientId": "ismd-backend",
+      "clientId": "ismd-app",
       "secret": "secret123",
       "redirectUris": ["*"],
       "publicClient": false,
-      "directAccessGrantsEnabled": true
+      "directAccessGrantsEnabled": false
     }
   ],
   "users": [
