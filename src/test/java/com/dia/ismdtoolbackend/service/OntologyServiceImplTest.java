@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
+import jakarta.persistence.EntityNotFoundException;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -95,7 +96,7 @@ class OntologyServiceImplTest {
     void deleteOntology_OntologyNotFound() {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        EntityNotFoundException exception = assertThrows(EntityNotFoundException.class,
                 () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
@@ -108,7 +109,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        EntityNotFoundException exception = assertThrows(EntityNotFoundException.class,
                 () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
 
         assertTrue(exception.getMessage().contains("prázdný"));
