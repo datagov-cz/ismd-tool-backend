@@ -88,7 +88,8 @@ public class SecurityConfig {
                 .securityMatcher(
                         "/actuator/health",
                         "/actuator/info",
-                        "/api/ontology/*/download"
+                        "/api/ontology/*/download",
+                        "/api/ontology/*/detail"
                 )
                 // Allow all requests to these endpoints
                 .authorizeHttpRequests(auth -> auth
@@ -127,6 +128,7 @@ public class SecurityConfig {
                         // Explicitly configured authenticated endpoints
                         .requestMatchers(HttpMethod.POST, "/api/ontology/upload").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/create").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/ontology/*/delete").authenticated()
                         .anyRequest().denyAll()
                 )
@@ -149,5 +151,4 @@ public class SecurityConfig {
         log.info("Authenticated security filter chain configured successfully");
         return http.build();
     }
-
 }

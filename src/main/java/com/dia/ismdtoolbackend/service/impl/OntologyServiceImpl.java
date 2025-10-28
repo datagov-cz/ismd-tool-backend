@@ -28,7 +28,6 @@ import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -103,7 +102,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (model.isEmpty()) {
             log.error("Ontology model is empty.");
-            throw new EntityNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
         jenaTDB2Repository.deleteGraph(graphName);
@@ -302,7 +301,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel, Long ontologyId) {
+    public OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel) {
         validateOntologyEditModel(ontologyEditModel);
 
         String oldOntologyIRI = ontologyEditModel.getOntologyIRI();

@@ -32,14 +32,14 @@ public class OntologySecurityService {
      * @throws EntityNotFoundException if ontology does not exist
      */
     public boolean canModify(Long ontologyId) {
-        log.debug("Checking delete permission for ontology: {}", ontologyId);
+        log.debug("Checking modify permission for ontology: {}", ontologyId);
 
         // Get current authenticated user
         SecurityUser currentUser = SecurityUtils.getCurrentUser();
 
-        // Admin can delete anything
+        // Admin can modify anything
         if (currentUser.isAdmin()) {
-            log.debug("User {} is admin - delete permitted for ontology {}", currentUser.getUserId(), ontologyId);
+            log.debug("User {} is admin - modify permitted for ontology {}", currentUser.getUserId(), ontologyId);
             return true;
         }
 
@@ -52,9 +52,35 @@ public class OntologySecurityService {
         boolean isOwner = entity.getUserId().equals(currentUser.getUserId());
 
         if (isOwner) {
-            log.debug("User {} is owner - delete permitted for ontology {}", currentUser.getUserId(), ontologyId);
+            log.debug("User {} is owner - modify permitted for ontology {}", currentUser.getUserId(), ontologyId);
         } else {
-            log.warn("User {} attempted to delete ontology {} owned by {}", currentUser.getUserId(), ontologyId, entity.getUserId());
+            log.warn("User {} attempted to modify ontology {} owned by {}", currentUser.getUserId(), ontologyId, entity.getUserId());
+        }
+
+        return isOwner;
+    }
+
+    public boolean canModify(String ontologyIRI) {
+        log.debug("Checking modify permission for ontology: {}", ontologyIRI);
+
+        SecurityUser currentUser = SecurityUtils.getCurrentUser();
+
+        if (currentUser.isAdmin()) {
+            log.debug("User {} is admin - modify permitted for ontology {}", currentUser.getUserId(), ontologyIRI);
+            return true;
+        }
+
+        OntologyMetadataEntity entity = ontologyMetadataRepository.findByGraphName(ontologyIRI).orElseThrow(() -> {
+            log.error("Ontology not found: {}", ontologyIRI);
+            return new EntityNotFoundException("Slovník s IRI " + ontologyIRI + " nebyl nalezen.");
+        });
+
+        boolean isOwner = entity.getUserId().equals(currentUser.getUserId());
+
+        if (isOwner) {
+            log.debug("User {} is owner - modify permitted for ontology {}", currentUser.getUserId(), ontologyIRI);
+        } else {
+            log.warn("User {} attempted to modify ontology {} owned by {}", currentUser.getUserId(), ontologyIRI, entity.getUserId());
         }
 
         return isOwner;
