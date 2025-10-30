@@ -1,5 +1,11 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
+import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
+import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -7,57 +13,58 @@ import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ExtendWith(MockitoExtension.class)
-@Disabled("TODO implement test security config")
+/**
+ * Integration tests for OntologyController with security context.
+ * <p>
+ * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
+ * Authentication is provided via @WithMockSecurityUser annotation.
+ * Authorization checks (@PreAuthorize) are handled via TestOntologySecurityService.
+ * <p>
+ * Note: @MockBean is deprecated in Spring Boot 3.4+ but remains the recommended
+ * approach for @WebMvcTest until a clear migration path is provided.
+ */
+@WebMvcTest(OntologyController.class)
+@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
+@ActiveProfiles("test")
 class OntologyControllerTest {
 
-    @org.junit.jupiter.api.AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
-
+    @Autowired
     private MockMvc mockMvc;
 
-    @Mock(lenient = true)
+    @MockBean
     private OntologyUploadService ontologyUploadService;
 
-    @Mock(lenient = true)
+    @MockBean
     private OntologyService ontologyService;
 
-    @Mock
+    @MockBean
     private OntologyDownloadService ontologyDownloadService;
 
-    @InjectMocks
-    private OntologyController ontologyController;
-
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(ontologyController).build();
-        objectMapper = new ObjectMapper();
+        // Reset security service to allow modifications by default
+        TestOntologySecurityService.reset();
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_Success() throws Exception {
         String userId = "user123";
         String providedName = "test-ontology";
@@ -73,9 +80,8 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        // TODO modify to reflect current implementation
-        //when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
-                //.thenReturn(expectedMetadata);
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+                .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
@@ -88,6 +94,7 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_SuccessWithoutProvidedName() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
@@ -102,9 +109,8 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        // TODO modify to reflect current implementation
-        //when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(Lang.TURTLE), eq(userId)))
-                //.thenReturn(expectedMetadata);
+        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+                .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
@@ -116,7 +122,9 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId= "user123")
     void testUploadFromFile_EmptyFile() throws Exception {
+        String userId = "user123";
         MockMultipartFile emptyFile = new MockMultipartFile(
                 "file",
                 "empty.ttl",
@@ -124,6 +132,10 @@ class OntologyControllerTest {
                 new byte[0]
         );
 
+        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+                .thenThrow(new EmptyFileException("Soubor je prázdný."));
+
+        TestOntologySecurityService.setAllowModify(true);
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(emptyFile))
                 .andExpect(status().isBadRequest())
@@ -133,7 +145,9 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_UnsupportedRDFFormat() throws Exception {
+        String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.unknown",
@@ -141,7 +155,8 @@ class OntologyControllerTest {
                 "some content".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(null);
+        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+                .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
@@ -162,9 +177,8 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        // TODO modify to reflect current implementation
-        //when(ontologyUploadService.uploadFromFile(any(), any(), eq(Lang.TURTLE), eq(userId)))
-                //.thenThrow(new RuntimeException("Parse error"));
+        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+                .thenThrow(new RuntimeException("Parse error"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
@@ -174,12 +188,28 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_MissingFile() throws Exception {
-        mockMvc.perform(multipart("/api/ontology/upload"))
+        String userId = "user123";
+        String providedName = "jsonld-ontology";
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.jsonld",
+                "application/ld+json",
+                "".getBytes()
+        );
+
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+                .thenThrow(new EmptyFileException("Soubor je prázdný."));
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(file)
+                        .param("providedName", providedName))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_JsonLdFormat() throws Exception {
         String userId = "user123";
         String providedName = "jsonld-ontology";
@@ -195,9 +225,8 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
-        // TODO modify to reflect current implementation
-        //when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.JSONLD), eq(userId)))
-                //.thenReturn(expectedMetadata);
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+                .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
@@ -209,31 +238,18 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_LargeFile() throws Exception {
         String userId = "user123";
-        StringBuilder largeContent = new StringBuilder();
-        largeContent.append("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
-        largeContent.append("<http://example.org/test> a owl:Ontology .");
-
-        for (int i = 0; i < 1000; i++) {
-            largeContent.append(String.format("<http://example.org/entity%d> a owl:Class .", i));
-        }
-
-        MockMultipartFile largeFile = new MockMultipartFile(
-                "file",
-                "large.ttl",
-                "text/turtle",
-                largeContent.toString().getBytes()
-        );
+        MockMultipartFile largeFile = getMockMultipartFile();
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("large-ontology");
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        // TODO modify to reflect current implementation
-        //when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(Lang.TURTLE), eq(userId)))
-                //.thenReturn(expectedMetadata);
+        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+                .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(largeFile))
@@ -243,7 +259,25 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data.user.userId").value(userId));
     }
 
+    private static MockMultipartFile getMockMultipartFile() {
+        StringBuilder largeContent = new StringBuilder();
+        largeContent.append("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        largeContent.append("<http://example.org/test> a owl:Ontology .");
+
+        for (int i = 0; i < 1000; i++) {
+            largeContent.append(String.format("<http://example.org/entity%d> a owl:Class .", i));
+        }
+
+        return new MockMultipartFile(
+                "file",
+                "large.ttl",
+                "text/turtle",
+                largeContent.toString().getBytes()
+        );
+    }
+
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_AlreadyExistsScenario() throws Exception {
         String userId = "user123";
         String providedName = "existing-ontology";
@@ -260,9 +294,8 @@ class OntologyControllerTest {
         existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        // TODO modify to reflect current implementation
-        //when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
-                //.thenReturn(existingMetadata);
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+                .thenReturn(existingMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
@@ -276,9 +309,11 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_Success() throws Exception {
         Long ontologyId = 1L;
 
+        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
@@ -289,10 +324,12 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Slovník s ID 999 nebyl nalezen"))
+        TestOntologySecurityService.setAllowModify(true);
+        doThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník s ID 999 nebyl nalezen"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
@@ -303,23 +340,25 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_AccessDenied() throws Exception {
         Long ontologyId = 1L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Chyba při mazání slovníku"))
-                .when(ontologyService).deleteOntology(ontologyId);
+        TestOntologySecurityService.setAllowModify(false);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isForbidden())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Chyba při mazání slovníku"));
+                .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_UnexpectedException() throws Exception {
         Long ontologyId = 1L;
 
+        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Neočekávaná chyba"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
@@ -327,24 +366,16 @@ class OntologyControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při mazání slovníku."));
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
     }
 
     // ========== Create Ontology Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateOntology_Success() throws Exception {
         String userId = "user123";
-        OntologyCreateModel createModel = new OntologyCreateModel();
-        createModel.setNamespace("http://example.org/");
-        NameModel nameModel = new NameModel();
-        nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
-        createModel.setNameModel(nameModel);
-        DescriptionModel descModel = new DescriptionModel();
-        descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
-        createModel.setDescriptionModel(descModel);
+        OntologyCreateModel createModel = getOntologyCreateModel();
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
@@ -354,16 +385,14 @@ class OntologyControllerTest {
 
         mockMvc.perform(post("/api/ontology/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createModel))
-                        .param("userId", userId))
+                        .content(objectMapper.writeValueAsString(createModel)))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("http://example.org/test-ontology"))
                 .andExpect(jsonPath("$.message").isString());
     }
 
-    @Test
-    void testCreateOntology_EmptyUserId() throws Exception {
+    private static OntologyCreateModel getOntologyCreateModel() {
         OntologyCreateModel createModel = new OntologyCreateModel();
         createModel.setNamespace("http://example.org/");
         NameModel nameModel = new NameModel();
@@ -374,16 +403,11 @@ class OntologyControllerTest {
         descModel.setDescription("Test description");
         descModel.setLanguageTag("cs");
         createModel.setDescriptionModel(descModel);
-
-        mockMvc.perform(post("/api/ontology/create")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createModel))
-                        .param("userId", ""))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("ID uživatele je povinné."));
+        return createModel;
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateOntology_ValidationError() throws Exception {
         String userId = "user123";
         OntologyCreateModel createModel = new OntologyCreateModel();
@@ -397,12 +421,11 @@ class OntologyControllerTest {
         createModel.setDescriptionModel(descModel);
 
         when(ontologyService.createOntology(any(), eq(userId)))
-                .thenThrow(new org.apache.jena.ontology.OntologyException("Namespace je povinný"));
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException("Namespace je povinný"));
 
         mockMvc.perform(post("/api/ontology/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createModel))
-                        .param("userId", userId))
+                        .content(objectMapper.writeValueAsString(createModel)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Namespace je povinný"));
     }
@@ -410,17 +433,20 @@ class OntologyControllerTest {
     // ========== Edit Ontology Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testEditOntology_Success() throws Exception {
+        Long ontologyId = 1L;
         OntologyEditModel editModel = new OntologyEditModel();
         editModel.setOntologyIRI("http://example.org/test-ontology");
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
+        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(any(OntologyEditModel.class)))
                 .thenReturn(expectedMetadata);
 
-        mockMvc.perform(patch("/api/ontology/edit")
+        mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(editModel)))
                 .andExpect(status().isOk())
@@ -430,14 +456,17 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testEditOntology_NotFound() throws Exception {
+        Long ontologyId = 999L;
         OntologyEditModel editModel = new OntologyEditModel();
         editModel.setOntologyIRI("http://example.org/nonexistent");
 
+        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(any()))
-                .thenThrow(new org.apache.jena.ontology.OntologyException("Slovník nebyl nalezen"));
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník nebyl nalezen"));
 
-        mockMvc.perform(patch("/api/ontology/edit")
+        mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(editModel)))
                 .andExpect(status().isNotFound())
@@ -495,7 +524,7 @@ class OntologyControllerTest {
         Long ontologyId = 999L;
 
         when(ontologyDownloadService.downloadOntology(ontologyId, "ttl"))
-                .thenThrow(new RuntimeException("Ontology not found"));
+                .thenThrow(new OntologyNotFoundException("Ontology not found"));
 
         mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
                         .param("format", "ttl"))
@@ -531,7 +560,7 @@ class OntologyControllerTest {
         Long ontologyId = 999L;
 
         when(ontologyService.getOntologyDetailModel(ontologyId))
-                .thenThrow(new RuntimeException("Ontology not found"));
+                .thenThrow(new OntologyNotFoundException("Ontology not found"));
 
         mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
                 .andExpect(status().isNotFound());

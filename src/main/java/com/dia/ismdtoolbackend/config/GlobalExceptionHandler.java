@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
+import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
@@ -115,5 +116,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleOntologyException(OntologyException e) {
         log.error("Operation failed: {}", e.getMessage(), e);
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ApiResponseDto> handleValidationException(ValidationException e) {
+        log.error("Validation failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
     }
 }

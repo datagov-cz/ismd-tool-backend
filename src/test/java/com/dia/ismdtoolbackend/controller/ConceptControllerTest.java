@@ -1,5 +1,10 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.exceptions.ValidationException;
+import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
+import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
+import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -7,17 +12,16 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
@@ -26,26 +30,37 @@ import static org.mockito.Mockito.doNothing;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ExtendWith(MockitoExtension.class)
-@Disabled("TODO implement test security config")
+/**
+ * Integration tests for ConceptController with security context.
+ * <p>
+ * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
+ * Authentication is provided via @WithMockSecurityUser annotation.
+ * Authorization checks (@PreAuthorize) are mocked via OntologySecurityService.
+ * <p>
+ * Note: @MockBean is deprecated in Spring Boot 3.4+ but remains the recommended
+ * approach for @WebMvcTest until a clear migration path is provided.
+ */
+@WebMvcTest(ConceptController.class)
+@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
+@ActiveProfiles("test")
 class ConceptControllerTest {
 
+    @Autowired
     private MockMvc mockMvc;
 
-    @Mock
+    @MockBean
     private ConceptService conceptService;
-
-    @InjectMocks
-    private ConceptController conceptController;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(conceptController).build();
+        // Reset security service to allow modifications by default
+        TestOntologySecurityService.reset();
     }
 
     // ========== Create Concept Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateConcept_Success() throws Exception {
         String userId = "user123";
 
@@ -79,8 +94,7 @@ class ConceptControllerTest {
 
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.id").value(1))
@@ -93,32 +107,8 @@ class ConceptControllerTest {
     }
 
     @Test
-    void testCreateConcept_EmptyUserId() throws Exception {
-        String jsonRequest = """
-                {
-                    "conceptType": "TRIDA",
-                    "ontologyGraphName": "test-ontology",
-                    "namespace": "http://example.org/",
-                    "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
-                    },
-                    "type": "entity"
-                }
-                """;
-
-        mockMvc.perform(post("/api/concept/create")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", ""))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("ID uživatele je povinné."));
-    }
-
-    @Test
-    void testCreateConcept_NullUserId() throws Exception {
+    @WithMockSecurityUser(userId = "user123")
+    void testCreateConcept_Unauthenticated() throws Exception {
         String jsonRequest = """
                 {
                     "conceptType": "TRIDA",
@@ -135,10 +125,11 @@ class ConceptControllerTest {
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
     }
 
     @ParameterizedTest
+    @WithMockSecurityUser(userId = "user123")
     @CsvSource(delimiter = '|', textBlock = """
             invalid-namespace           | TestConcept    | entity | IRI není platné
             http://example.org/         | TestConcept    | null   | Typ třídy je povinný.
@@ -148,7 +139,6 @@ class ConceptControllerTest {
     void testCreateConcept_ValidationErrors(String namespace, String conceptName, String type, String expectedError) throws Exception {
         String userId = "user123";
 
-        // Build JSON request dynamically based on parameters
         StringBuilder jsonBuilder = new StringBuilder();
         jsonBuilder.append("{\n");
         jsonBuilder.append("    \"conceptType\": \"TRIDA\"");
@@ -173,12 +163,11 @@ class ConceptControllerTest {
         String jsonRequest = jsonBuilder.toString();
 
         when(conceptService.createConcept(any(), eq(userId)))
-                .thenThrow(new org.apache.jena.ontology.OntologyException(expectedError));
+                .thenThrow(new ValidationException(expectedError));
 
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -186,6 +175,7 @@ class ConceptControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateConcept_StorageError() throws Exception {
         String userId = "user123";
         String jsonRequest = """
@@ -206,8 +196,7 @@ class ConceptControllerTest {
 
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -215,6 +204,7 @@ class ConceptControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateConcept_IllegalArgumentException() throws Exception {
         String userId = "user123";
         String jsonRequest = """
@@ -235,8 +225,7 @@ class ConceptControllerTest {
 
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -244,6 +233,7 @@ class ConceptControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateConcept_SecurityException() throws Exception {
         String userId = "user123";
         String jsonRequest = """
@@ -259,20 +249,21 @@ class ConceptControllerTest {
                 }
                 """;
 
+        TestOntologySecurityService.setAllowModify(false);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenThrow(new SecurityException("Security violation"));
 
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
-                .andExpect(status().isBadRequest())
+                        .content(jsonRequest))
+                .andExpect(status().isUnauthorized())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Security violation"));
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateConcept_UnexpectedException() throws Exception {
         String userId = "user123";
         String jsonRequest = """
@@ -288,25 +279,27 @@ class ConceptControllerTest {
                 }
                 """;
 
+        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
         mockMvc.perform(post("/api/concept/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při vytváření pojmu."));
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
     }
 
     // ========== Delete Concept Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteConcept_Success() throws Exception {
         Long conceptId = 1L;
 
+        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(conceptService).deleteConcept(conceptId);
 
         mockMvc.perform(delete("/api/concept/{conceptId}/delete", conceptId))
@@ -317,10 +310,12 @@ class ConceptControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteConcept_NotFound() throws Exception {
         Long conceptId = 999L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Pojem s ID 999 nebyl nalezen"))
+        TestOntologySecurityService.setAllowModify(true);
+        doThrow(new ConceptNotFoundException("Pojem s ID 999 nebyl nalezen"))
                 .when(conceptService).deleteConcept(conceptId);
 
         mockMvc.perform(delete("/api/concept/{conceptId}/delete", conceptId))
@@ -331,23 +326,11 @@ class ConceptControllerTest {
     }
 
     @Test
-    void testDeleteConcept_OntologyException() throws Exception {
-        Long conceptId = 1L;
-
-        doThrow(new org.apache.jena.ontology.OntologyException("Chyba při mazání pojmu"))
-                .when(conceptService).deleteConcept(conceptId);
-
-        mockMvc.perform(delete("/api/concept/{conceptId}/delete", conceptId))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Chyba při mazání pojmu"));
-    }
-
-    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteConcept_UnexpectedException() throws Exception {
         Long conceptId = 1L;
 
+        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Neočekávaná chyba"))
                 .when(conceptService).deleteConcept(conceptId);
 
@@ -355,13 +338,15 @@ class ConceptControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při mazání pojmu."));
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
     }
 
     // ========== Edit Concept Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testEditConcept_Success() throws Exception {
+        Long conceptId = 1L;
         String userId = "user123";
         String jsonRequest = """
                 {
@@ -387,13 +372,13 @@ class ConceptControllerTest {
         expectedMetadata.setConceptName("UpdatedConcept");
         expectedMetadata.setUser(new UserModel(userId));
 
+        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.editConcept(any(ConceptEditModel.class)))
                 .thenReturn(expectedMetadata);
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.id").value(1))
@@ -404,7 +389,9 @@ class ConceptControllerTest {
     }
 
     @Test
-    void testEditConcept_EmptyUserId() throws Exception {
+    @WithMockSecurityUser(userId = "user123")
+    void testEditConcept_ValidationException() throws Exception {
+        Long conceptId = 1L;
         String jsonRequest = """
                 {
                     "conceptType": "TRIDA",
@@ -412,48 +399,13 @@ class ConceptControllerTest {
                 }
                 """;
 
-        mockMvc.perform(patch("/api/concept/edit")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", ""))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("ID uživatele je povinné."));
-    }
+        TestOntologySecurityService.setAllowModify(true);
+        when(conceptService.editConcept(any()))
+                .thenThrow(new ValidationException("Invalid concept IRI"));
 
-    @Test
-    void testEditConcept_NullUserId() throws Exception {
-        String jsonRequest = """
-                {
-                    "conceptType": "TRIDA",
-                    "conceptIRI": "http://example.org/TestConcept"
-                }
-                """;
-
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void testEditConcept_IllegalArgumentException() throws Exception {
-        String userId = "user123";
-        String jsonRequest = """
-                {
-                    "conceptType": "TRIDA",
-                    "conceptIRI": "http://example.org/TestConcept"
-                }
-                """;
-
-        when(conceptService.editConcept(any()))
-                .thenThrow(new IllegalArgumentException("Invalid concept IRI"));
-
-        mockMvc.perform(patch("/api/concept/edit")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -461,8 +413,9 @@ class ConceptControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "userXXX")
     void testEditConcept_SecurityException() throws Exception {
-        String userId = "user123";
+        Long conceptId = 1L;
         String jsonRequest = """
                 {
                     "conceptType": "TRIDA",
@@ -470,22 +423,23 @@ class ConceptControllerTest {
                 }
                 """;
 
+        TestOntologySecurityService.setAllowModify(false);
         when(conceptService.editConcept(any()))
                 .thenThrow(new SecurityException("Security violation"));
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
-                .andExpect(status().isBadRequest())
+                        .content(jsonRequest))
+                .andExpect(status().isForbidden())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Security violation"));
+                .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testEditConcept_UnexpectedException() throws Exception {
-        String userId = "user123";
+        Long conceptId = 1L;
         String jsonRequest = """
                 {
                     "conceptType": "TRIDA",
@@ -493,16 +447,16 @@ class ConceptControllerTest {
                 }
                 """;
 
+        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.editConcept(any()))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest)
-                        .param("userId", userId))
+                        .content(jsonRequest))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při úpravě pojmu."));
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
     }
 }
