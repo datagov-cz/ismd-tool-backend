@@ -25,19 +25,16 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
 
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
-        // Extract userId from "preferred_username" claim (Keycloak standard)
-        // Fallback to "sub" if preferred_username is missing
-        String userId = StringUtils.trim(jwt.getClaimAsString(CLAIM_PREFERRED_USERNAME));
-
-        if (StringUtils.isEmpty(userId)) {
-            log.debug("JWT missing 'preferred_username' claim, falling back to 'sub'");
-            userId = StringUtils.trim(jwt.getClaimAsString(CLAIM_SUB));
-        }
+        // Extract userId from "sub" claim (Keycloak UUID)
+        String userId = StringUtils.trim(jwt.getClaimAsString(CLAIM_SUB));
 
         if (StringUtils.isEmpty(userId)) {
             log.error("JWT missing both 'preferred_username' and 'sub' claims");
             throw new IllegalArgumentException("JWT must contain 'preferred_username' or 'sub' claim with user ID");
         }
+
+        // Extract username for display purposes
+        String displayName = StringUtils.trim(jwt.getClaimAsString(CLAIM_PREFERRED_USERNAME));
 
         // Extract roles from Keycloak nested structure: realm_access.roles
         List<String> roles = extractKeycloakRoles(jwt);
@@ -45,7 +42,7 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
         log.debug("Converting JWT to SecurityUser: userId={}, roles={}", userId, roles);
 
         // Create SecurityUser with extracted claims
-        SecurityUser securityUser = new SecurityUser(userId, roles);
+        SecurityUser securityUser = new SecurityUser(userId, displayName, roles);
 
         // Return custom Authentication with SecurityUser as principal
         return new SecurityUserAuthentication(securityUser, jwt);
@@ -89,7 +86,6 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
      * @param jwt JWT token
      * @return List of role strings with ROLE_ prefix
      */
-    @SuppressWarnings("unchecked")
     private List<String> extractKeycloakRoles(Jwt jwt) {
         try {
             // Try realm_access.roles first (standard Keycloak realm roles)

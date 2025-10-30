@@ -7,7 +7,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Custom UserDetails implementation for Keycloak OAuth2/OIDC authenticated users.
@@ -17,21 +16,25 @@ import java.util.stream.Collectors;
 public class SecurityUser implements UserDetails {
 
     private final String userId;
+    @Getter
+    private final String displayName;
     private final List<String> roles;
     private final Collection<? extends GrantedAuthority> authorities;
 
     /**
      * Creates a SecurityUser from Keycloak JWT claims.
      *
-     * @param userId User identifier from JWT "preferred_username" or "sub" claim
+     * @param userId User UUID identifier from JWT "sub" claim
+     * @param displayName User preferred username for display purposes from JWT "preferred_username"
      * @param roles List of role strings extracted from JWT "realm_access.roles" claim
      */
-    public SecurityUser(String userId, List<String> roles) {
+    public SecurityUser(String userId, String displayName, List<String> roles) {
         this.userId = userId;
+        this.displayName = displayName;
         this.roles = roles;
         this.authorities = roles.stream()
                 .map(SimpleGrantedAuthority::new)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override

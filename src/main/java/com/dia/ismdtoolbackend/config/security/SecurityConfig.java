@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
+    private final org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource;
 
     @Value("${spring.security.oauth2.client.registration.keycloak.client-id}")
     private String clientId;
@@ -84,6 +85,8 @@ public class SecurityConfig {
         log.info("Configuring public security filter chain (Order 1)...");
 
         http
+                // CORS configuration
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 // Only apply this chain to public endpoints
                 .securityMatcher(
                         "/actuator/health",
@@ -123,6 +126,8 @@ public class SecurityConfig {
         log.info("Configuring authenticated security filter chain (Order 2)...");
 
         http
+                // CORS configuration
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 // Authorization rules for authenticated endpoints
                 .authorizeHttpRequests(auth -> auth
                         // Explicitly configured authenticated endpoints

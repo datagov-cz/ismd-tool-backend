@@ -33,9 +33,10 @@ public class WithMockSecurityUserSecurityContextFactory
     @Override
     public SecurityContext createSecurityContext(WithMockSecurityUser annotation) {
         String userId = annotation.userId();
+        String displayName = annotation.displayName();
         List<String> roles = Arrays.asList(annotation.roles());
 
-        SecurityUser securityUser = new SecurityUser(userId, roles);
+        SecurityUser securityUser = new SecurityUser(userId, displayName, roles);
 
         Authentication authentication = new UsernamePasswordAuthenticationToken(
                 securityUser,

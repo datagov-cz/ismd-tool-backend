@@ -20,19 +20,21 @@ public class CorsConfig {
     }
 
     @Bean
-    public CorsFilter corsFilter() {
-        CorsConfigurationSource corsConfigurationSource;
+    public CorsConfigurationSource corsConfigurationSource() {
         String activeProfile = DomainApplicationProfile.getProfile(env);
         log.info("Configuring CORS for profile: {}", activeProfile);
 
         if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.PRODUCTION)) {
-            corsConfigurationSource = productionCorsConfigurationSource();
+            return productionCorsConfigurationSource();
         } else if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.STAGE)) {
-            corsConfigurationSource = stageCorsConfigurationSource();
+            return stageCorsConfigurationSource();
         } else {
-            corsConfigurationSource = localCorsConfigurationSource();
+            return localCorsConfigurationSource();
         }
+    }
 
+    @Bean
+    public CorsFilter corsFilter(CorsConfigurationSource corsConfigurationSource) {
         return new CorsFilter(corsConfigurationSource);
     }
 

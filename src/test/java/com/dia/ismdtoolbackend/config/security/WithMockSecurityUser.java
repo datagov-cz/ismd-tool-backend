@@ -37,5 +37,7 @@ public @interface WithMockSecurityUser {
 
     String userId() default "testUser";
 
+    String displayName() default "testUser";
+
     String[] roles() default {"ROLE_USER"};
 }
