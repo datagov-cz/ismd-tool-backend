@@ -47,11 +47,6 @@ public class OntologyController {
         log.info("Ontology upload requested, fileName: {}, providedName: {}, userId: {}", file.getOriginalFilename(), providedName, userId);
 
         try {
-            if (file.isEmpty()) {
-                log.error("Ontology upload file is empty");
-                return ResponseEntity.badRequest().body(ApiResponseDto.error("Soubor je prázdný."));
-            }
-
             Lang rdfLang = ontologyUploadService.determineRDFFormat(file);
             if (rdfLang == null) {
                 log.error("Ontology RDF language is not supported");
