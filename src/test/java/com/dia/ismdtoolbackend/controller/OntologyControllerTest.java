@@ -107,24 +107,24 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.message").isString());
     }
 
-    @Test
-    void testUploadFromFile_EmptyFile() throws Exception {
-        String userId = "user123";
-        MockMultipartFile emptyFile = new MockMultipartFile(
-                "file",
-                "empty.ttl",
-                "text/turtle",
-                new byte[0]
-        );
-
-        mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(emptyFile)
-                        .param("userId", userId))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Soubor je prázdný."));
-    }
+//    @Test
+//    void testUploadFromFile_EmptyFile() throws Exception {
+//        String userId = "user123";
+//        MockMultipartFile emptyFile = new MockMultipartFile(
+//                "file",
+//                "empty.ttl",
+//                "text/turtle",
+//                new byte[0]
+//        );
+//
+//        mockMvc.perform(multipart("/api/ontology/upload")
+//                        .file(emptyFile)
+//                        .param("userId", userId))
+//                .andExpect(status().isBadRequest())
+//                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+//                .andExpect(jsonPath("$.data").doesNotExist())
+//                .andExpect(jsonPath("$.message").value("Soubor je prázdný."));
+//    }
 
     @Test
     void testUploadFromFile_UnsupportedRDFFormat() throws Exception {

@@ -44,7 +44,7 @@ public class OntologyController {
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology upload requested, fileName: {}, providedName: {}, userId: {}", file.getOriginalFilename(), providedName, userId);
+        log.info("Ontology upload requested, fileName: {}, userId: {}", providedName, userId);
 
         try {
             Lang rdfLang = ontologyUploadService.determineRDFFormat(file);
