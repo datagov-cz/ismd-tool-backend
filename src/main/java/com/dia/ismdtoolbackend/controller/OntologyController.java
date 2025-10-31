@@ -38,7 +38,7 @@ public class OntologyController {
 
     @PostMapping("/upload")
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
-            @RequestParam MultipartFile file,
+            @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(name = "providedName", required = false) String providedName,
             @RequestParam String userId
     ) {
