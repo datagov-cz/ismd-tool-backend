@@ -1,0 +1,33 @@
+{
+  "realm": "ismd",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "ismd-app",
+      "secret": "secret123",
+      "redirectUris": ["*"],
+      "publicClient": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "user" },
+      { "name": "admin" }
+    ]
+  }
+}

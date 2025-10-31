@@ -3,6 +3,10 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.exception.EmptyDataException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyStorageException;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -95,7 +99,7 @@ class OntologyServiceImplTest {
     void deleteOntology_OntologyNotFound() {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
@@ -108,7 +112,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -164,7 +168,7 @@ class OntologyServiceImplTest {
 
     @Test
     void createOntology_NullModel() {
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyValidationException exception = assertThrows(OntologyValidationException.class,
                 () -> ontologyService.createOntology(null, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("prázdná"));
@@ -175,7 +179,7 @@ class OntologyServiceImplTest {
         OntologyCreateModel createModel = createValidOntologyCreateModel();
         createModel.setNamespace("invalid iri with spaces");
 
-        assertThrows(OntologyException.class,
+        assertThrows(OntologyValidationException.class,
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
     }
 
@@ -186,7 +190,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
         doThrow(new RuntimeException("TDB2 error")).when(jenaTDB2Repository).saveOntologyModel(anyString(), any(Model.class));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyStorageException exception = assertThrows(OntologyStorageException.class,
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit RDF model"));
@@ -200,7 +204,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenThrow(new RuntimeException("DB error"));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyStorageException exception = assertThrows(OntologyStorageException.class,
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit metadata"));
@@ -225,7 +229,7 @@ class OntologyServiceImplTest {
     void getOntologyDetailModel_OntologyNotFound() {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_ID));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
@@ -236,7 +240,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_ID));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -331,7 +335,7 @@ class OntologyServiceImplTest {
 
     @Test
     void editOntology_NullModel() {
-        OntologyException exception = assertThrows(OntologyException.class,
+        EmptyDataException exception = assertThrows(EmptyDataException.class,
                 () -> ontologyService.editOntology(null));
 
         assertTrue(exception.getMessage().contains("prázdná"));
@@ -342,7 +346,7 @@ class OntologyServiceImplTest {
         OntologyEditModel editModel = new OntologyEditModel();
         editModel.setOntologyIRI(null);
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyValidationException exception = assertThrows(OntologyValidationException.class,
                 () -> ontologyService.editOntology(editModel));
 
         assertTrue(exception.getMessage().contains("povinné"));
@@ -353,7 +357,7 @@ class OntologyServiceImplTest {
         OntologyEditModel editModel = new OntologyEditModel();
         editModel.setOntologyIRI("  ");
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyValidationException exception = assertThrows(OntologyValidationException.class,
                 () -> ontologyService.editOntology(editModel));
 
         assertTrue(exception.getMessage().contains("povinné"));
@@ -365,7 +369,7 @@ class OntologyServiceImplTest {
 
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.editOntology(editModel));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
@@ -378,7 +382,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.editOntology(editModel));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -396,7 +400,7 @@ class OntologyServiceImplTest {
         when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString())).thenReturn(editResult);
         doThrow(new RuntimeException("Save error")).when(jenaTDB2Repository).saveOntologyModel(eq(newIRI), any(Model.class));
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyStorageException exception = assertThrows(OntologyStorageException.class,
                 () -> ontologyService.editOntology(editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit změny"));

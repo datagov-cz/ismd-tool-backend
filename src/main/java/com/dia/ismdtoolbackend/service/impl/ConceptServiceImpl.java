@@ -1,6 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
+import com.dia.ismdtoolbackend.exception.ConceptStorageException;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
@@ -12,7 +15,6 @@ import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.springframework.stereotype.Service;
@@ -60,7 +62,7 @@ public class ConceptServiceImpl implements ConceptService {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findById(conceptId);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptId {} not found", conceptId);
-            throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
+            throw new ConceptNotFoundException("Metadata pojmu s id " + conceptId + " nebyla nalezena.");
         }
 
         String graphName = conceptMetadataOpt.get().getGraphName();
@@ -70,13 +72,13 @@ public class ConceptServiceImpl implements ConceptService {
 
         if (model.isEmpty()) {
             log.error("Ontology model is empty.");
-            throw new OntologyException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
+            throw new ConceptNotFoundException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
         }
 
         Resource conceptResource = model.getResource(conceptUri);
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept resource {} not found in graph {}", conceptUri, graphName);
-            throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
+            throw new ConceptNotFoundException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
         }
 
         jenaTDB2Repository.deleteConceptFromGraph(conceptUri, graphName);
@@ -118,11 +120,11 @@ public class ConceptServiceImpl implements ConceptService {
 
     private void validateInput(ConceptCreateModel createModel, String userId) {
         if (createModel == null) {
-            throw new OntologyException("Data pro vytvoření pojmu jsou prázdná");
+            throw new ConceptValidationException("Data pro vytvoření pojmu jsou prázdná");
         }
 
         if (userId == null || userId.trim().isEmpty()) {
-            throw new OntologyException("ID uživatele je povinné");
+            throw new ConceptValidationException("ID uživatele je povinné");
         }
     }
 
@@ -145,7 +147,7 @@ public class ConceptServiceImpl implements ConceptService {
         Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findByConceptIri(conceptIRI);
         if (metadataOpt.isEmpty()) {
             log.error("Concept metadata not found for IRI: {}", conceptIRI);
-            throw new OntologyException("Metadata pojmu s IRI " + conceptIRI + " nebyla nalezena.");
+            throw new ConceptNotFoundException("Metadata pojmu s IRI " + conceptIRI + " nebyla nalezena.");
         }
         return metadataOpt.get();
     }
@@ -154,7 +156,7 @@ public class ConceptServiceImpl implements ConceptService {
         Model model = jenaTDB2Repository.fetchGraph(graphName);
         if (model.isEmpty()) {
             log.error("Graph {} is empty or not found", graphName);
-            throw new OntologyException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
+            throw new ConceptNotFoundException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
         }
         return model;
     }
@@ -163,7 +165,7 @@ public class ConceptServiceImpl implements ConceptService {
         Resource conceptResource = model.getResource(conceptIRI);
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept {} not found in graph {}", conceptIRI, graphName);
-            throw new OntologyException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
+            throw new ConceptNotFoundException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
         }
     }
 
@@ -175,7 +177,7 @@ public class ConceptServiceImpl implements ConceptService {
             return editResult;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
-            throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
+            throw new ConceptStorageException("Nepodařilo se upravit pojem: " + e.getMessage(), e);
         }
     }
 
@@ -185,7 +187,7 @@ public class ConceptServiceImpl implements ConceptService {
             log.info("Updated model saved to TDB2 graph: {}", graphName);
         } catch (Exception e) {
             log.error("Failed to save updated model to TDB2", e);
-            throw new OntologyException("Nepodařilo se uložit upravený pojem do TDB2: " + e.getMessage());
+            throw new ConceptStorageException("Nepodařilo se uložit upravený pojem do TDB2: " + e.getMessage(), e);
         }
     }
 
@@ -210,7 +212,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptMetadataMapper.toDto(savedMetadata);
         } catch (Exception e) {
             log.error("Failed to update concept metadata", e);
-            throw new OntologyException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage());
+            throw new ConceptStorageException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage(), e);
         }
     }
 
@@ -221,7 +223,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptResource;
         } catch (Exception e) {
             log.error("Failed to transform concept to Jena Resource", e);
-            throw new OntologyException("Nepodařilo se transformovat pojem: " + e.getMessage());
+            throw new ConceptValidationException("Nepodařilo se transformovat pojem: " + e.getMessage(), e);
         }
     }
 
@@ -240,7 +242,7 @@ public class ConceptServiceImpl implements ConceptService {
             log.info("Concept saved to TDB2 graph {} successfully: {}", ontologyGraphName, conceptIRI);
         } catch (Exception e) {
             log.error("Failed to save concept to TDB2 graph {}", ontologyGraphName, e);
-            throw new OntologyException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage());
+            throw new ConceptStorageException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage(), e);
         }
     }
 
@@ -256,7 +258,7 @@ public class ConceptServiceImpl implements ConceptService {
         } catch (Exception e) {
             log.error("Failed to save concept metadata, rolling back TDB2 data", e);
             rollbackTDB2Data(conceptUri, ontologyGraphName);
-            throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
+            throw new ConceptStorageException("Nepodařilo se uložit metadata pojmu: " + e.getMessage(), e);
         }
     }
 
