@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.constants;
 
+@Deprecated(forRemoval = true)
 public class OFNJsonConstants {
     // Namespaces
     public static final String OFN_NAMESPACE = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";

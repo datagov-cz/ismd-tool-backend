@@ -38,30 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static com.dia.constants.ArchiConstants.*;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.AGENDA;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.AIS;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ALTERNATIVNI_NAZEV;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.CAS_NS;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DATUM_A_CAS;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINICE;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINICNI_OBOR;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.DEFINUJICI_NELEGISLATIVNI_ZDROJ;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.EKVIVALENTNI_POJEM;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.IDENTIFIKATOR;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.JE_PPDF;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.NADRAZENA_TRIDA;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.NAZEV;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.OBOR_HODNOT;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.OKAMZIK_VYTVORENI;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.POPIS;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.SOUVISEJICI_NELEGISLATIVNI_ZDROJ;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.TYP_OBSAHU;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.USTANOVENI_NEVEREJNOST;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_ZISKANI;
+import static com.dia.constants.VocabularyConstants.*;
 
 @Service
 @RequiredArgsConstructor

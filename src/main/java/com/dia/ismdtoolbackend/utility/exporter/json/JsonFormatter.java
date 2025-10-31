@@ -7,7 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import static com.dia.constants.VocabularyConstants.*;
+
 
 @Slf4j
 public class JsonFormatter {

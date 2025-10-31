@@ -23,7 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.Writer;
 import java.util.Optional;
 
-import static com.dia.constants.ArchiConstants.SLOVNIKY_NS;
+import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;

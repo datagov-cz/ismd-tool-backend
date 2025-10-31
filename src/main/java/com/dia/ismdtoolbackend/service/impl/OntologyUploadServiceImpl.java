@@ -40,7 +40,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-import static com.dia.constants.ArchiConstants.DEFAULT_NS;
+import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
 
 @Service
 @RequiredArgsConstructor

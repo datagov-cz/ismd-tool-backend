@@ -23,10 +23,8 @@ import org.springframework.stereotype.Component;
 import java.util.HashSet;
 import java.util.Set;
 
-import static com.dia.constants.ArchiConstants.DEFINUJICI_USTANOVENI;
-import static com.dia.constants.ArchiConstants.SOUVISEJICI_USTANOVENI;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
+import static com.dia.constants.VocabularyConstants.*;
 
 @Component
 @RequiredArgsConstructor

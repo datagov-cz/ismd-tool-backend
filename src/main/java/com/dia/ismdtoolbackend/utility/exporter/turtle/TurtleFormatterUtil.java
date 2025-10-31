@@ -13,8 +13,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 import com.dia.ismdtoolbackend.exception.TurtleExportException;
+
+import static com.dia.constants.VocabularyConstants.*;
 
 @Slf4j
 public class TurtleFormatterUtil {

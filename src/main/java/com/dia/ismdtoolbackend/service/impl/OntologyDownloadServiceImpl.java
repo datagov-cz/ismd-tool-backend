@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 import java.io.StringWriter;
 import java.util.Optional;
 
-import static com.dia.constants.ArchiConstants.SLOVNIKY_NS;
+import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 
 @Service
 @RequiredArgsConstructor

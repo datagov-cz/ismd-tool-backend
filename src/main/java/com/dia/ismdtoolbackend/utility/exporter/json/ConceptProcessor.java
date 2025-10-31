@@ -9,8 +9,9 @@ import org.apache.jena.vocabulary.SKOS;
 
 import java.util.*;
 
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
+
+import static com.dia.constants.VocabularyConstants.*;
 
 @Slf4j
 public class ConceptProcessor {
@@ -480,7 +481,7 @@ public class ConceptProcessor {
 
     private void addGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
                                        OntModel ontModel, String namespace) {
-        Property property = findGovernanceProperty(concept, ontModel, namespace, com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI);
+        Property property = findGovernanceProperty(concept, ontModel, namespace, ZPUSOB_SDILENI);
 
         if (property == null) {
             return;
@@ -490,7 +491,7 @@ public class ConceptProcessor {
         List<String> allValues = extractGovernanceValues(propIter);
 
         if (!allValues.isEmpty()) {
-            conceptObj.put(com.dia.ismdtoolbackend.constants.OFNJsonConstants.ZPUSOB_SDILENI, allValues);
+            conceptObj.put(ZPUSOB_SDILENI, allValues);
         }
     }
 

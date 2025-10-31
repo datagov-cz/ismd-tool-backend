@@ -8,8 +8,9 @@ import org.apache.jena.vocabulary.RDFS;
 
 import java.util.*;
 
-import static com.dia.ismdtoolbackend.constants.OFNJsonConstants.*;
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
+
+import static com.dia.constants.VocabularyConstants.*;
 
 @Slf4j
 public class ModelAnalyzer {
