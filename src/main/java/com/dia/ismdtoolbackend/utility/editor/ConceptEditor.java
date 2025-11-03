@@ -161,7 +161,7 @@ public class ConceptEditor {
         String oldName = getCurrentName(oldConcept);
         if (!nameModel.getName().equals(oldName)) {
             removeAllByPredicate(oldConcept, SKOS.prefLabel, toRemove);
-            String languageTag = nameModel.getLanguageTag() != null ? nameModel.getLanguageTag() : DEFAULT_LANG;
+            String languageTag = nameModel.getLanguageTag() != null ? String.valueOf(nameModel.getLanguageTag()) : DEFAULT_LANG;
             toAdd.add(model.createStatement(newConcept, SKOS.prefLabel,
                     model.createLiteral(nameModel.getName(), languageTag)));
         }
@@ -181,7 +181,7 @@ public class ConceptEditor {
             }
         } else if (!newValue.equals(oldValue)) {
             removeAllByPredicate(oldConcept, descProperty, toRemove);
-            String languageTag = descModel.getLanguageTag() != null ? descModel.getLanguageTag() : DEFAULT_LANG;
+            String languageTag = descModel.getLanguageTag() != null ? String.valueOf(descModel.getLanguageTag()) : DEFAULT_LANG;
             toAdd.add(model.createStatement(newConcept, descProperty,
                     model.createLiteral(newValue, languageTag)));
         }
@@ -219,7 +219,7 @@ public class ConceptEditor {
             }
         } else if (!oldAltNames.equals(newAltNames)) {
             removeAllByPredicate(oldConcept, SKOS.altLabel, toRemove);
-            String languageTag = altNameModel.getLanguageTag() != null ? altNameModel.getLanguageTag() : DEFAULT_LANG;
+            String languageTag = altNameModel.getLanguageTag() != null ? String.valueOf(altNameModel.getLanguageTag()) : DEFAULT_LANG;
             for (String altName : newAltNames) {
                 if (!altName.trim().isEmpty()) {
                     toAdd.add(model.createStatement(newConcept, SKOS.altLabel,

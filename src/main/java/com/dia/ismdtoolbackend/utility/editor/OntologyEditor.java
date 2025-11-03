@@ -86,7 +86,7 @@ public class OntologyEditor {
             Resource ontologyResource = model.getResource(newOntologyIRI);
             removeAllByPredicate(existingOntology, SKOS.prefLabel, toRemove);
 
-            String languageTag = nameModel.getLanguageTag() != null ? nameModel.getLanguageTag() : DEFAULT_LANG;
+            String languageTag = nameModel.getLanguageTag() != null ? String.valueOf(nameModel.getLanguageTag()) : DEFAULT_LANG;
             toAdd.add(model.createStatement(ontologyResource, SKOS.prefLabel,
                     model.createLiteral(newName, languageTag)));
         }
@@ -106,7 +106,7 @@ public class OntologyEditor {
             }
         } else if (!newValue.equals(oldValue)) {
             removeAllByPredicate(existingOntology, descProperty, toRemove);
-            String languageTag = descModel.getLanguageTag() != null ? descModel.getLanguageTag() : DEFAULT_LANG;
+            String languageTag = descModel.getLanguageTag() != null ? String.valueOf(descModel.getLanguageTag()) : DEFAULT_LANG;
             toAdd.add(model.createStatement(ontologyResource, descProperty,
                     model.createLiteral(newValue, languageTag)));
         }

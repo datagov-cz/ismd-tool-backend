@@ -291,7 +291,7 @@ public class ConceptCreator {
     private void addPrefLabel(Resource resource, ConceptCreateModel model) {
         if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
             String nameLanguageTag = model.getNameModel().getLanguageTag() != null
-                    ? model.getNameModel().getLanguageTag()
+                    ? String.valueOf(model.getNameModel().getLanguageTag())
                     : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
                     model.getNameModel().getName(), nameLanguageTag, ontModel);
@@ -302,7 +302,7 @@ public class ConceptCreator {
         if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
             String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
-                    ? model.getDescriptionModel().getLanguageTag()
+                    ? String.valueOf(model.getDescriptionModel().getLanguageTag())
                     : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, descProperty,
                     model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
@@ -481,7 +481,7 @@ public class ConceptCreator {
 
     private void addAlternativeNames(Resource resource, com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel) {
         String altNames = altNameModel.getAltName();
-        String languageTag = altNameModel.getLanguageTag() != null ? altNameModel.getLanguageTag() : DEFAULT_LANG;
+        String languageTag = altNameModel.getLanguageTag() != null ? String.valueOf(altNameModel.getLanguageTag()) : DEFAULT_LANG;
 
         if (altNames.contains(";")) {
             String[] names = altNames.split(";");

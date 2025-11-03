@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.enums.LanguageTag;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -333,11 +334,11 @@ class OntologyControllerTest {
         createModel.setNamespace("http://example.org/");
         NameModel nameModel = new NameModel();
         nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        nameModel.setLanguageTag(LanguageTag.cs);
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
         descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        descModel.setLanguageTag(LanguageTag.cs);
         createModel.setDescriptionModel(descModel);
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
@@ -362,11 +363,11 @@ class OntologyControllerTest {
         createModel.setNamespace("http://example.org/");
         NameModel nameModel = new NameModel();
         nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        nameModel.setLanguageTag(LanguageTag.cs);
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
         descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        descModel.setLanguageTag(LanguageTag.cs);
         createModel.setDescriptionModel(descModel);
 
         mockMvc.perform(post("/api/ontology/create")
@@ -383,11 +384,11 @@ class OntologyControllerTest {
         OntologyCreateModel createModel = new OntologyCreateModel();
         NameModel nameModel = new NameModel();
         nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        nameModel.setLanguageTag(LanguageTag.cs);
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
         descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        descModel.setLanguageTag(LanguageTag.cs);
         createModel.setDescriptionModel(descModel);
 
         when(ontologyService.createOntology(any(), eq(userId)))

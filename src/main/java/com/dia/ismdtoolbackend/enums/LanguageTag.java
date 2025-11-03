@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.enums;
 
 public enum LanguageTag {
-    cz,
+    cs,
     sk,
     en
 }

@@ -40,7 +40,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.enums.LanguageTag.cz;
+import static com.dia.ismdtoolbackend.enums.LanguageTag.cs;
 
 @Service
 @RequiredArgsConstructor
@@ -215,7 +215,7 @@ public class OntologyServiceImpl implements OntologyService {
             return Collections.emptyMap();
         }
         Map<LanguageTag, String> map = new LinkedHashMap<>();
-        map.put(cz, value);
+        map.put(cs, value);
         return map;
     }
 
@@ -235,7 +235,7 @@ public class OntologyServiceImpl implements OntologyService {
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
         LanguageTag nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
             ? ontologyCreateModel.getNameModel().getLanguageTag()
-            : cz;
+            : cs;
         ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), String.valueOf(nameLanguageTag));
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
@@ -245,7 +245,7 @@ public class OntologyServiceImpl implements OntologyService {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
             LanguageTag descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
                 ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
-                : cz;
+                : cs;
             DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), String.valueOf(descLanguageTag), model);
         }
 
