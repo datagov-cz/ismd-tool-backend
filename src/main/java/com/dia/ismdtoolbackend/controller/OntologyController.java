@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
@@ -217,6 +218,27 @@ public class OntologyController {
             }
             log.error("Error creating ontology detail model: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponseDto<List<OntologyMetadataModel>>> getOntologyList(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) Boolean isPublished
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Ontology list requested, userId: {}, isPublished: {}", userId, isPublished);
+
+        try {
+            List<OntologyMetadataModel> ontologies = ontologyService.getAll(userId, isPublished);
+            return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
+        } catch (OntologyException e) {
+            log.error("Error fetching ontology list: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error fetching ontology list: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu slovníků."));
         }
     }
 
