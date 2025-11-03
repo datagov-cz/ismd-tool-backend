@@ -35,6 +35,8 @@ public class OntologyDetailModel {
     @JsonProperty("časový-okamžik-poslední-změny")
     private String modificationDate;
 
+    private Boolean isPublished;
+
     @JsonProperty("pojmy")
     private List<ConceptDetailModel> concepts;
 

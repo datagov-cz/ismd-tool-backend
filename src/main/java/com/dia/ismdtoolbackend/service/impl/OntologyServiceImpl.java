@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.enums.LanguageTag;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -38,8 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.enums.LanguageTag.cz;
 
 @Service
 @RequiredArgsConstructor
@@ -149,7 +150,7 @@ public class OntologyServiceImpl implements OntologyService {
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
         ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
 
-        return mapToOntologyDetailModel(structure, conceptData);
+        return mapToOntologyDetailModel(structure, conceptData, ontologyMetadataOpt.get());
     }
 
     private Model applyOFNTransformations(Model rawModel) {
@@ -161,7 +162,7 @@ public class OntologyServiceImpl implements OntologyService {
         return ofnFormattedModel;
     }
 
-    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
+    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData, OntologyMetadataEntity ontologyMetadataModel) {
         List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
                 .map(this::mapToConceptDetailModel)
                 .toList();
@@ -174,6 +175,7 @@ public class OntologyServiceImpl implements OntologyService {
                 .description(createMultilingualMap(structure.getModelDescription()))
                 .creationDate(structure.getCreationDate())
                 .modificationDate(structure.getModificationDate())
+                .isPublished(ontologyMetadataModel.getIsPublished())
                 .concepts(concepts)
                 .build();
     }
@@ -183,10 +185,10 @@ public class OntologyServiceImpl implements OntologyService {
         return OntologyDetailModel.ConceptDetailModel.builder()
                 .iri((String) conceptMap.get("iri"))
                 .types((List<String>) conceptMap.get("typ"))
-                .name((Map<String, Object>) conceptMap.get(NAZEV))
-                .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
-                .definition((Map<String, Object>) conceptMap.get(DEFINICE))
-                .description((Map<String, Object>) conceptMap.get(POPIS))
+                .name((Map<LanguageTag, Object>) conceptMap.get(NAZEV))
+                .alternativeName((Map<LanguageTag, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
+                .definition((Map<LanguageTag, Object>) conceptMap.get(DEFINICE))
+                .description((Map<LanguageTag, Object>) conceptMap.get(POPIS))
                 .identifiers((List<String>) conceptMap.get(IDENTIFIKATOR))
                 .exactMatches((List<Map<String, Object>>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
@@ -208,12 +210,12 @@ public class OntologyServiceImpl implements OntologyService {
                 .build();
     }
 
-    private Map<String, String> createMultilingualMap(String value) {
+    private Map<LanguageTag, String> createMultilingualMap(String value) {
         if (value == null || value.trim().isEmpty()) {
             return Collections.emptyMap();
         }
-        Map<String, String> map = new LinkedHashMap<>();
-        map.put("cs", value);
+        Map<LanguageTag, String> map = new LinkedHashMap<>();
+        map.put(cz, value);
         return map;
     }
 
@@ -231,20 +233,20 @@ public class OntologyServiceImpl implements OntologyService {
         Resource ontologyResource = model.getResource(ontologyIRI);
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
+        LanguageTag nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
             ? ontologyCreateModel.getNameModel().getLanguageTag()
-            : DEFAULT_LANG;
-        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), nameLanguageTag);
+            : cz;
+        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), String.valueOf(nameLanguageTag));
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
         ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
 
         if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
+            LanguageTag descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
                 ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
-                : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), descLanguageTag, model);
+                : cz;
+            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), String.valueOf(descLanguageTag), model);
         }
 
         String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
