@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.enums.LanguageTag;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -23,10 +24,10 @@ public class OntologyDetailModel {
     private List<String> types;
 
     @JsonProperty("název")
-    private Map<String, String> name;
+    private Map<LanguageTag, String> name;
 
     @JsonProperty("popis")
-    private Map<String, String> description;
+    private Map<LanguageTag, String> description;
 
     @JsonProperty("časový-okamžik-vytvoření")
     private String creationDate;
@@ -49,16 +50,16 @@ public class OntologyDetailModel {
         private List<String> types;
 
         @JsonProperty("název")
-        private Map<String, Object> name;
+        private Map<LanguageTag, Object> name;
 
         @JsonProperty("alternativní-název")
-        private Map<String, Object> alternativeName;
+        private Map<LanguageTag, Object> alternativeName;
 
         @JsonProperty("definice")
-        private Map<String, Object> definition;
+        private Map<LanguageTag, Object> definition;
 
         @JsonProperty("popis")
-        private Map<String, Object> description;
+        private Map<LanguageTag, Object> description;
 
         @JsonProperty("identifikátor")
         private List<String> identifiers;
