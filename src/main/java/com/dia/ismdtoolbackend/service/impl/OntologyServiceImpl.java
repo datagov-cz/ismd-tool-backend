@@ -293,6 +293,26 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataMapper.toDto(metadataEntity);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) throws OntologyException {
+        List<OntologyMetadataEntity> ontologyMetadataEntities;
+
+        if (userId != null && isPublished != null) {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAllByUserIdAndIsPublished(userId, isPublished);
+        } else if (userId != null) {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAllByUserId(userId);
+        } else if (isPublished != null) {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAllByIsPublished(isPublished);
+        } else {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAll();
+        }
+
+        return ontologyMetadataEntities.stream()
+                .map(ontologyMetadataMapper::toDto)
+                .toList();
+    }
+
     private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) throws OntologyException {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
         if (ontologyMetadataOpt.isEmpty()) {
