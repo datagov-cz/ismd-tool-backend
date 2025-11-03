@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.enums.LanguageTag;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -8,6 +9,6 @@ import lombok.Setter;
 @Getter
 @Setter
 public class AltNameModel {
-    private String languageTag;
+    private LanguageTag languageTag;
     private String altName;
 }
