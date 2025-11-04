@@ -52,22 +52,22 @@ public class OntologyDetailModel {
         private List<String> types;
 
         @JsonProperty("název")
-        private Map<LanguageTag, Object> name;
+        private Map<LanguageTag, String> name;
 
         @JsonProperty("alternativní-název")
-        private Map<LanguageTag, Object> alternativeName;
+        private Map<LanguageTag, String> alternativeName;
 
         @JsonProperty("definice")
-        private Map<LanguageTag, Object> definition;
+        private Map<LanguageTag, String> definition;
 
         @JsonProperty("popis")
-        private Map<LanguageTag, Object> description;
+        private Map<LanguageTag, String> description;
 
         @JsonProperty("identifikátor")
         private List<String> identifiers;
 
         @JsonProperty("ekvivalentní-pojem")
-        private List<Map<String, Object>> exactMatches;
+        private List<Map<String, String>> exactMatches;
 
         @JsonProperty("definiční-obor")
         private String domain;
