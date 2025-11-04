@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.ismdtoolbackend.enums.LanguageTag;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
@@ -466,7 +465,7 @@ class ConceptServiceImplTest {
 
         NameModel nameModel = new NameModel();
         nameModel.setName(TEST_CONCEPT_NAME);
-        nameModel.setLanguageTag(LanguageTag.cs);
+        nameModel.setLanguageTag("cs");
         model.setNameModel(nameModel);
 
         return model;
@@ -490,7 +489,7 @@ class ConceptServiceImplTest {
 
         NameModel nameModel = new NameModel();
         nameModel.setName(TEST_CONCEPT_NAME);
-        nameModel.setLanguageTag(LanguageTag.cs);
+        nameModel.setLanguageTag("cs");
         model.setNameModel(nameModel);
 
         return model;

@@ -3,7 +3,6 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.enums.LanguageTag;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -39,8 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.enums.LanguageTag.cs;
 
 @Service
 @RequiredArgsConstructor
@@ -185,10 +184,10 @@ public class OntologyServiceImpl implements OntologyService {
         return OntologyDetailModel.ConceptDetailModel.builder()
                 .iri((String) conceptMap.get("iri"))
                 .types((List<String>) conceptMap.get("typ"))
-                .name((Map<LanguageTag, String>) conceptMap.get(NAZEV))
-                .alternativeName((Map<LanguageTag, String>) conceptMap.get(ALTERNATIVNI_NAZEV))
-                .definition((Map<LanguageTag, String>) conceptMap.get(DEFINICE))
-                .description((Map<LanguageTag, String>) conceptMap.get(POPIS))
+                .name((Map<String, String>) conceptMap.get(NAZEV))
+                .alternativeName((Map<String, String>) conceptMap.get(ALTERNATIVNI_NAZEV))
+                .definition((Map<String, String>) conceptMap.get(DEFINICE))
+                .description((Map<String, String>) conceptMap.get(POPIS))
                 .identifiers((List<String>) conceptMap.get(IDENTIFIKATOR))
                 .exactMatches((List<Map<String, String>>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
@@ -210,12 +209,12 @@ public class OntologyServiceImpl implements OntologyService {
                 .build();
     }
 
-    private Map<LanguageTag, String> createMultilingualMap(String value) {
+    private Map<String, String> createMultilingualMap(String value) {
         if (value == null || value.trim().isEmpty()) {
             return Collections.emptyMap();
         }
-        Map<LanguageTag, String> map = new LinkedHashMap<>();
-        map.put(cs, value);
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put(DEFAULT_LANG, value);
         return map;
     }
 
@@ -233,9 +232,9 @@ public class OntologyServiceImpl implements OntologyService {
         Resource ontologyResource = model.getResource(ontologyIRI);
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        LanguageTag nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
+        String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
             ? ontologyCreateModel.getNameModel().getLanguageTag()
-            : cs;
+            : DEFAULT_LANG;
         ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), String.valueOf(nameLanguageTag));
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
@@ -243,9 +242,9 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            LanguageTag descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
+            String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
                 ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
-                : cs;
+                : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), String.valueOf(descLanguageTag), model);
         }
 

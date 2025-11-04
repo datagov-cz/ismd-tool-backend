@@ -3,7 +3,6 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.enums.LanguageTag;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -409,13 +408,13 @@ class OntologyServiceImplTest {
         OntologyCreateModel model = new OntologyCreateModel();
         NameModel nameModel = new NameModel();
         nameModel.setName("test-ontology");
-        nameModel.setLanguageTag(LanguageTag.cs);
+        nameModel.setLanguageTag("cs");
         model.setNameModel(nameModel);
         model.setNamespace("http://example.org/");
 
         DescriptionModel descModel = new DescriptionModel();
         descModel.setDescription("Test description");
-        descModel.setLanguageTag(LanguageTag.cs);
+        descModel.setLanguageTag("cs");
         model.setDescriptionModel(descModel);
 
         return model;
