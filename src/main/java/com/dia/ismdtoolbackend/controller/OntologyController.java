@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -59,6 +60,9 @@ public class OntologyController {
             log.info("Ontology upload successful: {}", savedOntology);
 
             return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
+        } catch (OntologyAlreadyExistsException e) {
+            log.info("Ontology already exists: {}", e.getMessage());
+            return ResponseEntity.status(302).body(ApiResponseDto.success(e.getExistingMetadata(), "Slovník již existuje: " + e.getExistingMetadata().getGraphName()));
         } catch (IllegalArgumentException | SecurityException | OntologyException e) {
             log.error("Client error uploading ontology: {}", e.getMessage());
             return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));

@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
+import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
 import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
@@ -21,7 +22,6 @@ import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
@@ -197,13 +197,20 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
-        Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphNameAndUserId(graphName, userId);
-        if (ontologyOpt.isPresent()) {
-            throw new OntologyException("Slovník se stejným IRI již v Nástroji existuje: {}" + graphName);
+        String slug = UtilityMethods.extractNameFromIRI(graphName);
+
+        Optional<OntologyMetadataEntity> existingBySlug = ontologyMetadataRepository.findBySlug(slug);
+        if (existingBySlug.isPresent()) {
+            OntologyMetadataModel existingMetadata = ontologyMetadataMapper.toDto(existingBySlug.get());
+            log.info("Ontology already exists with slug: {} (graph name: {})", slug, graphName);
+            throw new OntologyAlreadyExistsException(
+                    "Slovník se stejným IRI již v Nástroji existuje: " + graphName,
+                    existingMetadata
+            );
         }
 
         OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
-        ontologyMetadataModel.setSlug(UtilityMethods.extractNameFromIRI(graphName));
+        ontologyMetadataModel.setSlug(slug);
         ontologyMetadataModel.setGraphName(graphName);
         ontologyMetadataModel.setUser(new UserModel(userId));
         ontologyMetadataModel.setIsPublished(false);
