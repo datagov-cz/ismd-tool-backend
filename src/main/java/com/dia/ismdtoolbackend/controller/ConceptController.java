@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
@@ -143,6 +144,25 @@ public class ConceptController {
         } catch (Exception e) {
             log.error("Unexpected error fetching concept list: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu pojmů."));
+        }
+    }
+
+    @GetMapping("/{slug}/detail")
+    public ResponseEntity<GetConceptDto> getConceptDetail(@PathVariable String slug) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Concept detail requested, conceptSlug: {}", slug);
+
+        try {
+            GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
+            return ResponseEntity.ok().body(conceptDto);
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("not found") || e.getMessage().contains("nebyl nalezen") || e.getMessage().contains("nebyla nalezena")) {
+                log.error("Concept not found: {}", slug);
+                return ResponseEntity.notFound().build();
+            }
+            log.error("Error creating concept detail model: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

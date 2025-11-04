@@ -15,6 +15,7 @@ import java.util.List;
 @Data
 public class ConceptMetadataModel {
     private Long id;
+    private String slug;
     private ConceptType conceptType;
     private String conceptIri;
     private String graphName;

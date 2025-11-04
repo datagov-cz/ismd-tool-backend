@@ -10,6 +10,8 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 
+    Optional<ConceptMetadataEntity> findBySlug(String slug);
+
     List<ConceptMetadataEntity> findByGraphName(String graphName);
 
     List<ConceptMetadataEntity> findAllByUserIdAndIsPublished(String userId, Boolean isPublished);

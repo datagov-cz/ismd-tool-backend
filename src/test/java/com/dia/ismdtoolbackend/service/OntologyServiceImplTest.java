@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -10,6 +11,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
@@ -54,12 +56,16 @@ class OntologyServiceImplTest {
     @Mock
     private OntologyEditor ontologyEditor;
 
+    @Mock
+    private OntologyDetailExtractor detailExtractor;
+
     @InjectMocks
     private OntologyServiceImpl ontologyService;
 
     private OntologyMetadataEntity testOntologyEntity;
     private Model testModel;
     private static final Long TEST_ONTOLOGY_ID = 1L;
+    private static final String TEST_ONTOLOGY_SLUG = "test-ontology";
     private static final String TEST_GRAPH_NAME = "http://example.org/test-ontology";
     private static final String TEST_USER_ID = "user123";
 
@@ -67,6 +73,7 @@ class OntologyServiceImplTest {
     void setUp() {
         testOntologyEntity = new OntologyMetadataEntity();
         testOntologyEntity.setId(TEST_ONTOLOGY_ID);
+        testOntologyEntity.setSlug(TEST_ONTOLOGY_SLUG);
         testOntologyEntity.setGraphName(TEST_GRAPH_NAME);
         testOntologyEntity.setUserId(TEST_USER_ID);
         testOntologyEntity.setIsPublished(false);
@@ -212,32 +219,56 @@ class OntologyServiceImplTest {
     @Test
     void getOntologyDetailModel_Success() throws OntologyException {
         Model modelWithData = createModelWithOntologyData();
-        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        OntologyDetailModel detailModel = OntologyDetailModel.builder()
+                .context("http://example.org/context")
+                .iri(TEST_GRAPH_NAME)
+                .types(List.of())
+                .name(java.util.Map.of())
+                .description(java.util.Map.of())
+                .creationDate("")
+                .modificationDate("")
+                .concepts(List.of())
+                .build();
 
-        OntologyDetailModel result = ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_ID);
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(TEST_ONTOLOGY_SLUG);
+        metadataModel.setGraphName(TEST_GRAPH_NAME);
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(metadataModel);
+
+        GetOntologyDto result = ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG);
 
         assertNotNull(result);
+        assertNotNull(result.getOntologyMetadata());
+        assertNotNull(result.getOntologyDetail());
+        assertEquals(TEST_ONTOLOGY_SLUG, result.getOntologyMetadata().getSlug());
+        assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
         verify(jenaTDB2Repository).fetchGraph(TEST_GRAPH_NAME);
+        verify(detailExtractor).applyOFNTransformations(modelWithData);
+        verify(detailExtractor).extractOntologyDetail(modelWithData);
     }
 
     @Test
     void getOntologyDetailModel_OntologyNotFound() {
-        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_ID));
+                () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
     }
 
     @Test
     void getOntologyDetailModel_EmptyModel() {
-        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_ID));
+                () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("prázdný"));
     }

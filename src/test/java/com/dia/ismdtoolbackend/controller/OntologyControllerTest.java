@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -500,7 +501,8 @@ class OntologyControllerTest {
 
     @Test
     void testGetOntologyDetail_Success() throws Exception {
-        Long ontologyId = 1L;
+        String ontologySlug = "test-ontology";
+
         OntologyDetailModel detailModel = OntologyDetailModel.builder()
                 .context("http://example.org/context")
                 .iri("http://example.org/test-ontology")
@@ -512,22 +514,32 @@ class OntologyControllerTest {
                 .concepts(java.util.List.of())
                 .build();
 
-        when(ontologyService.getOntologyDetailModel(ontologyId))
-                .thenReturn(detailModel);
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(ontologySlug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
 
-        mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
+        GetOntologyDto ontologyDto = new GetOntologyDto();
+        ontologyDto.setOntologyMetadata(metadataModel);
+        ontologyDto.setOntologyDetail(detailModel);
+
+        when(ontologyService.getOntologyDetailModel(ontologySlug))
+                .thenReturn(ontologyDto);
+
+        mockMvc.perform(get("/api/ontology/{slug}/detail", ontologySlug))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.ontologyMetadata.slug").value(ontologySlug))
+                .andExpect(jsonPath("$.ontologyDetail.iri").value("http://example.org/test-ontology"));
     }
 
     @Test
     void testGetOntologyDetail_NotFound() throws Exception {
-        Long ontologyId = 999L;
+        String ontologySlug = "nonexistent";
 
-        when(ontologyService.getOntologyDetailModel(ontologyId))
+        when(ontologyService.getOntologyDetailModel(ontologySlug))
                 .thenThrow(new RuntimeException("Ontology not found"));
 
-        mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
+        mockMvc.perform(get("/api/ontology/{slug}/detail", ontologySlug))
                 .andExpect(status().isNotFound());
     }
 }

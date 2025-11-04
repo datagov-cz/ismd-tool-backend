@@ -1,7 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
@@ -10,6 +11,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptCreator conceptCreator;
     private final ConceptEditor conceptEditor;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final OntologyDetailExtractor detailExtractor;
 
     @Override
     @Transactional
@@ -125,6 +128,42 @@ public class ConceptServiceImpl implements ConceptService {
                 .toList();
     }
 
+    @Override
+    public GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException {
+        Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
+        if (conceptMetadataOpt.isEmpty()) {
+            log.error("conceptSlug {} not found", conceptSlug);
+            throw new OntologyException("Metadata pojmu s názvem " + conceptSlug + " nebyla nalezena.");
+        }
+
+        ConceptMetadataEntity metadataEntity = conceptMetadataOpt.get();
+        String graphName = metadataEntity.getGraphName();
+        String conceptIri = metadataEntity.getConceptIri();
+
+        Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
+
+        if (rawModel.isEmpty()) {
+            log.error("Ontology model is empty for graph: {}", graphName);
+            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+        }
+
+        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(processedModel, conceptIri);
+
+        if (conceptDetail == null) {
+            log.error("Concept detail not found for IRI: {}", conceptIri);
+            throw new OntologyException("Detail pojmu s IRI " + conceptIri + " nebyl nalezen.");
+        }
+
+        ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
+
+        GetConceptDto result = new GetConceptDto();
+        result.setConceptMetadata(metadataModel);
+        result.setConceptDetail(conceptDetail);
+
+        return result;
+    }
+
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,
                                                  String userId,
                                                  String conceptUri) {
@@ -152,6 +191,7 @@ public class ConceptServiceImpl implements ConceptService {
                                                        String userId,
                                                        String conceptIri) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
+        entity.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(conceptIri));
         entity.setConceptName(createModel.getNameModel().getName());
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
@@ -214,6 +254,7 @@ public class ConceptServiceImpl implements ConceptService {
     private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel, ConceptEditor.EditResult editResult) {
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
+            metadata.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(editResult.newConceptIRI));
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
