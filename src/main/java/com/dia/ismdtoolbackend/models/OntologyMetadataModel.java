@@ -13,6 +13,7 @@ import java.util.List;
 @Data
 public class OntologyMetadataModel {
     private Long id;
+    private String slug;
     private String graphName;
     private UserModel user;
     private Boolean isPublished;

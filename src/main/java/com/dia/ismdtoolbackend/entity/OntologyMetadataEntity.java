@@ -16,6 +16,9 @@ public class OntologyMetadataEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false, unique = true, name = "slug")
+    private String slug;
+
     @Column(name = "graph_name")
     private String graphName;
 

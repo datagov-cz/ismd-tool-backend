@@ -16,6 +16,9 @@ public class ConceptMetadataEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false, unique = true, name = "slug")
+    private String slug;
+
     @Column(name = "concept_name")
     private String conceptName;
 

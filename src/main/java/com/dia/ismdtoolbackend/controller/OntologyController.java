@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -201,19 +202,19 @@ public class OntologyController {
         }
     }
 
-    @GetMapping("/{ontologyId}/detail")
-    public ResponseEntity<OntologyDetailModel> getOntologyDetail(@PathVariable Long ontologyId) {
+    @GetMapping("/{slug}/detail")
+    public ResponseEntity<GetOntologyDto> getOntologyDetail(@PathVariable String slug) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology detail requested, ontologyId: {}", ontologyId);
+        log.info("Ontology detail requested, ontologySlug: {}", slug);
 
         try {
-            OntologyDetailModel detailModel = ontologyService.getOntologyDetailModel(ontologyId);
+            GetOntologyDto ontologyDto = ontologyService.getOntologyDetailModel(slug);
 
-            return ResponseEntity.ok().body(detailModel);
+            return ResponseEntity.ok().body(ontologyDto);
         } catch (RuntimeException e) {
             if (e.getMessage().contains("not found")) {
-                log.error("Ontology not found: {}", ontologyId);
+                log.error("Ontology not found: {}", slug);
                 return ResponseEntity.notFound().build();
             }
             log.error("Error creating ontology detail model: {}", e.getMessage());

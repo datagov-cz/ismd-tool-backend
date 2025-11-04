@@ -16,6 +16,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.models.OFNBaseModel;
+import com.dia.utility.UtilityMethods;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -202,6 +203,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
 
         OntologyMetadataModel ontologyMetadataModel = new OntologyMetadataModel();
+        ontologyMetadataModel.setSlug(UtilityMethods.extractNameFromIRI(graphName));
         ontologyMetadataModel.setGraphName(graphName);
         ontologyMetadataModel.setUser(new UserModel(userId));
         ontologyMetadataModel.setIsPublished(false);

@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
@@ -18,6 +19,7 @@ import org.apache.jena.rdf.model.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -101,6 +103,26 @@ public class ConceptServiceImpl implements ConceptService {
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
 
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ConceptMetadataModel> getAll(String userId, Boolean isPublished) {
+        List<ConceptMetadataEntity> conceptMetadataEntities;
+
+        if (userId != null && isPublished != null) {
+            conceptMetadataEntities = conceptMetadataRepository.findAllByUserIdAndIsPublished(userId, isPublished);
+        } else if (userId != null) {
+            conceptMetadataEntities = conceptMetadataRepository.findAllByUserId(userId);
+        } else if (isPublished != null) {
+            conceptMetadataEntities = conceptMetadataRepository.findAllByIsPublished(isPublished);
+        } else {
+            conceptMetadataEntities = conceptMetadataRepository.findAll();
+        }
+
+        return conceptMetadataEntities.stream()
+                .map(conceptMetadataMapper::toDto)
+                .toList();
     }
 
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,

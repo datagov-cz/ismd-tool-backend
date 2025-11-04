@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -123,14 +124,15 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     @Override
-    public OntologyDetailModel getOntologyDetailModel(Long ontologyId) throws OntologyException {
-        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
+    public GetOntologyDto getOntologyDetailModel(String ontologySlug) throws OntologyException {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
-            log.error("ontologyId {} not found", ontologyId);
-            throw new OntologyException("Metadata slovníku s id " + ontologyId + " nebyla nalezena.");
+            log.error("ontologySlug {} not found", ontologySlug);
+            throw new OntologyException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
         }
 
-        String graphName = ontologyMetadataOpt.get().getGraphName();
+        OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
+        String graphName = metadataEntity.getGraphName();
 
         Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
 
@@ -149,7 +151,14 @@ public class OntologyServiceImpl implements OntologyService {
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
         ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
 
-        return mapToOntologyDetailModel(structure, conceptData, ontologyMetadataOpt.get());
+        OntologyDetailModel detailModel = mapToOntologyDetailModel(structure, conceptData);
+        OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
+
+        GetOntologyDto result = new GetOntologyDto();
+        result.setOntologyMetadata(metadataModel);
+        result.setOntologyDetail(detailModel);
+
+        return result;
     }
 
     private Model applyOFNTransformations(Model rawModel) {
@@ -161,7 +170,7 @@ public class OntologyServiceImpl implements OntologyService {
         return ofnFormattedModel;
     }
 
-    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData, OntologyMetadataEntity ontologyMetadataModel) {
+    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
         List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
                 .map(this::mapToConceptDetailModel)
                 .toList();
@@ -174,7 +183,6 @@ public class OntologyServiceImpl implements OntologyService {
                 .description(createMultilingualMap(structure.getModelDescription()))
                 .creationDate(structure.getCreationDate())
                 .modificationDate(structure.getModificationDate())
-                .isPublished(ontologyMetadataModel.getIsPublished())
                 .concepts(concepts)
                 .build();
     }
@@ -235,7 +243,7 @@ public class OntologyServiceImpl implements OntologyService {
         String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
             ? ontologyCreateModel.getNameModel().getLanguageTag()
             : DEFAULT_LANG;
-        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), String.valueOf(nameLanguageTag));
+        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), nameLanguageTag);
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
         ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
@@ -245,7 +253,7 @@ public class OntologyServiceImpl implements OntologyService {
             String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
                 ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
                 : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), String.valueOf(descLanguageTag), model);
+            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), descLanguageTag, model);
         }
 
         String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
@@ -264,6 +272,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
+        metadataEntity.setSlug(UtilityMethods.extractNameFromIRI(ontologyIRI));
         metadataEntity.setGraphName(ontologyIRI);
         metadataEntity.setUserId(userId);
         metadataEntity.setIsPublished(false);
@@ -407,8 +416,9 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity updateOntologyMetadata(OntologyMetadataEntity metadataEntity, String newGraphName) {
         metadataEntity.setGraphName(newGraphName);
+        metadataEntity.setSlug(UtilityMethods.extractNameFromIRI(newGraphName));
         OntologyMetadataEntity updatedEntity = ontologyMetadataRepository.save(metadataEntity);
-        log.info("Updated metadata with new graph name: {}", newGraphName);
+        log.info("Updated metadata with new graph name: {} and slug: {}", newGraphName, metadataEntity.getSlug());
         return updatedEntity;
     }
 

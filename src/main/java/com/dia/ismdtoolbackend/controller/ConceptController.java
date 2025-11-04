@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -8,10 +9,12 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntologyException;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
@@ -119,6 +122,27 @@ public class ConceptController {
         } catch (Exception e) {
             log.error("Unexpected error editing concept: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při úpravě pojmu."));
+        }
+    }
+
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponseDto<List<ConceptMetadataModel>>> getConceptList(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) Boolean isPublished
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
+
+        try {
+            List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
+            return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
+        } catch (OntologyException e) {
+            log.error("Error fetching concept list: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error fetching concept list: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu pojmů."));
         }
     }
 }

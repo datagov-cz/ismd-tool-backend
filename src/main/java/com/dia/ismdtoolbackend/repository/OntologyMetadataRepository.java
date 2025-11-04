@@ -18,4 +18,5 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
 
     List<OntologyMetadataEntity> findAllByUserIdAndIsPublished(String userId, Boolean isPublished);
 
+    Optional<OntologyMetadataEntity> findBySlug(String slug);
 }
