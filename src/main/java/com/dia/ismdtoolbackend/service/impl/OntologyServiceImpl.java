@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -9,6 +10,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -48,6 +50,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final CommentRepository commentRepository;
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyEditor ontologyEditor;
@@ -142,6 +145,10 @@ public class OntologyServiceImpl implements OntologyService {
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
+
+        // Fetch and populate comments from the comments table
+        List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
+        metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
         GetOntologyDto result = new GetOntologyDto();
         result.setOntologyMetadata(metadataModel);
@@ -243,7 +250,13 @@ public class OntologyServiceImpl implements OntologyService {
         }
 
         return ontologyMetadataEntities.stream()
-                .map(ontologyMetadataMapper::toDto)
+                .map(entity -> {
+                    OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
+                    // Fetch and populate comments from the comments table
+                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
+                    model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+                    return model;
+                })
                 .toList();
     }
 

@@ -1,12 +1,14 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
@@ -35,6 +37,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptEditor conceptEditor;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final OntologyDetailExtractor detailExtractor;
+    private final CommentRepository commentRepository;
 
     @Override
     @Transactional
@@ -124,7 +127,13 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         return conceptMetadataEntities.stream()
-                .map(conceptMetadataMapper::toDto)
+                .map(entity -> {
+                    ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
+                    // Fetch and populate comments from the comments table
+                    List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(entity.getConceptIri());
+                    model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
+                    return model;
+                })
                 .toList();
     }
 
@@ -156,6 +165,10 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
+
+        // Fetch and populate comments from the comments table
+        List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(conceptIri);
+        metadataModel.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
 
         GetConceptDto result = new GetConceptDto();
         result.setConceptMetadata(metadataModel);

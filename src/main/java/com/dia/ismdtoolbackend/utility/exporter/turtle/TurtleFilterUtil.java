@@ -121,6 +121,10 @@ public class TurtleFilterUtil {
         Resource subject = stmt.getSubject();
         String subjectUri = subject.getURI();
 
+        if (subjectUri == null) {
+            return false;
+        }
+
         if (EXPLICIT_BASE_FRAMEWORK_URIS.contains(subjectUri)) {
             log.debug("Filtering statement about base framework class: {}", subjectUri);
             return true;

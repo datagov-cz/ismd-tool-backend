@@ -43,7 +43,4 @@ public class ConceptMetadataEntity {
 
     @Column(name = "validation_report_id")
     private Long validationReportId;
-
-    @Column(name = "comments", columnDefinition = "text")
-    private String commentsJson;
 }

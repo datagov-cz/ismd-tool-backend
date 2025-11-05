@@ -1,26 +1,15 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.entity.CommentEntity;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
 import com.dia.ismdtoolbackend.mapper.CommentMapper;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.CommentService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -30,10 +19,6 @@ public class CommentServiceImpl implements CommentService {
 
     private final CommentMapper commentMapper;
     private final CommentRepository commentRepository;
-    private final OntologyMetadataRepository ontologyMetadataRepository;
-    private final ConceptMetadataRepository conceptMetadataRepository;
-    private final ObjectMapper objectMapper;
-
 
     @Override
     @Transactional
@@ -43,16 +28,11 @@ public class CommentServiceImpl implements CommentService {
 
         validateInput(commentCreateModel, userId);
 
-        Object subject = determineCommentSubject(commentCreateModel);
+        var commentEntity = commentMapper.toEntity(commentCreateModel);
+        commentEntity.setUserId(userId);
+        commentEntity.setPostedTime(java.time.LocalDateTime.now());
 
-        if (subject instanceof OntologyMetadataEntity ontologyMetadata) {
-            return addCommentToOntology(ontologyMetadata, commentCreateModel, userId);
-        }
-        if (subject instanceof ConceptMetadataEntity conceptMetadata) {
-            return addCommentToConcept(conceptMetadata, commentCreateModel, userId);
-        }
-
-        throw new CommentException("Předmět komentáře nebyl nalezen, nebo není specifikován");
+        return commentMapper.toDto(commentRepository.save(commentEntity));
     }
 
     @Override
@@ -60,18 +40,8 @@ public class CommentServiceImpl implements CommentService {
     public void deleteComment(Long commentId) {
         log.info("Deleting comment with ID: {}", commentId);
 
-        CommentEntity commentEntity = commentRepository.findById(commentId)
+        commentRepository.findById(commentId)
                 .orElseThrow(() -> new CommentException("Komentář s ID " + commentId + " nebyl nalezen"));
-
-        Object subject = findCommentSubject(commentEntity);
-
-        if (subject instanceof OntologyMetadataEntity ontologyMetadata) {
-            removeCommentFromOntology(ontologyMetadata, commentId);
-        } else if (subject instanceof ConceptMetadataEntity conceptMetadata) {
-            removeCommentFromConcept(conceptMetadata, commentId);
-        } else {
-            log.warn("Comment {} has no associated subject, deleting from database only", commentId);
-        }
 
         commentRepository.deleteById(commentId);
         log.info("Successfully deleted comment {}", commentId);
@@ -99,115 +69,6 @@ public class CommentServiceImpl implements CommentService {
 
         if (!hasOntologyIRI && !hasConceptIRI) {
             throw new CommentException("Předmět komentáře (slovník nebo pojem) musí být specifikován");
-        }
-    }
-
-    private Object determineCommentSubject(CommentCreateModel commentCreateModel) {
-        if (commentCreateModel.getOntologyIRI() != null && !commentCreateModel.getOntologyIRI().isEmpty()) {
-            return ontologyMetadataRepository.findByGraphName(commentCreateModel.getOntologyIRI()).orElse(null);
-        }
-        if (commentCreateModel.getConceptIRI() != null && !commentCreateModel.getConceptIRI().isEmpty()) {
-            return conceptMetadataRepository.findByConceptIri(commentCreateModel.getConceptIRI()).orElse(null);
-        }
-        return null;
-    }
-
-    private CommentModel addCommentToOntology(OntologyMetadataEntity subject, CommentCreateModel commentCreateModel, String userId) {
-        CommentEntity savedComment = createAndSaveCommentEntity(commentCreateModel, userId);
-
-        List<CommentEntity> commentsList = getCommentsListFromJson(subject.getCommentsJson());
-        commentsList.add(savedComment);
-        String updatedCommentsJson = serializeCommentsToJson(commentsList);
-
-        subject.setCommentsJson(updatedCommentsJson);
-        ontologyMetadataRepository.save(subject);
-
-        log.info("Added comment {} to ontology {}", savedComment.getId(), subject.getGraphName());
-        return commentMapper.toDto(savedComment);
-    }
-
-    private CommentModel addCommentToConcept(ConceptMetadataEntity subject, CommentCreateModel commentCreateModel, String userId) {
-        CommentEntity savedComment = createAndSaveCommentEntity(commentCreateModel, userId);
-
-        List<CommentEntity> commentsList = getCommentsListFromJson(subject.getCommentsJson());
-        commentsList.add(savedComment);
-        String updatedCommentsJson = serializeCommentsToJson(commentsList);
-
-        subject.setCommentsJson(updatedCommentsJson);
-        conceptMetadataRepository.save(subject);
-
-        log.info("Added comment {} to concept {}", savedComment.getId(), subject.getConceptIri());
-        return commentMapper.toDto(savedComment);
-    }
-
-    private CommentEntity createAndSaveCommentEntity(CommentCreateModel commentCreateModel, String userId) {
-        CommentEntity commentEntity = commentMapper.toEntity(commentCreateModel);
-        commentEntity.setUserId(userId);
-        commentEntity.setPostedTime(LocalDateTime.now());
-        return commentRepository.save(commentEntity);
-    }
-
-    private List<CommentEntity> getCommentsListFromJson(String commentsJson) {
-        if (commentsJson == null || commentsJson.trim().isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        try {
-            return objectMapper.readValue(commentsJson, new TypeReference<>() {});
-        } catch (JsonProcessingException e) {
-            log.error("Failed to parse comments JSON, starting with empty list", e);
-            return new ArrayList<>();
-        }
-    }
-
-    private String serializeCommentsToJson(List<CommentEntity> commentsList) {
-        try {
-            return objectMapper.writeValueAsString(commentsList);
-        } catch (JsonProcessingException e) {
-            log.error("Failed to serialize comments to JSON", e);
-            throw new CommentException("Nepodařilo se uložit komentář: " + e.getMessage());
-        }
-    }
-
-    private Object findCommentSubject(CommentEntity commentEntity) {
-        if (commentEntity.getOntologyIRI() != null && !commentEntity.getOntologyIRI().isEmpty()) {
-            return ontologyMetadataRepository.findByGraphName(commentEntity.getOntologyIRI()).orElse(null);
-        }
-
-        if (commentEntity.getConceptIRI() != null && !commentEntity.getConceptIRI().isEmpty()) {
-            return conceptMetadataRepository.findByConceptIri(commentEntity.getConceptIRI()).orElse(null);
-        }
-
-        return null;
-    }
-
-    private void removeCommentFromOntology(OntologyMetadataEntity subject, Long commentId) {
-        List<CommentEntity> commentsList = getCommentsListFromJson(subject.getCommentsJson());
-
-        boolean removed = commentsList.removeIf(comment -> comment.getId().equals(commentId));
-
-        if (removed) {
-            String updatedCommentsJson = serializeCommentsToJson(commentsList);
-            subject.setCommentsJson(updatedCommentsJson);
-            ontologyMetadataRepository.save(subject);
-            log.info("Removed comment {} from ontology {}", commentId, subject.getGraphName());
-        } else {
-            log.warn("Comment {} not found in ontology {} JSON list", commentId, subject.getGraphName());
-        }
-    }
-
-    private void removeCommentFromConcept(ConceptMetadataEntity subject, Long commentId) {
-        List<CommentEntity> commentsList = getCommentsListFromJson(subject.getCommentsJson());
-
-        boolean removed = commentsList.removeIf(comment -> comment.getId().equals(commentId));
-
-        if (removed) {
-            String updatedCommentsJson = serializeCommentsToJson(commentsList);
-            subject.setCommentsJson(updatedCommentsJson);
-            conceptMetadataRepository.save(subject);
-            log.info("Removed comment {} from concept {}", commentId, subject.getConceptIri());
-        } else {
-            log.warn("Comment {} not found in concept {} JSON list", commentId, subject.getConceptIri());
         }
     }
 }

@@ -34,7 +34,4 @@ public class OntologyMetadataEntity {
     @Column(name = "ontology_level")
     @Enumerated(EnumType.STRING)
     private OntologyLevel ontologyLevel;
-
-    @Column(name = "comments", columnDefinition = "text")
-    private String commentsJson;
 }
