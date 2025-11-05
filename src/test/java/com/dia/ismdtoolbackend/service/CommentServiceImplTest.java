@@ -8,7 +8,6 @@ import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.service.impl.CommentServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,7 +27,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class CommentServiceImplTest {
-    /*
 
     @Mock
     private CommentMapper commentMapper;
@@ -73,7 +71,7 @@ class CommentServiceImplTest {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
         testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
+        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
         when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
 
@@ -92,7 +90,7 @@ class CommentServiceImplTest {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
         testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
+        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
 
@@ -113,7 +111,7 @@ class CommentServiceImplTest {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
         testCommentEntity.setConceptIRI(TEST_CONCEPT_IRI);
 
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
+        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
         when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
 
@@ -251,5 +249,4 @@ class CommentServiceImplTest {
         verify(commentRepository).deleteById(TEST_COMMENT_ID);
     }
 
-     */
 }
