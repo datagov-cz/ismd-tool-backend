@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -28,9 +30,7 @@ public class CommentServiceImpl implements CommentService {
 
         validateInput(commentCreateModel, userId);
 
-        var commentEntity = commentMapper.toEntity(commentCreateModel);
-        commentEntity.setUserId(userId);
-        commentEntity.setPostedTime(java.time.LocalDateTime.now());
+        var commentEntity = commentMapper.toEntity(commentCreateModel, userId, LocalDateTime.now());
 
         return commentMapper.toDto(commentRepository.save(commentEntity));
     }

@@ -36,6 +36,7 @@ public interface ConceptMetadataMapper {
         model.setComment(entity.getComment());
         model.setOntologyIRI(entity.getOntologyIRI());
         model.setConceptIRI(entity.getConceptIRI());
+        model.setPostedTime(entity.getPostedTime());
         return model;
     }
 
