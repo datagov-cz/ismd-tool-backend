@@ -252,12 +252,24 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataEntities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    // Fetch and populate comments from the comments table
+                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
                     List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
                 .toList();
+    }
+
+    private String extractNameFromGraphName(String graphName) {
+        if (graphName == null || graphName.isEmpty()) {
+            return graphName;
+        }
+
+        String result = graphName.replace("-", " ");
+
+        result = result.substring(0, 1).toUpperCase() + result.substring(1);
+
+        return result;
     }
 
     private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) throws OntologyException {

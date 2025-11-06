@@ -15,6 +15,7 @@ public class OntologyMetadataModel {
     private Long id;
     private String slug;
     private String graphName;
+    private String name;
     private UserModel user;
     private Boolean isPublished;
     private ValidationReportDto validationReport;
