@@ -21,4 +21,5 @@ public class OntologyMetadataModel {
     private ValidationReportDto validationReport;
     private OntologyLevel ontologyLevel;
     private List<CommentModel> comments;
+    private String popis;
 }

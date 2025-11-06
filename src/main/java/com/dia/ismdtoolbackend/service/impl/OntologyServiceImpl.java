@@ -110,7 +110,13 @@ public class OntologyServiceImpl implements OntologyService {
         }
 
         try {
-            OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId);
+            String popis = null;
+            if (ontologyCreateModel.getDescriptionModel() != null
+                && ontologyCreateModel.getDescriptionModel().getDescription() != null
+                && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
+                popis = ontologyCreateModel.getDescriptionModel().getDescription();
+            }
+            OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId, popis);
             log.info("Successfully created ontology with ID: {}", metadataEntity.getId());
             return ontologyMetadataMapper.toDto(metadataEntity);
         } catch (Exception e) {
@@ -146,7 +152,6 @@ public class OntologyServiceImpl implements OntologyService {
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
 
-        // Fetch and populate comments from the comments table
         List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
@@ -201,12 +206,17 @@ public class OntologyServiceImpl implements OntologyService {
         jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
-    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
+    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId, String popis) throws OntologyException {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
-        metadataEntity.setSlug(UtilityMethods.extractNameFromIRI(ontologyIRI));
+        String slug = UtilityMethods.extractNameFromIRI(ontologyIRI);
+        metadataEntity.setSlug(slug);
         metadataEntity.setGraphName(ontologyIRI);
         metadataEntity.setUserId(userId);
         metadataEntity.setIsPublished(false);
+        metadataEntity.setPopis(popis);
+
+        String name = extractNameFromGraphName(slug);
+        metadataEntity.setName(name);
 
         return ontologyMetadataRepository.save(metadataEntity);
     }
@@ -252,7 +262,35 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataEntities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
+                    if (model.getName() == null || model.getName().isEmpty()) {
+                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
+                    }
+                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
+                    model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+                    return model;
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OntologyMetadataModel> getBySlugs(List<String> slugs) throws OntologyException {
+        if (slugs == null || slugs.isEmpty()) {
+            throw new OntologyException("Seznam slugů je prázdný");
+        }
+
+        if (slugs.size() > 6) {
+            throw new OntologyException("Maximální počet slugů je 6");
+        }
+
+        List<OntologyMetadataEntity> ontologyMetadataEntities = ontologyMetadataRepository.findBySlugIn(slugs);
+
+        return ontologyMetadataEntities.stream()
+                .map(entity -> {
+                    OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
+                    if (model.getName() == null || model.getName().isEmpty()) {
+                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
+                    }
                     List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;

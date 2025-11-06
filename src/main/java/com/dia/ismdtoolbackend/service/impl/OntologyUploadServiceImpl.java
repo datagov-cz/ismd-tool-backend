@@ -27,8 +27,10 @@ import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -90,7 +92,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
-        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
+        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId, finalModel);
 
         try {
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
@@ -196,7 +198,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return null;
     }
 
-    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
+    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId, OntModel model) {
         String slug = UtilityMethods.extractNameFromIRI(graphName);
 
         Optional<OntologyMetadataEntity> existingBySlug = ontologyMetadataRepository.findBySlug(slug);
@@ -215,11 +217,50 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         ontologyMetadataModel.setUser(new UserModel(userId));
         ontologyMetadataModel.setIsPublished(false);
 
-        log.debug("Ontology metadata entity name: {}, userId: {}", ontologyMetadataModel.getGraphName(), userId);
+        String popis = extractDescription(model, graphName);
+        ontologyMetadataModel.setPopis(popis);
+
+        String name = extractName(model, graphName, slug);
+        ontologyMetadataModel.setName(name);
+
+        log.debug("Ontology metadata entity name: {}, userId: {}, popis: {}", ontologyMetadataModel.getGraphName(), userId, popis);
         OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataModel);
         OntologyMetadataEntity savedOntologyMetadataEntity = ontologyMetadataRepository.save(ontologyMetadataEntity);
         log.debug("Ontology metadata saved: {}", savedOntologyMetadataEntity);
         return ontologyMetadataMapper.toDto(savedOntologyMetadataEntity);
+    }
+
+    private String extractDescription(OntModel model, String graphName) {
+        try {
+            Resource ontologyResource = model.getResource(graphName);
+            if (ontologyResource != null && ontologyResource.hasProperty(DCTerms.description)) {
+                return ontologyResource.getProperty(DCTerms.description).getString();
+            }
+        } catch (Exception e) {
+            log.debug("Could not extract description from ontology: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private String extractName(OntModel model, String graphName, String slug) {
+        try {
+            Resource ontologyResource = model.getResource(graphName);
+            if (ontologyResource != null && ontologyResource.hasProperty(SKOS.prefLabel)) {
+                return ontologyResource.getProperty(SKOS.prefLabel).getString();
+            }
+        } catch (Exception e) {
+            log.debug("Could not extract prefLabel from ontology: {}", e.getMessage());
+        }
+        return extractNameFromSlug(slug);
+    }
+
+    private String extractNameFromSlug(String slug) {
+        if (slug == null || slug.isEmpty()) {
+            return slug;
+        }
+        String result = slug.replace("-", " ");
+        result = result.substring(0, 1).toUpperCase() + result.substring(1);
+        return result;
     }
 
     private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {

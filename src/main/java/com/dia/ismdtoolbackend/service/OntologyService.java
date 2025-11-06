@@ -14,4 +14,5 @@ public interface OntologyService {
     GetOntologyDto getOntologyDetailModel(String ontologySlug) throws OntologyException;
     OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel) throws OntologyException;
     List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) throws OntologyException;
+    List<OntologyMetadataModel> getBySlugs(List<String> slugs) throws OntologyException;
 }

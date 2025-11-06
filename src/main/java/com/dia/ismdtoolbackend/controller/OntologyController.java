@@ -229,10 +229,26 @@ public class OntologyController {
     @GetMapping("/list")
     public ResponseEntity<ApiResponseDto<List<OntologyMetadataModel>>> getOntologyList(
             @RequestParam(required = false) String userId,
-            @RequestParam(required = false) Boolean isPublished
+            @RequestParam(required = false) Boolean isPublished,
+            @RequestParam(required = false) List<String> slugs
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
+
+        if (slugs != null && !slugs.isEmpty()) {
+            log.info("Ontology list by slugs requested, slugs: {}", slugs);
+            try {
+                List<OntologyMetadataModel> ontologies = ontologyService.getBySlugs(slugs);
+                return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
+            } catch (OntologyException e) {
+                log.error("Error fetching ontology list by slugs: {}", e.getMessage());
+                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            } catch (Exception e) {
+                log.error("Unexpected error fetching ontology list by slugs: {}", e.getMessage());
+                return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu slovníků."));
+            }
+        }
+
         log.info("Ontology list requested, userId: {}, isPublished: {}", userId, isPublished);
 
         try {

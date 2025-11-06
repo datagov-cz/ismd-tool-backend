@@ -34,4 +34,10 @@ public class OntologyMetadataEntity {
     @Column(name = "ontology_level")
     @Enumerated(EnumType.STRING)
     private OntologyLevel ontologyLevel;
+
+    @Column(name = "popis", columnDefinition = "TEXT")
+    private String popis;
+
+    @Column(name = "name")
+    private String name;
 }
