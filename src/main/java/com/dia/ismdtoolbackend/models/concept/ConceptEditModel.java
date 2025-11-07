@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import lombok.Data;
 import org.apache.logging.log4j.core.config.plugins.validation.constraints.NotBlank;
 
+import java.util.List;
+
 @Data
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
@@ -28,7 +30,7 @@ public abstract class ConceptEditModel {
     protected String namespace;
     protected NameModel nameModel;
     protected String identifier;
-    protected AltNameModel altNameModel;
+    protected List<AltNameModel> altNameModel;
     protected DescriptionModel descriptionModel;
     protected DefinitionModel definitionModel;
     protected String definingNonLegalSource;

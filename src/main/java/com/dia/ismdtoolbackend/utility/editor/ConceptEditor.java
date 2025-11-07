@@ -161,7 +161,7 @@ public class ConceptEditor {
         String oldName = getCurrentName(oldConcept);
         if (!nameModel.getName().equals(oldName)) {
             removeAllByPredicate(oldConcept, SKOS.prefLabel, toRemove);
-            String languageTag = nameModel.getLanguageTag() != null ? String.valueOf(nameModel.getLanguageTag()) : DEFAULT_LANG;
+            String languageTag = nameModel.getLanguageTag() != null ? nameModel.getLanguageTag() : DEFAULT_LANG;
             toAdd.add(model.createStatement(newConcept, SKOS.prefLabel,
                     model.createLiteral(nameModel.getName(), languageTag)));
         }
@@ -181,7 +181,7 @@ public class ConceptEditor {
             }
         } else if (!newValue.equals(oldValue)) {
             removeAllByPredicate(oldConcept, descProperty, toRemove);
-            String languageTag = descModel.getLanguageTag() != null ? String.valueOf(descModel.getLanguageTag()) : DEFAULT_LANG;
+            String languageTag = descModel.getLanguageTag() != null ? descModel.getLanguageTag() : DEFAULT_LANG;
             toAdd.add(model.createStatement(newConcept, descProperty,
                     model.createLiteral(newValue, languageTag)));
         }
@@ -206,25 +206,27 @@ public class ConceptEditor {
         }
     }
 
-    private void updateAltNameModel(Resource newConcept, AltNameModel altNameModel, Resource oldConcept,
+    private void updateAltNameModel(Resource newConcept, List<AltNameModel> altNameModels, Resource oldConcept,
                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (altNameModel == null) return;
+        if (altNameModels == null) return;
 
-        Set<String> oldAltNames = getPropertyValues(oldConcept);
-        Set<String> newAltNames = parseAltNames(altNameModel.getAltName());
+        Map<String, String> oldAltNamesWithLang = getPropertyValuesWithLanguage(oldConcept);
 
-        if (altNameModel.getAltName() == null || altNameModel.getAltName().trim().isEmpty()) {
-            if (!oldAltNames.isEmpty()) {
-                removeAllByPredicate(oldConcept, SKOS.altLabel, toRemove);
+        Map<String, String> newAltNamesWithLang = new HashMap<>();
+        for (AltNameModel altNameModel : altNameModels) {
+            if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().trim().isEmpty()) {
+                String languageTag = altNameModel.getLanguageTag() != null
+                    ? altNameModel.getLanguageTag()
+                    : DEFAULT_LANG;
+                newAltNamesWithLang.put(altNameModel.getAltName().trim(), languageTag);
             }
-        } else if (!oldAltNames.equals(newAltNames)) {
+        }
+
+        if (!oldAltNamesWithLang.equals(newAltNamesWithLang)) {
             removeAllByPredicate(oldConcept, SKOS.altLabel, toRemove);
-            String languageTag = altNameModel.getLanguageTag() != null ? String.valueOf(altNameModel.getLanguageTag()) : DEFAULT_LANG;
-            for (String altName : newAltNames) {
-                if (!altName.trim().isEmpty()) {
-                    toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
-                            model.createLiteral(altName, languageTag)));
-                }
+            for (Map.Entry<String, String> entry : newAltNamesWithLang.entrySet()) {
+                toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
+                        model.createLiteral(entry.getKey(), entry.getValue())));
             }
         }
     }
@@ -599,16 +601,21 @@ public class ConceptEditor {
         return stmt != null && stmt.getObject().isLiteral() ? stmt.getObject().asLiteral().getString() : null;
     }
 
-    private Set<String> getPropertyValues(Resource resource) {
-        Set<String> values = new HashSet<>();
+    private Map<String, String> getPropertyValuesWithLanguage(Resource resource) {
+        Map<String, String> valuesWithLang = new HashMap<>();
         StmtIterator iter = resource.listProperties(SKOS.altLabel);
         while (iter.hasNext()) {
             Statement stmt = iter.next();
             if (stmt.getObject().isLiteral()) {
-                values.add(stmt.getObject().asLiteral().getString());
+                Literal literal = stmt.getObject().asLiteral();
+                String value = literal.getString();
+                String lang = literal.getLanguage() != null && !literal.getLanguage().isEmpty()
+                    ? literal.getLanguage()
+                    : DEFAULT_LANG;
+                valuesWithLang.put(value, lang);
             }
         }
-        return values;
+        return valuesWithLang;
     }
 
     private String getResourceURI(Resource resource, Property property) {
@@ -633,11 +640,6 @@ public class ConceptEditor {
         while (iter.hasNext()) {
             toRemove.add(iter.next());
         }
-    }
-
-    private Set<String> parseAltNames(String altNames) {
-        if (altNames == null || altNames.trim().isEmpty()) return Collections.emptySet();
-        return new HashSet<>(Arrays.asList(altNames.split(";")));
     }
 
     private Set<String> parseMultipleIRIs(String iris) {

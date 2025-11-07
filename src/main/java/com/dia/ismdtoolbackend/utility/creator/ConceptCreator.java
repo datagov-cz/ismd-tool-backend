@@ -139,7 +139,7 @@ public class ConceptCreator {
     }
 
     private void addConditionalCommonProperties(Set<String> properties, ConceptCreateModel createModel) {
-        if (createModel.getAltNameModel() != null && createModel.getAltNameModel().getAltName() != null && !createModel.getAltNameModel().getAltName().trim().isEmpty()) {
+        if (createModel.getAltNameModel() != null && !createModel.getAltNameModel().isEmpty()) {
             properties.add(ALTERNATIVNI_NAZEV);
         }
 
@@ -283,7 +283,7 @@ public class ConceptCreator {
         addDescription(resource, model);
         addDefinition(resource, model);
 
-        if (model.getAltNameModel() != null && model.getAltNameModel().getAltName() != null && !model.getAltNameModel().getAltName().trim().isEmpty()) {
+        if (model.getAltNameModel() != null && !model.getAltNameModel().isEmpty()) {
             addAlternativeNames(resource, model.getAltNameModel());
         }
     }
@@ -291,7 +291,7 @@ public class ConceptCreator {
     private void addPrefLabel(Resource resource, ConceptCreateModel model) {
         if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
             String nameLanguageTag = model.getNameModel().getLanguageTag() != null
-                    ? String.valueOf(model.getNameModel().getLanguageTag())
+                    ? model.getNameModel().getLanguageTag()
                     : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
                     model.getNameModel().getName(), nameLanguageTag, ontModel);
@@ -302,7 +302,7 @@ public class ConceptCreator {
         if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
             Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
             String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
-                    ? String.valueOf(model.getDescriptionModel().getLanguageTag())
+                    ? model.getDescriptionModel().getLanguageTag()
                     : DEFAULT_LANG;
             DataTypeConverter.addTypedProperty(resource, descProperty,
                     model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
@@ -479,20 +479,15 @@ public class ConceptCreator {
         }
     }
 
-    private void addAlternativeNames(Resource resource, com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel) {
-        String altNames = altNameModel.getAltName();
-        String languageTag = altNameModel.getLanguageTag() != null ? String.valueOf(altNameModel.getLanguageTag()) : DEFAULT_LANG;
-
-        if (altNames.contains(";")) {
-            String[] names = altNames.split(";");
-            for (String name : names) {
-                String trimmedName = name.trim();
-                if (!trimmedName.isEmpty()) {
-                    DataTypeConverter.addTypedProperty(resource, SKOS.altLabel, trimmedName, languageTag, ontModel);
-                }
+    private void addAlternativeNames(Resource resource, java.util.List<com.dia.ismdtoolbackend.models.concept.AltNameModel> altNameModels) {
+        for (com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel : altNameModels) {
+            if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().trim().isEmpty()) {
+                String languageTag = altNameModel.getLanguageTag() != null
+                    ? altNameModel.getLanguageTag()
+                    : DEFAULT_LANG;
+                DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
+                    altNameModel.getAltName().trim(), languageTag, ontModel);
             }
-        } else {
-            DataTypeConverter.addTypedProperty(resource, SKOS.altLabel, altNames.trim(), languageTag, ontModel);
         }
     }
 
