@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:17
     container_name: ismd-postgres-dev
     environment:
       POSTGRES_DB: ismd_tool_db
