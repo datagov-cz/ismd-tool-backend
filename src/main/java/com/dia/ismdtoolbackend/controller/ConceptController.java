@@ -27,6 +27,7 @@ public class ConceptController {
 
     private final ConceptService conceptService;
 
+    // TODO: Check if we need to validate ownership
     @PostMapping("/create")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
             @RequestBody ConceptCreateModel conceptCreateModel,

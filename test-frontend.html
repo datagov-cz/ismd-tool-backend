@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ISMD Backend Test - Keycloak Auth</title>
+</head>
+<body>
+    <h1>ISMD Backend API Test</h1>
+
+    <!-- Authentication Section -->
+    <div id="auth-section">
+        <h2>Authentication</h2>
+        <p>Status: <span id="auth-status">Not logged in</span></p>
+        <p>User ID: <span id="user-id">-</span></p>
+        <button id="login-btn">Login via Keycloak</button>
+        <button id="logout-btn" style="display:none;">Logout</button>
+    </div>
+
+    <hr>
+
+    <!-- Public Endpoint Test -->
+    <div>
+        <h2>1. Public Endpoint - Download Ontology (No Auth Required)</h2>
+        <p>Test GET /api/ontology/{id}/download</p>
+        <input type="number" id="download-id" placeholder="Ontology ID" value="1">
+        <select id="download-format">
+            <option value="json-ld">JSON-LD</option>
+            <option value="ttl">Turtle</option>
+        </select>
+        <button id="download-btn">Download Ontology</button>
+    </div>
+
+    <hr>
+
+    <!-- Protected Upload Test -->
+    <div>
+        <h2>2. Protected Endpoint - Upload Ontology (Requires Auth)</h2>
+        <p>Test POST /api/ontology/upload</p>
+        <input type="file" id="upload-file" accept=".ttl,.turtle,.jsonld,.json-ld">
+        <input type="text" id="upload-name" placeholder="Ontology name (optional)">
+        <button id="upload-btn">Upload Ontology</button>
+    </div>
+
+    <hr>
+
+    <!-- Protected Delete Test -->
+    <div>
+        <h2>3. Protected Endpoint - Delete Ontology (Requires Auth + Ownership)</h2>
+        <p>Test DELETE /api/ontology/{id}/delete</p>
+        <input type="number" id="delete-id" placeholder="Ontology ID">
+        <button id="delete-btn">Delete Ontology</button>
+    </div>
+
+    <hr>
+
+    <!-- Response Display -->
+    <div>
+        <h2>API Response</h2>
+        <pre id="response" style="background: #f4f4f4; padding: 10px; border: 1px solid #ccc; min-height: 100px; white-space: pre-wrap;"></pre>
+    </div>
+
+    <script>
+        // Configuration
+        const CONFIG = {
+            keycloakUrl: 'http://localhost:8080',
+            realm: 'ismd',
+            clientId: 'ismd-test-frontend',
+            redirectUri: window.location.origin + window.location.pathname,
+            backendUrl: 'http://localhost:8081'
+        };
+
+        // Token storage keys
+        const TOKEN_KEY = 'access_token';
+        const REFRESH_TOKEN_KEY = 'refresh_token';
+
+        // DOM elements
+        const authStatus = document.getElementById('auth-status');
+        const userIdSpan = document.getElementById('user-id');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const responseDiv = document.getElementById('response');
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Check if returning from Keycloak callback
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+
+            if (code) {
+                handleCallback(code);
+            } else {
+                updateAuthUI();
+            }
+
+            // Setup event listeners
+            loginBtn.addEventListener('click', login);
+            logoutBtn.addEventListener('click', logout);
+            document.getElementById('download-btn').addEventListener('click', downloadOntology);
+            document.getElementById('upload-btn').addEventListener('click', uploadOntology);
+            document.getElementById('delete-btn').addEventListener('click', deleteOntology);
+        });
+
+        // OAuth2 Functions
+        function login() {
+            const authUrl = `${CONFIG.keycloakUrl}/realms/${CONFIG.realm}/protocol/openid-connect/auth`;
+            const params = new URLSearchParams({
+                client_id: CONFIG.clientId,
+                redirect_uri: CONFIG.redirectUri,
+                response_type: 'code',
+                scope: 'openid profile email'
+            });
+            window.location.href = `${authUrl}?${params}`;
+        }
+
+        function logout() {
+            // Clear local tokens
+            sessionStorage.removeItem(TOKEN_KEY);
+            sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+
+            // Redirect to Keycloak logout to end server-side session
+            const logoutUrl = `${CONFIG.keycloakUrl}/realms/${CONFIG.realm}/protocol/openid-connect/logout`;
+            const params = new URLSearchParams({
+                client_id: CONFIG.clientId,
+                post_logout_redirect_uri: CONFIG.redirectUri
+            });
+
+            // Redirect to Keycloak logout, which will redirect back to frontend
+            window.location.href = `${logoutUrl}?${params}`;
+        }
+
+        async function handleCallback(code) {
+            try {
+                const tokenUrl = `${CONFIG.keycloakUrl}/realms/${CONFIG.realm}/protocol/openid-connect/token`;
+                const response = await fetch(tokenUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        grant_type: 'authorization_code',
+                        code: code,
+                        redirect_uri: CONFIG.redirectUri,
+                        client_id: CONFIG.clientId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to exchange code for token');
+                }
+
+                const data = await response.json();
+                sessionStorage.setItem(TOKEN_KEY, data.access_token);
+                sessionStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+
+                // Remove code from URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+
+                updateAuthUI();
+                displayResponse({ message: 'Login successful!', tokens: { access_token: 'stored', refresh_token: 'stored' } });
+            } catch (error) {
+                displayResponse({ error: error.message });
+            }
+        }
+
+        async function refreshToken() {
+            const refreshToken = sessionStorage.getItem(REFRESH_TOKEN_KEY);
+            if (!refreshToken) {
+                return false;
+            }
+
+            try {
+                const tokenUrl = `${CONFIG.keycloakUrl}/realms/${CONFIG.realm}/protocol/openid-connect/token`;
+                const response = await fetch(tokenUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                        grant_type: 'refresh_token',
+                        refresh_token: refreshToken,
+                        client_id: CONFIG.clientId
+                    })
+                });
+
+                if (!response.ok) {
+                    return false;
+                }
+
+                const data = await response.json();
+                sessionStorage.setItem(TOKEN_KEY, data.access_token);
+                sessionStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+
+                updateAuthUI();
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function updateAuthUI() {
+            const token = sessionStorage.getItem(TOKEN_KEY);
+            if (token) {
+                const payload = parseJwt(token);
+                authStatus.textContent = 'Logged in';
+                userIdSpan.textContent = payload.sub || payload.preferred_username || 'Unknown';
+                loginBtn.style.display = 'none';
+                logoutBtn.style.display = 'inline';
+            } else {
+                authStatus.textContent = 'Not logged in';
+                userIdSpan.textContent = '-';
+                loginBtn.style.display = 'inline';
+                logoutBtn.style.display = 'none';
+            }
+        }
+
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch (e) {
+                return {};
+            }
+        }
+
+        // API Functions
+        async function apiCall(url, options = {}) {
+            const token = sessionStorage.getItem(TOKEN_KEY);
+
+            const headers = options.headers || {};
+            if (token && options.requiresAuth !== false) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            try {
+                let response = await fetch(url, { ...options, headers });
+
+                // Handle 401 - try to refresh token
+                if (response.status === 401 && options.requiresAuth !== false) {
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        // Retry with new token
+                        const newToken = sessionStorage.getItem(TOKEN_KEY);
+                        headers['Authorization'] = `Bearer ${newToken}`;
+                        response = await fetch(url, { ...options, headers });
+                    } else {
+                        displayResponse({ error: 'Token expired. Please login again.' });
+                        logout();
+                        return;
+                    }
+                }
+
+                // Try to parse as JSON, fallback to text
+                const contentType = response.headers.get('content-type');
+                let data;
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    const text = await response.text();
+                    data = { raw: text, status: response.status };
+                }
+
+                displayResponse({
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data
+                });
+
+                return data;
+            } catch (error) {
+                displayResponse({ error: error.message });
+            }
+        }
+
+        // Test Functions
+        async function downloadOntology() {
+            const id = document.getElementById('download-id').value;
+            const format = document.getElementById('download-format').value;
+
+            if (!id) {
+                displayResponse({ error: 'Please enter ontology ID' });
+                return;
+            }
+
+            const url = `${CONFIG.backendUrl}/api/ontology/${id}/download?format=${format}`;
+            await apiCall(url, { requiresAuth: false });
+        }
+
+        async function uploadOntology() {
+            const fileInput = document.getElementById('upload-file');
+            const nameInput = document.getElementById('upload-name');
+
+            if (!fileInput.files.length) {
+                displayResponse({ error: 'Please select a file' });
+                return;
+            }
+
+            const token = sessionStorage.getItem(TOKEN_KEY);
+            if (!token) {
+                displayResponse({ error: 'Please login first' });
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            if (nameInput.value) {
+                formData.append('providedName', nameInput.value);
+            }
+
+            const url = `${CONFIG.backendUrl}/api/ontology/upload`;
+
+            try {
+                let response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                // Handle 401 - try to refresh token
+                if (response.status === 401) {
+                    const refreshed = await refreshToken();
+                    if (refreshed) {
+                        const newToken = sessionStorage.getItem(TOKEN_KEY);
+                        response = await fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${newToken}`
+                            },
+                            body: formData
+                        });
+                    } else {
+                        displayResponse({ error: 'Token expired. Please login again.' });
+                        logout();
+                        return;
+                    }
+                }
+
+                const data = await response.json();
+                displayResponse({
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data
+                });
+            } catch (error) {
+                displayResponse({ error: error.message });
+            }
+        }
+
+        async function deleteOntology() {
+            const id = document.getElementById('delete-id').value;
+
+            if (!id) {
+                displayResponse({ error: 'Please enter ontology ID' });
+                return;
+            }
+
+            const token = sessionStorage.getItem(TOKEN_KEY);
+            if (!token) {
+                displayResponse({ error: 'Please login first' });
+                return;
+            }
+
+            const url = `${CONFIG.backendUrl}/api/ontology/${id}/delete`;
+            await apiCall(url, { method: 'DELETE' });
+        }
+
+        // Display helper
+        function displayResponse(data) {
+            responseDiv.textContent = JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>
