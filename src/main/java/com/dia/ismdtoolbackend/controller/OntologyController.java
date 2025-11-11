@@ -1,15 +1,16 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -25,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
@@ -38,6 +40,7 @@ public class OntologyController {
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
+    private final ValidationClient validationClient;
 
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
@@ -260,6 +263,29 @@ public class OntologyController {
         } catch (Exception e) {
             log.error("Unexpected error fetching ontology list: {}", e.getMessage());
             return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu slovníků."));
+        }
+    }
+
+    @PostMapping("/validate")
+    public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
+            @RequestPart OntologyMetadataModel ontologyMetadata
+    ) {
+        try {
+            String requestId = UUID.randomUUID().toString();
+            MDC.put(LOG_REQUEST_ID, requestId);
+            log.info("Ontology validation requested, ontologyIRI: {}", ontologyMetadata.getGraphName());
+
+            String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
+            Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
+            if (validationReport.isPresent()) {
+                return ResponseEntity.ok().body(ApiResponseDto.success(validationReport.get(), "Validace proběhla úspěšně."));
+            } else {
+                log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
+                return ResponseEntity.status(500).body(ApiResponseDto.error("Validace se nezdařila - validační služba nevrátila odpověď."));
+            }
+        } catch (OntologyException e) {
+            log.error("Unexpected error: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
         }
     }
 

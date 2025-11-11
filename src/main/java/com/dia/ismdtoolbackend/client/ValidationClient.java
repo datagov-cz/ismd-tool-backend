@@ -17,7 +17,7 @@ import java.util.Optional;
 @Slf4j
 public class ValidationClient {
 
-    @Value("${validation.service.url:http://localhost:8080}")
+    @Value("${validation.service.url}")
     private String validationServiceUrl;
 
     private final RestClient restClient;
