@@ -5,11 +5,13 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -39,6 +41,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,6 +60,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final CommentRepository commentRepository;
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
+    private final ConceptMetadataMapper conceptMetadataMapper;
     private final OntologyEditor ontologyEditor;
     private final OntologyDetailExtractor detailExtractor;
 
@@ -160,7 +164,11 @@ public class OntologyServiceImpl implements OntologyService {
         List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
+        List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
+
+
         GetOntologyDto result = new GetOntologyDto();
+        result.setConceptMetadataModelList(conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList());
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 
