@@ -26,9 +26,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntologyException;
+import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
@@ -98,7 +102,10 @@ public class OntologyServiceImpl implements OntologyService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
         if (ontologyMetadataOpt.isPresent()) {
             log.error("ontologyId {} already present", ontologyIRI);
-            return ontologyMetadataMapper.toDto(ontologyMetadataOpt.get());
+            OntologyMetadataEntity existingEntity = ontologyMetadataOpt.get();
+            OntologyMetadataModel model = ontologyMetadataMapper.toDto(existingEntity);
+            enrichMetadataFromRDF(model, existingEntity);
+            return model;
         }
 
         try {
@@ -111,9 +118,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         try {
             String popis = null;
-            if (ontologyCreateModel.getDescriptionModel() != null
-                && ontologyCreateModel.getDescriptionModel().getDescription() != null
-                && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
+            if (!ontologyCreateModel.getDescriptionModel().getDescription().isEmpty()) {
                 popis = ontologyCreateModel.getDescriptionModel().getDescription();
             }
             OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId, popis);
@@ -151,6 +156,8 @@ public class OntologyServiceImpl implements OntologyService {
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
+
+        enrichMetadataFromRDF(metadataModel, metadataEntity);
 
         List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
@@ -241,7 +248,9 @@ public class OntologyServiceImpl implements OntologyService {
             saveOntologyModel(oldOntologyIRI, model);
         }
 
-        return ontologyMetadataMapper.toDto(metadataEntity);
+        OntologyMetadataModel resultModel = ontologyMetadataMapper.toDto(metadataEntity);
+        enrichMetadataFromRDF(resultModel, metadataEntity);
+        return resultModel;
     }
 
     @Override
@@ -262,9 +271,7 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataEntities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    if (model.getName() == null || model.getName().isEmpty()) {
-                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
-                    }
+                    enrichMetadataFromRDF(model, entity);
                     List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
@@ -288,9 +295,7 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataEntities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    if (model.getName() == null || model.getName().isEmpty()) {
-                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
-                    }
+                    enrichMetadataFromRDF(model, entity);
                     List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
@@ -456,5 +461,81 @@ public class OntologyServiceImpl implements OntologyService {
 
     private void cleanupTDB2Graph(String graphName) {
         jenaTDB2Repository.deleteGraph(graphName);
+    }
+
+    private void enrichMetadataFromRDF(OntologyMetadataModel model, OntologyMetadataEntity entity) {
+        try {
+            boolean needsName = model.getName() == null || model.getName().isEmpty();
+            boolean needsPopis = model.getPopis() == null || model.getPopis().isEmpty();
+
+            if (!needsName && !needsPopis) {
+                return;
+            }
+
+            String graphName = entity.getGraphName();
+            if (graphName == null || graphName.isEmpty()) {
+                log.warn("Cannot enrich metadata: graphName is null or empty");
+                return;
+            }
+
+            Model rdfModel = jenaTDB2Repository.fetchGraph(graphName);
+            if (rdfModel == null || rdfModel.isEmpty()) {
+                log.warn("Cannot enrich metadata: RDF model is empty for graph {}", graphName);
+                if (needsName) {
+                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                }
+                return;
+            }
+
+            Resource ontologyResource = rdfModel.getResource(graphName);
+            if (ontologyResource == null) {
+                log.warn("Cannot find ontology resource for IRI: {}", graphName);
+                if (needsName) {
+                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                }
+                return;
+            }
+
+            if (needsName) {
+                Statement prefLabelStmt = ontologyResource.getProperty(SKOS.prefLabel);
+                if (prefLabelStmt != null) {
+                    RDFNode prefLabelNode = prefLabelStmt.getObject();
+                    if (prefLabelNode.isLiteral()) {
+                        Literal prefLabelLiteral = prefLabelNode.asLiteral();
+                        String prefLabel = prefLabelLiteral.getString();
+                        if (prefLabel != null && !prefLabel.isEmpty()) {
+                            model.setName(prefLabel);
+                            log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
+                        } else {
+                            model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                        }
+                    } else {
+                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                    }
+                } else {
+                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                }
+            }
+
+            if (needsPopis) {
+                Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
+                if (descriptionStmt != null) {
+                    RDFNode descriptionNode = descriptionStmt.getObject();
+                    if (descriptionNode.isLiteral()) {
+                        Literal descriptionLiteral = descriptionNode.asLiteral();
+                        String description = descriptionLiteral.getString();
+                        if (description != null && !description.isEmpty()) {
+                            model.setPopis(description);
+                            log.debug("Enriched popis from dcterms:description: {}", description);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to enrich metadata from RDF for graph {}: {}", entity.getGraphName(), e.getMessage());
+            if ((model.getName() == null || model.getName().isEmpty()) && entity.getGraphName() != null) {
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
+            }
+        }
     }
 }
