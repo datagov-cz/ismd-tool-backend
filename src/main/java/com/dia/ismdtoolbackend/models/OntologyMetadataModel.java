@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -22,4 +23,6 @@ public class OntologyMetadataModel {
     private OntologyLevel ontologyLevel;
     private List<CommentModel> comments;
     private String popis;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
