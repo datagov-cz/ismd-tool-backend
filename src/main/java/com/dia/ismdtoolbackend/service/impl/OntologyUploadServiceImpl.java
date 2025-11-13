@@ -4,14 +4,17 @@ import com.dia.exceptions.ConversionException;
 import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
 import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
@@ -27,7 +30,6 @@ import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
@@ -38,12 +40,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
+import static com.dia.constants.VocabularyConstants.*;
 
 @Service
 @RequiredArgsConstructor
@@ -52,6 +52,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
     private final OntologyAnalyzer ontologyAnalyzer;
@@ -99,6 +100,12 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         } catch (Exception e) {
             ontologyMetadataRepository.deleteById(metadata.getId());
             throw new OntoloyUploadException("Failed to upload to TDB2", e);
+        }
+
+        try {
+            extractAndSaveConceptMetadata(finalModel, graphName, userId);
+        } catch (Exception e) {
+            log.warn("Failed to extract concept metadata from uploaded ontology: {}", e.getMessage(), e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
@@ -217,50 +224,11 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         ontologyMetadataModel.setUser(new UserModel(userId));
         ontologyMetadataModel.setIsPublished(false);
 
-        String popis = extractDescription(model, graphName);
-        ontologyMetadataModel.setPopis(popis);
-
-        String name = extractName(model, graphName, slug);
-        ontologyMetadataModel.setName(name);
-
-        log.debug("Ontology metadata entity name: {}, userId: {}, popis: {}", ontologyMetadataModel.getGraphName(), userId, popis);
+        log.debug("Ontology metadata entity graphName: {}, userId: {}", ontologyMetadataModel.getGraphName(), userId);
         OntologyMetadataEntity ontologyMetadataEntity = ontologyMetadataMapper.toEntity(ontologyMetadataModel);
         OntologyMetadataEntity savedOntologyMetadataEntity = ontologyMetadataRepository.save(ontologyMetadataEntity);
         log.debug("Ontology metadata saved: {}", savedOntologyMetadataEntity);
         return ontologyMetadataMapper.toDto(savedOntologyMetadataEntity);
-    }
-
-    private String extractDescription(OntModel model, String graphName) {
-        try {
-            Resource ontologyResource = model.getResource(graphName);
-            if (ontologyResource != null && ontologyResource.hasProperty(DCTerms.description)) {
-                return ontologyResource.getProperty(DCTerms.description).getString();
-            }
-        } catch (Exception e) {
-            log.debug("Could not extract description from ontology: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    private String extractName(OntModel model, String graphName, String slug) {
-        try {
-            Resource ontologyResource = model.getResource(graphName);
-            if (ontologyResource != null && ontologyResource.hasProperty(SKOS.prefLabel)) {
-                return ontologyResource.getProperty(SKOS.prefLabel).getString();
-            }
-        } catch (Exception e) {
-            log.debug("Could not extract prefLabel from ontology: {}", e.getMessage());
-        }
-        return extractNameFromSlug(slug);
-    }
-
-    private String extractNameFromSlug(String slug) {
-        if (slug == null || slug.isEmpty()) {
-            return slug;
-        }
-        String result = slug.replace("-", " ");
-        result = result.substring(0, 1).toUpperCase() + result.substring(1);
-        return result;
     }
 
     private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
@@ -281,5 +249,79 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             log.error("Failed to convert OntModel to TTL", e);
             throw new ConversionException("Failed to convert OntModel to TTL: " + e.getMessage(), e);
         }
+    }
+
+    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId) {
+        log.info("Extracting concept metadata from ontology: {}", graphName);
+
+        ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, SKOS.Concept);
+        List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
+
+        while (conceptIterator.hasNext()) {
+            Resource conceptResource = conceptIterator.next();
+
+            if (!conceptResource.isURIResource()) {
+                continue;
+            }
+
+            String conceptIri = conceptResource.getURI();
+            String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
+            String slug = generateConceptSlug(graphName, conceptName);
+
+            Optional<ConceptMetadataEntity> existing = conceptMetadataRepository.findByConceptIri(conceptIri);
+            if (existing.isPresent()) {
+                log.debug("Concept already exists: {}", conceptIri);
+                continue;
+            }
+
+            ConceptType conceptType = determineConceptType(conceptResource, model);
+
+            ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
+            conceptEntity.setSlug(slug);
+            conceptEntity.setConceptName(conceptName);
+            conceptEntity.setConceptType(conceptType);
+            conceptEntity.setGraphName(graphName);
+            conceptEntity.setConceptIri(conceptIri);
+            conceptEntity.setUserId(userId);
+            conceptEntity.setIsPublished(false);
+
+            conceptEntities.add(conceptEntity);
+        }
+
+        if (!conceptEntities.isEmpty()) {
+            conceptMetadataRepository.saveAll(conceptEntities);
+            log.info("Saved {} concept metadata entries for ontology: {}", conceptEntities.size(), graphName);
+        } else {
+            log.info("No concepts found in uploaded ontology: {}", graphName);
+        }
+    }
+
+    private ConceptType determineConceptType(Resource conceptResource, OntModel model) {
+        if (hasOFNType(conceptResource, VLASTNOST, model)) {
+            return ConceptType.VLASTNOST;
+        }
+        if (hasOFNType(conceptResource, VZTAH, model)) {
+            return ConceptType.VZTAH;
+        }
+        return ConceptType.TRIDA;
+    }
+
+    private boolean hasOFNType(Resource conceptResource, String typeName, OntModel model) {
+        String typeUri = OFN_NAMESPACE + typeName;
+        Resource typeResource = model.getResource(typeUri);
+        return conceptResource.hasProperty(RDF.type, typeResource);
+    }
+
+    private String generateConceptSlug(String graphName, String conceptName) {
+        String baseSlug = UtilityMethods.extractNameFromIRI(graphName) + "-" + conceptName;
+        String slug = baseSlug;
+        int counter = 1;
+
+        while (conceptMetadataRepository.findBySlug(slug).isPresent()) {
+            slug = baseSlug + "-" + counter;
+            counter++;
+        }
+
+        return slug;
     }
 }

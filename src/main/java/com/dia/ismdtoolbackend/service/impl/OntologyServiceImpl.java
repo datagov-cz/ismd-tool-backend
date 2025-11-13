@@ -117,13 +117,11 @@ public class OntologyServiceImpl implements OntologyService {
         }
 
         try {
-            String popis = null;
-            if (!ontologyCreateModel.getDescriptionModel().getDescription().isEmpty()) {
-                popis = ontologyCreateModel.getDescriptionModel().getDescription();
-            }
-            OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId, popis);
+            OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId);
             log.info("Successfully created ontology with ID: {}", metadataEntity.getId());
-            return ontologyMetadataMapper.toDto(metadataEntity);
+            OntologyMetadataModel model = ontologyMetadataMapper.toDto(metadataEntity);
+            enrichMetadataFromRDF(model, metadataEntity);
+            return model;
         } catch (Exception e) {
             log.warn("PostgreSQL save failed, cleaning up TDB2 data for graph: {}", ontologyIRI);
             try {
@@ -213,17 +211,13 @@ public class OntologyServiceImpl implements OntologyService {
         jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
-    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId, String popis) throws OntologyException {
+    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
         String slug = UtilityMethods.extractNameFromIRI(ontologyIRI);
         metadataEntity.setSlug(slug);
         metadataEntity.setGraphName(ontologyIRI);
         metadataEntity.setUserId(userId);
         metadataEntity.setIsPublished(false);
-        metadataEntity.setPopis(popis);
-
-        String name = extractNameFromGraphName(slug);
-        metadataEntity.setName(name);
 
         return ontologyMetadataRepository.save(metadataEntity);
     }
@@ -465,13 +459,6 @@ public class OntologyServiceImpl implements OntologyService {
 
     private void enrichMetadataFromRDF(OntologyMetadataModel model, OntologyMetadataEntity entity) {
         try {
-            boolean needsName = model.getName() == null || model.getName().isEmpty();
-            boolean needsPopis = model.getPopis() == null || model.getPopis().isEmpty();
-
-            if (!needsName && !needsPopis) {
-                return;
-            }
-
             String graphName = entity.getGraphName();
             if (graphName == null || graphName.isEmpty()) {
                 log.warn("Cannot enrich metadata: graphName is null or empty");
@@ -481,53 +468,45 @@ public class OntologyServiceImpl implements OntologyService {
             Model rdfModel = jenaTDB2Repository.fetchGraph(graphName);
             if (rdfModel == null || rdfModel.isEmpty()) {
                 log.warn("Cannot enrich metadata: RDF model is empty for graph {}", graphName);
-                if (needsName) {
-                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
-                }
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
                 return;
             }
 
             Resource ontologyResource = rdfModel.getResource(graphName);
             if (ontologyResource == null) {
                 log.warn("Cannot find ontology resource for IRI: {}", graphName);
-                if (needsName) {
-                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
-                }
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
                 return;
             }
 
-            if (needsName) {
-                Statement prefLabelStmt = ontologyResource.getProperty(SKOS.prefLabel);
-                if (prefLabelStmt != null) {
-                    RDFNode prefLabelNode = prefLabelStmt.getObject();
-                    if (prefLabelNode.isLiteral()) {
-                        Literal prefLabelLiteral = prefLabelNode.asLiteral();
-                        String prefLabel = prefLabelLiteral.getString();
-                        if (prefLabel != null && !prefLabel.isEmpty()) {
-                            model.setName(prefLabel);
-                            log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
-                        } else {
-                            model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
-                        }
+            Statement prefLabelStmt = ontologyResource.getProperty(SKOS.prefLabel);
+            if (prefLabelStmt != null) {
+                RDFNode prefLabelNode = prefLabelStmt.getObject();
+                if (prefLabelNode.isLiteral()) {
+                    Literal prefLabelLiteral = prefLabelNode.asLiteral();
+                    String prefLabel = prefLabelLiteral.getString();
+                    if (prefLabel != null && !prefLabel.isEmpty()) {
+                        model.setName(prefLabel);
+                        log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
                     } else {
                         model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
                     }
                 } else {
                     model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
                 }
+            } else {
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
             }
 
-            if (needsPopis) {
-                Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
-                if (descriptionStmt != null) {
-                    RDFNode descriptionNode = descriptionStmt.getObject();
-                    if (descriptionNode.isLiteral()) {
-                        Literal descriptionLiteral = descriptionNode.asLiteral();
-                        String description = descriptionLiteral.getString();
-                        if (description != null && !description.isEmpty()) {
-                            model.setPopis(description);
-                            log.debug("Enriched popis from dcterms:description: {}", description);
-                        }
+            Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
+            if (descriptionStmt != null) {
+                RDFNode descriptionNode = descriptionStmt.getObject();
+                if (descriptionNode.isLiteral()) {
+                    Literal descriptionLiteral = descriptionNode.asLiteral();
+                    String description = descriptionLiteral.getString();
+                    if (description != null && !description.isEmpty()) {
+                        model.setPopis(description);
+                        log.debug("Enriched popis from dcterms:description: {}", description);
                     }
                 }
             }

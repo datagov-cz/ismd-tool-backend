@@ -41,12 +41,6 @@ public class OntologyMetadataEntity {
     @Enumerated(EnumType.STRING)
     private OntologyLevel ontologyLevel;
 
-    @Column(name = "popis", columnDefinition = "TEXT")
-    private String popis;
-
-    @Column(name = "name")
-    private String name;
-
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

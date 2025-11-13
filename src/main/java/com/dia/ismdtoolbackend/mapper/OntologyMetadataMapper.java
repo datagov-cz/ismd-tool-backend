@@ -24,6 +24,8 @@ public interface OntologyMetadataMapper {
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "validationReport", source = "validationReportId", qualifiedByName = "validationReportIdToValidationReport")
     @Mapping(target = "comments", ignore = true)
+    @Mapping(target = "name", ignore = true)
+    @Mapping(target = "popis", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
 
     default CommentModel commentEntityToModel(CommentEntity entity) {
