@@ -236,9 +236,9 @@ public class ConceptEditor {
         Property definingProp = model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_USTANOVENI);
         Property relatedProp = model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_USTANOVENI);
 
-        updateLegalSourceProperty(newConcept, definingProp, editModel.getDefiningLegalSource(),
+        updateLegalSourceList(newConcept, definingProp, editModel.getDefiningLegalSource(),
                 oldConcept, model, toRemove, toAdd);
-        updateLegalSourceProperty(newConcept, relatedProp, editModel.getRelatedLegalSource(),
+        updateLegalSourceList(newConcept, relatedProp, editModel.getRelatedLegalSource(),
                 oldConcept, model, toRemove, toAdd);
     }
 
@@ -247,21 +247,27 @@ public class ConceptEditor {
         Property definingProp = model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
         Property relatedProp = model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
 
-        updateNonLegalSourceProperty(newConcept, definingProp, editModel.getDefiningNonLegalSource(),
+        updateNonLegalSourceList(newConcept, definingProp, editModel.getDefiningNonLegalSource(),
                 oldConcept, model, toRemove, toAdd);
-        updateNonLegalSourceProperty(newConcept, relatedProp, editModel.getRelatedNonLegalSource(),
+        updateNonLegalSourceList(newConcept, relatedProp, editModel.getRelatedNonLegalSource(),
                 oldConcept, model, toRemove, toAdd);
     }
 
-    private void updateExactMatch(Resource newConcept, String exactMatch, Resource oldConcept,
-                                   Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (exactMatch == null) return;
+    private void updateExactMatch(Resource newConcept, List<String> exactMatchList, Resource oldConcept,
+                                  Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        if (exactMatchList == null) return;
 
         Property exactMatchProp = model.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch");
         Set<String> oldMatches = getResourceURIs(oldConcept, exactMatchProp);
-        Set<String> newMatches = parseMultipleIRIs(exactMatch);
+        Set<String> newMatches = new HashSet<>();
 
-        if (exactMatch.trim().isEmpty()) {
+        for (String iri : exactMatchList) {
+            if (iri != null && !iri.trim().isEmpty()) {
+                newMatches.add(iri.trim());
+            }
+        }
+
+        if (exactMatchList.isEmpty() || newMatches.isEmpty()) {
             if (!oldMatches.isEmpty()) {
                 removeAllByPredicate(oldConcept, exactMatchProp, toRemove);
             }
@@ -512,54 +518,64 @@ public class ConceptEditor {
         }
     }
 
-    private void updateLegalSourceProperty(Resource newConcept, Property property, String newSource,
-                                            Resource oldConcept, Model model, Set<Statement> toRemove,
-                                            Set<Statement> toAdd) {
-        if (newSource == null) return;
+    private void updateLegalSourceList(Resource newConcept, Property property, List<String> newSources,
+                                        Resource oldConcept, Model model, Set<Statement> toRemove,
+                                        Set<Statement> toAdd) {
+        if (newSources == null) return;
 
-        String oldSourceURI = getResourceURI(oldConcept, property);
+        Set<String> oldSourceURIs = getResourceURIs(oldConcept, property);
+        Set<String> newSourceURIs = new HashSet<>();
 
-        if (newSource.trim().isEmpty()) {
-            if (oldSourceURI != null) {
+        for (String source : newSources) {
+            if (source != null && !source.trim().isEmpty() && UtilityMethods.containsEliPattern(source)) {
+                String eliPart = UtilityMethods.extractEliPart(source);
+                if (eliPart != null) {
+                    String transformedUrl = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                    newSourceURIs.add(transformedUrl);
+                }
+            }
+        }
+
+        if (newSources.isEmpty() || newSourceURIs.isEmpty()) {
+            if (!oldSourceURIs.isEmpty()) {
                 removeAllByPredicate(oldConcept, property, toRemove);
             }
             return;
         }
 
-        String newSourceURI = null;
-        if (UtilityMethods.containsEliPattern(newSource)) {
-            String eliPart = UtilityMethods.extractEliPart(newSource);
-            if (eliPart != null) {
-                newSourceURI = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
-            }
-        }
-
-        if (!Objects.equals(oldSourceURI, newSourceURI)) {
+        if (!oldSourceURIs.equals(newSourceURIs)) {
             removeAllByPredicate(oldConcept, property, toRemove);
-            if (newSourceURI != null) {
-                toAdd.add(model.createStatement(newConcept, property, model.createResource(newSourceURI)));
+            for (String sourceURI : newSourceURIs) {
+                toAdd.add(model.createStatement(newConcept, property, model.createResource(sourceURI)));
             }
         }
     }
 
-    private void updateNonLegalSourceProperty(Resource newConcept, Property property, String newSource,
-                                               Resource oldConcept, Model model, Set<Statement> toRemove,
-                                               Set<Statement> toAdd) {
-        if (newSource == null) return;
+    private void updateNonLegalSourceList(Resource newConcept, Property property, List<String> newSources,
+                                           Resource oldConcept, Model model, Set<Statement> toRemove,
+                                           Set<Statement> toAdd) {
+        if (newSources == null) return;
 
-        if (newSource.trim().isEmpty()) {
+        List<String> validSources = new ArrayList<>();
+        for (String source : newSources) {
+            if (source != null && !source.trim().isEmpty() && UtilityMethods.isValidUrl(source)) {
+                validSources.add(source.trim());
+            }
+        }
+
+        if (validSources.isEmpty()) {
             removeAllByPredicate(oldConcept, property, toRemove);
             return;
         }
 
         removeAllByPredicate(oldConcept, property, toRemove);
 
-        if (UtilityMethods.isValidUrl(newSource)) {
+        Property schemaUrlProperty = model.createProperty("http://schema.org/url");
+        for (String source : validSources) {
             String documentUri = uriGenerator.getEffectiveNamespace() + "digitální-dokument-" + System.currentTimeMillis();
             Resource digitalDocument = model.createResource(documentUri);
-            Property schemaUrlProperty = model.createProperty("http://schema.org/url");
 
-            toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, model.createResource(newSource)));
+            toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, model.createResource(source)));
             toAdd.add(model.createStatement(newConcept, property, digitalDocument));
         }
     }
@@ -640,18 +656,6 @@ public class ConceptEditor {
         while (iter.hasNext()) {
             toRemove.add(iter.next());
         }
-    }
-
-    private Set<String> parseMultipleIRIs(String iris) {
-        if (iris == null || iris.trim().isEmpty()) return Collections.emptySet();
-        Set<String> result = new HashSet<>();
-        for (String iri : iris.split(";")) {
-            String trimmed = iri.trim();
-            if (!trimmed.isEmpty()) {
-                result.add(trimmed);
-            }
-        }
-        return result;
     }
 
     private Set<String> parseBroaderConcepts(String broaderConcept) {

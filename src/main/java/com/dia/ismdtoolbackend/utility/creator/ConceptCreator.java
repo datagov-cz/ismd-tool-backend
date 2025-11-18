@@ -21,6 +21,7 @@ import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
@@ -87,10 +88,12 @@ public class ConceptCreator {
 
         if (createModel instanceof ClassConceptModel classModel) {
             addClassBaseClasses(classes, classModel);
-        } else if (createModel instanceof PropertyConceptModel) {
+        } else if (createModel instanceof PropertyConceptModel propModel) {
             classes.add(VLASTNOST);
-        } else if (createModel instanceof RelationshipConceptModel) {
+            addPropertyBaseClasses(classes, propModel);
+        } else if (createModel instanceof RelationshipConceptModel relModel) {
             classes.add(VZTAH);
+            addRelationshipBaseClasses(classes, relModel);
         }
 
         return classes;
@@ -100,6 +103,46 @@ public class ConceptCreator {
         classes.add(TRIDA);
         addTypeSpecificClass(classes, classModel.getType());
         addDataClassificationClasses(classes, classModel);
+    }
+
+    private void addPropertyBaseClasses(Set<String> classes, PropertyConceptModel propModel) {
+        if (hasPublicDataFromModel(propModel)) {
+            classes.add(VEREJNY_UDAJ);
+        }
+        if (hasPrivateDataFromModel(propModel)) {
+            classes.add(NEVEREJNY_UDAJ);
+        }
+    }
+
+    private void addRelationshipBaseClasses(Set<String> classes, RelationshipConceptModel relModel) {
+        if (hasPublicDataFromRelationship(relModel)) {
+            classes.add(VEREJNY_UDAJ);
+        }
+        if (hasPrivateDataFromRelationship(relModel)) {
+            classes.add(NEVEREJNY_UDAJ);
+        }
+    }
+
+    private boolean hasPublicDataFromModel(PropertyConceptModel model) {
+        String isPublic = model.getIsPublic();
+        return isPublic != null && hasPublicDataValue(isPublic) &&
+                (model.getPrivacyProvision() == null || model.getPrivacyProvision().trim().isEmpty());
+    }
+
+    private boolean hasPrivateDataFromModel(PropertyConceptModel model) {
+        return (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty()) ||
+                (model.getIsPublic() != null && hasPrivateDataValue(model.getIsPublic()));
+    }
+
+    private boolean hasPublicDataFromRelationship(RelationshipConceptModel model) {
+        String isPublic = model.getIsPublic();
+        return isPublic != null && hasPublicDataValue(isPublic) &&
+                (model.getPrivacyProvision() == null || model.getPrivacyProvision().trim().isEmpty());
+    }
+
+    private boolean hasPrivateDataFromRelationship(RelationshipConceptModel model) {
+        return (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty()) ||
+                (model.getIsPublic() != null && hasPrivateDataValue(model.getIsPublic()));
     }
 
     private void addTypeSpecificClass(Set<String> classes, String type) {
@@ -184,18 +227,18 @@ public class ConceptCreator {
 
     private void addPropertySpecificProperties(Set<String> properties, PropertyConceptModel propModel) {
         addCommonGovernanceProperties(properties, propModel.getIsInPPDF(), propModel.getAgendaCode(),
-                propModel.getAgendaSystemCode(), propModel.getIsPublic(), propModel.getPrivacyProvision(),
+                propModel.getAgendaSystemCode(), propModel.getPrivacyProvision(),
                 propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType());
     }
 
     private void addRelationshipSpecificProperties(Set<String> properties, RelationshipConceptModel relModel) {
         addCommonGovernanceProperties(properties, relModel.getIsInPPDF(), relModel.getAgendaCode(),
-                relModel.getAgendaSystemCode(), relModel.getIsPublic(), relModel.getPrivacyProvision(),
+                relModel.getAgendaSystemCode(), relModel.getPrivacyProvision(),
                 relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType());
     }
 
     private void addCommonGovernanceProperties(Set<String> properties, Boolean isInPPDF, String agendaCode,
-                                                 String agendaSystemCode, String isPublic, String privacyProvision,
+                                                 String agendaSystemCode, String privacyProvision,
                                                  String sharingMethod, String acquisitionMethod, String contentType) {
         if (isInPPDF != null) {
             properties.add(JE_PPDF);
@@ -206,7 +249,7 @@ public class ConceptCreator {
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             properties.add(AIS);
         }
-        if (hasPrivateDataValue(isPublic, privacyProvision)) {
+        if (hasPrivacyProvision(privacyProvision)) {
             properties.add(USTANOVENI_NEVEREJNOST);
         }
         if (hasGovernancePropertiesValues(sharingMethod, acquisitionMethod, contentType)) {
@@ -325,25 +368,41 @@ public class ConceptCreator {
     }
 
     private void addLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().trim().isEmpty()) {
-            processLegalSource(resource, model.getDefiningLegalSource(), true);
+        if (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().isEmpty()) {
+            for (String source : model.getDefiningLegalSource()) {
+                if (source != null && !source.trim().isEmpty()) {
+                    processLegalSource(resource, source, true);
+                }
+            }
         }
-        if (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().trim().isEmpty()) {
-            processLegalSource(resource, model.getRelatedLegalSource(), false);
+        if (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().isEmpty()) {
+            for (String source : model.getRelatedLegalSource()) {
+                if (source != null && !source.trim().isEmpty()) {
+                    processLegalSource(resource, source, false);
+                }
+            }
         }
     }
 
     private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().trim().isEmpty()) {
-            processNonLegalSource(resource, model.getDefiningNonLegalSource(), true);
+        if (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().isEmpty()) {
+            for (String source : model.getDefiningNonLegalSource()) {
+                if (source != null && !source.trim().isEmpty()) {
+                    processNonLegalSource(resource, source, true);
+                }
+            }
         }
-        if (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().trim().isEmpty()) {
-            processNonLegalSource(resource, model.getRelatedNonLegalSource(), false);
+        if (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().isEmpty()) {
+            for (String source : model.getRelatedNonLegalSource()) {
+                if (source != null && !source.trim().isEmpty()) {
+                    processNonLegalSource(resource, source, false);
+                }
+            }
         }
     }
 
     private void addMatchMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getExactMatch() != null && !model.getExactMatch().trim().isEmpty()) {
+        if (model.getExactMatch() != null && !model.getExactMatch().isEmpty()) {
             addExactMatch(resource, model.getExactMatch());
         }
     }
@@ -398,7 +457,26 @@ public class ConceptCreator {
                     propModel.getIsInPPDF().toString(), null, ontModel);
         }
 
+        addPropertyDataClassification(propertyResource, propModel);
         addPropertyGovernanceMetadata(propertyResource, propModel);
+    }
+
+    private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
+        String isPublic = propModel.getIsPublic();
+        String privacyProvision = propModel.getPrivacyProvision();
+
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
+            propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+            return;
+        }
+
+        if (isPublic != null && !isPublic.trim().isEmpty()) {
+            if (hasPublicDataValue(isPublic)) {
+                propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
+            } else if (hasPrivateDataValue(isPublic)) {
+                propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+            }
+        }
     }
 
     private void addPropertyGovernanceMetadata(Resource propertyResource, PropertyConceptModel propModel) {
@@ -418,7 +496,8 @@ public class ConceptCreator {
                    relModel.getIsInPPDF().toString(), null, ontModel);
        }
 
-       addRelationshipGovernanceMetadata(relationshipResource, relModel);
+        addRelationshipDataClassification(relationshipResource, relModel);
+        addRelationshipGovernanceMetadata(relationshipResource, relModel);
     }
 
     private void addDomain(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -436,6 +515,24 @@ public class ConceptCreator {
     private void addSuperRelation(Resource relationshipResource, RelationshipConceptModel relModel) {
         if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().trim().isEmpty()) {
             addSuperProperty(relationshipResource, relModel.getSuperRelation());
+        }
+    }
+
+    private void addRelationshipDataClassification(Resource relationshipResource, RelationshipConceptModel relModel) {
+        String isPublic = relModel.getIsPublic();
+        String privacyProvision = relModel.getPrivacyProvision();
+
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
+            relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+            return;
+        }
+
+        if (isPublic != null && !isPublic.trim().isEmpty()) {
+            if (hasPublicDataValue(isPublic)) {
+                relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
+            } else if (hasPrivateDataValue(isPublic)) {
+                relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+            }
         }
     }
 
@@ -519,22 +616,21 @@ public class ConceptCreator {
         resource.addProperty(property, digitalDocument);
     }
 
-    private void addExactMatch(Resource resource, String exactMatch) {
+    private void addExactMatch(Resource resource, List<String> exactMatchList) {
         Property exactMatchProperty = ontModel.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch");
 
-        if (exactMatch.contains(";")) {
-            String[] iris = exactMatch.split(";");
-            for (String iri : iris) {
-                String trimmedIri = iri.trim();
-                if (!trimmedIri.isEmpty() && UtilityMethods.isValidIRI(trimmedIri)) {
+        for (String exactMatch : exactMatchList) {
+            if (exactMatch != null && !exactMatch.trim().isEmpty()) {
+                String trimmedIri = exactMatch.trim();
+                if (UtilityMethods.isValidIRI(trimmedIri)) {
                     resource.addProperty(exactMatchProperty, ontModel.createResource(trimmedIri));
+                    log.debug("Added exactMatch IRI: {}", trimmedIri);
+                } else {
+                    log.warn("Invalid IRI for exactMatch, skipping: {}", trimmedIri);
                 }
             }
-        } else {
-            if (UtilityMethods.isValidIRI(exactMatch)) {
-                resource.addProperty(exactMatchProperty, ontModel.createResource(exactMatch));
-            }
         }
+
     }
 
     private void addAgenda(Resource resource, String agendaCode) {
@@ -719,13 +815,13 @@ public class ConceptCreator {
     }
 
     private boolean hasLegalSources(ConceptCreateModel model) {
-        return (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().trim().isEmpty()) ||
-                (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().trim().isEmpty());
+        return (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().isEmpty()) ||
+                (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().isEmpty());
     }
 
     private boolean hasNonLegalSources(ConceptCreateModel model) {
-        return (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().trim().isEmpty()) ||
-                (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().trim().isEmpty());
+        return (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().isEmpty()) ||
+                (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().isEmpty());
     }
 
     private boolean hasGovernanceProperties(ClassConceptModel model) {
@@ -734,12 +830,20 @@ public class ConceptCreator {
                 (model.getContentType() != null && !model.getContentType().trim().isEmpty());
     }
 
-    private boolean hasPrivateDataValue(String isPublic, String privacyProvision) {
-        return (isPublic != null && (
-                isPublic.toLowerCase().contains("ne") ||
-                        isPublic.toLowerCase().contains("false") ||
-                        isPublic.equalsIgnoreCase("no")
-        )) || (privacyProvision != null && !privacyProvision.trim().isEmpty());
+    private boolean hasPublicDataValue(String isPublic) {
+        return isPublic.toLowerCase().contains("ano") ||
+                isPublic.toLowerCase().contains("true") ||
+                isPublic.equalsIgnoreCase("yes");
+    }
+
+    private boolean hasPrivateDataValue(String isPublic) {
+        return isPublic.toLowerCase().contains("ne") ||
+                isPublic.toLowerCase().contains("false") ||
+                isPublic.equalsIgnoreCase("no");
+    }
+
+    private boolean hasPrivacyProvision(String privacyProvision) {
+        return privacyProvision != null && !privacyProvision.trim().isEmpty();
     }
 
     private boolean hasGovernancePropertiesValues(String sharingMethod, String acquisitionMethod, String contentType) {

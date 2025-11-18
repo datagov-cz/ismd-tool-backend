@@ -34,11 +34,11 @@ public abstract class ConceptCreateModel {
     protected List<AltNameModel> altNameModel;
     protected DescriptionModel descriptionModel;
     protected DefinitionModel definitionModel;
-    protected String definingNonLegalSource;
-    protected String definingLegalSource;
-    protected String relatedNonLegalSource;
-    protected String relatedLegalSource;
-    protected String exactMatch;
+    protected List<String> definingNonLegalSource;
+    protected List<String> definingLegalSource;
+    protected List<String> relatedNonLegalSource;
+    protected List<String> relatedLegalSource;
+    protected List<String> exactMatch;
     protected String inTezaurus;
 
     public abstract ConceptType getConceptTypeEnum();
