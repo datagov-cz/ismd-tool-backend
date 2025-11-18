@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
@@ -42,6 +43,9 @@ class OntologyUploadServiceImplTest {
     private OntologyMetadataRepository ontologyMetadataRepository;
 
     @Mock
+    private ConceptMetadataRepository conceptMetadataRepository;
+
+    @Mock
     private ValidationClient validationClient;
 
     @Mock
@@ -64,6 +68,7 @@ class OntologyUploadServiceImplTest {
         ontologyUploadService = new OntologyUploadServiceImpl(
                 ontologyMetadataMapper,
                 ontologyMetadataRepository,
+                conceptMetadataRepository,
                 validationClient,
                 validationReportRepository,
                 ontologyAnalyzer,
@@ -164,9 +169,7 @@ class OntologyUploadServiceImplTest {
         savedEntity.setGraphName(providedName);
         savedEntity.setUserId(userId);
 
-        when(ontologyMetadataRepository.findByGraphNameAndUserId((providedName), (userId)))
-                .thenReturn(Optional.empty());
-
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -203,9 +206,7 @@ class OntologyUploadServiceImplTest {
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setUserId(userId);
 
-        when(ontologyMetadataRepository.findByGraphNameAndUserId(ontologyIRI, userId))
-                .thenReturn(Optional.empty());
-
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -236,8 +237,7 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
 
-        when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
-                .thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -267,8 +267,7 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
 
-        when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
-                .thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
@@ -308,8 +307,7 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
 
-        when(ontologyMetadataRepository.findByGraphNameAndUserId(anyString(), eq(userId)))
-                .thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);

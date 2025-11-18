@@ -4,8 +4,10 @@ import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -52,6 +54,9 @@ class OntologyServiceImplTest {
 
     @Mock
     private OntologyMetadataMapper ontologyMetadataMapper;
+
+    @Mock
+    private ConceptMetadataMapper conceptMetadataMapper;
 
     @Mock
     private OntologyEditor ontologyEditor;
@@ -234,22 +239,39 @@ class OntologyServiceImplTest {
         metadataModel.setSlug(TEST_ONTOLOGY_SLUG);
         metadataModel.setGraphName(TEST_GRAPH_NAME);
 
+        ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
+        conceptEntity.setConceptIri(TEST_GRAPH_NAME + "/pojem/test-concept");
+        conceptEntity.setConceptName("test-concept");
+        conceptEntity.setGraphName(TEST_GRAPH_NAME);
+
+        ConceptMetadataModel conceptModel = new ConceptMetadataModel();
+        conceptModel.setConceptIri(TEST_GRAPH_NAME + "/pojem/test-concept");
+        conceptModel.setConceptName("test-concept");
+        conceptModel.setGraphName(TEST_GRAPH_NAME);
+
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(metadataModel);
+        when(commentRepository.findByOntologyIRI(TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+        when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(List.of(conceptEntity));
+        when(conceptMetadataMapper.toDto(conceptEntity)).thenReturn(conceptModel);
 
         GetOntologyDto result = ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG);
 
         assertNotNull(result);
         assertNotNull(result.getOntologyMetadata());
         assertNotNull(result.getOntologyDetail());
+        assertNotNull(result.getConceptMetadataModelList());
+        assertEquals(1, result.getConceptMetadataModelList().size());
         assertEquals(TEST_ONTOLOGY_SLUG, result.getOntologyMetadata().getSlug());
         assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
-        verify(jenaTDB2Repository).fetchGraph(TEST_GRAPH_NAME);
+        verify(jenaTDB2Repository, times(2)).fetchGraph(TEST_GRAPH_NAME);
         verify(detailExtractor).applyOFNTransformations(modelWithData);
         verify(detailExtractor).extractOntologyDetail(modelWithData);
+        verify(conceptMetadataMapper).toDto(conceptEntity);
     }
 
     @Test
