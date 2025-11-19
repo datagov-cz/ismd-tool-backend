@@ -93,7 +93,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
-        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId, finalModel);
+        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
 
         try {
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
@@ -205,7 +205,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return null;
     }
 
-    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId, OntModel model) {
+    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
         String slug = UtilityMethods.extractNameFromIRI(graphName);
 
         Optional<OntologyMetadataEntity> existingBySlug = ontologyMetadataRepository.findBySlug(slug);
