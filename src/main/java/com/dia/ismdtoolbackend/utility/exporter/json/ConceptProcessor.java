@@ -354,7 +354,7 @@ public class ConceptProcessor {
             return;
         }
 
-        List<String> sourceArray = extractNonLegislativeSourceValues(propIter);
+        List<Map<String, Object>> sourceArray = extractDigitalDocuments(propIter, ontModel);
 
         if (!sourceArray.isEmpty()) {
             conceptObj.put(jsonFieldName, sourceArray);
@@ -376,29 +376,71 @@ public class ConceptProcessor {
         return null;
     }
 
-    private List<String> extractNonLegislativeSourceValues(StmtIterator propIter) {
-        List<String> sourceArray = new ArrayList<>();
+    private List<Map<String, Object>> extractDigitalDocuments(StmtIterator propIter, OntModel ontModel) {
+        List<Map<String, Object>> documents = new ArrayList<>();
 
         while (propIter.hasNext()) {
             Statement propStmt = propIter.next();
-            String value = extractSourceValue(propStmt);
-            if (value != null) {
-                sourceArray.add(value);
+            if (!propStmt.getObject().isResource()) {
+                continue;
+            }
+
+            Resource digitalDoc = propStmt.getObject().asResource();
+            Map<String, Object> docObj = createDigitalDocumentObject(digitalDoc, ontModel);
+
+            if (!docObj.isEmpty()) {
+                documents.add(docObj);
             }
         }
 
-        return sourceArray;
+        return documents;
     }
 
-    private String extractSourceValue(Statement propStmt) {
-        if (propStmt.getObject().isResource()) {
-            String digitalDocIri = propStmt.getObject().asResource().getURI();
-            return (digitalDocIri != null && !digitalDocIri.trim().isEmpty()) ? digitalDocIri : null;
-        } else if (propStmt.getObject().isLiteral()) {
-            String literalValue = propStmt.getString();
-            return (literalValue != null && !literalValue.trim().isEmpty()) ? literalValue : null;
+    private Map<String, Object> createDigitalDocumentObject(Resource digitalDoc, OntModel ontModel) {
+        Map<String, Object> docObj = new LinkedHashMap<>();
+
+        Resource digitalObjectType = ontModel.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
+        if (digitalDoc.hasProperty(RDF.type, digitalObjectType)) {
+            docObj.put("typ", "Digitální objekt");
         }
-        return null;
+
+        Property titleProperty = ontModel.createProperty(DCT_NS + "title");
+        if (digitalDoc.hasProperty(titleProperty)) {
+            Map<String, Object> titleObj = new LinkedHashMap<>();
+            StmtIterator titleIter = digitalDoc.listProperties(titleProperty);
+
+            while (titleIter.hasNext()) {
+                Statement titleStmt = titleIter.next();
+                if (titleStmt.getObject().isLiteral()) {
+                    String lang = titleStmt.getLanguage();
+                    String value = titleStmt.getString();
+
+                    if (value != null && !value.trim().isEmpty()) {
+                        titleObj.put(lang != null && !lang.isEmpty() ? lang : "cs", value);
+                    }
+                }
+            }
+
+            if (!titleObj.isEmpty()) {
+                docObj.put(NAZEV, titleObj);
+            }
+        }
+
+        Property urlProperty = ontModel.createProperty(SCHEMA_URL);
+        if (digitalDoc.hasProperty(urlProperty)) {
+            Statement urlStmt = digitalDoc.getProperty(urlProperty);
+
+            if (urlStmt.getObject().isResource()) {
+                docObj.put("url", urlStmt.getObject().asResource().getURI());
+            } else if (urlStmt.getObject().isLiteral()) {
+                String urlValue = urlStmt.getString();
+                if (urlValue != null && !urlValue.trim().isEmpty()) {
+                    docObj.put("url", urlValue);
+                }
+            }
+        }
+
+        return docObj;
     }
 
     private void addDomainAndRange(Resource concept, Map<String, Object> conceptObj) {
