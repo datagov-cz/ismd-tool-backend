@@ -38,6 +38,7 @@ public class TurtleFormatterUtil {
         OFN_PREFIXES.put("čas", CAS_NS);
         OFN_PREFIXES.put("a104", "https://slovník.gov.cz/agendový/104/pojem/");
         OFN_PREFIXES.put("l111-2009", "https://slovník.gov.cz/legislativním/sbírka/111/2009/pojem/");
+        OFN_PREFIXES.put("schema", "http://schema.org/");
     }
 
     private TurtleFormatterUtil() {}
