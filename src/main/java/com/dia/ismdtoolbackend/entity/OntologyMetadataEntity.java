@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.entity;
 
-import com.dia.ismdtoolbackend.enums.OntologyLevel;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -33,13 +32,6 @@ public class OntologyMetadataEntity {
 
     @Column(name = "is_published")
     private Boolean isPublished;
-
-    @Column(name = "validation_report_id")
-    private Long validationReportId;
-
-    @Column(name = "ontology_level")
-    @Enumerated(EnumType.STRING)
-    private OntologyLevel ontologyLevel;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)

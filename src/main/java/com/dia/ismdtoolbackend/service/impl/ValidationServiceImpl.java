@@ -1,12 +1,18 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.mapper.ValidationReportMapper;
+import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.exception.ValidationException;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
+import com.dia.validation.ValidationReportDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -14,10 +20,34 @@ import org.springframework.stereotype.Service;
 public class ValidationServiceImpl implements ValidationService {
 
     private final ValidationReportRepository validationReportRepository;
-    private final ValidationReportMapper validationReportMapper;
 
     @Override
-    public void saveValidation(ValidationReport validationReport) {
+    @Transactional
+    public void saveValidationReport(ValidationReport validationReport, OntologyMetadataModel ontologyMetadataModel) throws ValidationException {
+        Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontologyMetadataModel.getId());
+        validationReportEntityOpt.ifPresent(validationReportRepository::delete);
 
+        try {
+            ValidationReportEntity validationReportEntity = new ValidationReportEntity();
+            validationReportEntity.setId(validationReport.getId());
+            validationReportEntity.setTimestamp(validationReport.getTimestamp());
+            validationReportEntity.setOntologyMetadataId(ontologyMetadataModel.getId());
+            validationReportEntity.setGetOntologyIri(ontologyMetadataModel.getGraphName());
+            String validationResults = validationReportEntity.convertResultsToJson(validationReport.getResults());
+            validationReportEntity.setResultsJson(validationResults);
+            validationReportRepository.save(validationReportEntity);
+        } catch (Exception e) {
+            throw new ValidationException("Během ukládání zprávy z kontroly došlo k chybě", e);
+        }
+    }
+
+    @Override
+    public ValidationReportDto getValidationReport(OntologyMetadataModel ontologyMetadataModel) throws ValidationException {
+        Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontologyMetadataModel.getId());
+        return validationReportEntityOpt.map(validationReportEntity -> new ValidationReportDto(
+                validationReportEntity.getResults(),
+                ontologyMetadataModel.getGraphName(),
+                validationReportEntity.getTimestamp()))
+                .orElse(null);
     }
 }

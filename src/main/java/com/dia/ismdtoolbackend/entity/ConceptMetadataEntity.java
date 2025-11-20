@@ -47,9 +47,6 @@ public class ConceptMetadataEntity {
     @Column(name = "in_tezaurus")
     private String inTezaurus;
 
-    @Column(name = "validation_report_id")
-    private Long validationReportId;
-
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

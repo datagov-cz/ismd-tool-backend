@@ -33,9 +33,13 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "results_json", columnDefinition = "text")
     private String resultsJson;
 
+    @Column(name = "ontology_iri", columnDefinition = "text")
+    private String getOntologyIri;
+
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public ValidationReportEntity(ValidationReport report, Long ontologyMetadataId) {
+        this.id = report.getId();
         this.ontologyMetadataId = ontologyMetadataId;
         this.timestamp = report.getTimestamp();
         this.resultsJson = convertResultsToJson(report.getResults());
@@ -46,7 +50,7 @@ public class ValidationReportEntity implements ValidationReport {
         return convertJsonToResults(this.resultsJson);
     }
 
-    private String convertResultsToJson(List<ValidationResult> results) {
+    public String convertResultsToJson(List<ValidationResult> results) {
         try {
             return objectMapper.writeValueAsString(results);
         } catch (JsonProcessingException e) {
@@ -55,7 +59,7 @@ public class ValidationReportEntity implements ValidationReport {
         }
     }
 
-    private List<ValidationResult> convertJsonToResults(String json) {
+    public List<ValidationResult> convertJsonToResults(String json) {
         if (json == null || json.trim().isEmpty()) {
             return List.of();
         }
@@ -73,7 +77,7 @@ public class ValidationReportEntity implements ValidationReport {
     }
 
     @Override
-    public Long getOntologyId() {
-        return ontologyMetadataId;
+    public String getOntologyIri() {
+        return this.getOntologyIri;
     }
 }

@@ -1,7 +1,5 @@
 package com.dia.ismdtoolbackend.models;
 
-import com.dia.ismdtoolbackend.enums.OntologyLevel;
-import com.dia.validation.ValidationReportDto;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -19,8 +17,6 @@ public class OntologyMetadataModel {
     private String name;
     private UserModel user;
     private Boolean isPublished;
-    private ValidationReportDto validationReport;
-    private OntologyLevel ontologyLevel;
     private List<CommentModel> comments;
     private String popis;
     private LocalDateTime createdAt;
