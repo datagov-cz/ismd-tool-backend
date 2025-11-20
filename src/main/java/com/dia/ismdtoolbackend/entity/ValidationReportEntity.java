@@ -22,14 +22,10 @@ import java.util.List;
 @Slf4j
 public class ValidationReportEntity implements ValidationReport {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "ontology_metadata_id")
     private Long ontologyMetadataId;
-
-    @Column(name = "is_valid")
-    private Boolean isValid;
 
     @Column(name = "timestamp")
     private Instant timestamp;
@@ -41,7 +37,6 @@ public class ValidationReportEntity implements ValidationReport {
 
     public ValidationReportEntity(ValidationReport report, Long ontologyMetadataId) {
         this.ontologyMetadataId = ontologyMetadataId;
-        this.isValid = report.isValid();
         this.timestamp = report.getTimestamp();
         this.resultsJson = convertResultsToJson(report.getResults());
     }
@@ -70,11 +65,6 @@ public class ValidationReportEntity implements ValidationReport {
             log.error("Failed to convert JSON to ValidationResults", e);
             return List.of();
         }
-    }
-
-    @Override
-    public boolean isValid() {
-        return isValid != null && isValid;
     }
 
     @Override
