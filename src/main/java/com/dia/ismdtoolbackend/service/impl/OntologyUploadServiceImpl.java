@@ -292,19 +292,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
 
-            if (!conceptResource.isURIResource()) {
+            if (shouldSkipConcept(conceptResource)) {
                 continue;
             }
 
             String conceptIri = conceptResource.getURI();
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
-
-            Optional<ConceptMetadataEntity> existing = conceptMetadataRepository.findByConceptIri(conceptIri);
-            if (existing.isPresent()) {
-                log.debug("Concept already exists: {}", conceptIri);
-                continue;
-            }
 
             ConceptType conceptType = determineConceptType(conceptResource, model);
 
@@ -327,6 +321,21 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         } else {
             log.info("No concepts found in uploaded ontology: {}", graphName);
         }
+    }
+
+    private boolean shouldSkipConcept(Resource conceptResource) {
+        if (!conceptResource.isURIResource()) {
+            return true;
+        }
+
+        String conceptIri = conceptResource.getURI();
+        Optional<ConceptMetadataEntity> existing = conceptMetadataRepository.findByConceptIri(conceptIri);
+        if (existing.isPresent()) {
+            log.debug("Concept already exists: {}", conceptIri);
+            return true;
+        }
+
+        return false;
     }
 
     private ConceptType determineConceptType(Resource conceptResource, OntModel model) {

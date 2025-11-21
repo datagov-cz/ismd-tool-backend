@@ -1,9 +1,6 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
-import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
-import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
-import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
-import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
+import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
@@ -372,37 +369,41 @@ public class ConceptCreator {
     }
 
     private void addLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().isEmpty()) {
-            for (String source : model.getDefiningLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processLegalSource(resource, source, true);
-                }
-            }
+        processLegalSources(resource, model.getDefiningNonLegalSource(), true);
+        processLegalSources(resource, model.getRelatedNonLegalSource(), false);
+    }
+
+    private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
+        processNonLegalSources(resource, model.getDefiningNonLegalSource(), true);
+        processNonLegalSources(resource, model.getRelatedNonLegalSource(), false);
+    }
+
+    private void processLegalSources(Resource resource, List<String> sources, boolean isDefining) {
+        if (sources == null || sources.isEmpty()) {
+            return;
         }
-        if (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().isEmpty()) {
-            for (String source : model.getRelatedLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processLegalSource(resource, source, false);
-                }
+
+        for (String source : sources) {
+            if (isValidSource(source)) {
+                processLegalSource(resource, source, isDefining);
             }
         }
     }
 
-    private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().isEmpty()) {
-            for (String source : model.getDefiningNonLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processNonLegalSource(resource, source, true);
-                }
+    private void processNonLegalSources(Resource resource, List<String> sources, boolean isDefining) {
+        if (sources == null || sources.isEmpty()) {
+            return;
+        }
+
+        for (String source : sources) {
+            if (isValidSource(source)) {
+                processNonLegalSource(resource, source, isDefining);
             }
         }
-        if (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().isEmpty()) {
-            for (String source : model.getRelatedNonLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processNonLegalSource(resource, source, false);
-                }
-            }
-        }
+    }
+
+    private boolean isValidSource(String source) {
+        return source != null && !source.trim().isEmpty();
     }
 
     private void addMatchMetadata(Resource resource, ConceptCreateModel model) {
@@ -580,7 +581,7 @@ public class ConceptCreator {
         }
     }
 
-    private void addAlternativeNames(Resource resource, java.util.List<com.dia.ismdtoolbackend.models.concept.AltNameModel> altNameModels) {
+    private void addAlternativeNames(Resource resource, List<AltNameModel> altNameModels) {
         for (com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel : altNameModels) {
             if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().trim().isEmpty()) {
                 String languageTag = altNameModel.getLanguageTag() != null
