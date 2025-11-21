@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.entity;
 
+import com.dia.ismdtoolbackend.enums.OntologyLevel;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,6 +10,8 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "ontologies")
@@ -32,6 +35,16 @@ public class OntologyMetadataEntity {
 
     @Column(name = "is_published")
     private Boolean isPublished;
+
+    @Column(name = "validation_report_id")
+    private Long validationReportId;
+
+    @Column(name = "ontology_level")
+    @Enumerated(EnumType.STRING)
+    private OntologyLevel ontologyLevel;
+
+    @OneToMany(mappedBy = "ontologyMetadata", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ConceptMetadataEntity> concepts = new ArrayList<>();
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
