@@ -15,6 +15,7 @@ import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
+import com.dia.validation.ValidationReportDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -301,7 +302,7 @@ public class OntologyController {
     @PostMapping("/catalog-record")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
             @RequestPart OntologyMetadataModel ontologyMetadata,
-            @RequestPart ValidationReport validationReport
+            @RequestPart ValidationReportDto validationReport
     ) {
         try {
             String requestId = UUID.randomUUID().toString();
