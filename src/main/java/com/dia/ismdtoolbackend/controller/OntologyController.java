@@ -1,7 +1,9 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.exception.ValidationException;
@@ -293,6 +295,36 @@ public class OntologyController {
         } catch (OntologyException e) {
             log.error("Unexpected error: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během žádosti o kontrolu došlo k neočekávané chybě: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/catalog-record")
+    public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
+            @RequestPart OntologyMetadataModel ontologyMetadata,
+            @RequestPart ValidationReport validationReport
+    ) {
+        try {
+            String requestId = UUID.randomUUID().toString();
+            MDC.put(LOG_REQUEST_ID, requestId);
+            log.info("Ontology catalog record requested, ontologyIRI: {}", ontologyMetadata.getGraphName());
+
+            String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
+            CatalogRecordRequestDto request = new CatalogRecordRequestDto();
+            request.setTtlContent(ttlContent);
+            request.setValidationReport(validationReport);
+            Optional<CatalogRecordDto> catalogRecordDto = validationClient.requestCatalogRecord(request);
+            if (catalogRecordDto.isPresent()) {
+                return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecordDto.get(), "Žádost o katalogizační záznam proběhla úspěšně."));
+            } else {
+                log.warn("Catalog record not received for ontology: {}", ontologyMetadata.getGraphName());
+                return ResponseEntity.status(500).body(ApiResponseDto.error("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
+            }
+        } catch (OntologyException e) {
+            log.error("Error while requesting catalog record: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během žádosti o katalogizační záznam došlo k chybě: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error while requesting catalog record: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při žádosti o katalogizační záznam."));
         }
     }
 
