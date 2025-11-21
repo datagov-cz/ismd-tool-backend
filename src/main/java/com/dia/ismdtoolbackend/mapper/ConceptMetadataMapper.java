@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 public interface ConceptMetadataMapper {
 
     @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
+    @Mapping(target = "ontologyMetadata", ignore = true)
     ConceptMetadataEntity toEntity(ConceptMetadataModel dto);
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
