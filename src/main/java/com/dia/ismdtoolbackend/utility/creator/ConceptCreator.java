@@ -263,6 +263,7 @@ public class ConceptCreator {
         String classURI = uriGenerator.generateConceptURI(classModel.getNameModel().getName(), classModel.getIdentifier());
         Resource classResource = ontModel.createResource(classURI);
 
+        classResource.addProperty(RDF.type, SKOS.Concept);
         classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
         classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TRIDA));
 
@@ -287,6 +288,8 @@ public class ConceptCreator {
             propertyResource = ontModel.createDatatypeProperty(propertyURI);
         }
 
+        propertyResource.addProperty(RDF.type, SKOS.Concept);
+        propertyResource.addProperty(RDF.type, OWL2.DatatypeProperty);
         propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
         propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST));
 
@@ -303,6 +306,7 @@ public class ConceptCreator {
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
 
+        relationshipResource.addProperty(RDF.type, SKOS.Concept);
         relationshipResource.addProperty(RDF.type, OWL2.ObjectProperty);
         relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
         relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH));

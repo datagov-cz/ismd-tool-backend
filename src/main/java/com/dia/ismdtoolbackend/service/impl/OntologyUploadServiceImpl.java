@@ -96,6 +96,11 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
 
         try {
+            int conceptsWithAddedSkos = ensureConceptsHaveSkosType(finalModel);
+            if (conceptsWithAddedSkos > 0) {
+                log.info("Added skos:Concept type to {} concepts", conceptsWithAddedSkos);
+            }
+
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
         } catch (Exception e) {
             ontologyMetadataRepository.deleteById(metadata.getId());
@@ -251,15 +256,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId) {
-        log.info("Extracting concept metadata from ontology: {}", graphName);
-
-        OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
-                .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
-
+    private int ensureConceptsHaveSkosType(OntModel model) {
         Resource pojemResource = model.createResource("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem");
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
-        List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
         int addedSkosConceptCount = 0;
 
         while (conceptIterator.hasNext()) {
@@ -269,14 +268,35 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 continue;
             }
 
-            String conceptIri = conceptResource.getURI();
-
             if (!conceptResource.hasProperty(RDF.type, SKOS.Concept)) {
-                log.info("Concept {} missing skos:Concept - adding it to fix data inconsistency", conceptIri);
+                String conceptIri = conceptResource.getURI();
+                log.info("Adding missing skos:Concept to concept: {}", conceptIri);
                 conceptResource.addProperty(RDF.type, SKOS.Concept);
                 addedSkosConceptCount++;
             }
+        }
 
+        return addedSkosConceptCount;
+    }
+
+    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId) {
+        log.info("Extracting concept metadata from ontology: {}", graphName);
+
+        OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
+                .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
+
+        Resource pojemResource = model.createResource("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem");
+        ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
+        List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
+
+        while (conceptIterator.hasNext()) {
+            Resource conceptResource = conceptIterator.next();
+
+            if (!conceptResource.isURIResource()) {
+                continue;
+            }
+
+            String conceptIri = conceptResource.getURI();
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
 
@@ -306,10 +326,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             log.info("Saved {} concept metadata entries for ontology: {}", conceptEntities.size(), graphName);
         } else {
             log.info("No concepts found in uploaded ontology: {}", graphName);
-        }
-
-        if (addedSkosConceptCount > 0) {
-            log.info("Added skos:Concept type to {} concepts to fix data inconsistency", addedSkosConceptCount);
         }
     }
 
