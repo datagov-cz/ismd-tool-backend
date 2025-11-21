@@ -93,7 +93,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
-        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId, finalModel);
+        OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
 
         try {
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
@@ -103,7 +103,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
 
         try {
-            extractAndSaveConceptMetadata(finalModel, graphName, userId);
+            extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId());
         } catch (Exception e) {
             log.warn("Failed to extract concept metadata from uploaded ontology: {}", e.getMessage(), e);
         }
@@ -205,7 +205,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return null;
     }
 
-    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId, OntModel model) {
+    private OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
         String slug = UtilityMethods.extractNameFromIRI(graphName);
 
         Optional<OntologyMetadataEntity> existingBySlug = ontologyMetadataRepository.findBySlug(slug);
@@ -251,11 +251,16 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId) {
+    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId) {
         log.info("Extracting concept metadata from ontology: {}", graphName);
 
-        ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, SKOS.Concept);
+        OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
+                .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
+
+        Resource pojemResource = model.createResource("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem");
+        ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
         List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
+        int addedSkosConceptCount = 0;
 
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
@@ -265,6 +270,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             }
 
             String conceptIri = conceptResource.getURI();
+
+            if (!conceptResource.hasProperty(RDF.type, SKOS.Concept)) {
+                log.info("Concept {} missing skos:Concept - adding it to fix data inconsistency", conceptIri);
+                conceptResource.addProperty(RDF.type, SKOS.Concept);
+                addedSkosConceptCount++;
+            }
+
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
 
@@ -284,6 +296,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             conceptEntity.setConceptIri(conceptIri);
             conceptEntity.setUserId(userId);
             conceptEntity.setIsPublished(false);
+            conceptEntity.setOntologyMetadata(ontologyMetadata);
 
             conceptEntities.add(conceptEntity);
         }
@@ -293,6 +306,10 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             log.info("Saved {} concept metadata entries for ontology: {}", conceptEntities.size(), graphName);
         } else {
             log.info("No concepts found in uploaded ontology: {}", graphName);
+        }
+
+        if (addedSkosConceptCount > 0) {
+            log.info("Added skos:Concept type to {} concepts to fix data inconsistency", addedSkosConceptCount);
         }
     }
 
