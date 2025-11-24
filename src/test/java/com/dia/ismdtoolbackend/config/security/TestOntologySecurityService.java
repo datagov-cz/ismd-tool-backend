@@ -39,6 +39,11 @@ public class TestOntologySecurityService {
             public boolean canModifyComment(Long commentId) {
                 return ALLOW_MODIFY.get();
             }
+
+            @Override
+            public boolean belongsToUserBySlug(String slug) {
+                return ALLOW_MODIFY.get();
+            }
         };
     }
 }

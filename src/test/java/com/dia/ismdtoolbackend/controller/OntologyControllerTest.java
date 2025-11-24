@@ -61,6 +61,9 @@ class OntologyControllerTest {
     private OntologyDownloadService ontologyDownloadService;
 
     @MockBean
+    private com.dia.ismdtoolbackend.service.ValidationService validationService;
+
+    @MockBean
     private com.dia.ismdtoolbackend.client.ValidationClient validationClient;
 
     private final ObjectMapper objectMapper = new ObjectMapper();

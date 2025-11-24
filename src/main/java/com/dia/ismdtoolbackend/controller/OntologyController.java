@@ -211,8 +211,7 @@ public class OntologyController {
     @PostMapping("/catalog-record")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
             @RequestPart OntologyMetadataModel ontologyMetadata,
-            @RequestPart ValidationReportDto validationReport,
-            @AuthenticationPrincipal SecurityUser securityUser
+            @RequestPart ValidationReportDto validationReport
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
