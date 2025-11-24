@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
@@ -38,11 +39,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Note: @MockBean is deprecated in Spring Boot 3.4+ but remains the recommended
  * approach for @WebMvcTest until a clear migration path is provided.
  */
-@WebMvcTest(OntologyController.class)
+@WebMvcTest(controllers = OntologyController.class,
+    excludeAutoConfiguration = {
+        org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class
+    })
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
 @ActiveProfiles("test")
 class OntologyControllerTest {
-    /*
 
     @Autowired
     private MockMvc mockMvc;
@@ -55,6 +59,9 @@ class OntologyControllerTest {
 
     @MockBean
     private OntologyDownloadService ontologyDownloadService;
+
+    @MockBean
+    private com.dia.ismdtoolbackend.client.ValidationClient validationClient;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -536,7 +543,12 @@ class OntologyControllerTest {
 
     @Test
     void testGetOntologyDetail_Success() throws Exception {
-        Long ontologyId = 1L;
+        String slug = "test-ontology";
+        GetOntologyDto ontologyDto = new GetOntologyDto();
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
         OntologyDetailModel detailModel = OntologyDetailModel.builder()
                 .context("http://example.org/context")
                 .iri("http://example.org/test-ontology")
@@ -548,24 +560,25 @@ class OntologyControllerTest {
                 .concepts(java.util.List.of())
                 .build();
 
-        when(ontologyService.getOntologyDetailModel(ontologyId))
-                .thenReturn(detailModel);
+        ontologyDto.setOntologyMetadata(metadataModel);
+        ontologyDto.setOntologyDetail(detailModel);
 
-        mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
+        when(ontologyService.getOntologyDetailModel(slug))
+                .thenReturn(ontologyDto);
+
+        mockMvc.perform(get("/api/ontology/{slug}/detail", slug))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON));
     }
 
     @Test
     void testGetOntologyDetail_NotFound() throws Exception {
-        Long ontologyId = 999L;
+        String slug = "non-existent-ontology";
 
-        when(ontologyService.getOntologyDetailModel(ontologyId))
+        when(ontologyService.getOntologyDetailModel(slug))
                 .thenThrow(new OntologyNotFoundException("Ontology not found"));
 
-        mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
+        mockMvc.perform(get("/api/ontology/{slug}/detail", slug))
                 .andExpect(status().isNotFound());
     }
-
-     */
 }
