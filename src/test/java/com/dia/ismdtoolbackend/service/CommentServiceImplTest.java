@@ -1,19 +1,13 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.CommentEntity;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
 import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
 import com.dia.ismdtoolbackend.mapper.CommentMapper;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.CommentServiceImpl;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,21 +35,10 @@ class CommentServiceImplTest {
     @Mock
     private CommentRepository commentRepository;
 
-    @Mock
-    private OntologyMetadataRepository ontologyMetadataRepository;
-
-    @Mock
-    private ConceptMetadataRepository conceptMetadataRepository;
-
-    @Mock
-    private ObjectMapper objectMapper;
-
     @InjectMocks
     private CommentServiceImpl commentService;
 
     private CommentEntity testCommentEntity;
-    private OntologyMetadataEntity testOntologyEntity;
-    private ConceptMetadataEntity testConceptEntity;
     private CommentCreateModel testCommentCreateModel;
     private CommentModel testCommentModel;
 
@@ -73,123 +56,77 @@ class CommentServiceImplTest {
         testCommentEntity.setUserId(TEST_USER_ID);
         testCommentEntity.setPostedTime(LocalDateTime.now());
 
-        testOntologyEntity = new OntologyMetadataEntity();
-        testOntologyEntity.setId(1L);
-        testOntologyEntity.setGraphName(TEST_ONTOLOGY_IRI);
-
-        testConceptEntity = new ConceptMetadataEntity();
-        testConceptEntity.setId(1L);
-        testConceptEntity.setConceptIri(TEST_CONCEPT_IRI);
-
         testCommentCreateModel = new CommentCreateModel();
         testCommentCreateModel.setComment(TEST_COMMENT_TEXT);
 
         testCommentModel = new CommentModel();
         testCommentModel.setId(TEST_COMMENT_ID);
         testCommentModel.setComment(TEST_COMMENT_TEXT);
+        testCommentModel.setUserId(TEST_USER_ID);
     }
 
     // ========== postComment Tests - Ontology Comments ==========
 
     @Test
-    void postComment_ToOntology_Success() throws JsonProcessingException {
+    void postComment_ToOntology_Success() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        String updatedCommentsJson = "[{\"id\":1}]";
+        testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
+        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(java.util.List.of());
-        when(objectMapper.writeValueAsString(anyList())).thenReturn(updatedCommentsJson);
         when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
 
         CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
         assertNotNull(result);
         assertEquals(TEST_COMMENT_ID, result.getId());
-        verify(ontologyMetadataRepository).save(testOntologyEntity);
+        assertEquals(TEST_USER_ID, result.getUserId());
+
         verify(commentRepository).save(any(CommentEntity.class));
+        verify(commentMapper).toDto(testCommentEntity);
     }
 
     @Test
-    void postComment_ToOntology_WithExistingComments() throws JsonProcessingException {
+    void postComment_ToOntology_SetsUserIdAndPostedTime() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        CommentEntity existingComment = new CommentEntity();
-        existingComment.setId(99L);
+        testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(java.util.List.of(existingComment));
-        when(objectMapper.writeValueAsString(anyList())).thenReturn("[]");
-        when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
+        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
+        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
 
-        CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
+        commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
-        assertNotNull(result);
-        verify(ontologyMetadataRepository).save(argThat(ontology -> ontology.getCommentsJson() != null));
-    }
+        ArgumentCaptor<CommentEntity> captor = ArgumentCaptor.forClass(CommentEntity.class);
+        verify(commentRepository).save(captor.capture());
 
-    @Test
-    void postComment_ToOntology_OntologyNotFound() {
-        testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.empty());
-
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
-
-        assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(commentRepository, never()).save(any());
+        CommentEntity savedEntity = captor.getValue();
+        assertNotNull(savedEntity.getPostedTime(), "Posted time should be set");
+        assertEquals(TEST_USER_ID, savedEntity.getUserId(), "User ID should be set");
     }
 
     // ========== postComment Tests - Concept Comments ==========
 
     @Test
-    void postComment_ToConcept_Success() throws JsonProcessingException {
+    void postComment_ToConcept_Success() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-        String updatedCommentsJson = "[{\"id\":1}]";
+        testCommentEntity.setConceptIRI(TEST_CONCEPT_IRI);
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI))
-                .thenReturn(Optional.of(testConceptEntity));
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
+        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(java.util.List.of());
-        when(objectMapper.writeValueAsString(anyList())).thenReturn(updatedCommentsJson);
         when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
 
         CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
         assertNotNull(result);
         assertEquals(TEST_COMMENT_ID, result.getId());
-        verify(conceptMetadataRepository).save(testConceptEntity);
         verify(commentRepository).save(any(CommentEntity.class));
-    }
-
-    @Test
-    void postComment_ToConcept_ConceptNotFound() {
-        testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
-
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
-
-        assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(commentRepository, never()).save(any());
     }
 
     // ========== postComment Tests - Validation ==========
 
     @Test
     void postComment_NullModel() {
-        // The implementation logs before validation, which causes NullPointerException
-        // This test verifies the actual behavior
         assertThrows(NullPointerException.class,
                 () -> commentService.postComment(null, TEST_USER_ID));
     }
@@ -202,6 +139,7 @@ class CommentServiceImplTest {
                 () -> commentService.postComment(testCommentCreateModel, null));
 
         assertTrue(exception.getMessage().contains("povinné"));
+        verify(commentRepository, never()).save(any());
     }
 
     @Test
@@ -212,6 +150,7 @@ class CommentServiceImplTest {
                 () -> commentService.postComment(testCommentCreateModel, "  "));
 
         assertTrue(exception.getMessage().contains("povinné"));
+        verify(commentRepository, never()).save(any());
     }
 
     @Test
@@ -223,6 +162,7 @@ class CommentServiceImplTest {
                 () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Text komentáře je povinný"));
+        verify(commentRepository, never()).save(any());
     }
 
     @Test
@@ -234,6 +174,7 @@ class CommentServiceImplTest {
                 () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Text komentáře je povinný"));
+        verify(commentRepository, never()).save(any());
     }
 
     @Test
@@ -245,6 +186,7 @@ class CommentServiceImplTest {
                 () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("buď ke slovníku nebo k pojmu"));
+        verify(commentRepository, never()).save(any());
     }
 
     @Test
@@ -253,115 +195,34 @@ class CommentServiceImplTest {
                 () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("musí být specifikován"));
-    }
-
-    @Test
-    void postComment_SetsPostedTime() throws JsonProcessingException {
-        testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
-        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(java.util.List.of());
-        when(objectMapper.writeValueAsString(anyList())).thenReturn("[]");
-        when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
-
-        commentService.postComment(testCommentCreateModel, TEST_USER_ID);
-
-        ArgumentCaptor<CommentEntity> captor = ArgumentCaptor.forClass(CommentEntity.class);
-        verify(commentRepository).save(captor.capture());
-
-        CommentEntity savedEntity = captor.getValue();
-        assertNotNull(savedEntity.getPostedTime());
-        assertEquals(TEST_USER_ID, savedEntity.getUserId());
-    }
-
-    @Test
-    void postComment_JsonSerializationFails() throws JsonProcessingException {
-        testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(java.util.List.of());
-        when(objectMapper.writeValueAsString(anyList()))
-                .thenThrow(new JsonProcessingException("Serialization error") {});
-
-        CommentException exception = assertThrows(CommentException.class,
-                () -> commentService.postComment(testCommentCreateModel, TEST_USER_ID));
-
-        assertTrue(exception.getMessage().contains("Nepodařilo se uložit komentář"));
-    }
-
-    @Test
-    void postComment_JsonDeserializationFails_UsesEmptyList() throws JsonProcessingException {
-        testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        testOntologyEntity.setCommentsJson("{invalid json");
-
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(commentMapper.toEntity(testCommentCreateModel)).thenReturn(testCommentEntity);
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenThrow(new JsonProcessingException("Parse error") {});
-        when(objectMapper.writeValueAsString(anyList())).thenReturn("[]");
-        when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
-
-        CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
-
-        assertNotNull(result);
-        verify(ontologyMetadataRepository).save(testOntologyEntity);
+        verify(commentRepository, never()).save(any());
     }
 
     // ========== deleteComment Tests ==========
 
     @Test
-    void deleteComment_FromOntology_Success() throws JsonProcessingException {
+    void deleteComment_Success() {
         testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        testOntologyEntity.setCommentsJson("[{\"id\":1}]");
-
-        CommentEntity commentInList = new CommentEntity();
-        commentInList.setId(TEST_COMMENT_ID);
-        java.util.List<CommentEntity> commentsList = new java.util.ArrayList<>();
-        commentsList.add(commentInList);
 
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(objectMapper.readValue(eq("[{\"id\":1}]"), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(commentsList);
-        when(objectMapper.writeValueAsString(anyList())).thenReturn("[]");
+        doNothing().when(commentRepository).deleteById(TEST_COMMENT_ID);
 
         commentService.deleteComment(TEST_COMMENT_ID);
 
-        verify(ontologyMetadataRepository).save(testOntologyEntity);
+        verify(commentRepository).findById(TEST_COMMENT_ID);
         verify(commentRepository).deleteById(TEST_COMMENT_ID);
     }
 
     @Test
-    void deleteComment_FromConcept_Success() throws JsonProcessingException {
+    void deleteComment_ConceptComment_Success() {
         testCommentEntity.setConceptIRI(TEST_CONCEPT_IRI);
-        testConceptEntity.setCommentsJson("[{\"id\":1}]");
-
-        CommentEntity commentInList = new CommentEntity();
-        commentInList.setId(TEST_COMMENT_ID);
-        java.util.List<CommentEntity> commentsList = new java.util.ArrayList<>();
-        commentsList.add(commentInList);
 
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI))
-                .thenReturn(Optional.of(testConceptEntity));
-        when(objectMapper.readValue(eq("[{\"id\":1}]"), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(commentsList);
-        when(objectMapper.writeValueAsString(anyList())).thenReturn("[]");
+        doNothing().when(commentRepository).deleteById(TEST_COMMENT_ID);
 
         commentService.deleteComment(TEST_COMMENT_ID);
 
-        verify(conceptMetadataRepository).save(testConceptEntity);
+        verify(commentRepository).findById(TEST_COMMENT_ID);
         verify(commentRepository).deleteById(TEST_COMMENT_ID);
     }
 
@@ -382,89 +243,11 @@ class CommentServiceImplTest {
         testCommentEntity.setConceptIRI(null);
 
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
+        doNothing().when(commentRepository).deleteById(TEST_COMMENT_ID);
 
         commentService.deleteComment(TEST_COMMENT_ID);
 
         verify(commentRepository).deleteById(TEST_COMMENT_ID);
-        verify(ontologyMetadataRepository, never()).save(any());
-        verify(conceptMetadataRepository, never()).save(any());
     }
 
-    @Test
-    void deleteComment_SubjectNotFound_DeletesFromDatabaseOnly() {
-        testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.empty());
-
-        commentService.deleteComment(TEST_COMMENT_ID);
-
-        verify(commentRepository).deleteById(TEST_COMMENT_ID);
-        verify(ontologyMetadataRepository, never()).save(any());
-    }
-
-    @Test
-    void deleteComment_CommentNotInJsonList() throws JsonProcessingException {
-        testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        CommentEntity otherComment = new CommentEntity();
-        otherComment.setId(999L);
-
-        when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenReturn(new java.util.ArrayList<>(java.util.List.of(otherComment)));
-
-        commentService.deleteComment(TEST_COMMENT_ID);
-
-        verify(ontologyMetadataRepository, never()).save(any());
-        verify(commentRepository).deleteById(TEST_COMMENT_ID);
-    }
-
-    @Test
-    void deleteComment_FromOntology_EmptyJsonList() {
-        testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        testOntologyEntity.setCommentsJson("");
-
-        when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-
-        commentService.deleteComment(TEST_COMMENT_ID);
-
-        verify(ontologyMetadataRepository, never()).save(any());
-        verify(commentRepository).deleteById(TEST_COMMENT_ID);
-    }
-
-    @Test
-    void deleteComment_FromConcept_NullJsonList() {
-        testCommentEntity.setConceptIRI(TEST_CONCEPT_IRI);
-        testConceptEntity.setCommentsJson(null);
-
-        when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI))
-                .thenReturn(Optional.of(testConceptEntity));
-
-        commentService.deleteComment(TEST_COMMENT_ID);
-
-        verify(conceptMetadataRepository, never()).save(any());
-        verify(commentRepository).deleteById(TEST_COMMENT_ID);
-    }
-
-    @Test
-    void deleteComment_JsonDeserializationFails_DeletesFromDatabaseOnly() throws JsonProcessingException {
-        testCommentEntity.setOntologyIRI(TEST_ONTOLOGY_IRI);
-        testOntologyEntity.setCommentsJson("{invalid json");
-
-        when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.of(testCommentEntity));
-        when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI))
-                .thenReturn(Optional.of(testOntologyEntity));
-        when(objectMapper.readValue(anyString(), any(com.fasterxml.jackson.core.type.TypeReference.class)))
-                .thenThrow(new JsonProcessingException("Parse error") {});
-
-        commentService.deleteComment(TEST_COMMENT_ID);
-
-        verify(ontologyMetadataRepository, never()).save(any());
-        verify(commentRepository).deleteById(TEST_COMMENT_ID);
-    }
 }

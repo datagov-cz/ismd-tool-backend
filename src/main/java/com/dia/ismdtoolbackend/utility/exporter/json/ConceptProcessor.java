@@ -16,6 +16,9 @@ import static com.dia.constants.VocabularyConstants.*;
 @Slf4j
 public class ConceptProcessor {
 
+    private static final String A104_NAMESPACE = "https://slovník.gov.cz/agendový/104/pojem/";
+    private static final String L111_2009_NAMESPACE = "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/";
+
     public ConceptData processAllConcepts(OntModel ontModel, ModelStructure structure) {
         if (ontModel == null) {
             throw new ModelProcessingException("OntModel cannot be null");
@@ -351,7 +354,7 @@ public class ConceptProcessor {
             return;
         }
 
-        List<String> sourceArray = extractNonLegislativeSourceValues(propIter);
+        List<Map<String, Object>> sourceArray = extractDigitalDocuments(propIter, ontModel);
 
         if (!sourceArray.isEmpty()) {
             conceptObj.put(jsonFieldName, sourceArray);
@@ -373,29 +376,71 @@ public class ConceptProcessor {
         return null;
     }
 
-    private List<String> extractNonLegislativeSourceValues(StmtIterator propIter) {
-        List<String> sourceArray = new ArrayList<>();
+    private List<Map<String, Object>> extractDigitalDocuments(StmtIterator propIter, OntModel ontModel) {
+        List<Map<String, Object>> documents = new ArrayList<>();
 
         while (propIter.hasNext()) {
             Statement propStmt = propIter.next();
-            String value = extractSourceValue(propStmt);
-            if (value != null) {
-                sourceArray.add(value);
+            if (!propStmt.getObject().isResource()) {
+                continue;
+            }
+
+            Resource digitalDoc = propStmt.getObject().asResource();
+            Map<String, Object> docObj = createDigitalDocumentObject(digitalDoc, ontModel);
+
+            if (!docObj.isEmpty()) {
+                documents.add(docObj);
             }
         }
 
-        return sourceArray;
+        return documents;
     }
 
-    private String extractSourceValue(Statement propStmt) {
-        if (propStmt.getObject().isResource()) {
-            String digitalDocIri = propStmt.getObject().asResource().getURI();
-            return (digitalDocIri != null && !digitalDocIri.trim().isEmpty()) ? digitalDocIri : null;
-        } else if (propStmt.getObject().isLiteral()) {
-            String literalValue = propStmt.getString();
-            return (literalValue != null && !literalValue.trim().isEmpty()) ? literalValue : null;
+    private Map<String, Object> createDigitalDocumentObject(Resource digitalDoc, OntModel ontModel) {
+        Map<String, Object> docObj = new LinkedHashMap<>();
+
+        Resource digitalObjectType = ontModel.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
+        if (digitalDoc.hasProperty(RDF.type, digitalObjectType)) {
+            docObj.put("typ", "Digitální objekt");
         }
-        return null;
+
+        Property titleProperty = ontModel.createProperty(DCT_NS + "title");
+        if (digitalDoc.hasProperty(titleProperty)) {
+            Map<String, Object> titleObj = new LinkedHashMap<>();
+            StmtIterator titleIter = digitalDoc.listProperties(titleProperty);
+
+            while (titleIter.hasNext()) {
+                Statement titleStmt = titleIter.next();
+                if (titleStmt.getObject().isLiteral()) {
+                    String lang = titleStmt.getLanguage();
+                    String value = titleStmt.getString();
+
+                    if (value != null && !value.trim().isEmpty()) {
+                        titleObj.put(lang != null && !lang.isEmpty() ? lang : "cs", value);
+                    }
+                }
+            }
+
+            if (!titleObj.isEmpty()) {
+                docObj.put(NAZEV, titleObj);
+            }
+        }
+
+        Property urlProperty = ontModel.createProperty(SCHEMA_URL);
+        if (digitalDoc.hasProperty(urlProperty)) {
+            Statement urlStmt = digitalDoc.getProperty(urlProperty);
+
+            if (urlStmt.getObject().isResource()) {
+                docObj.put("url", urlStmt.getObject().asResource().getURI());
+            } else if (urlStmt.getObject().isLiteral()) {
+                String urlValue = urlStmt.getString();
+                if (urlValue != null && !urlValue.trim().isEmpty()) {
+                    docObj.put("url", urlValue);
+                }
+            }
+        }
+
+        return docObj;
     }
 
     private void addDomainAndRange(Resource concept, Map<String, Object> conceptObj) {
@@ -474,14 +519,15 @@ public class ConceptProcessor {
 
     private void addGovernanceProperties(Resource concept, Map<String, Object> conceptObj,
                                          OntModel ontModel, String namespace) {
-        addGovernanceProperty(concept, conceptObj, ontModel, namespace);
-        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI);
-        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU);
+        addGovernancePropertyArray(concept, conceptObj, ontModel, namespace);
+        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI_ALT);
+        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU_ALT);
     }
 
-    private void addGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
-                                       OntModel ontModel, String namespace) {
-        Property property = findGovernanceProperty(concept, ontModel, namespace, ZPUSOB_SDILENI);
+    private void addGovernancePropertyArray(Resource concept, Map<String, Object> conceptObj,
+                                            OntModel ontModel, String namespace) {
+        Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
+                ZPUSOB_SDILENI_UDAJE, ZPUSOB_SDILENI, ZPUSOB_SDILENI_ALT);
 
         if (property == null) {
             return;
@@ -491,18 +537,22 @@ public class ConceptProcessor {
         List<String> allValues = extractGovernanceValues(propIter);
 
         if (!allValues.isEmpty()) {
-            conceptObj.put(ZPUSOB_SDILENI, allValues);
+            conceptObj.put(ZPUSOB_SDILENI_ALT, allValues);
         }
     }
 
-    private Property findGovernanceProperty(Resource concept, OntModel ontModel, String namespace, String propertyName) {
-        Property customProperty = ontModel.getProperty(namespace + propertyName);
-        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
+    private Property findGovernancePropertyWithFallbacks(Resource concept, OntModel ontModel, String namespace,
+                                                         String... propertyNames) {
+        for (String propertyName : propertyNames) {
+            Property customProperty = ontModel.getProperty(namespace + propertyName);
+            if (concept.hasProperty(customProperty)) {
+                return customProperty;
+            }
 
-        if (concept.hasProperty(customProperty)) {
-            return customProperty;
-        } else if (concept.hasProperty(defaultProperty)) {
-            return defaultProperty;
+            Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
+            if (concept.hasProperty(defaultProperty)) {
+                return defaultProperty;
+            }
         }
         return null;
     }
@@ -510,7 +560,8 @@ public class ConceptProcessor {
     private void addSingleGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
                                              OntModel ontModel, String namespace,
                                              String propertyName, String jsonFieldName) {
-        Property property = findGovernanceProperty(concept, ontModel, namespace, propertyName);
+        Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
+                propertyName + "-údaje", propertyName, jsonFieldName);
 
         if (property == null) {
             return;
@@ -565,6 +616,17 @@ public class ConceptProcessor {
 
     private void addMetadataProperties(Resource concept, Map<String, Object> conceptObj,
                                        OntModel ontModel, String namespace) {
+        addPpdfProperty(concept, conceptObj, ontModel, namespace);
+
+        addMetadataProperty(concept, conceptObj, ontModel, namespace, AIS, UDAJE_AIS);
+
+        addMetadataProperty(concept, conceptObj, ontModel, namespace, AGENDA, AGENDA_LONG);
+
+        addUstanoveniProperty(concept, conceptObj, ontModel, namespace);
+    }
+
+    private void addPpdfProperty(Resource concept, Map<String, Object> conceptObj,
+                                 OntModel ontModel, String namespace) {
         Property ppdfDefault = ontModel.getProperty(DEFAULT_NS + JE_PPDF);
         Property ppdfCustom = ontModel.getProperty(namespace + JE_PPDF);
 
@@ -573,15 +635,49 @@ public class ConceptProcessor {
             stmt = concept.getProperty(ppdfCustom);
         }
 
+        if (stmt == null) {
+            Property ppdfLong = ontModel.getProperty(A104_NAMESPACE + JE_PPDF_LONG);
+            stmt = concept.getProperty(ppdfLong);
+        }
+
         if (stmt != null && stmt.getObject().isLiteral()) {
             boolean value = stmt.getBoolean();
             conceptObj.put(JE_PPDF, value);
         }
+    }
 
-        addSingleResourceProperty(concept, conceptObj, ontModel, namespace, AIS);
+    private void addMetadataProperty(Resource concept, Map<String, Object> conceptObj,
+                                     OntModel ontModel, String namespace,
+                                     String primaryProperty, String longProperty) {
+        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + primaryProperty);
+        Property customProperty = ontModel.getProperty(namespace + primaryProperty);
 
-        addSingleResourceProperty(concept, conceptObj, ontModel, namespace, AGENDA);
+        Statement stmt = null;
+        if (concept.hasProperty(defaultProperty)) {
+            stmt = concept.getProperty(defaultProperty);
+        } else if (concept.hasProperty(customProperty)) {
+            stmt = concept.getProperty(customProperty);
+        } else {
+            Property longPropertyInFallback = ontModel.getProperty(A104_NAMESPACE + longProperty);
+            if (concept.hasProperty(longPropertyInFallback)) {
+                stmt = concept.getProperty(longPropertyInFallback);
+            }
+        }
 
+        if (stmt != null) {
+            if (stmt.getObject().isResource()) {
+                conceptObj.put(primaryProperty, stmt.getObject().asResource().getURI());
+            } else if (stmt.getObject().isLiteral()) {
+                String literalValue = stmt.getString();
+                if (literalValue != null && !literalValue.trim().isEmpty()) {
+                    conceptObj.put(primaryProperty, literalValue);
+                }
+            }
+        }
+    }
+
+    private void addUstanoveniProperty(Resource concept, Map<String, Object> conceptObj,
+                                       OntModel ontModel, String namespace) {
         Property suppDefault = ontModel.getProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
         Property suppCustom = ontModel.getProperty(namespace + USTANOVENI_NEVEREJNOST);
 
@@ -589,23 +685,11 @@ public class ConceptProcessor {
             addResourceArrayProperty(concept, suppDefault, USTANOVENI_NEVEREJNOST, conceptObj);
         } else if (concept.hasProperty(suppCustom)) {
             addResourceArrayProperty(concept, suppCustom, USTANOVENI_NEVEREJNOST, conceptObj);
-        }
-    }
-
-    private void addSingleResourceProperty(Resource concept, Map<String, Object> conceptObj,
-                                           OntModel ontModel, String namespace, String propertyName) {
-        Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
-        Property customProperty = ontModel.getProperty(namespace + propertyName);
-
-        Statement stmt = null;
-        if (concept.hasProperty(defaultProperty)) {
-            stmt = concept.getProperty(defaultProperty);
-        } else if (concept.hasProperty(customProperty)) {
-            stmt = concept.getProperty(customProperty);
-        }
-
-        if (stmt != null && stmt.getObject().isResource()) {
-            conceptObj.put(propertyName, stmt.getObject().asResource().getURI());
+        } else {
+            Property suppLong = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_LONG);
+            if (concept.hasProperty(suppLong)) {
+                addResourceArrayProperty(concept, suppLong, USTANOVENI_NEVEREJNOST, conceptObj);
+            }
         }
     }
 }

@@ -5,9 +5,15 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "concepts")
+@EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor
 @Getter
 @Setter
@@ -15,6 +21,9 @@ public class ConceptMetadataEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false, unique = true, name = "slug")
+    private String slug;
 
     @Column(name = "concept_name")
     private String conceptName;
@@ -41,6 +50,15 @@ public class ConceptMetadataEntity {
     @Column(name = "validation_report_id")
     private Long validationReportId;
 
-    @Column(name = "comments", columnDefinition = "text")
-    private String commentsJson;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ontology_metadata_id", nullable = false)
+    private OntologyMetadataEntity ontologyMetadata;
+
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 }

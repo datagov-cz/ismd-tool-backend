@@ -41,7 +41,7 @@ public class JsonFormatter {
     }
 
     private void addModelMetadata(Map<String, Object> root, ModelStructure structure) {
-        root.put(JSON_CONTEXT, CONTEXT_JSONLD);
+        root.put(JSON_CONTEXT, CONTEXT);
         root.put(JSON_IRI, structure.getOntologyIRI());
         root.put(JSON_TYP, structure.getVocabularyTypes());
 

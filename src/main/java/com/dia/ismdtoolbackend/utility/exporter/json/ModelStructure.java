@@ -19,5 +19,6 @@ public class ModelStructure {
     private final Map<String, Resource> resourceMap;
     private final String creationDate;
     private final String modificationDate;
+    private final Boolean isPublished;
     private final List<String> vocabularyTypes;
 }

@@ -1,9 +1,12 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
 
 import java.util.List;
 import java.util.Map;
@@ -11,6 +14,7 @@ import java.util.Map;
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Getter
 public class OntologyDetailModel {
 
     @JsonProperty("@context")
@@ -49,22 +53,22 @@ public class OntologyDetailModel {
         private List<String> types;
 
         @JsonProperty("název")
-        private Map<String, Object> name;
+        private Map<String, String> name;
 
         @JsonProperty("alternativní-název")
-        private Map<String, Object> alternativeName;
+        private Map<String, List<String>> alternativeName;
 
         @JsonProperty("definice")
-        private Map<String, Object> definition;
+        private Map<String, String> definition;
 
         @JsonProperty("popis")
-        private Map<String, Object> description;
+        private Map<String, String> description;
 
         @JsonProperty("identifikátor")
-        private List<String> identifiers;
+        private String identifier;
 
         @JsonProperty("ekvivalentní-pojem")
-        private List<Map<String, Object>> exactMatches;
+        private List<Map<String, String>> exactMatches;
 
         @JsonProperty("definiční-obor")
         private String domain;
@@ -88,10 +92,10 @@ public class OntologyDetailModel {
         private List<String> relatedLegalSources;
 
         @JsonProperty("definující-nelegislativní-zdroj")
-        private List<String> definingNonLegalSources;
+        private List<Map<String, String>> definingNonLegalSources;
 
         @JsonProperty("související-nelegislativní-zdroj")
-        private List<String> relatedNonLegalSources;
+        private List<Map<String, String>> relatedNonLegalSources;
 
         @JsonProperty("způsob-sdílení-údajů")
         private List<String> sharingMethods;
@@ -113,5 +117,9 @@ public class OntologyDetailModel {
 
         @JsonProperty("ustanovení-neverejnost")
         private List<String> privacyProvisions;
+
+        private List<ConceptPropertiesModel> conceptProperties;
+
+        private List<ConceptRelationshipsModel> conceptRelationships;
     }
 }

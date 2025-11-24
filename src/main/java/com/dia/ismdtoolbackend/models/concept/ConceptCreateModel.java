@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import lombok.Data;
 import org.apache.logging.log4j.core.config.plugins.validation.constraints.NotBlank;
 
+import java.util.List;
+
 @Data
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
@@ -29,16 +31,15 @@ public abstract class ConceptCreateModel {
     @NotBlank
     protected NameModel nameModel;
     protected String identifier;
-    protected AltNameModel altNameModel;
+    protected List<AltNameModel> altNameModel;
     protected DescriptionModel descriptionModel;
     protected DefinitionModel definitionModel;
-    protected String definingNonLegalSource;
-    protected String definingLegalSource;
-    protected String relatedNonLegalSource;
-    protected String relatedLegalSource;
-    protected String exactMatch;
+    protected List<String> definingNonLegalSource;
+    protected List<String> definingLegalSource;
+    protected List<String> relatedNonLegalSource;
+    protected List<String> relatedLegalSource;
+    protected List<String> exactMatch;
     protected String inTezaurus;
-    // TODO digitální objekt: název, popis
 
     public abstract ConceptType getConceptTypeEnum();
 

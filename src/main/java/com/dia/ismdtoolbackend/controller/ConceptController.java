@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -9,12 +10,14 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntologyException;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
@@ -74,5 +77,45 @@ public class ConceptController {
         log.info("Concept edit successful: {}", editedConceptModel);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
+    }
+
+    @GetMapping("/list")
+    public ResponseEntity<ApiResponseDto<List<ConceptMetadataModel>>> getConceptList(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) Boolean isPublished
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
+
+        try {
+            List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
+            return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
+        } catch (OntologyException e) {
+            log.error("Error fetching concept list: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error fetching concept list: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu pojmů."));
+        }
+    }
+
+    @GetMapping("/{slug}/detail")
+    public ResponseEntity<GetConceptDto> getConceptDetail(@PathVariable String slug) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("Concept detail requested, conceptSlug: {}", slug);
+
+        try {
+            GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
+            return ResponseEntity.ok().body(conceptDto);
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("not found") || e.getMessage().contains("nebyl nalezen") || e.getMessage().contains("nebyla nalezena")) {
+                log.error("Concept not found: {}", slug);
+                return ResponseEntity.notFound().build();
+            }
+            log.error("Error creating concept detail model: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

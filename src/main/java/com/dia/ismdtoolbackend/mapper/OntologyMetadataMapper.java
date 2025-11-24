@@ -1,32 +1,55 @@
 package com.dia.ismdtoolbackend.mapper;
 
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.validation.ValidationReportDto;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface OntologyMetadataMapper {
 
     @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
     @Mapping(target = "validationReportId", source = "validationReport", qualifiedByName = "validationReportToValidationReportId")
-    @Mapping(target = "commentsJson", source = "comments", qualifiedByName = "commentsToCommentsJson")
     OntologyMetadataEntity toEntity(OntologyMetadataModel dto);
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "validationReport", source = "validationReportId", qualifiedByName = "validationReportIdToValidationReport")
-    @Mapping(target = "comments", source = "commentsJson", qualifiedByName = "commentsJsonToComments")
+    @Mapping(target = "comments", ignore = true)
+    @Mapping(target = "name", ignore = true)
+    @Mapping(target = "popis", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
+
+    default CommentModel commentEntityToModel(CommentEntity entity) {
+        if (entity == null) {
+            return null;
+        }
+        CommentModel model = new CommentModel();
+        model.setId(entity.getId());
+        model.setUserId(entity.getUserId());
+        model.setComment(entity.getComment());
+        model.setOntologyIRI(entity.getOntologyIRI());
+        model.setConceptIRI(entity.getConceptIRI());
+        model.setPostedTime(entity.getPostedTime());
+        return model;
+    }
+
+    default List<CommentModel> commentEntitiesToModels(List<CommentEntity> entities) {
+        if (entities == null || entities.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return entities.stream()
+                .map(this::commentEntityToModel)
+                .collect(Collectors.toList());
+    }
 
     @Named("userToUserId")
     default String userToUserId(UserModel user) {
@@ -51,31 +74,5 @@ public interface OntologyMetadataMapper {
             validationReport.setId(validationReportId);
         }
         return validationReport;
-    }
-
-    @Named("commentsToCommentsJson")
-    default String commentsToCommentsJson(List<CommentModel> comments) {
-        if (comments == null || comments.isEmpty()) {
-            return null;
-        }
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.writeValueAsString(comments);
-        } catch (JsonProcessingException e) {
-            return null;
-        }
-    }
-
-    @Named("commentsJsonToComments")
-    default List<CommentModel> commentsJsonToComments(String commentsJson) {
-        if (commentsJson == null || commentsJson.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-        try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            return objectMapper.readValue(commentsJson, new TypeReference<List<CommentModel>>() {});
-        } catch (JsonProcessingException e) {
-            return Collections.emptyList();
-        }
     }
 }
