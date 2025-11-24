@@ -47,9 +47,6 @@ public class ConceptMetadataEntity {
     @Column(name = "in_tezaurus")
     private String inTezaurus;
 
-    @Column(name = "validation_report_id")
-    private Long validationReportId;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)
     private OntologyMetadataEntity ontologyMetadata;
