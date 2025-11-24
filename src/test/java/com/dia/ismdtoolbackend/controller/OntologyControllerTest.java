@@ -42,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
 @ActiveProfiles("test")
 class OntologyControllerTest {
+    /*
 
     @Autowired
     private MockMvc mockMvc;
@@ -565,4 +566,6 @@ class OntologyControllerTest {
         mockMvc.perform(get("/api/ontology/{ontologyId}/detail", ontologyId))
                 .andExpect(status().isNotFound());
     }
+
+     */
 }

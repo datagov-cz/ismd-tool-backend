@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -8,42 +10,42 @@ import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyStorageException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
-import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
-import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
-import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
-import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import com.dia.models.OFNBaseModel;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
-import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.ontology.OntologyException;
+import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.constants.VocabularyConstants.*;
@@ -57,9 +59,12 @@ public class OntologyServiceImpl implements OntologyService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final CommentRepository commentRepository;
 
     private final OntologyMetadataMapper ontologyMetadataMapper;
+    private final ConceptMetadataMapper conceptMetadataMapper;
     private final OntologyEditor ontologyEditor;
+    private final OntologyDetailExtractor detailExtractor;
 
     @Override
     @Transactional
@@ -67,7 +72,7 @@ public class OntologyServiceImpl implements OntologyService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
-            throw new OntologyNotFoundException("Slovník s id " + ontologyId + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s id " + ontologyId + "nebyl nalezen.");
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
@@ -80,7 +85,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (model.isEmpty()) {
             log.error("Ontology model is empty.");
-            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyStorageException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
         jenaTDB2Repository.deleteGraph(graphName);
@@ -103,7 +108,10 @@ public class OntologyServiceImpl implements OntologyService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
         if (ontologyMetadataOpt.isPresent()) {
             log.error("ontologyId {} already present", ontologyIRI);
-            return ontologyMetadataMapper.toDto(ontologyMetadataOpt.get());
+            OntologyMetadataEntity existingEntity = ontologyMetadataOpt.get();
+            OntologyMetadataModel model = ontologyMetadataMapper.toDto(existingEntity);
+            enrichMetadataFromRDF(model, existingEntity);
+            return model;
         }
 
         try {
@@ -117,7 +125,9 @@ public class OntologyServiceImpl implements OntologyService {
         try {
             OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId);
             log.info("Successfully created ontology with ID: {}", metadataEntity.getId());
-            return ontologyMetadataMapper.toDto(metadataEntity);
+            OntologyMetadataModel model = ontologyMetadataMapper.toDto(metadataEntity);
+            enrichMetadataFromRDF(model, metadataEntity);
+            return model;
         } catch (Exception e) {
             log.warn("PostgreSQL save failed, cleaning up TDB2 data for graph: {}", ontologyIRI);
             try {
@@ -130,98 +140,41 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     @Override
-    public OntologyDetailModel getOntologyDetailModel(Long ontologyId) {
-        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
+    public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
-            log.error("ontologyId {} not found", ontologyId);
-            throw new OntologyNotFoundException("Metadata slovníku s id " + ontologyId + " nebyla nalezena.");
+            log.error("ontologySlug {} not found", ontologySlug);
+            throw new OntologyNotFoundException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
         }
 
-        String graphName = ontologyMetadataOpt.get().getGraphName();
+        OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
+        String graphName = metadataEntity.getGraphName();
 
         Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
 
         if (rawModel.isEmpty()) {
             log.error("Ontology model is empty for graph: {}", graphName);
-            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyStorageException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        Model processedModel = applyOFNTransformations(rawModel);
+        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
+        OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
 
-        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+        enrichMetadataFromRDF(metadataModel, metadataEntity);
 
-        ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
-        ConceptProcessor conceptProcessor = new ConceptProcessor();
+        List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
+        metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
-        ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
-        ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
+        List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
 
-        return mapToOntologyDetailModel(structure, conceptData);
-    }
 
-    private Model applyOFNTransformations(Model rawModel) {
-        log.debug("Applying OFN transformations");
-        Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
-        Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
-        log.debug("OFN transformation complete: {} -> {} -> {} statements",
-                rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
-        return ofnFormattedModel;
-    }
+        GetOntologyDto result = new GetOntologyDto();
+        result.setConceptMetadataModelList(conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList());
+        result.setOntologyMetadata(metadataModel);
+        result.setOntologyDetail(detailModel);
 
-    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
-        List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
-                .map(this::mapToConceptDetailModel)
-                .toList();
-
-        return OntologyDetailModel.builder()
-                .context(CONTEXT_JSONLD)
-                .iri(structure.getOntologyIRI())
-                .types(structure.getVocabularyTypes())
-                .name(createMultilingualMap(structure.getModelName()))
-                .description(createMultilingualMap(structure.getModelDescription()))
-                .creationDate(structure.getCreationDate())
-                .modificationDate(structure.getModificationDate())
-                .concepts(concepts)
-                .build();
-    }
-
-    @SuppressWarnings("unchecked")
-    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap) {
-        return OntologyDetailModel.ConceptDetailModel.builder()
-                .iri((String) conceptMap.get("iri"))
-                .types((List<String>) conceptMap.get("typ"))
-                .name((Map<String, Object>) conceptMap.get(NAZEV))
-                .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
-                .definition((Map<String, Object>) conceptMap.get(DEFINICE))
-                .description((Map<String, Object>) conceptMap.get(POPIS))
-                .identifiers((List<String>) conceptMap.get(IDENTIFIKATOR))
-                .exactMatches((List<Map<String, Object>>) conceptMap.get(EKVIVALENTNI_POJEM))
-                .domain((String) conceptMap.get(DEFINICNI_OBOR))
-                .range((String) conceptMap.get(OBOR_HODNOT))
-                .broaderClasses((List<String>) conceptMap.get(NADRAZENA_TRIDA))
-                .broaderRelations((List<String>) conceptMap.get(NADRAZENY_VZTAH))
-                .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
-                .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
-                .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
-                .definingNonLegalSources((List<String>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
-                .relatedNonLegalSources((List<String>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
-                .sharingMethods((List<String>) conceptMap.get(ZPUSOB_SDILENI))
-                .acquisitionMethod((String) conceptMap.get(ZPUSOB_ZISKANI))
-                .contentType((String) conceptMap.get(TYP_OBSAHU))
-                .isPpdf((Boolean) conceptMap.get(JE_PPDF))
-                .ais((String) conceptMap.get(AIS))
-                .agenda((String) conceptMap.get(AGENDA))
-                .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
-                .build();
-    }
-
-    private Map<String, String> createMultilingualMap(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return Collections.emptyMap();
-        }
-        Map<String, String> map = new LinkedHashMap<>();
-        map.put("cs", value);
-        return map;
+        return result;
     }
 
     private void validateOntologyCreateModel(OntologyCreateModel model) {
@@ -270,6 +223,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
+        String slug = UtilityMethods.extractNameFromIRI(ontologyIRI);
+        metadataEntity.setSlug(slug);
         metadataEntity.setGraphName(ontologyIRI);
         metadataEntity.setUserId(userId);
         metadataEntity.setIsPublished(false);
@@ -297,7 +252,107 @@ public class OntologyServiceImpl implements OntologyService {
             saveOntologyModel(oldOntologyIRI, model);
         }
 
-        return ontologyMetadataMapper.toDto(metadataEntity);
+        OntologyMetadataModel resultModel = ontologyMetadataMapper.toDto(metadataEntity);
+        enrichMetadataFromRDF(resultModel, metadataEntity);
+        return resultModel;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) {
+        List<OntologyMetadataEntity> ontologyMetadataEntities;
+
+        if (userId != null && isPublished != null) {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAllByUserIdAndIsPublished(userId, isPublished);
+        } else if (userId != null) {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAllByUserId(userId);
+        } else if (isPublished != null) {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAllByIsPublished(isPublished);
+        } else {
+            ontologyMetadataEntities = ontologyMetadataRepository.findAll();
+        }
+
+        return ontologyMetadataEntities.stream()
+                .map(entity -> {
+                    OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
+                    enrichMetadataFromRDF(model, entity);
+                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
+                    model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+                    return model;
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OntologyMetadataModel> getBySlugs(List<String> slugs) {
+        if (slugs == null || slugs.isEmpty()) {
+            throw new OntologyValidationException("Seznam slugů je prázdný");
+        }
+
+        if (slugs.size() > 6) {
+            throw new OntologyValidationException("Maximální počet slugů je 6");
+        }
+
+        List<OntologyMetadataEntity> ontologyMetadataEntities = ontologyMetadataRepository.findBySlugIn(slugs);
+
+        return ontologyMetadataEntities.stream()
+                .map(entity -> {
+                    OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
+                    enrichMetadataFromRDF(model, entity);
+                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
+                    model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+                    return model;
+                })
+                .toList();
+    }
+
+    @Override
+    public String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel) {
+        try {
+            String graphName = ontologyMetadataModel.getGraphName();
+
+            if (graphName == null || graphName.isEmpty()) {
+                log.error("Graph name is null or empty for ontology: {}", ontologyMetadataModel.getSlug());
+                throw new OntologyValidationException("Graph name is missing for the ontology");
+            }
+
+            log.info("Fetching TTL content for graph: {}", graphName);
+
+            Model model = jenaTDB2Repository.fetchGraph(graphName);
+
+            if (model == null || model.isEmpty()) {
+                log.warn("Model is empty or null for graph: {}", graphName);
+                throw new OntologyNotFoundException("Ontology model not found or is empty");
+            }
+
+            java.io.StringWriter writer = new java.io.StringWriter();
+            model.write(writer, "TTL");
+            String ttlContent = writer.toString();
+
+            log.info("Successfully retrieved TTL content for graph: {} ({} statements)",
+                    graphName, model.size());
+
+            return ttlContent;
+
+        } catch (OntologyValidationException | OntologyNotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error retrieving TTL content from ontology: {}", e.getMessage(), e);
+            throw new OntologyStorageException("Failed to retrieve TTL content: " + e.getMessage());
+        }
+    }
+
+    private String extractNameFromGraphName(String graphName) {
+        if (graphName == null || graphName.isEmpty()) {
+            return graphName;
+        }
+
+        String result = graphName.replace("-", " ");
+
+        result = result.substring(0, 1).toUpperCase() + result.substring(1);
+
+        return result;
     }
 
     private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) {
@@ -309,7 +364,7 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataOpt.get();
     }
 
-    private Model fetchOntologyModel(String ontologyIRI) throws OntologyException {
+    private Model fetchOntologyModel(String ontologyIRI) {
         Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
         if (model.isEmpty()) {
             log.error("Ontology model is empty for IRI: {}", ontologyIRI);
@@ -393,12 +448,13 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity updateOntologyMetadata(OntologyMetadataEntity metadataEntity, String newGraphName) {
         metadataEntity.setGraphName(newGraphName);
+        metadataEntity.setSlug(UtilityMethods.extractNameFromIRI(newGraphName));
         OntologyMetadataEntity updatedEntity = ontologyMetadataRepository.save(metadataEntity);
-        log.info("Updated metadata with new graph name: {}", newGraphName);
+        log.info("Updated metadata with new graph name: {} and slug: {}", newGraphName, metadataEntity.getSlug());
         return updatedEntity;
     }
 
-    private void validateOntologyEditModel(OntologyEditModel model) throws OntologyException {
+    private void validateOntologyEditModel(OntologyEditModel model) {
         if (model == null) {
             throw new EmptyDataException("Data pro úpravu slovníku jsou prázdná");
         }
@@ -409,5 +465,66 @@ public class OntologyServiceImpl implements OntologyService {
 
     private void cleanupTDB2Graph(String graphName) {
         jenaTDB2Repository.deleteGraph(graphName);
+    }
+
+    private void enrichMetadataFromRDF(OntologyMetadataModel model, OntologyMetadataEntity entity) {
+        try {
+            String graphName = entity.getGraphName();
+            if (graphName == null || graphName.isEmpty()) {
+                log.warn("Cannot enrich metadata: graphName is null or empty");
+                return;
+            }
+
+            Model rdfModel = jenaTDB2Repository.fetchGraph(graphName);
+            if (rdfModel == null || rdfModel.isEmpty()) {
+                log.warn("Cannot enrich metadata: RDF model is empty for graph {}", graphName);
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                return;
+            }
+
+            Resource ontologyResource = rdfModel.getResource(graphName);
+            if (ontologyResource == null) {
+                log.warn("Cannot find ontology resource for IRI: {}", graphName);
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                return;
+            }
+
+            Statement prefLabelStmt = ontologyResource.getProperty(SKOS.prefLabel);
+            if (prefLabelStmt != null) {
+                RDFNode prefLabelNode = prefLabelStmt.getObject();
+                if (prefLabelNode.isLiteral()) {
+                    Literal prefLabelLiteral = prefLabelNode.asLiteral();
+                    String prefLabel = prefLabelLiteral.getString();
+                    if (prefLabel != null && !prefLabel.isEmpty()) {
+                        model.setName(prefLabel);
+                        log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
+                    } else {
+                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                    }
+                } else {
+                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                }
+            } else {
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+            }
+
+            Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
+            if (descriptionStmt != null) {
+                RDFNode descriptionNode = descriptionStmt.getObject();
+                if (descriptionNode.isLiteral()) {
+                    Literal descriptionLiteral = descriptionNode.asLiteral();
+                    String description = descriptionLiteral.getString();
+                    if (description != null && !description.isEmpty()) {
+                        model.setPopis(description);
+                        log.debug("Enriched popis from dcterms:description: {}", description);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to enrich metadata from RDF for graph {}: {}", entity.getGraphName(), e.getMessage());
+            if ((model.getName() == null || model.getName().isEmpty()) && entity.getGraphName() != null) {
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
+            }
+        }
     }
 }

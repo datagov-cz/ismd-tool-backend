@@ -10,7 +10,6 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -88,16 +87,8 @@ public class ConceptController {
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
 
-        try {
-            List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
-            return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
-        } catch (OntologyException e) {
-            log.error("Error fetching concept list: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
-        } catch (Exception e) {
-            log.error("Unexpected error fetching concept list: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu pojmů."));
-        }
+        List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
+        return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
     }
 
     @GetMapping("/{slug}/detail")
@@ -106,16 +97,7 @@ public class ConceptController {
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept detail requested, conceptSlug: {}", slug);
 
-        try {
-            GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
-            return ResponseEntity.ok().body(conceptDto);
-        } catch (RuntimeException e) {
-            if (e.getMessage().contains("not found") || e.getMessage().contains("nebyl nalezen") || e.getMessage().contains("nebyla nalezena")) {
-                log.error("Concept not found: {}", slug);
-                return ResponseEntity.notFound().build();
-            }
-            log.error("Error creating concept detail model: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
+        return ResponseEntity.ok().body(conceptDto);
     }
 }

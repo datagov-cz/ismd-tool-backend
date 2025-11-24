@@ -123,4 +123,31 @@ public class GlobalExceptionHandler {
         log.error("Validation failed: {}", e.getMessage(), e);
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
     }
+
+    @ExceptionHandler(OntologyUploadException.class)
+    public ResponseEntity<ApiResponseDto> handleOntologyUploadException(OntologyUploadException e) {
+        log.error("Ontology upload failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(OntologyAlreadyExistsException.class)
+    public ResponseEntity<ApiResponseDto> handleOntologyAlreadyExistsException(OntologyAlreadyExistsException e) {
+        log.warn("Ontology already exists: {}", e.getMessage());
+        String location = "/api/ontology/" + e.getExistingMetadata().getSlug() + "/detail";
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header("Location", location)
+                .body(ApiResponseDto.error(e.getMessage()));
+    }
+
+    @ExceptionHandler(JsonExportException.class)
+    public ResponseEntity<ApiResponseDto> handleJsonExportException(JsonExportException e) {
+        log.error("JSON export failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(OntologyAnalysisException.class)
+    public ResponseEntity<ApiResponseDto> handleOntologyAnalysisException(OntologyAnalysisException e) {
+        log.error("Ontology analysis failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
 }
