@@ -149,4 +149,30 @@ public class OntologySecurityService {
 
         return isOwner;
     }
+
+    public boolean canCreateConcept(String slug) {
+        log.debug("Checking modify permission for ontology: {}", slug);
+
+        SecurityUser currentUser = SecurityUtils.getCurrentUser();
+
+        if (currentUser.isAdmin()) {
+            log.debug("User {} is admin - modify permitted for ontology {}", currentUser.getUserId(), slug);
+            return true;
+        }
+
+        OntologyMetadataEntity entity = ontologyMetadataRepository.findBySlug(slug).orElseThrow(() -> {
+            log.error("Ontology not found: {}", slug);
+            return new EntityNotFoundException("Slovník s IRI " + slug + " nebyl nalezen.");
+        });
+
+        boolean isOwner = entity.getUserId().equals(currentUser.getUserId());
+
+        if (isOwner) {
+            log.debug("User {} is owner - modify permitted for ontology {}", currentUser.getUserId(), slug);
+        } else {
+            log.warn("User {} attempted to modify ontology {} owned by {}", currentUser.getUserId(), slug, entity.getUserId());
+        }
+
+        return isOwner;
+    }
 }

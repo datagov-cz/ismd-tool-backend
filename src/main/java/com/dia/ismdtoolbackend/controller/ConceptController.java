@@ -29,10 +29,11 @@ public class ConceptController {
 
     private final ConceptService conceptService;
 
-    // TODO: Check if we need to validate ownership
-    @PostMapping("/create")
+    @PostMapping("/{slug}/create")
+    @PreAuthorize("@ontologySecurityService.canCreateConcept(#slug)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
             @RequestBody ConceptCreateModel conceptCreateModel,
+            @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
         String requestId = UUID.randomUUID().toString();
