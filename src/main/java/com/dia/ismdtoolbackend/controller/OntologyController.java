@@ -13,7 +13,6 @@ import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
-import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +44,6 @@ public class OntologyController {
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
-    private final ValidationService validationService;
     private final ValidationClient validationClient;
 
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
