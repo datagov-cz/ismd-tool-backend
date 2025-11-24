@@ -30,7 +30,7 @@ public class ConceptController {
     private final ConceptService conceptService;
 
     @PostMapping("/{slug}/create")
-    @PreAuthorize("@ontologySecurityService.canCreateConcept(#slug)")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
             @RequestBody ConceptCreateModel conceptCreateModel,
             @PathVariable String slug,

@@ -150,7 +150,7 @@ public class OntologySecurityService {
         return isOwner;
     }
 
-    public boolean canCreateConcept(String slug) {
+    public boolean belongsToUserBySlug(String slug) {
         log.debug("Checking modify permission for ontology: {}", slug);
 
         SecurityUser currentUser = SecurityUtils.getCurrentUser();

@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class OntologyController {
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
+    private final ValidationService validationService;
     private final ValidationClient validationClient;
 
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -183,8 +185,11 @@ public class OntologyController {
     }
 
     @PostMapping("/validate")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
-            @RequestPart OntologyMetadataModel ontologyMetadata
+            @RequestPart OntologyMetadataModel ontologyMetadata,
+            @PathVariable String slug,
+            @AuthenticationPrincipal SecurityUser securityUser
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
@@ -197,6 +202,8 @@ public class OntologyController {
             log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
             return new OntologyValidationException("Validace se nezdařila - validační služba nevrátila odpověď.");
         });
+        validationService.saveValidationReport(validationReport.get(), ontologyMetadata, securityUser.getUserId());
+
 
         return ResponseEntity.ok().body(ApiResponseDto.success(report, "Validace proběhla úspěšně."));
     }
@@ -204,7 +211,8 @@ public class OntologyController {
     @PostMapping("/catalog-record")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
             @RequestPart OntologyMetadataModel ontologyMetadata,
-            @RequestPart ValidationReportDto validationReport
+            @RequestPart ValidationReportDto validationReport,
+            @AuthenticationPrincipal SecurityUser securityUser
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
