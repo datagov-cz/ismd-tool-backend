@@ -218,12 +218,12 @@ public class OntologyController {
 
         Optional<CatalogRecordDto> catalogRecordDto = validationClient.requestCatalogRecord(request);
 
-        CatalogRecordDto record = catalogRecordDto.orElseThrow(() -> {
+        CatalogRecordDto catalogRecord = catalogRecordDto.orElseThrow(() -> {
             log.warn("Catalog record not received for ontology: {}", ontologyMetadata.getGraphName());
             return new OntologyValidationException("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná.");
         });
 
-        return ResponseEntity.ok().body(ApiResponseDto.success(record, "Žádost o katalogizační záznam proběhla úspěšně."));
+        return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecord, "Žádost o katalogizační záznam proběhla úspěšně."));
     }
 
     private String getFileExtension(String format) {
