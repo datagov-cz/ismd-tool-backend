@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
@@ -190,12 +191,13 @@ public class OntologyController {
 
         String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
         Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
-        if (validationReport.isPresent()) {
-            return ResponseEntity.ok().body(ApiResponseDto.success(validationReport.get(), "Validace proběhla úspěšně."));
-        } else {
+
+        ValidationReport report = validationReport.orElseThrow(() -> {
             log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
-            return ResponseEntity.status(500).body(ApiResponseDto.error("Validace se nezdařila - validační služba nevrátila odpověď."));
-        }
+            return new OntologyValidationException("Validace se nezdařila - validační služba nevrátila odpověď.");
+        });
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(report, "Validace proběhla úspěšně."));
     }
 
     private String getFileExtension(String format) {
