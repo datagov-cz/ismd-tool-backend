@@ -19,10 +19,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -87,8 +90,12 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
         }
 
-        jenaTDB2Repository.deleteConceptFromGraph(conceptUri, graphName);
-        conceptMetadataRepository.deleteById(conceptId);
+        List<String> relatedConceptUris = findRelatedConcepts(model, conceptUri);
+        relatedConceptUris.add(conceptUri);
+        List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
+
+        jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);
+        conceptMetadataRepository.deleteAll(relatedConceptEntities);
     }
 
     @Override
@@ -129,7 +136,6 @@ public class ConceptServiceImpl implements ConceptService {
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    // Fetch and populate comments from the comments table
                     List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(entity.getConceptIri());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
@@ -166,7 +172,6 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
 
-        // Fetch and populate comments from the comments table
         List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(conceptIri);
         metadataModel.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
 
@@ -188,6 +193,33 @@ public class ConceptServiceImpl implements ConceptService {
                 savedEntity.getConceptType(), savedEntity.getConceptIri());
 
         return savedEntity;
+    }
+
+    private List<String> findRelatedConcepts(Model model, String conceptUri) {
+        List<String> relatedConcepts = new ArrayList<>();
+        Resource domainResource = model.getResource(conceptUri);
+
+        ResIterator iterator = model.listSubjectsWithProperty(RDFS.domain, domainResource);
+        while (iterator.hasNext()) {
+            Resource property = iterator.nextResource();
+            relatedConcepts.add(property.getURI());
+        }
+
+        iterator = model.listSubjectsWithProperty(RDFS.range, domainResource);
+        while (iterator.hasNext()) {
+            Resource property = iterator.nextResource();
+            relatedConcepts.add(property.getURI());
+        }
+
+        return relatedConcepts;
+    }
+
+    private List<ConceptMetadataEntity> findRelatedConceptEntities(List<String> conceptUris) {
+        List<ConceptMetadataEntity> relatedConcepts = new ArrayList<>();
+        for (String conceptUri : conceptUris) {
+            conceptMetadataRepository.findByConceptIri(conceptUri).ifPresent(relatedConcepts::add);
+        }
+        return relatedConcepts;
     }
 
     private void validateInput(ConceptCreateModel createModel, String userId) {
