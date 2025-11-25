@@ -18,11 +18,10 @@ import java.util.stream.Collectors;
 public interface OntologyMetadataMapper {
 
     @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
-    @Mapping(target = "validationReportId", source = "validationReport", qualifiedByName = "validationReportToValidationReportId")
+    @Mapping(target = "concepts", ignore = true)
     OntologyMetadataEntity toEntity(OntologyMetadataModel dto);
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
-    @Mapping(target = "validationReport", source = "validationReportId", qualifiedByName = "validationReportIdToValidationReport")
     @Mapping(target = "comments", ignore = true)
     @Mapping(target = "name", ignore = true)
     @Mapping(target = "popis", ignore = true)
@@ -59,20 +58,5 @@ public interface OntologyMetadataMapper {
     @Named("userIdToUser")
     default UserModel userIdToUser(String userId) {
         return userId != null ? new UserModel(userId) : null;
-    }
-
-    @Named("validationReportToValidationReportId")
-    default Long validationReportToValidationReportId(ValidationReportDto validationReport) {
-        return validationReport != null && validationReport.getId() != null ?
-                validationReport.getId() : null;
-    }
-
-    @Named("validationReportIdToValidationReport")
-    default ValidationReportDto validationReportIdToValidationReport(Long validationReportId) {
-        ValidationReportDto validationReport = new ValidationReportDto();
-        if (validationReportId != null) {
-            validationReport.setId(validationReportId);
-        }
-        return validationReport;
     }
 }

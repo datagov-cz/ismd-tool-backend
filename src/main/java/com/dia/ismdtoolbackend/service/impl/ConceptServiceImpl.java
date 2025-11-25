@@ -205,6 +205,12 @@ public class ConceptServiceImpl implements ConceptService {
             relatedConcepts.add(property.getURI());
         }
 
+        iterator = model.listSubjectsWithProperty(RDFS.range, domainResource);
+        while (iterator.hasNext()) {
+            Resource property = iterator.nextResource();
+            relatedConcepts.add(property.getURI());
+        }
+
         return relatedConcepts;
     }
 
