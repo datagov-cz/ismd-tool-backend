@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
-import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;

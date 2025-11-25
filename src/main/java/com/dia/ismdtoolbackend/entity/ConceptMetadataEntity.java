@@ -50,6 +50,10 @@ public class ConceptMetadataEntity {
     @Column(name = "validation_report_id")
     private Long validationReportId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ontology_metadata_id", nullable = false)
+    private OntologyMetadataEntity ontologyMetadata;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

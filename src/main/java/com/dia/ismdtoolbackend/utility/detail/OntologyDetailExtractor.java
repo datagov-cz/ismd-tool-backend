@@ -1,18 +1,25 @@
 package com.dia.ismdtoolbackend.utility.detail;
 
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -20,8 +27,11 @@ import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.constants.VocabularyConstants.*;
 
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class OntologyDetailExtractor {
+
+    private final ConceptMetadataRepository conceptMetadataRepository;
 
     public Model applyOFNTransformations(Model rawModel) {
         log.debug("Applying OFN transformations");
@@ -58,7 +68,7 @@ public class OntologyDetailExtractor {
 
     private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
         List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
-                .map(this::mapToConceptDetailModel)
+                .map(conceptMap -> mapToConceptDetailModel(conceptMap, conceptData))
                 .toList();
 
         return OntologyDetailModel.builder()
@@ -77,22 +87,103 @@ public class OntologyDetailExtractor {
         for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
             String iri = (String) conceptMap.get("iri");
             if (conceptIri.equals(iri)) {
-                return mapToConceptDetailModel(conceptMap);
+                return mapToConceptDetailModel(conceptMap, conceptData);
             }
         }
         return null;
     }
 
+    @Transactional(readOnly = true)
+    public List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, ConceptData conceptData) {
+        List<ConceptPropertiesModel> properties = new ArrayList<>();
+
+        for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
+            @SuppressWarnings("unchecked")
+            List<String> types = (List<String>) conceptMap.get("typ");
+            String propertyIri = (String) conceptMap.get("iri");
+
+            if (types != null && types.contains("Vlastnost")) {
+                Object domainObj = conceptMap.get(DEFINICNI_OBOR);
+                String domain = domainObj instanceof String ? (String) domainObj : null;
+
+                if (conceptIri.equals(domain)) {
+                    ConceptPropertiesModel propertyModel = new ConceptPropertiesModel();
+
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> nameMap = (Map<String, String>) conceptMap.get(NAZEV);
+                    String name = extractFirstAvailableName(nameMap);
+
+                    propertyModel.setName(name);
+                    Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(propertyIri);
+                    propertyModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+
+                    properties.add(propertyModel);
+                }
+            }
+        }
+
+        return properties;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConceptRelationshipsModel> extractConceptRelationships(String conceptIri, ConceptData conceptData) {
+        List<ConceptRelationshipsModel> relationships = new ArrayList<>();
+
+        for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
+            @SuppressWarnings("unchecked")
+            List<String> types = (List<String>) conceptMap.get("typ");
+            String relationshipIri = (String) conceptMap.get("iri");
+
+            if (types != null && types.contains("Vztah")) {
+                Object domainObj = conceptMap.get(DEFINICNI_OBOR);
+                String domain = domainObj instanceof String ? (String) domainObj : null;
+
+                if (conceptIri.equals(domain)) {
+                    ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
+
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> nameMap = (Map<String, String>) conceptMap.get(NAZEV);
+                    String name = extractFirstAvailableName(nameMap);
+
+                    relationshipModel.setName(name);
+                    Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(relationshipIri);
+                    relationshipModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+
+                    relationships.add(relationshipModel);
+                }
+            }
+        }
+
+        return relationships;
+    }
+
+    private String extractFirstAvailableName(Map<String, String> nameMap) {
+        if (nameMap == null || nameMap.isEmpty()) {
+            return null;
+        }
+
+        if (nameMap.containsKey("cs")) {
+            return nameMap.get("cs");
+        }
+
+        return nameMap.values().iterator().next();
+    }
+
     @SuppressWarnings("unchecked")
-    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap) {
+    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap, ConceptData conceptData) {
+        String conceptIri = (String) conceptMap.get("iri");
+
+        List<ConceptPropertiesModel> properties = extractConceptProperties(conceptIri, conceptData);
+        List<ConceptRelationshipsModel> relationships = extractConceptRelationships(conceptIri, conceptData);
+
         return OntologyDetailModel.ConceptDetailModel.builder()
-                .iri((String) conceptMap.get("iri"))
+                .iri(conceptIri)
                 .types((List<String>) conceptMap.get("typ"))
                 .name((Map<String, String>) conceptMap.get(NAZEV))
-                .alternativeName((Map<String, String>) conceptMap.get(ALTERNATIVNI_NAZEV))
+                .alternativeName((Map<String, List<String>>) conceptMap.get(ALTERNATIVNI_NAZEV))
                 .definition((Map<String, String>) conceptMap.get(DEFINICE))
                 .description((Map<String, String>) conceptMap.get(POPIS))
-                .identifiers((List<String>) conceptMap.get(IDENTIFIKATOR))
+                .identifier((String) conceptMap.get(IDENTIFIKATOR))
                 .exactMatches((List<Map<String, String>>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
                 .range((String) conceptMap.get(OBOR_HODNOT))
@@ -101,8 +192,8 @@ public class OntologyDetailExtractor {
                 .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
                 .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
                 .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
-                .definingNonLegalSources((List<String>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
-                .relatedNonLegalSources((List<String>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
+                .definingNonLegalSources((List<Map<String, String>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
+                .relatedNonLegalSources((List<Map<String, String>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
                 .sharingMethods((List<String>) conceptMap.get(ZPUSOB_SDILENI))
                 .acquisitionMethod((String) conceptMap.get(ZPUSOB_ZISKANI))
                 .contentType((String) conceptMap.get(TYP_OBSAHU))
@@ -110,6 +201,8 @@ public class OntologyDetailExtractor {
                 .ais((String) conceptMap.get(AIS))
                 .agenda((String) conceptMap.get(AGENDA))
                 .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
+                .conceptProperties(properties)
+                .conceptRelationships(relationships)
                 .build();
     }
 
