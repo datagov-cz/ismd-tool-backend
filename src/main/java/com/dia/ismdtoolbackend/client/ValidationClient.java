@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.client;
 
+import com.dia.dto.CatalogRecordDto;
+import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationRequestDto;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
@@ -55,6 +57,43 @@ public class ValidationClient {
             return Optional.empty();
         } catch (Exception e) {
             log.error("Unexpected error during validation for ontology {}: {}", iri, e.getMessage(), e);
+            return Optional.empty();
+        }
+    }
+
+    public Optional<CatalogRecordDto> requestCatalogRecord(CatalogRecordRequestDto requestDto) {
+        try {
+            String iri = requestDto.getValidationReport().getOntologyIri();
+            log.debug("Requesting catalog record for ontology: {}", iri);
+            String ttlContent = requestDto.getTtlContent();
+
+            if (ttlContent == null || ttlContent.trim().isEmpty()) {
+                throw new IllegalArgumentException("TTL obsah nesmí být prázdný");
+            }
+
+            if (requestDto.getValidationReport() == null) {
+                throw new IllegalArgumentException("Zpráva z kontroly nesmí být prázdná");
+            }
+
+            CatalogRecordDto response = restClient.post()
+                    .uri(validationServiceUrl + "/api/validator/catalog-record")
+                    .header("Content-Type", "application/json")
+                    .body(requestDto)
+                    .retrieve()
+                    .body(CatalogRecordDto.class);
+
+            if (response != null) {
+                log.info("Catalog record request completed for ontology {}", iri);
+                return Optional.of(response);
+            }
+
+            return Optional.empty();
+
+        } catch (RestClientException e) {
+            log.warn("Validation service unavailable for ontology {}", e.getMessage());
+            return Optional.empty();
+        } catch (Exception e) {
+            log.error("Unexpected error during catalog record request for ontology {}", e.getMessage(), e);
             return Optional.empty();
         }
     }
