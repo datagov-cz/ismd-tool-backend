@@ -78,7 +78,10 @@ public class ConceptProcessor {
                 ontModel.getResource(OFN_NAMESPACE + TOP),
                 ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ),
                 ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ),
-                ontModel.createResource(SKOS_NS + "Concept")
+                ontModel.createResource(SKOS_NS + "Concept"),
+                ontModel.createResource("http://www.w3.org/2002/07/owl#Class"),
+                ontModel.createResource("http://www.w3.org/2002/07/owl#ObjectProperty"),
+                ontModel.createResource("http://www.w3.org/2002/07/owl#DatatypeProperty")
         );
     }
 
@@ -144,7 +147,23 @@ public class ConceptProcessor {
             }
         }
 
+        addOwlTypeIfPresent(concept, ontModel, types, isVztah);
+
         return types;
+    }
+
+    private void addOwlTypeIfPresent(Resource concept, OntModel ontModel, List<String> types, boolean isVztah) {
+        if (concept.hasProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#Class")) && !types.contains(TRIDA_JSON_LD)) {
+            types.add(TRIDA_JSON_LD);
+        }
+
+        if (concept.hasProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#ObjectProperty")) && !types.contains(VZTAH_JSON_LD)) {
+            types.add(VZTAH_JSON_LD);
+        }
+
+        if (concept.hasProperty(RDF.type, ontModel.getResource("http://www.w3.org/2002/07/owl#DatatypeProperty")) && !isVztah && !types.contains(VLASTNOST_JSON_LD)) {
+            types.add(VLASTNOST_JSON_LD);
+        }
     }
 
     private void addMultilingualProperty(Resource concept, Property property, String jsonProperty,
@@ -464,6 +483,20 @@ public class ConceptProcessor {
     private void addHierarchicalRelationships(Resource concept, Map<String, Object> conceptObj, OntModel ontModel) {
         addSubClassRelationships(concept, conceptObj);
         addSubPropertyRelationships(concept, conceptObj, ontModel);
+        addSkosBroaderRelationships(concept, conceptObj);
+    }
+
+    private void addSkosBroaderRelationships(Resource concept, Map<String, Object> conceptObj) {
+        StmtIterator broaderIter = concept.listProperties(SKOS.broader);
+        if (!broaderIter.hasNext()) {
+            return;
+        }
+
+        List<String> broaderArray = extractResourceURIs(broaderIter);
+
+        if (!broaderArray.isEmpty()) {
+            conceptObj.put("nadřazený-pojem", broaderArray);
+        }
     }
 
     private void addSubClassRelationships(Resource concept, Map<String, Object> conceptObj) {
