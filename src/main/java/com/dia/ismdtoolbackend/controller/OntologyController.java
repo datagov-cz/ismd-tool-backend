@@ -4,12 +4,14 @@ import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
+import com.dia.ismdtoolbackend.exception.ValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,7 @@ public class OntologyController {
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
+    private final ValidationService validationService;
     private final ValidationClient validationClient;
 
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -278,14 +281,18 @@ public class OntologyController {
             String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
             Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
             if (validationReport.isPresent()) {
+                validationService.saveValidationReport(validationReport.get(), ontologyMetadata);
                 return ResponseEntity.ok().body(ApiResponseDto.success(validationReport.get(), "Validace proběhla úspěšně."));
             } else {
                 log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
-                return ResponseEntity.status(500).body(ApiResponseDto.error("Validace se nezdařila - validační služba nevrátila odpověď."));
+                return ResponseEntity.status(500).body(ApiResponseDto.error("Validace se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
             }
+        } catch (ValidationException e) {
+            log.error("Error while saving validation report: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během ukládání výpisu z kontroly došlo k chybě: " + e.getMessage()));
         } catch (OntologyException e) {
             log.error("Unexpected error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během žádosti o kontrolu došlo k neočekávané chybě: " + e.getMessage()));
         }
     }
 

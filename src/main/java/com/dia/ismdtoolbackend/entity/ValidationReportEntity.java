@@ -22,14 +22,10 @@ import java.util.List;
 @Slf4j
 public class ValidationReportEntity implements ValidationReport {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "ontology_metadata_id")
     private Long ontologyMetadataId;
-
-    @Column(name = "is_valid")
-    private Boolean isValid;
 
     @Column(name = "timestamp")
     private Instant timestamp;
@@ -37,11 +33,14 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "results_json", columnDefinition = "text")
     private String resultsJson;
 
+    @Column(name = "ontology_iri", columnDefinition = "text")
+    private String getOntologyIri;
+
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public ValidationReportEntity(ValidationReport report, Long ontologyMetadataId) {
+        this.id = report.getId();
         this.ontologyMetadataId = ontologyMetadataId;
-        this.isValid = report.isValid();
         this.timestamp = report.getTimestamp();
         this.resultsJson = convertResultsToJson(report.getResults());
     }
@@ -51,7 +50,7 @@ public class ValidationReportEntity implements ValidationReport {
         return convertJsonToResults(this.resultsJson);
     }
 
-    private String convertResultsToJson(List<ValidationResult> results) {
+    public String convertResultsToJson(List<ValidationResult> results) {
         try {
             return objectMapper.writeValueAsString(results);
         } catch (JsonProcessingException e) {
@@ -60,7 +59,7 @@ public class ValidationReportEntity implements ValidationReport {
         }
     }
 
-    private List<ValidationResult> convertJsonToResults(String json) {
+    public List<ValidationResult> convertJsonToResults(String json) {
         if (json == null || json.trim().isEmpty()) {
             return List.of();
         }
@@ -73,17 +72,12 @@ public class ValidationReportEntity implements ValidationReport {
     }
 
     @Override
-    public boolean isValid() {
-        return isValid != null && isValid;
-    }
-
-    @Override
     public Instant getTimestamp() {
         return timestamp;
     }
 
     @Override
-    public Long getOntologyId() {
-        return ontologyMetadataId;
+    public String getOntologyIri() {
+        return this.getOntologyIri;
     }
 }
