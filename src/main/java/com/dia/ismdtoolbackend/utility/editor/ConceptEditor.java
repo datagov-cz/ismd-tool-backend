@@ -45,9 +45,9 @@ public class ConceptEditor {
         String effectiveNamespace = determineEffectiveNamespace(graphName);
         uriGenerator.setEffectiveNamespace(effectiveNamespace);
 
-        String newName = editModel.getNameModel() != null ? editModel.getNameModel().getName() : null;
-        String oldName = getCurrentName(existingConcept);
-        boolean nameChanged = newName != null && !newName.equals(oldName);
+        String newName = getNameForUriGeneration(editModel.getNameModel());
+        String oldName = getNameForUriGeneration(existingConcept);
+        boolean nameChanged = newName != null && !newName.isEmpty() && !newName.equals(oldName);
 
         String newConceptIRI = oldConceptIRI;
         if (nameChanged) {
@@ -158,12 +158,28 @@ public class ConceptEditor {
                                  Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (nameModel == null || nameModel.getName() == null) return;
 
-        String oldName = getCurrentName(oldConcept);
-        if (!nameModel.getName().equals(oldName)) {
+        Map<String, String> existingNames = getAllPropertyValuesWithLanguage(oldConcept, SKOS.prefLabel);
+
+        Map<String, String> newNames = nameModel.getName();
+
+        Map<String, String> mergedNames = new HashMap<>(existingNames);
+        for (Map.Entry<String, String> entry : newNames.entrySet()) {
+            if (entry.getValue() == null) {
+                mergedNames.remove(entry.getKey());
+            } else if (!entry.getValue().trim().isEmpty()) {
+                mergedNames.put(entry.getKey(), entry.getValue().trim());
+            }
+        }
+
+        if (!existingNames.equals(mergedNames)) {
             removeAllByPredicate(oldConcept, SKOS.prefLabel, toRemove);
-            String languageTag = nameModel.getLanguageTag() != null ? nameModel.getLanguageTag() : DEFAULT_LANG;
-            toAdd.add(model.createStatement(newConcept, SKOS.prefLabel,
-                    model.createLiteral(nameModel.getName(), languageTag)));
+            for (Map.Entry<String, String> entry : mergedNames.entrySet()) {
+                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                toAdd.add(model.createStatement(newConcept, SKOS.prefLabel,
+                        model.createLiteral(entry.getValue(), languageTag)));
+            }
         }
     }
 
@@ -172,18 +188,36 @@ public class ConceptEditor {
         if (descModel == null) return;
 
         Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-        String oldValue = getPropertyValue(oldConcept, descProperty);
-        String newValue = descModel.getDescription();
 
-        if (newValue == null || newValue.trim().isEmpty()) {
-            if (oldValue != null) {
+        Map<String, String> existingDescriptions = getAllPropertyValuesWithLanguage(oldConcept, descProperty);
+
+        Map<String, String> newDescriptions = descModel.getDescription();
+
+        if (newDescriptions == null || newDescriptions.isEmpty()) {
+            if (!existingDescriptions.isEmpty()) {
                 removeAllByPredicate(oldConcept, descProperty, toRemove);
             }
-        } else if (!newValue.equals(oldValue)) {
+            return;
+        }
+
+        Map<String, String> mergedDescriptions = new HashMap<>(existingDescriptions);
+        for (Map.Entry<String, String> entry : newDescriptions.entrySet()) {
+            if (entry.getValue() == null) {
+                mergedDescriptions.remove(entry.getKey());
+            } else if (!entry.getValue().trim().isEmpty()) {
+                mergedDescriptions.put(entry.getKey(), entry.getValue().trim());
+            }
+        }
+
+        if (!existingDescriptions.equals(mergedDescriptions)) {
             removeAllByPredicate(oldConcept, descProperty, toRemove);
-            String languageTag = descModel.getLanguageTag() != null ? descModel.getLanguageTag() : DEFAULT_LANG;
-            toAdd.add(model.createStatement(newConcept, descProperty,
-                    model.createLiteral(newValue, languageTag)));
+            for (Map.Entry<String, String> entry : mergedDescriptions.entrySet()) {
+                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                toAdd.add(model.createStatement(newConcept, descProperty,
+                        model.createLiteral(entry.getValue(), languageTag)));
+            }
         }
     }
 
@@ -191,18 +225,35 @@ public class ConceptEditor {
                                         Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (defModel == null) return;
 
-        String oldValue = getPropertyValue(oldConcept, SKOS.definition);
-        String newValue = defModel.getDefinition();
+        Map<String, String> existingDefinitions = getAllPropertyValuesWithLanguage(oldConcept, SKOS.definition);
 
-        if (newValue == null || newValue.trim().isEmpty()) {
-            if (oldValue != null) {
+        Map<String, String> newDefinitions = defModel.getDefinition();
+
+        if (newDefinitions == null || newDefinitions.isEmpty()) {
+            if (!existingDefinitions.isEmpty()) {
                 removeAllByPredicate(oldConcept, SKOS.definition, toRemove);
             }
-        } else if (!newValue.equals(oldValue)) {
+            return;
+        }
+
+        Map<String, String> mergedDefinitions = new HashMap<>(existingDefinitions);
+        for (Map.Entry<String, String> entry : newDefinitions.entrySet()) {
+            if (entry.getValue() == null) {
+                mergedDefinitions.remove(entry.getKey());
+            } else if (!entry.getValue().trim().isEmpty()) {
+                mergedDefinitions.put(entry.getKey(), entry.getValue().trim());
+            }
+        }
+
+        if (!existingDefinitions.equals(mergedDefinitions)) {
             removeAllByPredicate(oldConcept, SKOS.definition, toRemove);
-            String languageTag = defModel.getLanguageTag() != null ? defModel.getLanguageTag() : DEFAULT_LANG;
-            toAdd.add(model.createStatement(newConcept, SKOS.definition,
-                    model.createLiteral(newValue, languageTag)));
+            for (Map.Entry<String, String> entry : mergedDefinitions.entrySet()) {
+                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                toAdd.add(model.createStatement(newConcept, SKOS.definition,
+                        model.createLiteral(entry.getValue(), languageTag)));
+            }
         }
     }
 
@@ -607,11 +658,6 @@ public class ConceptEditor {
         }
     }
 
-    private String getCurrentName(Resource concept) {
-        Statement stmt = concept.getProperty(SKOS.prefLabel);
-        return stmt != null && stmt.getObject().isLiteral() ? stmt.getObject().asLiteral().getString() : null;
-    }
-
     private String getPropertyValue(Resource resource, Property property) {
         Statement stmt = resource.getProperty(property);
         return stmt != null && stmt.getObject().isLiteral() ? stmt.getObject().asLiteral().getString() : null;
@@ -632,6 +678,50 @@ public class ConceptEditor {
             }
         }
         return valuesWithLang;
+    }
+
+    private Map<String, String> getAllPropertyValuesWithLanguage(Resource resource, Property property) {
+        Map<String, String> valuesWithLang = new HashMap<>();
+        StmtIterator iter = resource.listProperties(property);
+        while (iter.hasNext()) {
+            Statement stmt = iter.next();
+            if (stmt.getObject().isLiteral()) {
+                Literal literal = stmt.getObject().asLiteral();
+                String lang = literal.getLanguage() != null && !literal.getLanguage().isEmpty()
+                        ? literal.getLanguage()
+                        : DEFAULT_LANG;
+                valuesWithLang.put(lang, literal.getString());
+            }
+        }
+        return valuesWithLang;
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey("cs")) {
+            return names.get("cs");
+        }
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
+    }
+
+    private String getNameForUriGeneration(Resource resource) {
+        Map<String, String> existingNames = getAllPropertyValuesWithLanguage(resource, SKOS.prefLabel);
+        if (existingNames.isEmpty()) {
+            return "";
+        }
+        if (existingNames.containsKey("cs")) {
+            return existingNames.get("cs");
+        }
+        if (existingNames.containsKey(DEFAULT_LANG)) {
+            return existingNames.get(DEFAULT_LANG);
+        }
+        return existingNames.values().iterator().next();
     }
 
     private String getResourceURI(Resource resource, Property property) {
