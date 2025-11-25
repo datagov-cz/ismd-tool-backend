@@ -91,6 +91,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         List<String> relatedConceptUris = findRelatedConcepts(model, conceptUri);
+        relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
         jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);

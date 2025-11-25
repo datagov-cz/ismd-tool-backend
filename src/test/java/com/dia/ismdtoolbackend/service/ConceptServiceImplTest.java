@@ -27,6 +27,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -216,12 +218,17 @@ class ConceptServiceImplTest {
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
 
         conceptService.deleteConcept(TEST_CONCEPT_ID);
+        List<String> testConceptIris = new ArrayList<>();
+        testConceptIris.add(TEST_CONCEPT_IRI);
+        List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
+        conceptEntities.add(testConceptEntity);
 
-        verify(jenaTDB2Repository).deleteConceptFromGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME);
-        verify(conceptMetadataRepository).deleteById(TEST_CONCEPT_ID);
+        verify(jenaTDB2Repository).deleteConceptsFromGraph(testConceptIris, TEST_GRAPH_NAME);
+        verify(conceptMetadataRepository).deleteAll(conceptEntities);
     }
 
     @Test
@@ -232,8 +239,8 @@ class ConceptServiceImplTest {
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
-        verify(jenaTDB2Repository, never()).deleteConceptFromGraph(anyString(), anyString());
-        verify(conceptMetadataRepository, never()).deleteById(any());
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
+        verify(conceptMetadataRepository, never()).deleteAll(any());
     }
 
     @Test
@@ -245,7 +252,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("prázdný"));
-        verify(jenaTDB2Repository, never()).deleteConceptFromGraph(anyString(), anyString());
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
     }
 
     @Test
@@ -261,7 +268,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(jenaTDB2Repository, never()).deleteConceptFromGraph(anyString(), anyString());
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
     }
 
     // ========== editConcept Tests ==========
