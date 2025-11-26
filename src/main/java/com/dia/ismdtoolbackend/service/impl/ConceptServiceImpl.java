@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -9,6 +10,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -20,14 +22,18 @@ import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
+import org.apache.jena.query.QueryExecution;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
+import org.apache.jena.sparql.exec.http.QuerySendMode;
 import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,6 +50,8 @@ public class ConceptServiceImpl implements ConceptService {
     private final JenaTDB2Repository jenaTDB2Repository;
     private final OntologyDetailExtractor detailExtractor;
     private final CommentRepository commentRepository;
+    private final NkdSparqlClient nkdSparqlClient;
+    private final ConceptDeviationComparator deviationComparator;
 
     @Override
     @Transactional
@@ -182,6 +190,8 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(processedModel, metadataModel);
+        result.setPublishedConceptDeviationModel(conceptDeviation);
         return result;
     }
 
@@ -388,5 +398,60 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
+    }
+
+    private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
+        // Only check for published concepts
+        if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
+            return null;
+        }
+
+        String conceptIri = conceptMetadata.getConceptIri();
+
+        try {
+            // Extract local concept detail
+            OntologyDetailModel.ConceptDetailModel localConcept =
+                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
+
+            if (localConcept == null) {
+                log.error("Local concept detail not found for IRI: {}", conceptIri);
+                return createErrorDeviation(
+                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
+                        "Local concept detail not available"
+                );
+            }
+
+            // Fetch published concept from NKD
+            Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
+                    nkdSparqlClient.fetchPublishedConcept(conceptIri);
+
+            if (publishedConceptOpt.isEmpty()) {
+                log.warn("Published concept not found in NKD: {}", conceptIri);
+                return createErrorDeviation(
+                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
+                        "Concept not found in NKD SPARQL endpoint"
+                );
+            }
+
+            // Compare and return deviations
+            OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
+            return deviationComparator.compareConceptDetails(localConcept, publishedConcept);
+
+        } catch (Exception e) {
+            log.error("Error checking published concept deviation: {}", e.getMessage(), e);
+            return createErrorDeviation(
+                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
+                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
+            );
+        }
+    }
+
+    private PublishedConceptDeviationModel createErrorDeviation(
+            PublishedConceptDeviationModel.DeviationStatus status,
+            String errorMessage) {
+        return PublishedConceptDeviationModel.builder()
+                .status(status)
+                .errorMessage(errorMessage)
+                .build();
     }
 }

@@ -1,0 +1,478 @@
+package com.dia.ismdtoolbackend.service.impl;
+
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+
+@Component
+@Slf4j
+public class ConceptDeviationComparator {
+
+    public PublishedConceptDeviationModel compareConceptDetails(
+            OntologyDetailModel.ConceptDetailModel localConcept,
+            OntologyDetailModel.ConceptDetailModel publishedConcept) {
+
+        PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder =
+                PublishedConceptDeviationModel.builder();
+
+        boolean hasDeviations = false;
+
+        // Compare each property
+        hasDeviations |= compareAndSetTypes(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetName(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetAlternativeName(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetDefinition(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetDescription(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetIdentifier(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetBroaderClasses(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetBroaderRelations(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetBroaderProperties(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetDomain(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetRange(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetExactMatches(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetDefiningLegalSources(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetRelatedLegalSources(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetDefiningNonLegalSources(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetRelatedNonLegalSources(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetSharingMethods(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetAcquisitionMethod(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetContentType(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetIsPpdf(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetAis(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetAgenda(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetPrivacyProvisions(localConcept, publishedConcept, builder);
+
+        builder.status(hasDeviations ?
+                PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS :
+                PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION);
+
+        return builder.build();
+    }
+
+    private boolean compareAndSetTypes(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getTypes(), published.getTypes())) {
+            builder.types(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getTypes())
+                    .publishedValue(published.getTypes())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetName(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getName(), published.getName())) {
+            builder.name(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
+                    .localValue(local.getName())
+                    .publishedValue(published.getName())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetAlternativeName(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getAlternativeName(), published.getAlternativeName())) {
+            builder.alternativeName(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, List<String>>>builder()
+                    .localValue(local.getAlternativeName())
+                    .publishedValue(published.getAlternativeName())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetDefinition(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getDefinition(), published.getDefinition())) {
+            builder.definition(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
+                    .localValue(local.getDefinition())
+                    .publishedValue(published.getDefinition())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetDescription(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getDescription(), published.getDescription())) {
+            builder.description(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
+                    .localValue(local.getDescription())
+                    .publishedValue(published.getDescription())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetIdentifier(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getIdentifier(), published.getIdentifier())) {
+            builder.identifier(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getIdentifier())
+                    .publishedValue(published.getIdentifier())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetBroaderClasses(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getBroaderClasses(), published.getBroaderClasses())) {
+            builder.broaderClasses(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getBroaderClasses())
+                    .publishedValue(published.getBroaderClasses())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetBroaderRelations(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getBroaderRelations(), published.getBroaderRelations())) {
+            builder.broaderRelations(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getBroaderRelations())
+                    .publishedValue(published.getBroaderRelations())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetBroaderProperties(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getBroaderProperties(), published.getBroaderProperties())) {
+            builder.broaderProperties(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getBroaderProperties())
+                    .publishedValue(published.getBroaderProperties())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetDomain(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getDomain(), published.getDomain())) {
+            builder.domain(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getDomain())
+                    .publishedValue(published.getDomain())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetRange(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getRange(), published.getRange())) {
+            builder.range(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getRange())
+                    .publishedValue(published.getRange())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetExactMatches(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getExactMatches(), published.getExactMatches())) {
+            builder.exactMatches(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, String>>>builder()
+                    .localValue(local.getExactMatches())
+                    .publishedValue(published.getExactMatches())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetDefiningLegalSources(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getDefiningLegalSources(), published.getDefiningLegalSources())) {
+            builder.definingLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getDefiningLegalSources())
+                    .publishedValue(published.getDefiningLegalSources())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetRelatedLegalSources(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getRelatedLegalSources(), published.getRelatedLegalSources())) {
+            builder.relatedLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getRelatedLegalSources())
+                    .publishedValue(published.getRelatedLegalSources())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetDefiningNonLegalSources(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getDefiningNonLegalSources(), published.getDefiningNonLegalSources())) {
+            builder.definingNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, String>>>builder()
+                    .localValue(local.getDefiningNonLegalSources())
+                    .publishedValue(published.getDefiningNonLegalSources())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetRelatedNonLegalSources(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getRelatedNonLegalSources(), published.getRelatedNonLegalSources())) {
+            builder.relatedNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, String>>>builder()
+                    .localValue(local.getRelatedNonLegalSources())
+                    .publishedValue(published.getRelatedNonLegalSources())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetSharingMethods(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getSharingMethods(), published.getSharingMethods())) {
+            builder.sharingMethods(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getSharingMethods())
+                    .publishedValue(published.getSharingMethods())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetAcquisitionMethod(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getAcquisitionMethod(), published.getAcquisitionMethod())) {
+            builder.acquisitionMethod(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getAcquisitionMethod())
+                    .publishedValue(published.getAcquisitionMethod())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetContentType(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getContentType(), published.getContentType())) {
+            builder.contentType(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getContentType())
+                    .publishedValue(published.getContentType())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetIsPpdf(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getIsPpdf(), published.getIsPpdf())) {
+            builder.isPpdf(PublishedConceptDeviationModel.PropertyDeviation.<Boolean>builder()
+                    .localValue(local.getIsPpdf())
+                    .publishedValue(published.getIsPpdf())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetAis(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getAis(), published.getAis())) {
+            builder.ais(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getAis())
+                    .publishedValue(published.getAis())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetAgenda(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getAgenda(), published.getAgenda())) {
+            builder.agenda(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(local.getAgenda())
+                    .publishedValue(published.getAgenda())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetPrivacyProvisions(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areEqual(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
+            builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+                    .localValue(local.getPrivacyProvisions())
+                    .publishedValue(published.getPrivacyProvisions())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private <T> boolean areEqual(T value1, T value2) {
+        // Handle null cases
+        if (value1 == null && value2 == null) return false;
+        if (value1 == null || value2 == null) return true;
+
+        // Deep comparison for collections and maps
+        if (value1 instanceof List) {
+            return compareListsIgnoreOrder((List<?>) value1, (List<?>) value2);
+        } else if (value1 instanceof Map) {
+            return !compareMaps((Map<?, ?>) value1, (Map<?, ?>) value2);
+        }
+
+        return !value1.equals(value2);
+    }
+
+    private boolean compareListsIgnoreOrder(List<?> list1, List<?> list2) {
+        if (list1.size() != list2.size()) return true;
+
+        // For simple lists, use set comparison
+        if (!list1.isEmpty() && !(list1.get(0) instanceof Map)) {
+            return !new HashSet<>(list1).equals(new HashSet<>(list2));
+        }
+
+        // For lists of maps (like exact matches, sources), compare content
+        if (!list1.isEmpty() && list1.get(0) instanceof Map) {
+            // Convert to sets of maps for order-independent comparison
+            Set<Map<?, ?>> set1 = new HashSet<>((List<Map<?, ?>>) list1);
+            Set<Map<?, ?>> set2 = new HashSet<>((List<Map<?, ?>>) list2);
+            return !set1.equals(set2);
+        }
+
+        return !list1.equals(list2);
+    }
+
+    private boolean compareMaps(Map<?, ?> map1, Map<?, ?> map2) {
+        // Maps with nested lists need special handling
+        if (map1.size() != map2.size()) return false;
+
+        for (Object key : map1.keySet()) {
+            if (!map2.containsKey(key)) return false;
+
+            Object val1 = map1.get(key);
+            Object val2 = map2.get(key);
+
+            if (val1 instanceof List && val2 instanceof List) {
+                if (compareListsIgnoreOrder((List<?>) val1, (List<?>) val2)) {
+                    return false;
+                }
+            } else if (!Objects.equals(val1, val2)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
