@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -11,6 +12,7 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -35,6 +37,7 @@ import java.util.Optional;
 public class ConceptServiceImpl implements ConceptService {
 
     private final ConceptMetadataRepository conceptMetadataRepository;
+    private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final ConceptCreator conceptCreator;
     private final ConceptEditor conceptEditor;
@@ -235,6 +238,14 @@ public class ConceptServiceImpl implements ConceptService {
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
                                                        String userId,
                                                        String conceptIri) {
+        String ontologyGraphName = createModel.getOntologyGraphName();
+        OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository
+                .findByGraphName(ontologyGraphName)
+                .orElseThrow(() -> {
+                    log.error("Ontology metadata not found for graph: {}", ontologyGraphName);
+                    return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
+                });
+
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
         entity.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(conceptIri));
         entity.setConceptName(createModel.getNameModel().getName());
@@ -244,6 +255,7 @@ public class ConceptServiceImpl implements ConceptService {
         entity.setUserId(userId);
         entity.setIsPublished(false);
         entity.setInTezaurus(createModel.getInTezaurus());
+        entity.setOntologyMetadata(ontologyMetadata);
 
         return entity;
     }
