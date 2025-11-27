@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
@@ -46,6 +47,9 @@ class ConceptServiceImplTest {
 
     @Mock
     private ConceptMetadataMapper conceptMetadataMapper;
+
+    @Mock
+    private OntologyMetadataRepository ontologyMetadataRepository;
 
     @Mock
     private ConceptCreator conceptCreator;

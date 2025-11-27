@@ -274,7 +274,7 @@ public class OntologyController {
 
     @PostMapping("/validate")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
-            @RequestPart OntologyMetadataModel ontologyMetadata
+            @RequestBody OntologyMetadataModel ontologyMetadata
     ) {
         try {
             String requestId = UUID.randomUUID().toString();
@@ -301,8 +301,8 @@ public class OntologyController {
 
     @PostMapping("/catalog-record")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
-            @RequestPart OntologyMetadataModel ontologyMetadata,
-            @RequestPart ValidationReportDto validationReport
+            @RequestBody OntologyMetadataModel ontologyMetadata,
+            @RequestBody ValidationReportDto validationReport
     ) {
         try {
             String requestId = UUID.randomUUID().toString();

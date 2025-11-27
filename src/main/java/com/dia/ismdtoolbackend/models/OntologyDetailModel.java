@@ -98,7 +98,7 @@ public class OntologyDetailModel {
         private List<Map<String, String>> relatedNonLegalSources;
 
         @JsonProperty("způsob-sdílení-údajů")
-        private List<String> sharingMethods;
+        private String sharingMethods;
 
         @JsonProperty("způsob-získání-údajů")
         private String acquisitionMethod;
@@ -116,7 +116,7 @@ public class OntologyDetailModel {
         private String agenda;
 
         @JsonProperty("ustanovení-neverejnost")
-        private List<String> privacyProvisions;
+        private String privacyProvisions;
 
         private List<ConceptPropertiesModel> conceptProperties;
 
