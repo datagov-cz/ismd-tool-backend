@@ -20,7 +20,6 @@ public class ConceptDeviationComparator {
 
         boolean hasDeviations = false;
 
-        // Compare each property
         hasDeviations |= compareAndSetTypes(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetName(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAlternativeName(localConcept, publishedConcept, builder);
@@ -421,11 +420,9 @@ public class ConceptDeviationComparator {
     }
 
     private <T> boolean areEqual(T value1, T value2) {
-        // Handle null cases
         if (value1 == null && value2 == null) return false;
         if (value1 == null || value2 == null) return true;
 
-        // Deep comparison for collections and maps
         if (value1 instanceof List) {
             return compareListsIgnoreOrder((List<?>) value1, (List<?>) value2);
         } else if (value1 instanceof Map) {
@@ -438,14 +435,11 @@ public class ConceptDeviationComparator {
     private boolean compareListsIgnoreOrder(List<?> list1, List<?> list2) {
         if (list1.size() != list2.size()) return true;
 
-        // For simple lists, use set comparison
         if (!list1.isEmpty() && !(list1.get(0) instanceof Map)) {
             return !new HashSet<>(list1).equals(new HashSet<>(list2));
         }
 
-        // For lists of maps (like exact matches, sources), compare content
         if (!list1.isEmpty() && list1.get(0) instanceof Map) {
-            // Convert to sets of maps for order-independent comparison
             Set<Map<?, ?>> set1 = new HashSet<>((List<Map<?, ?>>) list1);
             Set<Map<?, ?>> set2 = new HashSet<>((List<Map<?, ?>>) list2);
             return !set1.equals(set2);
@@ -455,7 +449,6 @@ public class ConceptDeviationComparator {
     }
 
     private boolean compareMaps(Map<?, ?> map1, Map<?, ?> map2) {
-        // Maps with nested lists need special handling
         if (map1.size() != map2.size()) return false;
 
         for (Object key : map1.keySet()) {

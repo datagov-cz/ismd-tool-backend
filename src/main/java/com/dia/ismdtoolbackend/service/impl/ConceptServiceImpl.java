@@ -22,18 +22,14 @@ import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
-import org.apache.jena.query.QueryExecution;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
-import org.apache.jena.sparql.exec.http.QuerySendMode;
 import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -401,7 +397,6 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
-        // Only check for published concepts
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
         }
@@ -409,7 +404,6 @@ public class ConceptServiceImpl implements ConceptService {
         String conceptIri = conceptMetadata.getConceptIri();
 
         try {
-            // Extract local concept detail
             OntologyDetailModel.ConceptDetailModel localConcept =
                     detailExtractor.extractConceptDetail(processedModel, conceptIri);
 
@@ -421,7 +415,6 @@ public class ConceptServiceImpl implements ConceptService {
                 );
             }
 
-            // Fetch published concept from NKD
             Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
                     nkdSparqlClient.fetchPublishedConcept(conceptIri);
 
@@ -433,7 +426,6 @@ public class ConceptServiceImpl implements ConceptService {
                 );
             }
 
-            // Compare and return deviations
             OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
             return deviationComparator.compareConceptDetails(localConcept, publishedConcept);
 

@@ -16,7 +16,6 @@ public class PublishedConceptDeviationModel {
     private DeviationStatus status;
     private String errorMessage;
 
-    // Basic properties - only included if different
     @JsonProperty("typ")
     private PropertyDeviation<List<String>> types;
 
@@ -35,7 +34,6 @@ public class PublishedConceptDeviationModel {
     @JsonProperty("identifikátor")
     private PropertyDeviation<String> identifier;
 
-    // Hierarchy properties
     @JsonProperty("nadřazená-třída")
     private PropertyDeviation<List<String>> broaderClasses;
 
@@ -45,7 +43,6 @@ public class PublishedConceptDeviationModel {
     @JsonProperty("nadřazená-vlastnost")
     private PropertyDeviation<List<String>> broaderProperties;
 
-    // Relations
     @JsonProperty("definiční-obor")
     private PropertyDeviation<String> domain;
 
@@ -55,7 +52,6 @@ public class PublishedConceptDeviationModel {
     @JsonProperty("ekvivalentní-pojem")
     private PropertyDeviation<List<Map<String, String>>> exactMatches;
 
-    // Legal and non-legal sources
     @JsonProperty("definující-ustanovení-právního-předpisu")
     private PropertyDeviation<List<String>> definingLegalSources;
 
@@ -68,7 +64,6 @@ public class PublishedConceptDeviationModel {
     @JsonProperty("související-nelegislativní-zdroj")
     private PropertyDeviation<List<Map<String, String>>> relatedNonLegalSources;
 
-    // Governance properties
     @JsonProperty("způsob-sdílení-údajů")
     private PropertyDeviation<List<String>> sharingMethods;
 
