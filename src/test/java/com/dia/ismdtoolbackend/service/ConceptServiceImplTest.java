@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -94,9 +95,14 @@ class ConceptServiceImplTest {
         ConceptCreateModel createModel = createValidConceptCreateModel();
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -179,9 +185,14 @@ class ConceptServiceImplTest {
     void createConcept_MetadataSaveFails_RollbackTDB2() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
 
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
                 .thenThrow(new RuntimeException("DB error"));
 
@@ -197,9 +208,14 @@ class ConceptServiceImplTest {
         ConceptCreateModel createModel = createValidConceptCreateModel();
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
