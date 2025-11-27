@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -248,7 +249,7 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
         entity.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(conceptIri));
-        entity.setConceptName(createModel.getNameModel().getName());
+        entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
         entity.setGraphName(createModel.getOntologyGraphName());
@@ -315,7 +316,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
-            metadata.setConceptName(conceptEditModel.getNameModel().getName());
+            metadata.setConceptName(getNameForMetadata(conceptEditModel.getNameModel()));
         }
 
         if (conceptEditModel.getInTezaurus() != null) {
@@ -388,5 +389,16 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
+    }
+
+    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey("cs")) {
+            return names.get("cs");
+        }
+        return names.values().iterator().next();
     }
 }

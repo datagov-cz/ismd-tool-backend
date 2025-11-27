@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
@@ -257,7 +258,8 @@ public class ConceptCreator {
     }
 
     private Resource createClassResource(ClassConceptModel classModel) {
-        String classURI = uriGenerator.generateConceptURI(classModel.getNameModel().getName(), classModel.getIdentifier());
+        String nameForUri = getNameForUriGeneration(classModel.getNameModel());
+        String classURI = uriGenerator.generateConceptURI(nameForUri, classModel.getIdentifier());
         Resource classResource = ontModel.createResource(classURI);
 
         classResource.addProperty(RDF.type, SKOS.Concept);
@@ -276,7 +278,8 @@ public class ConceptCreator {
     }
 
     private Resource createPropertyResource(PropertyConceptModel propModel) {
-        String propertyURI = uriGenerator.generateConceptURI(propModel.getNameModel().getName(), propModel.getIdentifier());
+        String nameForUri = getNameForUriGeneration(propModel.getNameModel());
+        String propertyURI = uriGenerator.generateConceptURI(nameForUri, propModel.getIdentifier());
 
         OntProperty propertyResource;
         if (isObjectProperty(propModel)) {
@@ -299,7 +302,8 @@ public class ConceptCreator {
     }
 
     private Resource createRelationshipResource(RelationshipConceptModel relModel) {
-        String relationshipURI = uriGenerator.generateConceptURI(relModel.getNameModel().getName(), relModel.getIdentifier());
+        String nameForUri = getNameForUriGeneration(relModel.getNameModel());
+        String relationshipURI = uriGenerator.generateConceptURI(nameForUri, relModel.getIdentifier());
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
 
@@ -333,34 +337,57 @@ public class ConceptCreator {
     }
 
     private void addPrefLabel(Resource resource, ConceptCreateModel model) {
-        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
-            String nameLanguageTag = model.getNameModel().getLanguageTag() != null
-                    ? model.getNameModel().getLanguageTag()
-                    : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
-                    model.getNameModel().getName(), nameLanguageTag, ontModel);
+        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().isEmpty()) {
+            for (Map.Entry<String, String> entry : model.getNameModel().getName().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
+                            entry.getValue().trim(), languageTag, ontModel);
+                }
+            }
         }
     }
 
     private void addDescription(Resource resource, ConceptCreateModel model) {
-        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
+        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().isEmpty()) {
             Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
-            String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
-                    ? model.getDescriptionModel().getLanguageTag()
-                    : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, descProperty,
-                    model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
+            for (Map.Entry<String, String> entry : model.getDescriptionModel().getDescription().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, descProperty,
+                            entry.getValue().trim(), languageTag, ontModel);
+                }
+            }
         }
     }
 
     private void addDefinition(Resource resource, ConceptCreateModel model) {
-        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().trim().isEmpty()) {
-            String defLanguageTag = model.getDefinitionModel().getLanguageTag() != null
-                    ? model.getDefinitionModel().getLanguageTag()
-                    : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, SKOS.definition,
-                    model.getDefinitionModel().getDefinition(), defLanguageTag, ontModel);
+        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().isEmpty()) {
+            for (Map.Entry<String, String> entry : model.getDefinitionModel().getDefinition().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, SKOS.definition,
+                            entry.getValue().trim(), languageTag, ontModel);
+                }
+            }
         }
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
     }
 
     private void addSourceMetadata(Resource resource, ConceptCreateModel model) {

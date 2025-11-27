@@ -28,6 +28,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 
@@ -321,7 +323,9 @@ class ConceptServiceImplTest {
     void editConcept_UpdatesName() {
         String newName = "Updated Concept Name";
         ConceptEditModel editModel = createValidConceptEditModel();
-        editModel.getNameModel().setName(newName);
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", newName);
+        editModel.getNameModel().setName(nameMap);
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
@@ -471,8 +475,9 @@ class ConceptServiceImplTest {
         model.setNamespace(TEST_GRAPH_NAME);
 
         NameModel nameModel = new NameModel();
-        nameModel.setName(TEST_CONCEPT_NAME);
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", TEST_CONCEPT_NAME);
+        nameModel.setName(nameMap);
         model.setNameModel(nameModel);
 
         return model;
@@ -495,8 +500,9 @@ class ConceptServiceImplTest {
         model.setConceptType("TRIDA");
 
         NameModel nameModel = new NameModel();
-        nameModel.setName(TEST_CONCEPT_NAME);
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", TEST_CONCEPT_NAME);
+        nameModel.setName(nameMap);
         model.setNameModel(nameModel);
 
         return model;
