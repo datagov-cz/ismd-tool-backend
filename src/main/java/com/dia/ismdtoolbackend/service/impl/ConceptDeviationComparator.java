@@ -89,7 +89,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areEqual(local.getAlternativeName(), published.getAlternativeName())) {
-            builder.alternativeName(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, List<String>>>builder()
+            builder.alternativeName(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, Object>>builder()
                     .localValue(local.getAlternativeName())
                     .publishedValue(published.getAlternativeName())
                     .isDifferent(true)
@@ -281,7 +281,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areEqual(local.getDefiningNonLegalSources(), published.getDefiningNonLegalSources())) {
-            builder.definingNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, String>>>builder()
+            builder.definingNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, Object>>>builder()
                     .localValue(local.getDefiningNonLegalSources())
                     .publishedValue(published.getDefiningNonLegalSources())
                     .isDifferent(true)
@@ -297,7 +297,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areEqual(local.getRelatedNonLegalSources(), published.getRelatedNonLegalSources())) {
-            builder.relatedNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, String>>>builder()
+            builder.relatedNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, Object>>>builder()
                     .localValue(local.getRelatedNonLegalSources())
                     .publishedValue(published.getRelatedNonLegalSources())
                     .isDifferent(true)
@@ -409,7 +409,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areEqual(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
-            builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
+            builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getPrivacyProvisions())
                     .publishedValue(published.getPrivacyProvisions())
                     .isDifferent(true)
@@ -440,7 +440,9 @@ public class ConceptDeviationComparator {
         }
 
         if (!list1.isEmpty() && list1.get(0) instanceof Map) {
+            @SuppressWarnings("unchecked")
             Set<Map<?, ?>> set1 = new HashSet<>((List<Map<?, ?>>) list1);
+            @SuppressWarnings("unchecked")
             Set<Map<?, ?>> set2 = new HashSet<>((List<Map<?, ?>>) list2);
             return !set1.equals(set2);
         }
@@ -451,10 +453,12 @@ public class ConceptDeviationComparator {
     private boolean compareMaps(Map<?, ?> map1, Map<?, ?> map2) {
         if (map1.size() != map2.size()) return false;
 
-        for (Object key : map1.keySet()) {
+        for (Map.Entry<?, ?> entry : map1.entrySet()) {
+            Object key = entry.getKey();
+            Object val1 = entry.getValue();
+
             if (!map2.containsKey(key)) return false;
 
-            Object val1 = map1.get(key);
             Object val2 = map2.get(key);
 
             if (val1 instanceof List && val2 instanceof List) {

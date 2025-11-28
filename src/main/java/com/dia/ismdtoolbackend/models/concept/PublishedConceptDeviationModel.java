@@ -23,7 +23,7 @@ public class PublishedConceptDeviationModel {
     private PropertyDeviation<Map<String, String>> name;
 
     @JsonProperty("alternativní-název")
-    private PropertyDeviation<Map<String, List<String>>> alternativeName;
+    private PropertyDeviation<Map<String, Object>> alternativeName;
 
     @JsonProperty("definice")
     private PropertyDeviation<Map<String, String>> definition;
@@ -59,10 +59,10 @@ public class PublishedConceptDeviationModel {
     private PropertyDeviation<List<String>> relatedLegalSources;
 
     @JsonProperty("definující-nelegislativní-zdroj")
-    private PropertyDeviation<List<Map<String, String>>> definingNonLegalSources;
+    private PropertyDeviation<List<Map<String, Object>>> definingNonLegalSources;
 
     @JsonProperty("související-nelegislativní-zdroj")
-    private PropertyDeviation<List<Map<String, String>>> relatedNonLegalSources;
+    private PropertyDeviation<List<Map<String, Object>>> relatedNonLegalSources;
 
     @JsonProperty("způsob-sdílení-údajů")
     private PropertyDeviation<List<String>> sharingMethods;
@@ -83,7 +83,7 @@ public class PublishedConceptDeviationModel {
     private PropertyDeviation<String> agenda;
 
     @JsonProperty("ustanovení-neverejnost")
-    private PropertyDeviation<List<String>> privacyProvisions;
+    private PropertyDeviation<String> privacyProvisions;
 
     @Data
     @Builder
