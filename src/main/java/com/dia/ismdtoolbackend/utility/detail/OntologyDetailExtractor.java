@@ -5,7 +5,6 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
@@ -42,6 +41,7 @@ public class OntologyDetailExtractor {
         return ofnFormattedModel;
     }
 
+   @Transactional(readOnly = true)
     public OntologyDetailModel extractOntologyDetail(Model processedModel) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
 
@@ -93,7 +93,6 @@ public class OntologyDetailExtractor {
         return null;
     }
 
-    @Transactional(readOnly = true)
     public List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, ConceptData conceptData) {
         List<ConceptPropertiesModel> properties = new ArrayList<>();
 
@@ -125,7 +124,6 @@ public class OntologyDetailExtractor {
         return properties;
     }
 
-    @Transactional(readOnly = true)
     public List<ConceptRelationshipsModel> extractConceptRelationships(String conceptIri, ConceptData conceptData) {
         List<ConceptRelationshipsModel> relationships = new ArrayList<>();
 
@@ -180,7 +178,7 @@ public class OntologyDetailExtractor {
                 .iri(conceptIri)
                 .types((List<String>) conceptMap.get("typ"))
                 .name((Map<String, String>) conceptMap.get(NAZEV))
-                .alternativeName((Map<String, List<String>>) conceptMap.get(ALTERNATIVNI_NAZEV))
+                .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
                 .definition((Map<String, String>) conceptMap.get(DEFINICE))
                 .description((Map<String, String>) conceptMap.get(POPIS))
                 .identifier((String) conceptMap.get(IDENTIFIKATOR))
@@ -192,18 +190,32 @@ public class OntologyDetailExtractor {
                 .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
                 .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
                 .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
-                .definingNonLegalSources((List<Map<String, String>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
-                .relatedNonLegalSources((List<Map<String, String>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
-                .sharingMethods((String) conceptMap.get(ZPUSOB_SDILENI))
-                .acquisitionMethod((String) conceptMap.get(ZPUSOB_ZISKANI))
-                .contentType((String) conceptMap.get(TYP_OBSAHU))
+                .definingNonLegalSources((List<Map<String, Object>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
+                .relatedNonLegalSources((List<Map<String, Object>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
+                .sharingMethods((List<String>) conceptMap.get(ZPUSOB_SDILENI))
+                .acquisitionMethod(extractStringFromValue(conceptMap.get(ZPUSOB_ZISKANI)))
+                .contentType(extractStringFromValue(conceptMap.get(TYP_OBSAHU)))
                 .isPpdf((Boolean) conceptMap.get(JE_PPDF))
-                .ais((String) conceptMap.get(AIS))
-                .agenda((String) conceptMap.get(AGENDA))
-                .privacyProvisions((String) conceptMap.get(USTANOVENI_NEVEREJNOST))
+                .ais(extractStringFromValue(conceptMap.get(AIS)))
+                .agenda(extractStringFromValue(conceptMap.get(AGENDA)))
+                .privacyProvisions(extractStringFromValue(conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .conceptProperties(properties)
                 .conceptRelationships(relationships)
                 .build();
+    }
+
+    private String extractStringFromValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof String) {
+            return (String) value;
+        }
+        if (value instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof String) {
+                return (String) list.get(0);
+            }
+
+        return null;
     }
 
     private Map<String, String> createMultilingualMap(String value) {

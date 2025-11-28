@@ -180,7 +180,7 @@ public class ConceptCreator {
     }
 
     private void addConditionalCommonProperties(Set<String> properties, ConceptCreateModel createModel) {
-        if (createModel.getAltNameModel() != null && !createModel.getAltNameModel().isEmpty()) {
+        if (createModel.getAltNameModel() != null) {
             properties.add(ALTERNATIVNI_NAZEV);
         }
 
@@ -237,7 +237,7 @@ public class ConceptCreator {
 
     private void addCommonGovernanceProperties(Set<String> properties, Boolean isInPPDF, String agendaCode,
                                                  String agendaSystemCode, String privacyProvision,
-                                                 String sharingMethod, String acquisitionMethod, String contentType) {
+                                                 List<String> sharingMethod, String acquisitionMethod, String contentType) {
         if (isInPPDF != null) {
             properties.add(JE_PPDF);
         }
@@ -331,7 +331,7 @@ public class ConceptCreator {
         addDescription(resource, model);
         addDefinition(resource, model);
 
-        if (model.getAltNameModel() != null && !model.getAltNameModel().isEmpty()) {
+        if (model.getAltNameModel() != null) {
             addAlternativeNames(resource, model.getAltNameModel());
         }
     }
@@ -454,8 +454,12 @@ public class ConceptCreator {
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             addAIS(classResource, classModel.getAgendaSystemCode());
         }
-        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().trim().isEmpty()) {
-            addGovernanceProperty(classResource, classModel.getSharingMethod(), ZPUSOB_SDILENI);
+        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
+            for (String method : classModel.getSharingMethod()) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
+                }
+            }
         }
         if (classModel.getAcquisitionMethod() != null && !classModel.getAcquisitionMethod().trim().isEmpty()) {
             addGovernanceProperty(classResource, classModel.getAcquisitionMethod(), ZPUSOB_ZISKANI);
@@ -575,7 +579,7 @@ public class ConceptCreator {
     }
 
     private void addSharedGovernanceMetadata(Resource resource, String agendaCode, String agendaSystemCode,
-                                              String sharingMethod, String acquisitionMethod, String contentType,
+                                              List<String> sharingMethod, String acquisitionMethod, String contentType,
                                               String privacyProvision) {
         if (agendaCode != null && !agendaCode.trim().isEmpty()) {
             addAgenda(resource, agendaCode);
@@ -583,8 +587,12 @@ public class ConceptCreator {
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             addAIS(resource, agendaSystemCode);
         }
-        if (sharingMethod != null && !sharingMethod.trim().isEmpty()) {
-            addGovernanceProperty(resource, sharingMethod, ZPUSOB_SDILENI);
+        if (sharingMethod != null && !sharingMethod.isEmpty()) {
+            for (String method : sharingMethod) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(resource, method, ZPUSOB_SDILENI);
+                }
+            }
         }
         if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
             addGovernanceProperty(resource, acquisitionMethod, ZPUSOB_ZISKANI);
@@ -608,14 +616,16 @@ public class ConceptCreator {
         }
     }
 
-    private void addAlternativeNames(Resource resource, List<AltNameModel> altNameModels) {
-        for (com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel : altNameModels) {
-            if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().trim().isEmpty()) {
-                String languageTag = altNameModel.getLanguageTag() != null
-                    ? altNameModel.getLanguageTag()
-                    : DEFAULT_LANG;
-                DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
-                    altNameModel.getAltName().trim(), languageTag, ontModel);
+    private void addAlternativeNames(Resource resource, AltNameModel altNameModel) {
+        if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
+            for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
+                        entry.getValue().trim(), languageTag, ontModel);
+                }
             }
         }
     }
@@ -857,9 +867,9 @@ public class ConceptCreator {
     }
 
     private boolean hasGovernanceProperties(ClassConceptModel model) {
-        return (model.getSharingMethod() != null && !model.getSharingMethod().trim().isEmpty()) ||
-                (model.getAcquisitionMethod() != null && !model.getAcquisitionMethod().trim().isEmpty()) ||
-                (model.getContentType() != null && !model.getContentType().trim().isEmpty());
+        return (model.getSharingMethod() != null && !model.getSharingMethod().isEmpty()) ||
+                (model.getAcquisitionMethod() != null && !model.getAcquisitionMethod().isEmpty()) ||
+                (model.getContentType() != null && !model.getContentType().isEmpty());
     }
 
     private boolean hasPublicDataValue(String isPublic) {
@@ -878,8 +888,8 @@ public class ConceptCreator {
         return privacyProvision != null && !privacyProvision.trim().isEmpty();
     }
 
-    private boolean hasGovernancePropertiesValues(String sharingMethod, String acquisitionMethod, String contentType) {
-        return (sharingMethod != null && !sharingMethod.trim().isEmpty()) ||
+    private boolean hasGovernancePropertiesValues(List<String> sharingMethod, String acquisitionMethod, String contentType) {
+        return (sharingMethod != null && !sharingMethod.isEmpty()) ||
                 (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) ||
                 (contentType != null && !contentType.trim().isEmpty());
     }

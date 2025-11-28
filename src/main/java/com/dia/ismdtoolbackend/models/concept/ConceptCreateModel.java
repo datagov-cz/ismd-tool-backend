@@ -31,7 +31,7 @@ public abstract class ConceptCreateModel {
     @NotBlank
     protected NameModel nameModel;
     protected String identifier;
-    protected List<AltNameModel> altNameModel;
+    protected AltNameModel altNameModel;
     protected DescriptionModel descriptionModel;
     protected DefinitionModel definitionModel;
     protected List<String> definingNonLegalSource;

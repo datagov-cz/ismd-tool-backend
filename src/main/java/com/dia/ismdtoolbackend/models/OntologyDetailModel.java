@@ -56,7 +56,7 @@ public class OntologyDetailModel {
         private Map<String, String> name;
 
         @JsonProperty("alternativní-název")
-        private Map<String, List<String>> alternativeName;
+        private Map<String, Object> alternativeName;
 
         @JsonProperty("definice")
         private Map<String, String> definition;
@@ -92,13 +92,13 @@ public class OntologyDetailModel {
         private List<String> relatedLegalSources;
 
         @JsonProperty("definující-nelegislativní-zdroj")
-        private List<Map<String, String>> definingNonLegalSources;
+        private List<Map<String, Object>> definingNonLegalSources;
 
         @JsonProperty("související-nelegislativní-zdroj")
-        private List<Map<String, String>> relatedNonLegalSources;
+        private List<Map<String, Object>> relatedNonLegalSources;
 
         @JsonProperty("způsob-sdílení-údajů")
-        private String sharingMethods;
+        private List<String> sharingMethods;
 
         @JsonProperty("způsob-získání-údajů")
         private String acquisitionMethod;

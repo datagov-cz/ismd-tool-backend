@@ -92,7 +92,7 @@ public class ConceptEditor {
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
         updateBroaderConcept(conceptResource, editModel.getBroaderConcept(), existingConcept, model, toRemove, toAdd);
@@ -113,7 +113,7 @@ public class ConceptEditor {
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
@@ -133,7 +133,7 @@ public class ConceptEditor {
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
@@ -257,19 +257,21 @@ public class ConceptEditor {
         }
     }
 
-    private void updateAltNameModel(Resource newConcept, List<AltNameModel> altNameModels, Resource oldConcept,
+    private void updateAltNameModel(Resource newConcept, AltNameModel altNameModel, Resource oldConcept,
                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (altNameModels == null) return;
+        if (altNameModel == null) return;
 
         Map<String, String> oldAltNamesWithLang = getPropertyValuesWithLanguage(oldConcept);
 
         Map<String, String> newAltNamesWithLang = new HashMap<>();
-        for (AltNameModel altNameModel : altNameModels) {
-            if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().trim().isEmpty()) {
-                String languageTag = altNameModel.getLanguageTag() != null
-                    ? altNameModel.getLanguageTag()
-                    : DEFAULT_LANG;
-                newAltNamesWithLang.put(altNameModel.getAltName().trim(), languageTag);
+        if (altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
+            for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                    newAltNamesWithLang.put(entry.getValue().trim(), languageTag);
+                }
             }
         }
 
@@ -462,6 +464,36 @@ public class ConceptEditor {
             removeAllByPredicate(oldConcept, property, toRemove);
             if (newIRI != null) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(newIRI)));
+            }
+        }
+    }
+
+    private void updateGovernancePropertyList(Resource newConcept, List<String> newValues, String propertyName,
+                                               Resource oldConcept, Model model, Set<Statement> toRemove,
+                                               Set<Statement> toAdd) {
+        if (newValues == null) return;
+
+        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + propertyName);
+        Set<String> oldIRIs = getResourceURIs(oldConcept, property);
+        Set<String> newIRIs = new HashSet<>();
+
+        for (String value : newValues) {
+            if (value != null && !value.trim().isEmpty()) {
+                String newIRI = generateGovernanceIRI(value, propertyName);
+                if (newIRI != null) {
+                    newIRIs.add(newIRI);
+                }
+            }
+        }
+
+        if (newValues.isEmpty() || newIRIs.isEmpty()) {
+            if (!oldIRIs.isEmpty()) {
+                removeAllByPredicate(oldConcept, property, toRemove);
+            }
+        } else if (!oldIRIs.equals(newIRIs)) {
+            removeAllByPredicate(oldConcept, property, toRemove);
+            for (String iri : newIRIs) {
+                toAdd.add(model.createStatement(newConcept, property, model.createResource(iri)));
             }
         }
     }

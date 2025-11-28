@@ -6,6 +6,8 @@ import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 
+import java.util.List;
+
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
@@ -18,7 +20,7 @@ public class RelationshipConceptEditModel extends ConceptEditModel {
     private String agendaSystemCode;
     private String isPublic;
     private String privacyProvision;
-    private String sharingMethod;
+    private List<String> sharingMethod;
     private String acquisitionMethod;
     private String contentType;
 
@@ -44,8 +46,10 @@ public class RelationshipConceptEditModel extends ConceptEditModel {
             );
         }
 
-        if (sharingMethod != null && !sharingMethod.trim().isEmpty()) {
-            validateGovernanceValue(sharingMethod, "způsob sdílení");
+        if (sharingMethod != null && !sharingMethod.isEmpty()) {
+            for (String s : sharingMethod) {
+                validateGovernanceValue(s, "způsob sdílení");
+            }
         }
         if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
             validateGovernanceValue(acquisitionMethod, "způsob získání");
