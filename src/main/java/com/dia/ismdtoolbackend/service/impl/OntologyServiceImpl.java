@@ -11,7 +11,6 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
-import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -41,8 +40,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
@@ -96,7 +95,8 @@ public class OntologyServiceImpl implements OntologyService {
         validateOntologyCreateModel(ontologyCreateModel);
 
         URIGenerator uriGenerator = new URIGenerator();
-        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(ontologyCreateModel.getNameModel().getName(), ontologyCreateModel.getNamespace());
+        String nameForURI = getNameForUriGeneration(ontologyCreateModel.getNameModel());
+        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(nameForURI, ontologyCreateModel.getNamespace());
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
             log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
@@ -189,20 +189,32 @@ public class OntologyServiceImpl implements OntologyService {
         Resource ontologyResource = model.getResource(ontologyIRI);
 
         Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        String nameLanguageTag = ontologyCreateModel.getNameModel().getLanguageTag() != null
-            ? ontologyCreateModel.getNameModel().getLanguageTag()
-            : DEFAULT_LANG;
-        ontologyResource.addProperty(prefLabel, ontologyCreateModel.getNameModel().getName(), nameLanguageTag);
+        if (ontologyCreateModel.getNameModel() != null && ontologyCreateModel.getNameModel().getName() != null) {
+            for (Map.Entry<String, String> entry : ontologyCreateModel.getNameModel().getName().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(ontologyResource, prefLabel,
+                            entry.getValue().trim(), languageTag, model);
+                }
+            }
+        }
         ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
         ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
 
-        if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null && !ontologyCreateModel.getDescriptionModel().getDescription().trim().isEmpty()) {
+        if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null) {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            String descLanguageTag = ontologyCreateModel.getDescriptionModel().getLanguageTag() != null
-                ? ontologyCreateModel.getDescriptionModel().getLanguageTag()
-                : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(ontologyResource, descProperty, ontologyCreateModel.getDescriptionModel().getDescription(), descLanguageTag, model);
+            for (Map.Entry<String, String> entry : ontologyCreateModel.getDescriptionModel().getDescription().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(ontologyResource, descProperty,
+                            entry.getValue().trim(), languageTag, model);
+                }
+            }
         }
 
         String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
@@ -524,5 +536,16 @@ public class OntologyServiceImpl implements OntologyService {
                 model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
             }
         }
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
     }
 }

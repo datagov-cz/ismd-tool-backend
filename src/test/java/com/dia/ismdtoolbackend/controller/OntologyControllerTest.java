@@ -18,6 +18,9 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
@@ -333,12 +336,14 @@ class OntologyControllerTest {
         OntologyCreateModel createModel = new OntologyCreateModel();
         createModel.setNamespace("http://example.org/");
         NameModel nameModel = new NameModel();
-        nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "test-ontology");
+        nameModel.setName(nameMap);
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
-        descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("cs", "Test description");
+        descModel.setDescription(descMap);
         createModel.setDescriptionModel(descModel);
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
@@ -362,12 +367,14 @@ class OntologyControllerTest {
         OntologyCreateModel createModel = new OntologyCreateModel();
         createModel.setNamespace("http://example.org/");
         NameModel nameModel = new NameModel();
-        nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "test-ontology");
+        nameModel.setName(nameMap);
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
-        descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("cs", "Test description");
+        descModel.setDescription(descMap);
         createModel.setDescriptionModel(descModel);
 
         mockMvc.perform(post("/api/ontology/create")
@@ -383,12 +390,14 @@ class OntologyControllerTest {
         String userId = "user123";
         OntologyCreateModel createModel = new OntologyCreateModel();
         NameModel nameModel = new NameModel();
-        nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "test-ontology");
+        nameModel.setName(nameMap);
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
-        descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("cs", "Test description");
+        descModel.setDescription(descMap);
         createModel.setDescriptionModel(descModel);
 
         when(ontologyService.createOntology(any(), eq(userId)))

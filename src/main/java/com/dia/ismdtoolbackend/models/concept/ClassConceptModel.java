@@ -5,6 +5,8 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.jena.ontology.OntologyException;
 
+import java.util.List;
+
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class ClassConceptModel extends ConceptCreateModel {
@@ -13,7 +15,7 @@ public class ClassConceptModel extends ConceptCreateModel {
     private String agendaSystemCode;
     private String contentType;
     private String acquisitionMethod;
-    private String sharingMethod;
+    private List<String> sharingMethod;
     private Boolean isInPPDF;
     private String isPublic;
     private String privacyProvision;
@@ -41,8 +43,10 @@ public class ClassConceptModel extends ConceptCreateModel {
             }
 
 
-        if (sharingMethod != null && !sharingMethod.trim().isEmpty()) {
-            validateGovernanceValue(sharingMethod, "způsob sdílení");
+        if (sharingMethod != null && !sharingMethod.isEmpty()) {
+            for (String s : sharingMethod) {
+                validateGovernanceValue(s, "způsob sdílení");
+            }
         }
         if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
             validateGovernanceValue(acquisitionMethod, "způsob získání");

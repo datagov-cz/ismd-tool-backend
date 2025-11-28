@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -11,6 +12,7 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -35,6 +38,7 @@ import java.util.Optional;
 public class ConceptServiceImpl implements ConceptService {
 
     private final ConceptMetadataRepository conceptMetadataRepository;
+    private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final ConceptCreator conceptCreator;
     private final ConceptEditor conceptEditor;
@@ -235,15 +239,24 @@ public class ConceptServiceImpl implements ConceptService {
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
                                                        String userId,
                                                        String conceptIri) {
+        String ontologyGraphName = createModel.getOntologyGraphName();
+        OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository
+                .findByGraphName(ontologyGraphName)
+                .orElseThrow(() -> {
+                    log.error("Ontology metadata not found for graph: {}", ontologyGraphName);
+                    return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
+                });
+
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
         entity.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(conceptIri));
-        entity.setConceptName(createModel.getNameModel().getName());
+        entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
         entity.setGraphName(createModel.getOntologyGraphName());
         entity.setUserId(userId);
         entity.setIsPublished(false);
         entity.setInTezaurus(createModel.getInTezaurus());
+        entity.setOntologyMetadata(ontologyMetadata);
 
         return entity;
     }
@@ -303,7 +316,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
-            metadata.setConceptName(conceptEditModel.getNameModel().getName());
+            metadata.setConceptName(getNameForMetadata(conceptEditModel.getNameModel()));
         }
 
         if (conceptEditModel.getInTezaurus() != null) {
@@ -376,5 +389,16 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
+    }
+
+    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey("cs")) {
+            return names.get("cs");
+        }
+        return names.values().iterator().next();
     }
 }
