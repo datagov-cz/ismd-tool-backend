@@ -26,7 +26,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -460,14 +462,16 @@ class OntologyServiceImplTest {
     private OntologyCreateModel createValidOntologyCreateModel() {
         OntologyCreateModel model = new OntologyCreateModel();
         NameModel nameModel = new NameModel();
-        nameModel.setName("test-ontology");
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "test-ontology");
+        nameModel.setName(nameMap);
         model.setNameModel(nameModel);
         model.setNamespace("http://example.org/");
 
         DescriptionModel descModel = new DescriptionModel();
-        descModel.setDescription("Test description");
-        descModel.setLanguageTag("cs");
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("cs", "Test description");
+        descModel.setDescription(descMap);
         model.setDescriptionModel(descModel);
 
         return model;

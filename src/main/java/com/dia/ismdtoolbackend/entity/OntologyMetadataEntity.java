@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,6 +36,7 @@ public class OntologyMetadataEntity {
     @Column(name = "is_published")
     private Boolean isPublished;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "ontologyMetadata", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ConceptMetadataEntity> concepts = new ArrayList<>();
 

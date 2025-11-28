@@ -30,7 +30,7 @@ public abstract class ConceptEditModel {
     protected String namespace;
     protected NameModel nameModel;
     protected String identifier;
-    protected List<AltNameModel> altNameModel;
+    protected AltNameModel altNameModel;
     protected DescriptionModel descriptionModel;
     protected DefinitionModel definitionModel;
     protected List<String> definingNonLegalSource;

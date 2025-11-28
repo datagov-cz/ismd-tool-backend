@@ -4,6 +4,7 @@ import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.exception.ValidationException;
@@ -274,7 +275,7 @@ public class OntologyController {
 
     @PostMapping("/validate")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
-            @RequestPart OntologyMetadataModel ontologyMetadata
+            @RequestBody OntologyMetadataModel ontologyMetadata
     ) {
         try {
             String requestId = UUID.randomUUID().toString();
@@ -301,23 +302,22 @@ public class OntologyController {
 
     @PostMapping("/catalog-record")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
-            @RequestPart OntologyMetadataModel ontologyMetadata,
-            @RequestPart ValidationReportDto validationReport
+            @RequestBody CatalogRequestDto catalogRequestDto
     ) {
         try {
             String requestId = UUID.randomUUID().toString();
             MDC.put(LOG_REQUEST_ID, requestId);
-            log.info("Ontology catalog record requested, ontologyIRI: {}", ontologyMetadata.getGraphName());
+            log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
 
-            String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
+            String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
             CatalogRecordRequestDto request = new CatalogRecordRequestDto();
             request.setTtlContent(ttlContent);
-            request.setValidationReport(validationReport);
+            request.setValidationReport(catalogRequestDto.getValidationReport());
             Optional<CatalogRecordDto> catalogRecordDto = validationClient.requestCatalogRecord(request);
             if (catalogRecordDto.isPresent()) {
                 return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecordDto.get(), "Žádost o katalogizační záznam proběhla úspěšně."));
             } else {
-                log.warn("Catalog record not received for ontology: {}", ontologyMetadata.getGraphName());
+                log.warn("Catalog record not received for ontology: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
                 return ResponseEntity.status(500).body(ApiResponseDto.error("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
             }
         } catch (OntologyException e) {
