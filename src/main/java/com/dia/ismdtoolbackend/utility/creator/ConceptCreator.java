@@ -263,8 +263,8 @@ public class ConceptCreator {
             classURI = classModel.getIdentifier();
             log.info("Using custom IRI from identifier: {}", classURI);
         } else {
-            // TODO
-            classURI = uriGenerator.generateConceptURI(classModel.getNameModel().getName(), classModel.getIdentifier());
+            String name = getNameForUriGeneration(classModel.getNameModel());
+            classURI = uriGenerator.generateConceptURI(name, classModel.getIdentifier());
         }
 
         Resource classResource = ontModel.createResource(classURI);
@@ -290,8 +290,8 @@ public class ConceptCreator {
             propertyURI = propModel.getIdentifier();
             log.info("Using custom IRI from identifier: {}", propertyURI);
         } else {
-            // TODO
-            propertyURI = uriGenerator.generateConceptURI(propModel.getNameModel().getName(), propModel.getIdentifier());
+            String name = getNameForUriGeneration(propModel.getNameModel());
+            propertyURI = uriGenerator.generateConceptURI(name, propModel.getIdentifier());
         }
 
         OntProperty propertyResource;
@@ -320,8 +320,8 @@ public class ConceptCreator {
             relationshipURI = relModel.getIdentifier();
             log.info("Using custom IRI from identifier: {}", relationshipURI);
         } else {
-            // TODO
-            relationshipURI = uriGenerator.generateConceptURI(relModel.getNameModel().getName(), relModel.getIdentifier());
+            String name = getNameForUriGeneration(relModel.getNameModel());
+            relationshipURI = uriGenerator.generateConceptURI(name, relModel.getIdentifier());
         }
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
@@ -900,5 +900,16 @@ public class ConceptCreator {
         return (sharingMethod != null && !sharingMethod.isEmpty()) ||
                 (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) ||
                 (contentType != null && !contentType.trim().isEmpty());
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
     }
 }
