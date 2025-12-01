@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
@@ -60,6 +61,9 @@ class OntologyUploadServiceImplTest {
     @Mock
     private MultipartFile multipartFile;
 
+    @Mock
+    private NkdSparqlClient nkdSparqlClient;
+
     @InjectMocks
     private OntologyUploadServiceImpl ontologyUploadService;
 
@@ -72,7 +76,8 @@ class OntologyUploadServiceImplTest {
                 validationClient,
                 validationReportRepository,
                 ontologyAnalyzer,
-                jenaTDB2Repository
+                jenaTDB2Repository,
+                nkdSparqlClient
         );
     }
 

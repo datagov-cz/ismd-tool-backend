@@ -12,6 +12,8 @@ import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -75,5 +77,51 @@ public class NkdSparqlClient {
         }
     }
 
+    public List<String> getPublishedConceptsList(List<String> conceptIris) {
+        if (conceptIris == null || conceptIris.isEmpty()) {
+            log.debug("No concept IRIs provided for NKD verification");
+            return new ArrayList<>();
+        }
 
+        if (nkdSparqlEndpoint == null || nkdSparqlEndpoint.trim().isEmpty()) {
+            log.warn("NKD SPARQL endpoint not configured, skipping verification");
+            return new ArrayList<>();
+        }
+
+        log.debug("Verifying {} concepts against NKD", conceptIris.size());
+
+        List<String> publishedConcepts = conceptIris.parallelStream()
+                .filter(this::isConceptPublishedInNKD)
+                .toList();
+
+        log.info("Found {} published concepts out of {} total concepts", publishedConcepts.size(), conceptIris.size());
+        return publishedConcepts;
+    }
+
+    private boolean isConceptPublishedInNKD(String conceptIri) {
+        try {
+            String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
+
+            Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
+                    .query(query)
+                    .timeout(queryTimeout, TimeUnit.MILLISECONDS)
+                    .construct();
+
+            boolean isPublished = resultModel != null && !resultModel.isEmpty();
+            if (isPublished) {
+                log.debug("Concept is published in NKD: {}", conceptIri);
+            }
+            return isPublished;
+
+        } catch (QueryExceptionHTTP e) {
+            log.debug("Concept not found in NKD (SPARQL error): {}", conceptIri);
+            return false;
+        } catch (HttpException e) {
+            log.warn("HTTP error checking concept in NKD: {} - {}", conceptIri, e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.warn("Unexpected error checking concept in NKD: {} - {}", conceptIri, e.getMessage());
+            return false;
+        }
+    }
 }
