@@ -22,6 +22,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.*;
@@ -50,7 +52,7 @@ class ConceptEditorTest {
     //
     // Z — Generic / error handling
     //   Z1 – Error when concept is not found in the model
-/*
+
     @InjectMocks
     private ConceptEditor conceptEditor;
 
@@ -63,16 +65,9 @@ class ConceptEditorTest {
     @Mock
     private RelationshipConceptEditModel relationshipConceptEditModel;
 
-    @Mock
     private NameModel nameModel;
-
-    @Mock
     private DescriptionModel descriptionModel;
-
-    @Mock
     private DefinitionModel definitionModel;
-
-    @Mock
     private AltNameModel altNameModel;
 
     private Model model;
@@ -80,6 +75,49 @@ class ConceptEditorTest {
     @BeforeEach
     void setUp() {
         model = ModelFactory.createDefaultModel();
+        // Initialize models with Map-based structure
+        nameModel = new NameModel();
+        descriptionModel = new DescriptionModel();
+        definitionModel = new DefinitionModel();
+        altNameModel = new AltNameModel();
+    }
+
+    // ========== Helper Methods for Model Creation ==========
+
+    /**
+     * Creates a NameModel with the given language code and value
+     */
+    private NameModel createNameModel(String languageCode, String value) {
+        NameModel model = new NameModel();
+        model.setName(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates a DescriptionModel with the given language code and value
+     */
+    private DescriptionModel createDescriptionModel(String languageCode, String value) {
+        DescriptionModel model = new DescriptionModel();
+        model.setDescription(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates a DefinitionModel with the given language code and value
+     */
+    private DefinitionModel createDefinitionModel(String languageCode, String value) {
+        DefinitionModel model = new DefinitionModel();
+        model.setDefinition(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates an AltNameModel with the given language code and value
+     */
+    private AltNameModel createAltNameModel(String languageCode, String value) {
+        AltNameModel model = new AltNameModel();
+        model.setAltName(Map.of(languageCode, value));
+        return model;
     }
 
     // ===================== A. ClassConcept (TRIDA) =====================
@@ -92,10 +130,11 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
         existing.addProperty(RDF.type, SKOS.Concept);
 
+        NameModel newName = createNameModel("cs", "New name");
+
         when(classConceptEditModel.getConceptIRI()).thenReturn(oldIri);
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(nameModel);
-        when(nameModel.getName()).thenReturn("New name");
+        when(classConceptEditModel.getNameModel()).thenReturn(newName);
         when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
 
         // Act
@@ -154,7 +193,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
         when(classConceptEditModel.getContentType()).thenReturn("obsah");
         when(classConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani");
-        when(classConceptEditModel.getSharingMethod()).thenReturn("sdileni");
+        when(classConceptEditModel.getSharingMethod()).thenReturn(java.util.List.of("sdileni"));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getPrivacyProvision()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn("https://example.com/new-broader");
@@ -349,7 +388,7 @@ class ConceptEditorTest {
         when(relationshipConceptEditModel.getAgendaSystemCode()).thenReturn(null);
         when(relationshipConceptEditModel.getContentType()).thenReturn("novy-obsah-rel");
         when(relationshipConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
-        when(relationshipConceptEditModel.getSharingMethod()).thenReturn("sdileni-rel");
+        when(relationshipConceptEditModel.getSharingMethod()).thenReturn(java.util.List.of("sdileni-rel"));
         when(relationshipConceptEditModel.getIsPublic()).thenReturn(null);
         when(relationshipConceptEditModel.getPrivacyProvision()).thenReturn(null);
 
@@ -578,24 +617,18 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.definition, model.createLiteral("Old definition", "cs"));
         existing.addProperty(SKOS.altLabel, model.createLiteral("Old alt", "cs"));
 
+        NameModel newName = createNameModel("cs", "New name");
+        DescriptionModel newDesc = createDescriptionModel("cs", "New description");
+        DefinitionModel newDef = createDefinitionModel("cs", "New definition");
+        AltNameModel newAlt = createAltNameModel("cs", "New alt");
+
         when(classConceptEditModel.getConceptIRI()).thenReturn(conceptIri);
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
 
-        when(classConceptEditModel.getNameModel()).thenReturn(nameModel);
-        when(nameModel.getName()).thenReturn("New name");
-        when(nameModel.getLanguageTag()).thenReturn("cs");
-
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(descriptionModel);
-        when(descriptionModel.getDescription()).thenReturn("New description");
-        when(descriptionModel.getLanguageTag()).thenReturn("cs");
-
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(definitionModel);
-        when(definitionModel.getDefinition()).thenReturn("New definition");
-        when(definitionModel.getLanguageTag()).thenReturn("cs");
-
-        when(classConceptEditModel.getAltNameModel()).thenReturn(java.util.List.of(altNameModel));
-        when(altNameModel.getAltName()).thenReturn("New alt");
-        when(altNameModel.getLanguageTag()).thenReturn("cs");
+        when(classConceptEditModel.getNameModel()).thenReturn(newName);
+        when(classConceptEditModel.getDescriptionModel()).thenReturn(newDesc);
+        when(classConceptEditModel.getDefinitionModel()).thenReturn(newDef);
+        when(classConceptEditModel.getAltNameModel()).thenReturn(newAlt);
 
         when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
         when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
@@ -635,23 +668,22 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Name", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
+        // TODO
         Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
         existing.addProperty(descProperty, model.createLiteral("Description", "cs"));
         existing.addProperty(SKOS.definition, model.createLiteral("Definition", "cs"));
         existing.addProperty(SKOS.altLabel, model.createLiteral("Alt", "cs"));
 
+        DescriptionModel emptyDesc = createDescriptionModel("cs", "");
+        DefinitionModel emptyDef = createDefinitionModel("cs", " ");
+
         when(classConceptEditModel.getConceptIRI()).thenReturn(conceptIri);
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
 
         when(classConceptEditModel.getNameModel()).thenReturn(null);
-
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(descriptionModel);
-        when(descriptionModel.getDescription()).thenReturn("");
-
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(definitionModel);
-        when(definitionModel.getDefinition()).thenReturn(" ");
-
-        when(classConceptEditModel.getAltNameModel()).thenReturn(java.util.Collections.emptyList());
+        when(classConceptEditModel.getDescriptionModel()).thenReturn(emptyDesc);
+        when(classConceptEditModel.getDefinitionModel()).thenReturn(emptyDef);
+        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
 
         when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
         when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
@@ -892,6 +924,4 @@ class ConceptEditorTest {
         assertFalse(updated.hasProperty(definingProp));
         assertFalse(updated.hasProperty(relatedProp));
     }
-
- */
 }

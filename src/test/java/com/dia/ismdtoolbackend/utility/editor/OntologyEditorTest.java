@@ -13,6 +13,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
@@ -25,16 +27,13 @@ class OntologyEditorTest {
     //   E2 – keep ontology IRI and concept IRIs when name is unchanged
     //   E3 – remove description when new value is blank
     //   E4 – update description when new value is provided
-/*
+
     private OntologyEditor ontologyEditor;
 
     @Mock
     private OntologyEditModel editModel;
 
-    @Mock
     private NameModel nameModel;
-
-    @Mock
     private DescriptionModel descriptionModel;
 
     private Model model;
@@ -43,6 +42,29 @@ class OntologyEditorTest {
     void setUp() {
         ontologyEditor = new OntologyEditor();
         model = ModelFactory.createDefaultModel();
+        // Initialize models with Map-based structure
+        nameModel = new NameModel();
+        descriptionModel = new DescriptionModel();
+    }
+
+    // ========== Helper Methods for Model Creation ==========
+
+    /**
+     * Creates a NameModel with the given language code and value
+     */
+    private NameModel createNameModel(String languageCode, String value) {
+        NameModel model = new NameModel();
+        model.setName(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates a DescriptionModel with the given language code and value
+     */
+    private DescriptionModel createDescriptionModel(String languageCode, String value) {
+        DescriptionModel model = new DescriptionModel();
+        model.setDescription(Map.of(languageCode, value));
+        return model;
     }
 
     // ========== E. OntologyEditor Tests ==========
@@ -75,18 +97,15 @@ class OntologyEditorTest {
             Property refersTo = model.createProperty("http://example.com/refersTo");
             otherSubject.addProperty(refersTo, concept1);
 
-            when(editModel.getOntologyIRI()).thenReturn(oldOntologyIRI);
-            when(editModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("New ontology");
-            when(nameModel.getLanguageTag()).thenReturn("cs");
+            NameModel newName = createNameModel("cs", "New ontology");
+            DescriptionModel newDesc = createDescriptionModel("cs", "New description");
 
-            when(editModel.getDescriptionModel()).thenReturn(descriptionModel);
-            when(descriptionModel.getDescription()).thenReturn("New description");
-            when(descriptionModel.getLanguageTag()).thenReturn("cs");
+            when(editModel.getNameModel()).thenReturn(newName);
+            when(editModel.getDescriptionModel()).thenReturn(newDesc);
 
             // Act
             OntologyEditor.EditResult result =
-                    ontologyEditor.editOntology(editModel, model, oldNamespace);
+                    ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI);
 
             // Assert
             assertTrue(result.iriChanged);
@@ -147,13 +166,13 @@ class OntologyEditorTest {
             Property hasConcept = model.createProperty("http://example.com/hasConcept");
             ontology.addProperty(hasConcept, concept);
 
-            when(editModel.getOntologyIRI()).thenReturn(ontologyIRI);
-            when(editModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Ontology");
+            NameModel sameName = createNameModel("cs", "Ontology");
+
+            when(editModel.getNameModel()).thenReturn(sameName);
 
             // Act
             OntologyEditor.EditResult result =
-                    ontologyEditor.editOntology(editModel, model, namespace);
+                    ontologyEditor.editOntology(editModel, model, namespace, ontologyIRI);
 
             // Assert
             assertFalse(result.iriChanged);
@@ -182,15 +201,15 @@ class OntologyEditorTest {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
             ontology.addProperty(descProperty, model.createLiteral("Some description", "cs"));
 
-            when(editModel.getOntologyIRI()).thenReturn(oldOntologyIRI);
-            when(editModel.getNameModel()).thenReturn(null);
+            // TODO
+            DescriptionModel blankDesc = createDescriptionModel("cs", "   ");
 
-            when(editModel.getDescriptionModel()).thenReturn(descriptionModel);
-            when(descriptionModel.getDescription()).thenReturn("   ");
+            when(editModel.getNameModel()).thenReturn(null);
+            when(editModel.getDescriptionModel()).thenReturn(blankDesc);
 
             // Act
             OntologyEditor.EditResult result =
-                    ontologyEditor.editOntology(editModel, model, oldNamespace);
+                    ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI);
 
             // Assert
             assertFalse(result.iriChanged);
@@ -213,16 +232,14 @@ class OntologyEditorTest {
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
             ontology.addProperty(descProperty, model.createLiteral("Old description", "cs"));
 
-            when(editModel.getOntologyIRI()).thenReturn(ontologyIRI);
-            when(editModel.getNameModel()).thenReturn(null);
+            DescriptionModel updatedDesc = createDescriptionModel("cs", "Updated description");
 
-            when(editModel.getDescriptionModel()).thenReturn(descriptionModel);
-            when(descriptionModel.getDescription()).thenReturn("Updated description");
-            when(descriptionModel.getLanguageTag()).thenReturn("cs");
+            when(editModel.getNameModel()).thenReturn(null);
+            when(editModel.getDescriptionModel()).thenReturn(updatedDesc);
 
             // Act
             OntologyEditor.EditResult result =
-                    ontologyEditor.editOntology(editModel, model, namespace);
+                    ontologyEditor.editOntology(editModel, model, namespace, ontologyIRI);
 
             // Assert
             assertFalse(result.iriChanged);
@@ -244,6 +261,4 @@ class OntologyEditorTest {
             ));
         }
     }
-
- */
 }
