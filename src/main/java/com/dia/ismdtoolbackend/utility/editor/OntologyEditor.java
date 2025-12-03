@@ -25,29 +25,28 @@ public class OntologyEditor {
 
     private final URIGenerator uriGenerator = new URIGenerator();
 
-    public EditResult editOntology(OntologyEditModel editModel, Model model, String oldNamespace) {
-        String oldOntologyIRI = editModel.getOntologyIRI();
-        Resource existingOntology = model.getResource(oldOntologyIRI);
+    public EditResult editOntology(OntologyEditModel editModel, Model model, String oldNamespace, String iri) {
+        Resource existingOntology = model.getResource(iri);
 
         if (existingOntology == null || !model.containsResource(existingOntology)) {
-            throw new IllegalArgumentException("Ontology with IRI " + oldOntologyIRI + " not found in the model");
+            throw new IllegalArgumentException("Ontology with IRI " + iri + " not found in the model");
         }
 
         String newName = getNameForUriGeneration(editModel.getNameModel());
         String oldName = getNameForUriGeneration(existingOntology);
         boolean nameChanged = newName != null && !newName.isEmpty() && !newName.equals(oldName);
 
-        String newOntologyIRI = oldOntologyIRI;
+        String newOntologyIRI = iri;
         String newNamespace = oldNamespace;
 
         if (nameChanged) {
-            String baseNamespace = oldOntologyIRI.replaceFirst("^(https?://[^/]+/).*", "$1");
+            String baseNamespace = iri.replaceFirst("^(https?://[^/]+/).*", "$1");
 
             newOntologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(newName, baseNamespace);
             newNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(newOntologyIRI);
 
             log.info("Ontology name changed from '{}' to '{}', updating IRI from {} to {}",
-                    oldName, newName, oldOntologyIRI, newOntologyIRI);
+                    oldName, newName, iri, newOntologyIRI);
         }
 
         Set<Statement> statementsToRemove = new HashSet<>();
@@ -63,8 +62,8 @@ public class OntologyEditor {
                     statementsToAdd, newOntologyIRI);
         }
 
-        if (nameChanged && !oldOntologyIRI.equals(newOntologyIRI)) {
-            renameOntologyIRI(model, oldOntologyIRI, newOntologyIRI, statementsToRemove, statementsToAdd);
+        if (nameChanged && !iri.equals(newOntologyIRI)) {
+            renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
             updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
         }
 

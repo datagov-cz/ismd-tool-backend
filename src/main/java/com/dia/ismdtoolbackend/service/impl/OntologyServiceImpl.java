@@ -244,15 +244,16 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel) throws OntologyException {
-        validateOntologyEditModel(ontologyEditModel);
-
-        String oldOntologyIRI = ontologyEditModel.getOntologyIRI();
-        OntologyMetadataEntity metadataEntity = fetchOntologyMetadata(oldOntologyIRI);
+    public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) throws OntologyException {
+        if (ontologyEditModel == null) {
+            throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
+        }
+        OntologyMetadataEntity metadataEntity = fetchOntologyMetadata(id);
+        String oldOntologyIRI = metadataEntity.getGraphName();
         Model model = fetchOntologyModel(oldOntologyIRI);
 
         String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
-        OntologyEditor.EditResult editResult = performOntologyEdit(ontologyEditModel, model, oldNamespace);
+        OntologyEditor.EditResult editResult = performOntologyEdit(ontologyEditModel, model, oldNamespace, metadataEntity.getGraphName());
 
         log.info("Ontology edit completed: IRI changed={}", editResult.iriChanged);
 
@@ -365,11 +366,11 @@ public class OntologyServiceImpl implements OntologyService {
         return result;
     }
 
-    private OntologyMetadataEntity fetchOntologyMetadata(String ontologyIRI) throws OntologyException {
-        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
+    private OntologyMetadataEntity fetchOntologyMetadata(Long id) throws OntologyException {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(id);
         if (ontologyMetadataOpt.isEmpty()) {
-            log.error("Ontology with IRI {} not found", ontologyIRI);
-            throw new OntologyException("Slovník s IRI " + ontologyIRI + " nebyl nalezen.");
+            log.error("Ontology with ID {} not found", id);
+            throw new OntologyException("Slovník s ID " + id + " nebyl nalezen.");
         }
         return ontologyMetadataOpt.get();
     }
@@ -383,8 +384,8 @@ public class OntologyServiceImpl implements OntologyService {
         return model;
     }
 
-    private OntologyEditor.EditResult performOntologyEdit(OntologyEditModel editModel, Model model, String oldNamespace) {
-        return ontologyEditor.editOntology(editModel, model, oldNamespace);
+    private OntologyEditor.EditResult performOntologyEdit(OntologyEditModel editModel, Model model, String oldNamespace, String iri) {
+        return ontologyEditor.editOntology(editModel, model, oldNamespace, iri);
     }
 
     private OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
@@ -458,19 +459,9 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity updateOntologyMetadata(OntologyMetadataEntity metadataEntity, String newGraphName) {
         metadataEntity.setGraphName(newGraphName);
-        metadataEntity.setSlug(UtilityMethods.extractNameFromIRI(newGraphName));
         OntologyMetadataEntity updatedEntity = ontologyMetadataRepository.save(metadataEntity);
-        log.info("Updated metadata with new graph name: {} and slug: {}", newGraphName, metadataEntity.getSlug());
+        log.info("Updated metadata with new graph name: {} (slug unchanged: {})", newGraphName, metadataEntity.getSlug());
         return updatedEntity;
-    }
-
-    private void validateOntologyEditModel(OntologyEditModel model) throws OntologyException {
-        if (model == null) {
-            throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
-        }
-        if (model.getOntologyIRI() == null || model.getOntologyIRI().trim().isEmpty()) {
-            throw new OntologyException("IRI slovníku je povinné");
-        }
     }
 
     private void cleanupTDB2Graph(String graphName) {

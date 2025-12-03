@@ -12,7 +12,7 @@ public interface OntologyService {
     void deleteOntology(Long ontologyId) throws OntologyException;
     OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) throws OntologyException;
     GetOntologyDto getOntologyDetailModel(String ontologySlug) throws OntologyException;
-    OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel) throws OntologyException;
+    OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) throws OntologyException;
     List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) throws OntologyException;
     List<OntologyMetadataModel> getBySlugs(List<String> slugs) throws OntologyException;
     String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel) throws OntologyException;
