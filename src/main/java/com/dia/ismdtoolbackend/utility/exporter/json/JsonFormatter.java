@@ -115,6 +115,11 @@ public class JsonFormatter {
                 continue;
             }
 
+            if (JSON_POJMY.equals(entry.getKey())) {
+                filtered.put(entry.getKey(), value);
+                continue;
+            }
+
             Object processedValue = processValue(value);
             if (processedValue != null) {
                 filtered.put(entry.getKey(), processedValue);

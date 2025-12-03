@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.exception.ConceptStorageException;
@@ -13,6 +14,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
@@ -30,6 +32,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,6 +51,9 @@ class ConceptServiceImplTest {
 
     @Mock
     private ConceptMetadataMapper conceptMetadataMapper;
+
+    @Mock
+    private OntologyMetadataRepository ontologyMetadataRepository;
 
     @Mock
     private ConceptCreator conceptCreator;
@@ -89,9 +98,14 @@ class ConceptServiceImplTest {
         ConceptCreateModel createModel = createValidConceptCreateModel();
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -174,9 +188,14 @@ class ConceptServiceImplTest {
     void createConcept_MetadataSaveFails_RollbackTDB2() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
 
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
                 .thenThrow(new RuntimeException("DB error"));
 
@@ -192,9 +211,14 @@ class ConceptServiceImplTest {
         ConceptCreateModel createModel = createValidConceptCreateModel();
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -219,12 +243,17 @@ class ConceptServiceImplTest {
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
 
         conceptService.deleteConcept(TEST_CONCEPT_ID);
+        List<String> testConceptIris = new ArrayList<>();
+        testConceptIris.add(TEST_CONCEPT_IRI);
+        List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
+        conceptEntities.add(testConceptEntity);
 
-        verify(jenaTDB2Repository).deleteConceptFromGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME);
-        verify(conceptMetadataRepository).deleteById(TEST_CONCEPT_ID);
+        verify(jenaTDB2Repository).deleteConceptsFromGraph(testConceptIris, TEST_GRAPH_NAME);
+        verify(conceptMetadataRepository).deleteAll(conceptEntities);
     }
 
     @Test
@@ -235,8 +264,8 @@ class ConceptServiceImplTest {
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
-        verify(jenaTDB2Repository, never()).deleteConceptFromGraph(anyString(), anyString());
-        verify(conceptMetadataRepository, never()).deleteById(any());
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
+        verify(conceptMetadataRepository, never()).deleteAll(any());
     }
 
     @Test
@@ -248,7 +277,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("prázdný"));
-        verify(jenaTDB2Repository, never()).deleteConceptFromGraph(anyString(), anyString());
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
     }
 
     @Test
@@ -264,7 +293,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(jenaTDB2Repository, never()).deleteConceptFromGraph(anyString(), anyString());
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
     }
 
     // ========== editConcept Tests ==========
@@ -317,7 +346,9 @@ class ConceptServiceImplTest {
     void editConcept_UpdatesName() {
         String newName = "Updated Concept Name";
         ConceptEditModel editModel = createValidConceptEditModel();
-        editModel.getNameModel().setName(newName);
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", newName);
+        editModel.getNameModel().setName(nameMap);
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
@@ -467,8 +498,9 @@ class ConceptServiceImplTest {
         model.setNamespace(TEST_GRAPH_NAME);
 
         NameModel nameModel = new NameModel();
-        nameModel.setName(TEST_CONCEPT_NAME);
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", TEST_CONCEPT_NAME);
+        nameModel.setName(nameMap);
         model.setNameModel(nameModel);
 
         return model;
@@ -491,8 +523,9 @@ class ConceptServiceImplTest {
         model.setConceptType("TRIDA");
 
         NameModel nameModel = new NameModel();
-        nameModel.setName(TEST_CONCEPT_NAME);
-        nameModel.setLanguageTag("cs");
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", TEST_CONCEPT_NAME);
+        nameModel.setName(nameMap);
         model.setNameModel(nameModel);
 
         return model;

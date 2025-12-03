@@ -5,14 +5,12 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
-import com.dia.validation.ValidationReportDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface OntologyMetadataMapper {
@@ -25,6 +23,7 @@ public interface OntologyMetadataMapper {
     @Mapping(target = "comments", ignore = true)
     @Mapping(target = "name", ignore = true)
     @Mapping(target = "popis", ignore = true)
+    @Mapping(target = "concepts", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
 
     default CommentModel commentEntityToModel(CommentEntity entity) {
@@ -47,7 +46,7 @@ public interface OntologyMetadataMapper {
         }
         return entities.stream()
                 .map(this::commentEntityToModel)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Named("userToUserId")

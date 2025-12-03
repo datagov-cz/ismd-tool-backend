@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -19,6 +20,7 @@ public class OntologyMetadataModel {
     private Boolean isPublished;
     private List<CommentModel> comments;
     private String popis;
+    private List<ConceptMetadataModel> concepts;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

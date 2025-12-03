@@ -5,6 +5,7 @@ import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -15,7 +16,6 @@ import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
-import com.dia.validation.ValidationReportDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -184,10 +184,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
     }
 
-    @PostMapping("/validate")
+    @PostMapping("{slug}/validate")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
-            @RequestPart OntologyMetadataModel ontologyMetadata,
+            @RequestBody OntologyMetadataModel ontologyMetadata,
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
@@ -208,25 +208,27 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(report, "Validace proběhla úspěšně."));
     }
 
-    @PostMapping("/catalog-record")
+    @PostMapping("{slug}/catalog-record")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
-            @RequestPart OntologyMetadataModel ontologyMetadata,
-            @RequestPart ValidationReportDto validationReport
+            @RequestBody CatalogRequestDto catalogRequestDto,
+            @PathVariable String slug,
+            @AuthenticationPrincipal SecurityUser securityUser
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology catalog record requested, ontologyIRI: {}", ontologyMetadata.getGraphName());
+        log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
 
-        String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
+        String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
 
         CatalogRecordRequestDto request = new CatalogRecordRequestDto();
         request.setTtlContent(ttlContent);
-        request.setValidationReport(validationReport);
+        request.setValidationReport(catalogRequestDto.getValidationReport());
 
         Optional<CatalogRecordDto> catalogRecordDto = validationClient.requestCatalogRecord(request);
 
         CatalogRecordDto catalogRecord = catalogRecordDto.orElseThrow(() -> {
-            log.warn("Catalog record not received for ontology: {}", ontologyMetadata.getGraphName());
+            log.warn("Catalog record not received for ontology: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
             return new OntologyValidationException("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná.");
         });
 
