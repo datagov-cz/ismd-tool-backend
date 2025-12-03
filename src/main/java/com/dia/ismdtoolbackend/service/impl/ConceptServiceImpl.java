@@ -322,7 +322,6 @@ public class ConceptServiceImpl implements ConceptService {
     private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel, ConceptEditor.EditResult editResult) {
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
-            metadata.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(editResult.newConceptIRI));
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {

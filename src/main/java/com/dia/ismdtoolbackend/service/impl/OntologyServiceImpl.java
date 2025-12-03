@@ -458,9 +458,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     private OntologyMetadataEntity updateOntologyMetadata(OntologyMetadataEntity metadataEntity, String newGraphName) {
         metadataEntity.setGraphName(newGraphName);
-        metadataEntity.setSlug(UtilityMethods.extractNameFromIRI(newGraphName));
         OntologyMetadataEntity updatedEntity = ontologyMetadataRepository.save(metadataEntity);
-        log.info("Updated metadata with new graph name: {} and slug: {}", newGraphName, metadataEntity.getSlug());
+        log.info("Updated metadata with new graph name: {} (slug unchanged: {})", newGraphName, metadataEntity.getSlug());
         return updatedEntity;
     }
 
