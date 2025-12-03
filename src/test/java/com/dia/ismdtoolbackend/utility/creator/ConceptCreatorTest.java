@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.util.List;
+import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -58,21 +59,180 @@ class ConceptCreatorTest {
     @Mock
     private RelationshipConceptModel relationshipConceptModel;
 
-    @Mock
     private NameModel nameModel;
-
-    @Mock
     private DescriptionModel descriptionModel;
-
-    @Mock
     private DefinitionModel definitionModel;
-
-    @Mock
     private AltNameModel altNameModel;
 
     @BeforeEach
     void setUp() {
-        // MockitoExtension handles mocks lifecycle
+        // Initialize models with Map-based structure
+        nameModel = new NameModel();
+        descriptionModel = new DescriptionModel();
+        definitionModel = new DefinitionModel();
+        altNameModel = new AltNameModel();
+    }
+
+    // ========== Helper Methods for Model Creation ==========
+
+    /**
+     * Creates a NameModel with the given language code and value
+     */
+    private NameModel createNameModel(String languageCode, String value) {
+        NameModel model = new NameModel();
+        model.setName(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates a DescriptionModel with the given language code and value
+     */
+    private DescriptionModel createDescriptionModel(String languageCode, String value) {
+        DescriptionModel model = new DescriptionModel();
+        model.setDescription(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates a DefinitionModel with the given language code and value
+     */
+    private DefinitionModel createDefinitionModel(String languageCode, String value) {
+        DefinitionModel model = new DefinitionModel();
+        model.setDefinition(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Creates an AltNameModel with the given language code and value
+     */
+    private AltNameModel createAltNameModel(String languageCode, String value) {
+        AltNameModel model = new AltNameModel();
+        model.setAltName(Map.of(languageCode, value));
+        return model;
+    }
+
+    /**
+     * Sets up basic ClassConcept model with name, type, and null sources
+     */
+    private void setupBasicClassConcept(String name, String type) {
+        when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
+        when(classConceptModel.getOntologyGraphName()).thenReturn(null);
+        when(classConceptModel.getNameModel()).thenReturn(createNameModel("cs", name));
+        when(classConceptModel.getDescriptionModel()).thenReturn(null);
+        when(classConceptModel.getDefinitionModel()).thenReturn(null);
+        when(classConceptModel.getAltNameModel()).thenReturn(null);
+        when(classConceptModel.getType()).thenReturn(type);
+        when(classConceptModel.getIsPublic()).thenReturn(null);
+        when(classConceptModel.getPrivacyProvision()).thenReturn(null);
+        setupNullGovernanceFields(classConceptModel);
+        setupNullSourceFields(classConceptModel);
+    }
+
+    /**
+     * Sets up null values for governance fields for ClassConcept
+     */
+    private void setupNullGovernanceFields(ClassConceptModel model) {
+        when(model.getAgendaCode()).thenReturn(null);
+        when(model.getAgendaSystemCode()).thenReturn(null);
+        when(model.getSharingMethod()).thenReturn(null);
+        when(model.getAcquisitionMethod()).thenReturn(null);
+        when(model.getContentType()).thenReturn(null);
+        when(model.getBroaderConcept()).thenReturn(null);
+    }
+
+    /**
+     * Sets up null values for governance fields for PropertyConcept
+     */
+    private void setupNullGovernanceFields(PropertyConceptModel model) {
+        when(model.getAgendaCode()).thenReturn(null);
+        when(model.getAgendaSystemCode()).thenReturn(null);
+        when(model.getSharingMethod()).thenReturn(null);
+        when(model.getAcquisitionMethod()).thenReturn(null);
+        when(model.getContentType()).thenReturn(null);
+    }
+
+    /**
+     * Sets up null values for governance fields for RelationshipConcept
+     */
+    private void setupNullGovernanceFields(RelationshipConceptModel model) {
+        when(model.getAgendaCode()).thenReturn(null);
+        when(model.getAgendaSystemCode()).thenReturn(null);
+        when(model.getSharingMethod()).thenReturn(null);
+        when(model.getAcquisitionMethod()).thenReturn(null);
+        when(model.getContentType()).thenReturn(null);
+    }
+
+    /**
+     * Sets up null values for all source fields for ClassConcept
+     */
+    private void setupNullSourceFields(ClassConceptModel model) {
+        when(model.getDefiningLegalSource()).thenReturn(null);
+        when(model.getRelatedLegalSource()).thenReturn(null);
+        when(model.getDefiningNonLegalSource()).thenReturn(null);
+        when(model.getRelatedNonLegalSource()).thenReturn(null);
+        when(model.getExactMatch()).thenReturn(null);
+        when(model.getIdentifier()).thenReturn(null);
+    }
+
+    /**
+     * Sets up null values for all source fields for PropertyConcept
+     */
+    private void setupNullSourceFields(PropertyConceptModel model) {
+        when(model.getDefiningLegalSource()).thenReturn(null);
+        when(model.getRelatedLegalSource()).thenReturn(null);
+        when(model.getDefiningNonLegalSource()).thenReturn(null);
+        when(model.getRelatedNonLegalSource()).thenReturn(null);
+        when(model.getExactMatch()).thenReturn(null);
+        when(model.getIdentifier()).thenReturn(null);
+    }
+
+    /**
+     * Sets up null values for all source fields for RelationshipConcept
+     */
+    private void setupNullSourceFields(RelationshipConceptModel model) {
+        when(model.getDefiningLegalSource()).thenReturn(null);
+        when(model.getRelatedLegalSource()).thenReturn(null);
+        when(model.getDefiningNonLegalSource()).thenReturn(null);
+        when(model.getRelatedNonLegalSource()).thenReturn(null);
+        when(model.getExactMatch()).thenReturn(null);
+        when(model.getIdentifier()).thenReturn(null);
+    }
+
+    /**
+     * Sets up basic PropertyConcept model with name and datatype
+     */
+    private void setupBasicPropertyConcept(String name, String dataType) {
+        when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
+        when(propertyConceptModel.getOntologyGraphName()).thenReturn(null);
+        when(propertyConceptModel.getNameModel()).thenReturn(createNameModel("cs", name));
+        when(propertyConceptModel.getDataType()).thenReturn(dataType);
+        when(propertyConceptModel.getDomain()).thenReturn(null);
+        when(propertyConceptModel.getSuperProperty()).thenReturn(null);
+        when(propertyConceptModel.getIsPublic()).thenReturn(null);
+        when(propertyConceptModel.getIsInPPDF()).thenReturn(null);
+        when(propertyConceptModel.getPrivacyProvision()).thenReturn(null);
+        setupNullGovernanceFields(propertyConceptModel);
+        setupNullSourceFields(propertyConceptModel);
+    }
+
+    /**
+     * Sets up basic RelationshipConcept model with name, domain, and range
+     */
+    private void setupBasicRelationshipConcept(String name, String domain, String range) {
+        when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
+        when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
+        when(relationshipConceptModel.getNameModel()).thenReturn(createNameModel("cs", name));
+        when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
+        when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
+        when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
+        when(relationshipConceptModel.getDomain()).thenReturn(domain);
+        when(relationshipConceptModel.getRange()).thenReturn(range);
+        when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
+        when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
+        when(relationshipConceptModel.getIsPublic()).thenReturn(null);
+        when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
+        setupNullGovernanceFields(relationshipConceptModel);
+        setupNullSourceFields(relationshipConceptModel);
     }
 
     // ========== A. ClassConcept Tests ==========
@@ -88,21 +248,16 @@ class ConceptCreatorTest {
             when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
             when(classConceptModel.getOntologyGraphName()).thenReturn(null);
 
+            nameModel.setName(Map.of("cs", "Test class"));
             when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Test class");
-            when(nameModel.getLanguageTag()).thenReturn("cs");
 
+            descriptionModel.setDescription(Map.of("cs", "Test description"));
             when(classConceptModel.getDescriptionModel()).thenReturn(descriptionModel);
-            when(descriptionModel.getDescription()).thenReturn("Test description");
-            when(descriptionModel.getLanguageTag()).thenReturn("cs");
 
+            definitionModel.setDefinition(Map.of("cs", "Test definition"));
             when(classConceptModel.getDefinitionModel()).thenReturn(definitionModel);
-            when(definitionModel.getDefinition()).thenReturn("Test definition");
-            when(definitionModel.getLanguageTag()).thenReturn("cs");
 
-            when(classConceptModel.getAltNameModel()).thenReturn(List.of(altNameModel));
-            when(altNameModel.getAltName()).thenReturn("Alt name");
-            when(altNameModel.getLanguageTag()).thenReturn("cs");
+            when(classConceptModel.getAltNameModel()).thenReturn(createAltNameModel("cs", "Alt name"));
 
             when(classConceptModel.getType()).thenReturn("subjekt");
             when(classConceptModel.getIsPublic()).thenReturn("ano");
@@ -160,32 +315,7 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddBroaderConceptAndSubclassRelation() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Child class");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("objekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
-            when(classConceptModel.getIdentifier()).thenReturn(null);
-
+            setupBasicClassConcept("Child class", "objekt");
             when(classConceptModel.getBroaderConcept()).thenReturn("ParentOne; ParentTwo");
 
             // act
@@ -207,31 +337,8 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldProcessLegalSourcesWithEliPattern() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Legal Source Class");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicClassConcept("Legal Source Class", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-1");
-
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2021/12"));
             when(classConceptModel.getRelatedLegalSource())
@@ -259,31 +366,8 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddOnlyDefiningLegalSourcesWhenRelatedIsEmpty() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class with defining only");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicClassConcept("Class with defining only", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-DEF-ONLY");
-
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2023/11"));
             when(classConceptModel.getRelatedLegalSource())
@@ -311,31 +395,8 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddOnlyRelatedLegalSourcesWhenDefiningIsEmpty() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class with related only");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicClassConcept("Class with related only", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-REL-ONLY");
-
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of());
             when(classConceptModel.getRelatedLegalSource())
@@ -363,31 +424,8 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddBothLegalSourcesWhenBothProvided() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class with both legal sources");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicClassConcept("Class with both legal sources", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-BOTH-1");
-
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2019/10"));
             when(classConceptModel.getRelatedLegalSource())
@@ -421,31 +459,8 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldIgnoreLegalSourcesWithoutEliPattern() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class with invalid legal sources");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicClassConcept("Class with invalid legal sources", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-NO-ELI");
-
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("http://example.org/not-eli-1"));
             when(classConceptModel.getRelatedLegalSource())
@@ -467,36 +482,16 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldProcessNonLegalSources() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("NonLegal");
-
+            setupBasicClassConcept("NonLegal", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("NL-1");
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("dummy-legal"));
             when(classConceptModel.getRelatedLegalSource())
                     .thenReturn(List.of("dummy-legal-2"));
-
             when(classConceptModel.getDefiningNonLegalSource())
                     .thenReturn(List.of("https://example.org/doc1"));
             when(classConceptModel.getRelatedNonLegalSource())
                     .thenReturn(List.of("https://example.org/doc2"));
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
-            when(classConceptModel.getIdentifier()).thenReturn("NL-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -522,32 +517,10 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddPrivacyProvisionWhenHasEliPattern() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("PrivateClass");
-
+            setupBasicClassConcept("PrivateClass", "objekt");
+            when(classConceptModel.getIdentifier()).thenReturn("PP-1");
             when(classConceptModel.getPrivacyProvision())
                     .thenReturn("https://eselpoint.cz/eli/cz/act/2020/50");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-            when(classConceptModel.getType()).thenReturn("objekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
-            when(classConceptModel.getIdentifier()).thenReturn("PP-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -566,31 +539,11 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddGovernanceProperties() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("GovernanceClass");
-
-            when(classConceptModel.getSharingMethod()).thenReturn("sdileni");
+            setupBasicClassConcept("GovernanceClass", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("GOV-1");
+            when(classConceptModel.getSharingMethod()).thenReturn(List.of("sdileni"));
             when(classConceptModel.getAcquisitionMethod()).thenReturn("ziskani");
             when(classConceptModel.getContentType()).thenReturn("obsah");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
-            when(classConceptModel.getIdentifier()).thenReturn("GOV-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -610,34 +563,9 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldNotCreateBroaderConceptWhenInputIsEmpty() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class without broader");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-
-            when(classConceptModel.getBroaderConcept()).thenReturn("   ");
-
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicClassConcept("Class without broader", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("NO-BROADER");
+            when(classConceptModel.getBroaderConcept()).thenReturn("   ");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -650,34 +578,10 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldNotAddPrivacyProvisionWhenNoEliPattern() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class without privacy ELI");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("objekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-
+            setupBasicClassConcept("Class without privacy ELI", "objekt");
+            when(classConceptModel.getIdentifier()).thenReturn("NO-PRIV-ELI");
             when(classConceptModel.getPrivacyProvision())
                     .thenReturn("http://example.org/not-eli-format");
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
-            when(classConceptModel.getIdentifier()).thenReturn("NO-PRIV-ELI");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -690,34 +594,11 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldIgnoreEmptyGovernanceValues() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class with empty governance");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-
-            when(classConceptModel.getSharingMethod()).thenReturn("   ");
+            setupBasicClassConcept("Class with empty governance", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("EMPTY-GOV");
+            when(classConceptModel.getSharingMethod()).thenReturn(List.of("   "));
             when(classConceptModel.getAcquisitionMethod()).thenReturn("");
             when(classConceptModel.getContentType()).thenReturn(" ");
-
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getExactMatch()).thenReturn(null);
-            when(classConceptModel.getIdentifier()).thenReturn("EMPTY-GOV");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -739,36 +620,11 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddExactMatchIRIs() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class with exact match");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
+            setupBasicClassConcept("Class with exact match", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("EXACT-1");
             when(classConceptModel.getExactMatch()).thenReturn(
                     List.of("http://example.org/exact1", "http://example.org/exact2")
             );
-            when(classConceptModel.getIdentifier()).thenReturn("EXACT-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -788,34 +644,11 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldIgnoreInvalidExactMatchIRIsAndKeepValidOnes() {
             // arrange
-            when(classConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-            when(classConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(classConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Class mixed exact");
-
-            when(classConceptModel.getDescriptionModel()).thenReturn(null);
-            when(classConceptModel.getDefinitionModel()).thenReturn(null);
-            when(classConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn(null);
-            when(classConceptModel.getPrivacyProvision()).thenReturn(null);
-            when(classConceptModel.getAgendaCode()).thenReturn(null);
-            when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(classConceptModel.getSharingMethod()).thenReturn(null);
-            when(classConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(classConceptModel.getContentType()).thenReturn(null);
-            when(classConceptModel.getBroaderConcept()).thenReturn(null);
-            when(classConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(classConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(classConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
+            setupBasicClassConcept("Class mixed exact", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("CLASS-MIXED-EXACT");
             when(classConceptModel.getExactMatch()).thenReturn(
                     List.of("http://example.org/exact-valid", "not-a-valid-iri", "")
             );
-            when(classConceptModel.getIdentifier()).thenReturn("CLASS-MIXED-EXACT");
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -842,37 +675,13 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldCreateDatatypePropertyWithXsdRange() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Property name");
-            when(nameModel.getLanguageTag()).thenReturn("cs");
-
-            when(propertyConceptModel.getDescriptionModel()).thenReturn(null);
-            when(propertyConceptModel.getDefinitionModel()).thenReturn(null);
-            when(propertyConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(propertyConceptModel.getDataType()).thenReturn("xsd:string");
+            setupBasicPropertyConcept("Property name", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-1");
             when(propertyConceptModel.getDomain()).thenReturn("TestDomain");
             when(propertyConceptModel.getSuperProperty()).thenReturn("Super property");
-
             when(propertyConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
             when(propertyConceptModel.getIsPublic()).thenReturn("ano");
             when(propertyConceptModel.getPrivacyProvision()).thenReturn("");
-
-            when(propertyConceptModel.getAgendaCode()).thenReturn(null);
-            when(propertyConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(propertyConceptModel.getSharingMethod()).thenReturn(null);
-            when(propertyConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(propertyConceptModel.getContentType()).thenReturn(null);
-
-            when(propertyConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(propertyConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(propertyConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(propertyConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(propertyConceptModel.getExactMatch()).thenReturn(null);
-            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -886,21 +695,9 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldCreateObjectPropertyWhenDatatypeIsNotXsdLiteral() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Object property");
-
-            when(propertyConceptModel.getDataType()).thenReturn("SomeOtherClass");
-            when(propertyConceptModel.getDomain()).thenReturn(null);
-            when(propertyConceptModel.getSuperProperty()).thenReturn(null);
-
-            when(propertyConceptModel.getIsPublic()).thenReturn("ne");
-            when(propertyConceptModel.getIsInPPDF()).thenReturn(null);
-            when(propertyConceptModel.getPrivacyProvision()).thenReturn(null);
-
+            setupBasicPropertyConcept("Object property", "SomeOtherClass");
             when(propertyConceptModel.getIdentifier()).thenReturn("OBJ-PROP");
+            when(propertyConceptModel.getIsPublic()).thenReturn("ne");
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -914,13 +711,8 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldUseCustomNamespaceForPropertyConcept() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
+            setupBasicPropertyConcept("CustomNsProperty", "xsd:string");
             when(propertyConceptModel.getOntologyGraphName()).thenReturn("https://example.org/custom-graph/");
-
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("CustomNsProperty");
-
-            when(propertyConceptModel.getDataType()).thenReturn("xsd:string");
             when(propertyConceptModel.getIdentifier()).thenReturn("PROP-CUSTOM-NS");
 
             // act
@@ -934,20 +726,13 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldUseProvidedUrisForDomainAndSuperProperty() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("PropertyWithUriDomainAndSuper");
-
             String domainIri = "http://example.org/domain-class";
             String superPropertyIri = "http://example.org/super-property";
 
-            when(propertyConceptModel.getDataType()).thenReturn("xsd:string");
+            setupBasicPropertyConcept("PropertyWithUriDomainAndSuper", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-URI-DOM-SUPER");
             when(propertyConceptModel.getDomain()).thenReturn(domainIri);
             when(propertyConceptModel.getSuperProperty()).thenReturn(superPropertyIri);
-
-            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-URI-DOM-SUPER");
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -962,21 +747,14 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddGovernancePropertiesForPropertyConcept() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Governed property");
-
-            when(propertyConceptModel.getDataType()).thenReturn("xsd:string");
+            setupBasicPropertyConcept("Governed property", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-GOV-1");
             when(propertyConceptModel.getDomain()).thenReturn("DomainForGovernedProperty");
-
             when(propertyConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
             when(propertyConceptModel.getIsPublic()).thenReturn("ano");
-
-            when(propertyConceptModel.getSharingMethod()).thenReturn("sdileni-property");
+            when(propertyConceptModel.getSharingMethod()).thenReturn(List.of("sdileni-property"));
             when(propertyConceptModel.getAcquisitionMethod()).thenReturn("ziskani-property");
             when(propertyConceptModel.getContentType()).thenReturn("obsah-property");
-
-            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-GOV-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -988,10 +766,7 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldUseLiteralRangeAndNoDomainWhenDatatypeAndDomainAreNull() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Property without datatype and domain");
-
+            setupBasicPropertyConcept("Property without datatype and domain", null);
             when(propertyConceptModel.getIdentifier()).thenReturn("PROP-NO-DT-DOM");
 
             // act
@@ -1008,18 +783,12 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddExactMatchForPropertyConcept() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Property with exact match");
-
-            when(propertyConceptModel.getDataType()).thenReturn("xsd:string");
+            setupBasicPropertyConcept("Property with exact match", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-EXACT-1");
             when(propertyConceptModel.getDomain()).thenReturn("DomainForExactMatchProperty");
-
             when(propertyConceptModel.getExactMatch()).thenReturn(
                     List.of("http://example.org/propExact1", "http://example.org/propExact2")
             );
-
-            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-EXACT-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -1034,13 +803,9 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldProcessLegalAndNonLegalSourcesForPropertyConcept() {
             // arrange
-            when(propertyConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-            when(propertyConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Property with sources");
-
-            when(propertyConceptModel.getDataType()).thenReturn("xsd:string");
+            setupBasicPropertyConcept("Property with sources", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-SOURCES-1");
             when(propertyConceptModel.getDomain()).thenReturn("SourceDomain");
-
             when(propertyConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2019/10"));
             when(propertyConceptModel.getRelatedLegalSource())
@@ -1049,8 +814,6 @@ class ConceptCreatorTest {
                     .thenReturn(List.of("https://example.org/property-doc-1"));
             when(propertyConceptModel.getRelatedNonLegalSource())
                     .thenReturn(List.of("https://example.org/property-doc-2"));
-
-            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-SOURCES-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -1071,37 +834,9 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldCreatePrivateRelationshipWhenIsPublicNe() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Private relation");
-
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(relationshipConceptModel.getDomain()).thenReturn("DomainClass");
-            when(relationshipConceptModel.getRange()).thenReturn("RangeClass");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
-
-            when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ne");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(relationshipConceptModel.getSharingMethod()).thenReturn(null);
-            when(relationshipConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(relationshipConceptModel.getContentType()).thenReturn(null);
-
-            when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicRelationshipConcept("Private relation", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-PRIVATE");
+            when(relationshipConceptModel.getIsPublic()).thenReturn("ne");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1123,38 +858,11 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldUseCustomNamespaceWhenGraphNameProvided() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
             String customNamespace = "https://example.org/custom-graph/";
+            setupBasicRelationshipConcept("Relation with custom ns", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getOntologyGraphName()).thenReturn(customNamespace);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relation with custom ns");
-
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(relationshipConceptModel.getDomain()).thenReturn("DomainClass");
-            when(relationshipConceptModel.getRange()).thenReturn("RangeClass");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
-
-            when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(relationshipConceptModel.getSharingMethod()).thenReturn(null);
-            when(relationshipConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(relationshipConceptModel.getContentType()).thenReturn(null);
-
-            when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-CUSTOM-NS");
+            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1169,41 +877,14 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldUseProvidedUrisForDomainRangeAndSuperRelation() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relation with URI domain/range/super");
-
             String domainIri = "http://example.org/rel-domain";
             String rangeIri = "http://example.org/rel-range";
             String superRelationIri = "http://example.org/super-relation";
 
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(relationshipConceptModel.getDomain()).thenReturn(domainIri);
-            when(relationshipConceptModel.getRange()).thenReturn(rangeIri);
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(superRelationIri);
-
-            when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(relationshipConceptModel.getSharingMethod()).thenReturn(null);
-            when(relationshipConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(relationshipConceptModel.getContentType()).thenReturn(null);
-
-            when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicRelationshipConcept("Relation with URI domain/range/super", domainIri, rangeIri);
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-URI-DOM-RANGE-SUPER");
+            when(relationshipConceptModel.getSuperRelation()).thenReturn(superRelationIri);
+            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1227,38 +908,10 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldGenerateDomainRangeAndSuperRelationFromLabelsWhenNotUris() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relation with label-based domain/range/super");
-
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            // domain, range and superRelation are labels, not IRIs
-            when(relationshipConceptModel.getDomain()).thenReturn("DomainLabel");
-            when(relationshipConceptModel.getRange()).thenReturn("RangeLabel");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn("SuperRelationLabel");
-
-            when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(relationshipConceptModel.getSharingMethod()).thenReturn(null);
-            when(relationshipConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(relationshipConceptModel.getContentType()).thenReturn(null);
-
-            when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicRelationshipConcept("Relation with label-based domain/range/super", "DomainLabel", "RangeLabel");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-LABEL-DOM-RANGE-SUPER");
+            when(relationshipConceptModel.getSuperRelation()).thenReturn("SuperRelationLabel");
+            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1285,38 +938,10 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldNotCreateDomainRangeAndSuperRelationWhenValuesAreBlank() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relation with blank domain/range/super");
-
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            // blank values should be treated as "do not create"
-            when(relationshipConceptModel.getDomain()).thenReturn("   ");
-            when(relationshipConceptModel.getRange()).thenReturn("");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn("  ");
-
-            when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(relationshipConceptModel.getSharingMethod()).thenReturn(null);
-            when(relationshipConceptModel.getAcquisitionMethod()).thenReturn(null);
-            when(relationshipConceptModel.getContentType()).thenReturn(null);
-
-            when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
+            setupBasicRelationshipConcept("Relation with blank domain/range/super", "   ", "");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-BLANK-DOM-RANGE-SUPER");
+            when(relationshipConceptModel.getSuperRelation()).thenReturn("  ");
+            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1333,38 +958,13 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldIgnoreEmptyGovernanceValuesForRelationship() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relation with empty governance");
-
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(relationshipConceptModel.getDomain()).thenReturn("DomainClass");
-            when(relationshipConceptModel.getRange()).thenReturn("RangeClass");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
-
+            setupBasicRelationshipConcept("Relation with empty governance", "DomainClass", "RangeClass");
+            when(relationshipConceptModel.getIdentifier()).thenReturn("REL-EMPTY-GOV");
             when(relationshipConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-
-            when(relationshipConceptModel.getSharingMethod()).thenReturn("   ");
+            when(relationshipConceptModel.getSharingMethod()).thenReturn(List.of("   "));
             when(relationshipConceptModel.getAcquisitionMethod()).thenReturn("");
             when(relationshipConceptModel.getContentType()).thenReturn(" ");
-
-            when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
-            when(relationshipConceptModel.getIdentifier()).thenReturn("REL-EMPTY-GOV");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1381,30 +981,14 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddExactMatchAndSourcesForRelationship() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(null);
-
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relation with sources");
-
-            when(relationshipConceptModel.getDescriptionModel()).thenReturn(null);
-            when(relationshipConceptModel.getDefinitionModel()).thenReturn(null);
-            when(relationshipConceptModel.getAltNameModel()).thenReturn(null);
-
-            when(relationshipConceptModel.getDomain()).thenReturn("DomainClass");
-            when(relationshipConceptModel.getRange()).thenReturn("RangeClass");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
-
+            setupBasicRelationshipConcept("Relation with sources", "DomainClass", "RangeClass");
+            when(relationshipConceptModel.getIdentifier()).thenReturn("REL-SOURCES-1");
             when(relationshipConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
             when(relationshipConceptModel.getPrivacyProvision()).thenReturn("");
-
-            when(relationshipConceptModel.getAgendaCode()).thenReturn(null);
-            when(relationshipConceptModel.getAgendaSystemCode()).thenReturn(null);
-            when(relationshipConceptModel.getSharingMethod()).thenReturn("sdileni-rel");
+            when(relationshipConceptModel.getSharingMethod()).thenReturn(List.of("sdileni-rel"));
             when(relationshipConceptModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
             when(relationshipConceptModel.getContentType()).thenReturn("obsah-rel");
-
             when(relationshipConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2018/10"));
             when(relationshipConceptModel.getRelatedLegalSource())
@@ -1413,10 +997,8 @@ class ConceptCreatorTest {
                     .thenReturn(List.of("https://example.org/rel-doc-1"));
             when(relationshipConceptModel.getRelatedNonLegalSource())
                     .thenReturn(List.of("https://example.org/rel-doc-2"));
-
             when(relationshipConceptModel.getExactMatch())
                     .thenReturn(List.of("http://example.org/relExact1", "http://example.org/relExact2"));
-            when(relationshipConceptModel.getIdentifier()).thenReturn("REL-SOURCES-1");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1444,17 +1026,9 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldIgnoreLegalSourcesWithoutEliPatternForRelationshipConcept() {
             // arrange
-            when(relationshipConceptModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-            when(relationshipConceptModel.getNameModel()).thenReturn(nameModel);
-            when(nameModel.getName()).thenReturn("Relationship with mixed legal sources");
-
-            when(relationshipConceptModel.getDomain()).thenReturn("RelDomain");
-            when(relationshipConceptModel.getRange()).thenReturn("RelRange");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
-            when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
+            setupBasicRelationshipConcept("Relationship with mixed legal sources", "RelDomain", "RelRange");
+            when(relationshipConceptModel.getIdentifier()).thenReturn("REL-MIXED-LEGAL");
             when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
-
             when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(
                     List.of(
                             "https://eselpoint.cz/eli/cz/act/2020/5",
@@ -1467,11 +1041,6 @@ class ConceptCreatorTest {
                             "https://eselpoint.cz/eli/cz/act/2021/10"
                     )
             );
-
-            when(relationshipConceptModel.getDefiningNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getRelatedNonLegalSource()).thenReturn(null);
-            when(relationshipConceptModel.getExactMatch()).thenReturn(null);
-            when(relationshipConceptModel.getIdentifier()).thenReturn("REL-MIXED-LEGAL");
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
