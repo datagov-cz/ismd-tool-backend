@@ -4,12 +4,10 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.Map;
-
 @Data
 @Getter
 @Setter
-public class AltNameModel {
-    private Map<String, String> altName;
-
+public class ConceptRelationshipsModel {
+    private String name;
+    private String slug;
 }

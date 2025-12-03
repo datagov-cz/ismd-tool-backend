@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -11,19 +12,25 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -32,6 +39,7 @@ import java.util.Optional;
 public class ConceptServiceImpl implements ConceptService {
 
     private final ConceptMetadataRepository conceptMetadataRepository;
+    private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final ConceptCreator conceptCreator;
     private final ConceptEditor conceptEditor;
@@ -87,8 +95,12 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
         }
 
-        jenaTDB2Repository.deleteConceptFromGraph(conceptUri, graphName);
-        conceptMetadataRepository.deleteById(conceptId);
+        List<String> relatedConceptUris = findRelatedConcepts(model, conceptUri);
+        relatedConceptUris.add(conceptUri);
+        List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
+
+        jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);
+        conceptMetadataRepository.deleteAll(relatedConceptEntities);
     }
 
     @Override
@@ -129,7 +141,6 @@ public class ConceptServiceImpl implements ConceptService {
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    // Fetch and populate comments from the comments table
                     List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(entity.getConceptIri());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
@@ -166,7 +177,6 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
 
-        // Fetch and populate comments from the comments table
         List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(conceptIri);
         metadataModel.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
 
@@ -190,6 +200,33 @@ public class ConceptServiceImpl implements ConceptService {
         return savedEntity;
     }
 
+    private List<String> findRelatedConcepts(Model model, String conceptUri) {
+        List<String> relatedConcepts = new ArrayList<>();
+        Resource domainResource = model.getResource(conceptUri);
+
+        ResIterator iterator = model.listSubjectsWithProperty(RDFS.domain, domainResource);
+        while (iterator.hasNext()) {
+            Resource property = iterator.nextResource();
+            relatedConcepts.add(property.getURI());
+        }
+
+        iterator = model.listSubjectsWithProperty(RDFS.range, domainResource);
+        while (iterator.hasNext()) {
+            Resource property = iterator.nextResource();
+            relatedConcepts.add(property.getURI());
+        }
+
+        return relatedConcepts;
+    }
+
+    private List<ConceptMetadataEntity> findRelatedConceptEntities(List<String> conceptUris) {
+        List<ConceptMetadataEntity> relatedConcepts = new ArrayList<>();
+        for (String conceptUri : conceptUris) {
+            conceptMetadataRepository.findByConceptIri(conceptUri).ifPresent(relatedConcepts::add);
+        }
+        return relatedConcepts;
+    }
+
     private void validateInput(ConceptCreateModel createModel, String userId) {
         if (createModel == null) {
             throw new OntologyException("Data pro vytvoření pojmu jsou prázdná");
@@ -203,15 +240,33 @@ public class ConceptServiceImpl implements ConceptService {
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
                                                        String userId,
                                                        String conceptIri) {
+        String ontologyGraphName = createModel.getOntologyGraphName();
+        OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository
+                .findByGraphName(ontologyGraphName)
+                .orElseThrow(() -> {
+                    log.error("Ontology metadata not found for graph: {}", ontologyGraphName);
+                    return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
+                });
+
+        String baseSlug = UtilityMethods.extractNameFromIRI(ontologyGraphName) + "-" + UtilityMethods.extractNameFromIRI(conceptIri);
+        String slug = baseSlug;
+        int counter = 1;
+
+        while (conceptMetadataRepository.findBySlug(slug).isPresent()) {
+            slug = baseSlug + "-" + counter;
+            counter++;
+        }
+
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(conceptIri));
-        entity.setConceptName(createModel.getNameModel().getName());
+        entity.setSlug(slug);
+        entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
         entity.setGraphName(createModel.getOntologyGraphName());
         entity.setUserId(userId);
         entity.setIsPublished(false);
         entity.setInTezaurus(createModel.getInTezaurus());
+        entity.setOntologyMetadata(ontologyMetadata);
 
         return entity;
     }
@@ -267,11 +322,10 @@ public class ConceptServiceImpl implements ConceptService {
     private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel, ConceptEditor.EditResult editResult) {
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
-            metadata.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(editResult.newConceptIRI));
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
-            metadata.setConceptName(conceptEditModel.getNameModel().getName());
+            metadata.setConceptName(getNameForMetadata(conceptEditModel.getNameModel()));
         }
 
         if (conceptEditModel.getInTezaurus() != null) {
@@ -344,5 +398,16 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
+    }
+
+    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey("cs")) {
+            return names.get("cs");
+        }
+        return names.values().iterator().next();
     }
 }

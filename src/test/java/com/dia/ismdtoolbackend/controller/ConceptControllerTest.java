@@ -53,12 +53,10 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "descriptionModel": {
-                        "description": "Test description",
-                        "languageTag": "cs"
+                        "description": {"cs": "Test description"}
                     },
                     "type": "entity"
                 }
@@ -98,8 +96,7 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "type": "entity"
                 }
@@ -123,8 +120,7 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "type": "entity"
                 }
@@ -158,8 +154,7 @@ class ConceptControllerTest {
 
         if (!"null".equals(conceptName)) {
             jsonBuilder.append(",\n    \"nameModel\": {\n");
-            jsonBuilder.append("        \"name\": \"").append(conceptName).append("\",\n");
-            jsonBuilder.append("        \"languageTag\": \"cs\"\n");
+            jsonBuilder.append("        \"name\": {\"cs\": \"").append(conceptName).append("\"}\n");
             jsonBuilder.append("    }");
         }
 
@@ -192,8 +187,7 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "type": "entity"
                 }
@@ -221,8 +215,7 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "type": "entity"
                 }
@@ -250,8 +243,7 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "type": "entity"
                 }
@@ -279,8 +271,7 @@ class ConceptControllerTest {
                     "ontologyGraphName": "test-ontology",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "TestConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "TestConcept"}
                     },
                     "type": "entity"
                 }
@@ -367,12 +358,10 @@ class ConceptControllerTest {
                     "conceptIRI": "http://example.org/TestConcept",
                     "namespace": "http://example.org/",
                     "nameModel": {
-                        "name": "UpdatedConcept",
-                        "languageTag": "cs"
+                        "name": {"cs": "UpdatedConcept"}
                     },
                     "descriptionModel": {
-                        "description": "Updated description",
-                        "languageTag": "cs"
+                        "description": {"cs": "Updated description"}
                     }
                 }
                 """;

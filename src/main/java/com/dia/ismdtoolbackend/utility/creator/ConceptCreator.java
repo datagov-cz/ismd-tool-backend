@@ -1,9 +1,6 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
-import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
-import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
-import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
-import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
+import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
@@ -22,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
@@ -182,7 +180,7 @@ public class ConceptCreator {
     }
 
     private void addConditionalCommonProperties(Set<String> properties, ConceptCreateModel createModel) {
-        if (createModel.getAltNameModel() != null && !createModel.getAltNameModel().isEmpty()) {
+        if (createModel.getAltNameModel() != null) {
             properties.add(ALTERNATIVNI_NAZEV);
         }
 
@@ -239,7 +237,7 @@ public class ConceptCreator {
 
     private void addCommonGovernanceProperties(Set<String> properties, Boolean isInPPDF, String agendaCode,
                                                  String agendaSystemCode, String privacyProvision,
-                                                 String sharingMethod, String acquisitionMethod, String contentType) {
+                                                 List<String> sharingMethod, String acquisitionMethod, String contentType) {
         if (isInPPDF != null) {
             properties.add(JE_PPDF);
         }
@@ -260,9 +258,11 @@ public class ConceptCreator {
     }
 
     private Resource createClassResource(ClassConceptModel classModel) {
-        String classURI = uriGenerator.generateConceptURI(classModel.getNameModel().getName(), classModel.getIdentifier());
+        String nameForUri = getNameForUriGeneration(classModel.getNameModel());
+        String classURI = uriGenerator.generateConceptURI(nameForUri, classModel.getIdentifier());
         Resource classResource = ontModel.createResource(classURI);
 
+        classResource.addProperty(RDF.type, SKOS.Concept);
         classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
         classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TRIDA));
 
@@ -278,7 +278,8 @@ public class ConceptCreator {
     }
 
     private Resource createPropertyResource(PropertyConceptModel propModel) {
-        String propertyURI = uriGenerator.generateConceptURI(propModel.getNameModel().getName(), propModel.getIdentifier());
+        String nameForUri = getNameForUriGeneration(propModel.getNameModel());
+        String propertyURI = uriGenerator.generateConceptURI(nameForUri, propModel.getIdentifier());
 
         OntProperty propertyResource;
         if (isObjectProperty(propModel)) {
@@ -287,6 +288,8 @@ public class ConceptCreator {
             propertyResource = ontModel.createDatatypeProperty(propertyURI);
         }
 
+        propertyResource.addProperty(RDF.type, SKOS.Concept);
+        propertyResource.addProperty(RDF.type, OWL2.DatatypeProperty);
         propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
         propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VLASTNOST));
 
@@ -299,10 +302,12 @@ public class ConceptCreator {
     }
 
     private Resource createRelationshipResource(RelationshipConceptModel relModel) {
-        String relationshipURI = uriGenerator.generateConceptURI(relModel.getNameModel().getName(), relModel.getIdentifier());
+        String nameForUri = getNameForUriGeneration(relModel.getNameModel());
+        String relationshipURI = uriGenerator.generateConceptURI(nameForUri, relModel.getIdentifier());
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
 
+        relationshipResource.addProperty(RDF.type, SKOS.Concept);
         relationshipResource.addProperty(RDF.type, OWL2.ObjectProperty);
         relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + POJEM));
         relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VZTAH));
@@ -326,40 +331,63 @@ public class ConceptCreator {
         addDescription(resource, model);
         addDefinition(resource, model);
 
-        if (model.getAltNameModel() != null && !model.getAltNameModel().isEmpty()) {
+        if (model.getAltNameModel() != null) {
             addAlternativeNames(resource, model.getAltNameModel());
         }
     }
 
     private void addPrefLabel(Resource resource, ConceptCreateModel model) {
-        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().trim().isEmpty()) {
-            String nameLanguageTag = model.getNameModel().getLanguageTag() != null
-                    ? model.getNameModel().getLanguageTag()
-                    : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
-                    model.getNameModel().getName(), nameLanguageTag, ontModel);
+        if (model.getNameModel() != null && model.getNameModel().getName() != null && !model.getNameModel().getName().isEmpty()) {
+            for (Map.Entry<String, String> entry : model.getNameModel().getName().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
+                            entry.getValue().trim(), languageTag, ontModel);
+                }
+            }
         }
     }
 
     private void addDescription(Resource resource, ConceptCreateModel model) {
-        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().trim().isEmpty()) {
+        if (model.getDescriptionModel() != null && model.getDescriptionModel().getDescription() != null && !model.getDescriptionModel().getDescription().isEmpty()) {
             Property descProperty = ontModel.createProperty("http://purl.org/dc/terms/description");
-            String descLanguageTag = model.getDescriptionModel().getLanguageTag() != null
-                    ? model.getDescriptionModel().getLanguageTag()
-                    : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, descProperty,
-                    model.getDescriptionModel().getDescription(), descLanguageTag, ontModel);
+            for (Map.Entry<String, String> entry : model.getDescriptionModel().getDescription().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, descProperty,
+                            entry.getValue().trim(), languageTag, ontModel);
+                }
+            }
         }
     }
 
     private void addDefinition(Resource resource, ConceptCreateModel model) {
-        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().trim().isEmpty()) {
-            String defLanguageTag = model.getDefinitionModel().getLanguageTag() != null
-                    ? model.getDefinitionModel().getLanguageTag()
-                    : DEFAULT_LANG;
-            DataTypeConverter.addTypedProperty(resource, SKOS.definition,
-                    model.getDefinitionModel().getDefinition(), defLanguageTag, ontModel);
+        if (model.getDefinitionModel() != null && model.getDefinitionModel().getDefinition() != null && !model.getDefinitionModel().getDefinition().isEmpty()) {
+            for (Map.Entry<String, String> entry : model.getDefinitionModel().getDefinition().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                            ? entry.getKey()
+                            : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, SKOS.definition,
+                            entry.getValue().trim(), languageTag, ontModel);
+                }
+            }
         }
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
     }
 
     private void addSourceMetadata(Resource resource, ConceptCreateModel model) {
@@ -368,37 +396,41 @@ public class ConceptCreator {
     }
 
     private void addLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().isEmpty()) {
-            for (String source : model.getDefiningLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processLegalSource(resource, source, true);
-                }
-            }
+        processLegalSources(resource, model.getDefiningNonLegalSource(), true);
+        processLegalSources(resource, model.getRelatedNonLegalSource(), false);
+    }
+
+    private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
+        processNonLegalSources(resource, model.getDefiningNonLegalSource(), true);
+        processNonLegalSources(resource, model.getRelatedNonLegalSource(), false);
+    }
+
+    private void processLegalSources(Resource resource, List<String> sources, boolean isDefining) {
+        if (sources == null || sources.isEmpty()) {
+            return;
         }
-        if (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().isEmpty()) {
-            for (String source : model.getRelatedLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processLegalSource(resource, source, false);
-                }
+
+        for (String source : sources) {
+            if (isValidSource(source)) {
+                processLegalSource(resource, source, isDefining);
             }
         }
     }
 
-    private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        if (model.getDefiningNonLegalSource() != null && !model.getDefiningNonLegalSource().isEmpty()) {
-            for (String source : model.getDefiningNonLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processNonLegalSource(resource, source, true);
-                }
+    private void processNonLegalSources(Resource resource, List<String> sources, boolean isDefining) {
+        if (sources == null || sources.isEmpty()) {
+            return;
+        }
+
+        for (String source : sources) {
+            if (isValidSource(source)) {
+                processNonLegalSource(resource, source, isDefining);
             }
         }
-        if (model.getRelatedNonLegalSource() != null && !model.getRelatedNonLegalSource().isEmpty()) {
-            for (String source : model.getRelatedNonLegalSource()) {
-                if (source != null && !source.trim().isEmpty()) {
-                    processNonLegalSource(resource, source, false);
-                }
-            }
-        }
+    }
+
+    private boolean isValidSource(String source) {
+        return source != null && !source.trim().isEmpty();
     }
 
     private void addMatchMetadata(Resource resource, ConceptCreateModel model) {
@@ -422,8 +454,12 @@ public class ConceptCreator {
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             addAIS(classResource, classModel.getAgendaSystemCode());
         }
-        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().trim().isEmpty()) {
-            addGovernanceProperty(classResource, classModel.getSharingMethod(), ZPUSOB_SDILENI);
+        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
+            for (String method : classModel.getSharingMethod()) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
+                }
+            }
         }
         if (classModel.getAcquisitionMethod() != null && !classModel.getAcquisitionMethod().trim().isEmpty()) {
             addGovernanceProperty(classResource, classModel.getAcquisitionMethod(), ZPUSOB_ZISKANI);
@@ -543,7 +579,7 @@ public class ConceptCreator {
     }
 
     private void addSharedGovernanceMetadata(Resource resource, String agendaCode, String agendaSystemCode,
-                                              String sharingMethod, String acquisitionMethod, String contentType,
+                                              List<String> sharingMethod, String acquisitionMethod, String contentType,
                                               String privacyProvision) {
         if (agendaCode != null && !agendaCode.trim().isEmpty()) {
             addAgenda(resource, agendaCode);
@@ -551,8 +587,12 @@ public class ConceptCreator {
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             addAIS(resource, agendaSystemCode);
         }
-        if (sharingMethod != null && !sharingMethod.trim().isEmpty()) {
-            addGovernanceProperty(resource, sharingMethod, ZPUSOB_SDILENI);
+        if (sharingMethod != null && !sharingMethod.isEmpty()) {
+            for (String method : sharingMethod) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(resource, method, ZPUSOB_SDILENI);
+                }
+            }
         }
         if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
             addGovernanceProperty(resource, acquisitionMethod, ZPUSOB_ZISKANI);
@@ -576,14 +616,16 @@ public class ConceptCreator {
         }
     }
 
-    private void addAlternativeNames(Resource resource, java.util.List<com.dia.ismdtoolbackend.models.concept.AltNameModel> altNameModels) {
-        for (com.dia.ismdtoolbackend.models.concept.AltNameModel altNameModel : altNameModels) {
-            if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().trim().isEmpty()) {
-                String languageTag = altNameModel.getLanguageTag() != null
-                    ? altNameModel.getLanguageTag()
-                    : DEFAULT_LANG;
-                DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
-                    altNameModel.getAltName().trim(), languageTag, ontModel);
+    private void addAlternativeNames(Resource resource, AltNameModel altNameModel) {
+        if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
+            for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
+                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                    DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
+                        entry.getValue().trim(), languageTag, ontModel);
+                }
             }
         }
     }
@@ -825,9 +867,9 @@ public class ConceptCreator {
     }
 
     private boolean hasGovernanceProperties(ClassConceptModel model) {
-        return (model.getSharingMethod() != null && !model.getSharingMethod().trim().isEmpty()) ||
-                (model.getAcquisitionMethod() != null && !model.getAcquisitionMethod().trim().isEmpty()) ||
-                (model.getContentType() != null && !model.getContentType().trim().isEmpty());
+        return (model.getSharingMethod() != null && !model.getSharingMethod().isEmpty()) ||
+                (model.getAcquisitionMethod() != null && !model.getAcquisitionMethod().isEmpty()) ||
+                (model.getContentType() != null && !model.getContentType().isEmpty());
     }
 
     private boolean hasPublicDataValue(String isPublic) {
@@ -846,8 +888,8 @@ public class ConceptCreator {
         return privacyProvision != null && !privacyProvision.trim().isEmpty();
     }
 
-    private boolean hasGovernancePropertiesValues(String sharingMethod, String acquisitionMethod, String contentType) {
-        return (sharingMethod != null && !sharingMethod.trim().isEmpty()) ||
+    private boolean hasGovernancePropertiesValues(List<String> sharingMethod, String acquisitionMethod, String contentType) {
+        return (sharingMethod != null && !sharingMethod.isEmpty()) ||
                 (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) ||
                 (contentType != null && !contentType.trim().isEmpty());
     }

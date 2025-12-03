@@ -196,6 +196,10 @@ public class ModelAnalyzer {
         }
         conceptTypeURIs.add(SKOS_NS + "Concept");
 
+        conceptTypeURIs.add("http://www.w3.org/2002/07/owl#Class");
+        conceptTypeURIs.add("http://www.w3.org/2002/07/owl#ObjectProperty");
+        conceptTypeURIs.add("http://www.w3.org/2002/07/owl#DatatypeProperty");
+
         return conceptTypeURIs;
     }
 

@@ -184,7 +184,7 @@ public class OntologyAnalyzer {
         if ((requiredBaseClasses.contains(VEREJNY_UDAJ) || requiredBaseClasses.contains(NEVEREJNY_UDAJ))) {
             requiredBaseClasses.add(UDAJ);
         }
-        if ((requiredBaseClasses.contains(ZPUSOB_SDILENI_UDAJE) || requiredBaseClasses.contains(ZPUSOB_ZISKANI_UDAJE))) {
+        if ((requiredBaseClasses.contains(ZPUSOB_SDILENI) || requiredBaseClasses.contains(ZPUSOB_ZISKANI))) {
             requiredBaseClasses.add(POLOZKA_CISELNIKU);
         }
     }

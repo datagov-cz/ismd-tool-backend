@@ -5,27 +5,25 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
-import com.dia.validation.ValidationReportDto;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface OntologyMetadataMapper {
 
     @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
-    @Mapping(target = "validationReportId", source = "validationReport", qualifiedByName = "validationReportToValidationReportId")
+    @Mapping(target = "concepts", ignore = true)
     OntologyMetadataEntity toEntity(OntologyMetadataModel dto);
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
-    @Mapping(target = "validationReport", source = "validationReportId", qualifiedByName = "validationReportIdToValidationReport")
     @Mapping(target = "comments", ignore = true)
     @Mapping(target = "name", ignore = true)
     @Mapping(target = "popis", ignore = true)
+    @Mapping(target = "concepts", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
 
     default CommentModel commentEntityToModel(CommentEntity entity) {
@@ -48,7 +46,7 @@ public interface OntologyMetadataMapper {
         }
         return entities.stream()
                 .map(this::commentEntityToModel)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Named("userToUserId")
@@ -59,20 +57,5 @@ public interface OntologyMetadataMapper {
     @Named("userIdToUser")
     default UserModel userIdToUser(String userId) {
         return userId != null ? new UserModel(userId) : null;
-    }
-
-    @Named("validationReportToValidationReportId")
-    default Long validationReportToValidationReportId(ValidationReportDto validationReport) {
-        return validationReport != null && validationReport.getId() != null ?
-                validationReport.getId() : null;
-    }
-
-    @Named("validationReportIdToValidationReport")
-    default ValidationReportDto validationReportIdToValidationReport(Long validationReportId) {
-        ValidationReportDto validationReport = new ValidationReportDto();
-        if (validationReportId != null) {
-            validationReport.setId(validationReportId);
-        }
-        return validationReport;
     }
 }

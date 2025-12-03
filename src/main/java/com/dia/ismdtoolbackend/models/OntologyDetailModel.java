@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -54,7 +56,7 @@ public class OntologyDetailModel {
         private Map<String, String> name;
 
         @JsonProperty("alternativní-název")
-        private Map<String, String> alternativeName;
+        private Map<String, Object> alternativeName;
 
         @JsonProperty("definice")
         private Map<String, String> definition;
@@ -63,7 +65,7 @@ public class OntologyDetailModel {
         private Map<String, String> description;
 
         @JsonProperty("identifikátor")
-        private List<String> identifiers;
+        private String identifier;
 
         @JsonProperty("ekvivalentní-pojem")
         private List<Map<String, String>> exactMatches;
@@ -90,10 +92,10 @@ public class OntologyDetailModel {
         private List<String> relatedLegalSources;
 
         @JsonProperty("definující-nelegislativní-zdroj")
-        private List<String> definingNonLegalSources;
+        private List<Map<String, Object>> definingNonLegalSources;
 
         @JsonProperty("související-nelegislativní-zdroj")
-        private List<String> relatedNonLegalSources;
+        private List<Map<String, Object>> relatedNonLegalSources;
 
         @JsonProperty("způsob-sdílení-údajů")
         private List<String> sharingMethods;
@@ -114,6 +116,10 @@ public class OntologyDetailModel {
         private String agenda;
 
         @JsonProperty("ustanovení-neverejnost")
-        private List<String> privacyProvisions;
+        private String privacyProvisions;
+
+        private List<ConceptPropertiesModel> conceptProperties;
+
+        private List<ConceptRelationshipsModel> conceptRelationships;
     }
 }

@@ -1,15 +1,20 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
+import com.dia.ismdtoolbackend.exception.ValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +45,7 @@ public class OntologyController {
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
+    private final ValidationService validationService;
     private final ValidationClient validationClient;
 
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -145,20 +151,23 @@ public class OntologyController {
         }
     }
 
-    @PatchMapping("/edit")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(@RequestBody OntologyEditModel ontologyEditModel) {
+    @PatchMapping("{ontologyId}/edit")
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(
+            @RequestBody OntologyEditModel ontologyEditModel,
+            @PathVariable Long ontologyId
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology edit requested, ontologyIRI: {}", ontologyEditModel.getOntologyIRI());
+        log.info("Ontology edit requested, ontology ID: {}", ontologyId);
 
         try {
-            OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyEditModel);
+            OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyId, ontologyEditModel);
             log.info("Ontology edit successful: {}", updatedOntology);
 
             return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
         } catch (org.apache.jena.ontology.OntologyException e) {
             if (e.getMessage().contains("nebyl nalezen")) {
-                log.error("Ontology not found: {}", ontologyEditModel.getOntologyIRI());
+                log.error("Ontology not found: {}", ontologyId);
                 return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
             }
             if (e.getMessage().contains("povinné")) {
@@ -268,7 +277,7 @@ public class OntologyController {
 
     @PostMapping("/validate")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
-            @RequestPart OntologyMetadataModel ontologyMetadata
+            @RequestBody OntologyMetadataModel ontologyMetadata
     ) {
         try {
             String requestId = UUID.randomUUID().toString();
@@ -278,14 +287,47 @@ public class OntologyController {
             String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
             Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
             if (validationReport.isPresent()) {
+                validationService.saveValidationReport(validationReport.get(), ontologyMetadata);
                 return ResponseEntity.ok().body(ApiResponseDto.success(validationReport.get(), "Validace proběhla úspěšně."));
             } else {
                 log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
-                return ResponseEntity.status(500).body(ApiResponseDto.error("Validace se nezdařila - validační služba nevrátila odpověď."));
+                return ResponseEntity.status(500).body(ApiResponseDto.error("Validace se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
             }
+        } catch (ValidationException e) {
+            log.error("Error while saving validation report: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během ukládání výpisu z kontroly došlo k chybě: " + e.getMessage()));
         } catch (OntologyException e) {
             log.error("Unexpected error: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
+            return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během žádosti o kontrolu došlo k neočekávané chybě: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/catalog-record")
+    public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
+            @RequestBody CatalogRequestDto catalogRequestDto
+    ) {
+        try {
+            String requestId = UUID.randomUUID().toString();
+            MDC.put(LOG_REQUEST_ID, requestId);
+            log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
+
+            String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
+            CatalogRecordRequestDto request = new CatalogRecordRequestDto();
+            request.setTtlContent(ttlContent);
+            request.setValidationReport(catalogRequestDto.getValidationReport());
+            Optional<CatalogRecordDto> catalogRecordDto = validationClient.requestCatalogRecord(request);
+            if (catalogRecordDto.isPresent()) {
+                return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecordDto.get(), "Žádost o katalogizační záznam proběhla úspěšně."));
+            } else {
+                log.warn("Catalog record not received for ontology: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
+                return ResponseEntity.status(500).body(ApiResponseDto.error("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
+            }
+        } catch (OntologyException e) {
+            log.error("Error while requesting catalog record: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(ApiResponseDto.error("Během žádosti o katalogizační záznam došlo k chybě: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Unexpected error while requesting catalog record: {}", e.getMessage());
+            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při žádosti o katalogizační záznam."));
         }
     }
 
