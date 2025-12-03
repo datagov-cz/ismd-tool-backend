@@ -258,8 +258,15 @@ public class ConceptCreator {
     }
 
     private Resource createClassResource(ClassConceptModel classModel) {
-        String nameForUri = getNameForUriGeneration(classModel.getNameModel());
-        String classURI = uriGenerator.generateConceptURI(nameForUri, classModel.getIdentifier());
+        String classURI;
+        if (classModel.getIdentifier() != null && UtilityMethods.isValidIRI(classModel.getIdentifier())) {
+            classURI = classModel.getIdentifier();
+            log.info("Using custom IRI from identifier: {}", classURI);
+        } else {
+            String name = getNameForUriGeneration(classModel.getNameModel());
+            classURI = uriGenerator.generateConceptURI(name, classModel.getIdentifier());
+        }
+
         Resource classResource = ontModel.createResource(classURI);
 
         classResource.addProperty(RDF.type, SKOS.Concept);
@@ -278,8 +285,14 @@ public class ConceptCreator {
     }
 
     private Resource createPropertyResource(PropertyConceptModel propModel) {
-        String nameForUri = getNameForUriGeneration(propModel.getNameModel());
-        String propertyURI = uriGenerator.generateConceptURI(nameForUri, propModel.getIdentifier());
+        String propertyURI;
+        if (propModel.getIdentifier() != null && UtilityMethods.isValidIRI(propModel.getIdentifier())) {
+            propertyURI = propModel.getIdentifier();
+            log.info("Using custom IRI from identifier: {}", propertyURI);
+        } else {
+            String name = getNameForUriGeneration(propModel.getNameModel());
+            propertyURI = uriGenerator.generateConceptURI(name, propModel.getIdentifier());
+        }
 
         OntProperty propertyResource;
         if (isObjectProperty(propModel)) {
@@ -302,8 +315,14 @@ public class ConceptCreator {
     }
 
     private Resource createRelationshipResource(RelationshipConceptModel relModel) {
-        String nameForUri = getNameForUriGeneration(relModel.getNameModel());
-        String relationshipURI = uriGenerator.generateConceptURI(nameForUri, relModel.getIdentifier());
+        String relationshipURI;
+        if (relModel.getIdentifier() != null && UtilityMethods.isValidIRI(relModel.getIdentifier())) {
+            relationshipURI = relModel.getIdentifier();
+            log.info("Using custom IRI from identifier: {}", relationshipURI);
+        } else {
+            String name = getNameForUriGeneration(relModel.getNameModel());
+            relationshipURI = uriGenerator.generateConceptURI(name, relModel.getIdentifier());
+        }
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
 
@@ -377,17 +396,6 @@ public class ConceptCreator {
                 }
             }
         }
-    }
-
-    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey(DEFAULT_LANG)) {
-            return names.get(DEFAULT_LANG);
-        }
-        return names.values().iterator().next();
     }
 
     private void addSourceMetadata(Resource resource, ConceptCreateModel model) {
@@ -892,5 +900,16 @@ public class ConceptCreator {
         return (sharingMethod != null && !sharingMethod.isEmpty()) ||
                 (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) ||
                 (contentType != null && !contentType.trim().isEmpty());
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
     }
 }
