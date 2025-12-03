@@ -415,16 +415,16 @@ class OntologyControllerTest {
 
     @Test
     void testEditOntology_Success() throws Exception {
+        Long ontologyId = 1L;
         OntologyEditModel editModel = new OntologyEditModel();
-        editModel.setOntologyIRI("http://example.org/test-ontology");
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
-        when(ontologyService.editOntology(any(OntologyEditModel.class)))
+        when(ontologyService.editOntology(eq(ontologyId), any(OntologyEditModel.class)))
                 .thenReturn(expectedMetadata);
 
-        mockMvc.perform(patch("/api/ontology/edit")
+        mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(editModel)))
                 .andExpect(status().isOk())
@@ -435,13 +435,13 @@ class OntologyControllerTest {
 
     @Test
     void testEditOntology_NotFound() throws Exception {
+        Long ontologyId = 999L;
         OntologyEditModel editModel = new OntologyEditModel();
-        editModel.setOntologyIRI("http://example.org/nonexistent");
 
-        when(ontologyService.editOntology(any()))
+        when(ontologyService.editOntology(eq(ontologyId), any()))
                 .thenThrow(new org.apache.jena.ontology.OntologyException("Slovník nebyl nalezen"));
 
-        mockMvc.perform(patch("/api/ontology/edit")
+        mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(editModel)))
                 .andExpect(status().isNotFound())

@@ -16,7 +16,6 @@ import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
-import com.dia.validation.ValidationReportDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -152,20 +151,23 @@ public class OntologyController {
         }
     }
 
-    @PatchMapping("/edit")
-    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(@RequestBody OntologyEditModel ontologyEditModel) {
+    @PatchMapping("{ontologyId}/edit")
+    public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(
+            @RequestBody OntologyEditModel ontologyEditModel,
+            @PathVariable Long ontologyId
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology edit requested, ontologyIRI: {}", ontologyEditModel.getOntologyIRI());
+        log.info("Ontology edit requested, ontology ID: {}", ontologyId);
 
         try {
-            OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyEditModel);
+            OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyId, ontologyEditModel);
             log.info("Ontology edit successful: {}", updatedOntology);
 
             return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
         } catch (org.apache.jena.ontology.OntologyException e) {
             if (e.getMessage().contains("nebyl nalezen")) {
-                log.error("Ontology not found: {}", ontologyEditModel.getOntologyIRI());
+                log.error("Ontology not found: {}", ontologyId);
                 return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
             }
             if (e.getMessage().contains("povinné")) {

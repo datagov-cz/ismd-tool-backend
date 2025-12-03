@@ -305,13 +305,13 @@ class OntologyServiceImplTest {
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(TEST_GRAPH_NAME, false);
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
-        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString())).thenReturn(editResult);
+        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
-        OntologyMetadataModel result = ontologyService.editOntology(editModel);
+        OntologyMetadataModel result = ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel);
 
         assertNotNull(result);
         verify(jenaTDB2Repository).saveOntologyModel(TEST_GRAPH_NAME, testModel);
@@ -326,15 +326,15 @@ class OntologyServiceImplTest {
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(newIRI, true);
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
-        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString())).thenReturn(editResult);
+        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
-        OntologyMetadataModel result = ontologyService.editOntology(editModel);
+        OntologyMetadataModel result = ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel);
 
         assertNotNull(result);
         verify(jenaTDB2Repository).saveOntologyModel(newIRI, testModel);
@@ -365,15 +365,15 @@ class OntologyServiceImplTest {
 
         List<ConceptMetadataEntity> concepts = List.of(concept1, concept2);
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
-        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString())).thenReturn(editResult);
+        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(concepts);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
-        OntologyMetadataModel result = ontologyService.editOntology(editModel);
+        OntologyMetadataModel result = ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel);
 
         assertNotNull(result);
         verify(conceptMetadataRepository).saveAll(argThat(savedConcepts -> {
@@ -387,41 +387,19 @@ class OntologyServiceImplTest {
     @Test
     void editOntology_NullModel() {
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.editOntology(null));
+                () -> ontologyService.editOntology(TEST_ONTOLOGY_ID, null));
 
         assertTrue(exception.getMessage().contains("prázdná"));
-    }
-
-    @Test
-    void editOntology_NullIRI() {
-        OntologyEditModel editModel = new OntologyEditModel();
-        editModel.setOntologyIRI(null);
-
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.editOntology(editModel));
-
-        assertTrue(exception.getMessage().contains("povinné"));
-    }
-
-    @Test
-    void editOntology_EmptyIRI() {
-        OntologyEditModel editModel = new OntologyEditModel();
-        editModel.setOntologyIRI("  ");
-
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.editOntology(editModel));
-
-        assertTrue(exception.getMessage().contains("povinné"));
     }
 
     @Test
     void editOntology_OntologyNotFound() {
         OntologyEditModel editModel = createValidOntologyEditModel();
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.editOntology(editModel));
+                () -> ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
     }
@@ -430,11 +408,11 @@ class OntologyServiceImplTest {
     void editOntology_EmptyModel() {
         OntologyEditModel editModel = createValidOntologyEditModel();
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.editOntology(editModel));
+                () -> ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel));
 
         assertTrue(exception.getMessage().contains("prázdný"));
     }
@@ -445,14 +423,14 @@ class OntologyServiceImplTest {
         String newIRI = "http://example.org/new-ontology";
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(newIRI, true);
 
-        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
-        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString())).thenReturn(editResult);
+        when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
         doThrow(new RuntimeException("Save error")).when(jenaTDB2Repository).saveOntologyModel(eq(newIRI), any(Model.class));
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.editOntology(editModel));
+                () -> ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit změny"));
     }
@@ -479,7 +457,6 @@ class OntologyServiceImplTest {
 
     private OntologyEditModel createValidOntologyEditModel() {
         OntologyEditModel model = new OntologyEditModel();
-        model.setOntologyIRI(TEST_GRAPH_NAME);
         return model;
     }
 
