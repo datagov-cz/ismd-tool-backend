@@ -19,6 +19,7 @@ import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -253,8 +254,17 @@ public class ConceptServiceImpl implements ConceptService {
                     return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
                 });
 
+        String baseSlug = UtilityMethods.extractNameFromIRI(ontologyGraphName) + "-" + UtilityMethods.extractNameFromIRI(conceptIri);
+        String slug = baseSlug;
+        int counter = 1;
+
+        while (conceptMetadataRepository.findBySlug(slug).isPresent()) {
+            slug = baseSlug + "-" + counter;
+            counter++;
+        }
+
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(conceptIri));
+        entity.setSlug(slug);
         entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
         entity.setConceptType(createModel.getConceptTypeEnum());
         entity.setConceptIri(conceptIri);
