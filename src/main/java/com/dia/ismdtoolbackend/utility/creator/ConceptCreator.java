@@ -155,10 +155,10 @@ public class ConceptCreator {
     }
 
     private void addDataClassificationClasses(Set<String> classes, ClassConceptModel classModel) {
-        if (classModel.getIsPublic()) {
+        if (Boolean.TRUE.equals(classModel.getIsPublic())) {
             classes.add(VEREJNY_UDAJ);
         }
-        if (!classModel.getIsPublic()) {
+        if (Boolean.FALSE.equals(classModel.getIsPublic())) {
             classes.add(NEVEREJNY_UDAJ);
         }
     }
@@ -213,7 +213,7 @@ public class ConceptCreator {
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             properties.add(AIS);
         }
-        if (!classModel.getIsPublic()) {
+        if (Boolean.FALSE.equals(classModel.getIsPublic())) {
             properties.add(USTANOVENI_NEVEREJNOST);
         }
         if (hasGovernanceProperties(classModel)) {
@@ -454,13 +454,9 @@ public class ConceptCreator {
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             addAIS(classResource, classModel.getAgendaSystemCode());
         }
-        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
-            for (String method : classModel.getSharingMethod()) {
-                if (method != null && !method.trim().isEmpty()) {
-                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
-                }
-            }
-        }
+
+        addClassSharingMethod(classResource, classModel);
+
         if (classModel.getAcquisitionMethod() != null && !classModel.getAcquisitionMethod().trim().isEmpty()) {
             addGovernanceProperty(classResource, classModel.getAcquisitionMethod(), ZPUSOB_ZISKANI);
         }
@@ -469,7 +465,20 @@ public class ConceptCreator {
         }
 
         addDataClassification(classResource, classModel);
+        addBroaderConcept(classResource, classModel);
+    }
 
+    private void addClassSharingMethod(Resource classResource, ClassConceptModel classModel) {
+        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
+            for (String method : classModel.getSharingMethod()) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
+                }
+            }
+        }
+    }
+
+    private void addBroaderConcept(Resource classResource, ClassConceptModel classModel) {
         if (classModel.getBroaderConcept() != null && !classModel.getBroaderConcept().isEmpty()) {
             for (String broaderConcept : classModel.getBroaderConcept()) {
                 if (broaderConcept != null && !broaderConcept.trim().isEmpty()) {
@@ -478,7 +487,6 @@ public class ConceptCreator {
             }
         }
     }
-
 
     private void addPropertySpecificMetadata(Resource propertyResource, PropertyConceptModel propModel) {
         if (propModel.getDomain() != null && !propModel.getDomain().trim().isEmpty()) {
@@ -599,13 +607,9 @@ public class ConceptCreator {
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             addAIS(resource, agendaSystemCode);
         }
-        if (sharingMethod != null && !sharingMethod.isEmpty()) {
-            for (String method : sharingMethod) {
-                if (method != null && !method.trim().isEmpty()) {
-                    addGovernanceProperty(resource, method, ZPUSOB_SDILENI);
-                }
-            }
-        }
+
+        addSharingMethodMetadata(sharingMethod, resource);
+
         if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
             addGovernanceProperty(resource, acquisitionMethod, ZPUSOB_ZISKANI);
         }
@@ -616,6 +620,15 @@ public class ConceptCreator {
         addPrivacyProvisionMetadata(resource, privacyProvision);
     }
 
+    private void addSharingMethodMetadata(List<String> sharingMethod, Resource resource) {
+        if (sharingMethod != null && !sharingMethod.isEmpty()) {
+            for (String method : sharingMethod) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(resource, method, ZPUSOB_SDILENI);
+                }
+            }
+        }
+    }
     private void addPrivacyProvisionMetadata(Resource resource, String privacyProvision) {
         if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
             String eliPart = UtilityMethods.extractEliPart(privacyProvision);
