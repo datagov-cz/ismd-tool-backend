@@ -34,12 +34,11 @@ public class ConceptEditor {
 
     private final URIGenerator uriGenerator = new URIGenerator();
 
-    public EditResult editConcept(ConceptEditModel editModel, Model model, String graphName) {
-        String oldConceptIRI = editModel.getConceptIRI();
-        Resource existingConcept = model.getResource(oldConceptIRI);
+    public EditResult editConcept(String conceptIri, ConceptEditModel editModel, Model model, String graphName) {
+        Resource existingConcept = model.getResource(conceptIri);
 
         if (existingConcept == null || !model.containsResource(existingConcept)) {
-            throw new IllegalArgumentException("Concept with IRI " + oldConceptIRI + " not found in the model");
+            throw new IllegalArgumentException("Concept with IRI " + conceptIri + " not found in the model");
         }
 
         String effectiveNamespace = determineEffectiveNamespace(graphName);
@@ -49,11 +48,11 @@ public class ConceptEditor {
         String oldName = getNameForUriGeneration(existingConcept);
         boolean nameChanged = newName != null && !newName.isEmpty() && !newName.equals(oldName);
 
-        String newConceptIRI = oldConceptIRI;
+        String newConceptIRI = conceptIri;
         if (nameChanged) {
             newConceptIRI = uriGenerator.generateConceptURI(newName, editModel.getIdentifier());
             log.info("Name changed from '{}' to '{}', updating IRI from {} to {}",
-                    oldName, newName, oldConceptIRI, newConceptIRI);
+                    oldName, newName, conceptIri, newConceptIRI);
         }
 
         Set<Statement> statementsToRemove = new HashSet<>();
@@ -68,8 +67,8 @@ public class ConceptEditor {
                     model, statementsToRemove, statementsToAdd, newConceptIRI);
         }
 
-        if (nameChanged && !oldConceptIRI.equals(newConceptIRI)) {
-            renameConceptIRI(model, oldConceptIRI, newConceptIRI, statementsToRemove, statementsToAdd);
+        if (nameChanged && !conceptIri.equals(newConceptIRI)) {
+            renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd);
         }
 
         model.remove(statementsToRemove.toArray(new Statement[0]));

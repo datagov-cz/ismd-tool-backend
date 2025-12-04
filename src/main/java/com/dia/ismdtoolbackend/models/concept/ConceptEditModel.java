@@ -24,8 +24,6 @@ import java.util.List;
 })
 public abstract class ConceptEditModel {
     @NotBlank
-    protected String conceptIRI;
-    @NotBlank
     protected String conceptType;
     protected String namespace;
     protected NameModel nameModel;
