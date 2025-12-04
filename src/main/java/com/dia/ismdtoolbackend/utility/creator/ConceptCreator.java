@@ -470,8 +470,12 @@ public class ConceptCreator {
 
         addDataClassification(classResource, classModel);
 
-        if (classModel.getBroaderConcept() != null && !classModel.getBroaderConcept().trim().isEmpty()) {
-            addBroaderConcept(classResource, classModel.getBroaderConcept());
+        if (classModel.getBroaderConcept() != null && !classModel.getBroaderConcept().isEmpty()) {
+            for (String broaderConcept : classModel.getBroaderConcept()) {
+                if (broaderConcept != null && !broaderConcept.trim().isEmpty()) {
+                    addBroaderConcept(classResource, broaderConcept);
+                }
+            }
         }
     }
 
@@ -483,8 +487,12 @@ public class ConceptCreator {
 
         addRangeInformation(propertyResource, propModel.getDataType());
 
-        if (propModel.getSuperProperty() != null && !propModel.getSuperProperty().trim().isEmpty()) {
-            addSuperProperty(propertyResource, propModel.getSuperProperty());
+        if (propModel.getSuperProperty() != null && !propModel.getSuperProperty().isEmpty()) {
+            for (String superProperty : propModel.getSuperProperty()) {
+                if (superProperty != null && !superProperty.trim().isEmpty()) {
+                    addSuperProperty(propertyResource, superProperty);
+                }
+            }
         }
 
         if (propModel.getIsInPPDF() != null) {
@@ -549,8 +557,12 @@ public class ConceptCreator {
     }
 
     private void addSuperRelation(Resource relationshipResource, RelationshipConceptModel relModel) {
-        if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().trim().isEmpty()) {
-            addSuperProperty(relationshipResource, relModel.getSuperRelation());
+        if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().isEmpty()) {
+            for (String superRelation : relModel.getSuperRelation()) {
+                if (superRelation != null && !superRelation.trim().isEmpty()) {
+                    addSuperProperty(relationshipResource, superRelation);
+                }
+            }
         }
     }
 

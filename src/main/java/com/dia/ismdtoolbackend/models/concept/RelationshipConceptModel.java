@@ -14,7 +14,7 @@ import java.util.List;
 public class RelationshipConceptModel extends ConceptCreateModel {
     private String domain;
     private String range;
-    private String superRelation;
+    private List<String> superRelation;
     private String agendaCode;
     private String agendaSystemCode;
     private String contentType;

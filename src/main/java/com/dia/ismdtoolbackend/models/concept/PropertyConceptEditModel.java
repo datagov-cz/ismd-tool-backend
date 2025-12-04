@@ -15,7 +15,7 @@ import java.util.List;
 public class PropertyConceptEditModel extends ConceptEditModel {
     private String dataType;
     private String domain;
-    private String superProperty;
+    private List<String> superProperty;
     private Boolean isInPPDF;
     private String agendaCode;
     private String agendaSystemCode;

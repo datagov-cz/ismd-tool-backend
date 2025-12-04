@@ -18,7 +18,7 @@ public class ClassConceptEditModel extends ConceptEditModel {
     private List<String> sharingMethod;
     private String isPublic;
     private String privacyProvision;
-    private String broaderConcept;
+    private List<String> broaderConcept;
 
     @Override
     public ConceptType getConceptTypeEnum() {

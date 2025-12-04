@@ -14,7 +14,7 @@ import java.util.List;
 public class RelationshipConceptEditModel extends ConceptEditModel {
     private String domain;
     private String range;
-    private String superRelation;
+    private List<String> superRelation;
     private Boolean isInPPDF;
     private String agendaCode;
     private String agendaSystemCode;

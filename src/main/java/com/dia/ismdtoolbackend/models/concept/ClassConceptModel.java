@@ -19,7 +19,7 @@ public class ClassConceptModel extends ConceptCreateModel {
     private Boolean isInPPDF;
     private String isPublic;
     private String privacyProvision;
-    private String broaderConcept;
+    private List<String> broaderConcept;
 
     @Override
     public ConceptType getConceptTypeEnum() {
