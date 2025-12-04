@@ -222,26 +222,8 @@ public class TurtleFormatterUtil {
             model.add(stmt.getSubject(), skosPrefLabel, stmt.getObject());
         }
 
-        Property oldDefinition = model.getProperty(DCT_NS + "description");
-        Property skosConceptSchemeProperty = model.getProperty(SKOS_NS + "ConceptScheme");
-
-        List<Statement> descriptionStatements = new ArrayList<>();
-        iter = model.listStatements(null, oldDefinition, (RDFNode) null);
-        while (iter.hasNext()) {
-            descriptionStatements.add(iter.next());
-        }
-
-        for (Statement stmt : descriptionStatements) {
-            Resource subject = stmt.getSubject();
-
-            if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + CONCEPT)) && !subject.hasProperty(skosDefinition)) {
-                subject.addProperty(skosDefinition, stmt.getObject());
-                model.remove(stmt);
-            }
-            else if (!subject.hasProperty(RDF.type, skosConceptSchemeProperty) && subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + CONCEPT))) {
-                    model.remove(stmt);
-            }
-        }
+        // Keep dct:description as is - it's semantically different from skos:definition
+        // dct:description = general description, skos:definition = formal definition
     }
 
     private static void ensureConceptSchemeFormat(OntModel model) {
