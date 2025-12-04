@@ -15,8 +15,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
-import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,9 +61,9 @@ public class OntologyDetailExtractor {
         ConceptProcessor conceptProcessor = new ConceptProcessor();
 
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
-        ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
+        Map<String, Object> conceptMap = conceptProcessor.processConceptByIri(ontModel, structure, conceptIri);
 
-        return findConceptInData(conceptData, conceptIri);
+        return mapToConceptDetailModel(conceptMap, null, ontModel);
     }
 
     private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
@@ -81,16 +81,6 @@ public class OntologyDetailExtractor {
                 .modificationDate(structure.getModificationDate())
                 .concepts(concepts)
                 .build();
-    }
-
-    private OntologyDetailModel.ConceptDetailModel findConceptInData(ConceptData conceptData, String conceptIri) {
-        for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
-            String iri = (String) conceptMap.get("iri");
-            if (conceptIri.equals(iri)) {
-                return mapToConceptDetailModel(conceptMap, conceptData);
-            }
-        }
-        return null;
     }
 
     public List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, ConceptData conceptData) {
@@ -118,6 +108,40 @@ public class OntologyDetailExtractor {
 
                     properties.add(propertyModel);
                 }
+            }
+        }
+
+        return properties;
+    }
+
+    public List<ConceptPropertiesModel> extractConceptPropertiesFromModel(OntModel ontModel, String conceptIri) {
+        List<ConceptPropertiesModel> properties = new ArrayList<>();
+
+        Resource conceptResource = ontModel.getResource(conceptIri);
+        Resource vlastnostType = ontModel.getResource(OFN_NAMESPACE + VLASTNOST);
+
+        ResIterator propertyIterator = ontModel.listSubjectsWithProperty(
+            org.apache.jena.vocabulary.RDFS.domain,
+            conceptResource
+        );
+
+        while (propertyIterator.hasNext()) {
+            Resource propertyResource = propertyIterator.next();
+
+            if (propertyResource.hasProperty(org.apache.jena.rdf.model.ResourceFactory.createProperty(
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "type"), vlastnostType)) {
+
+                ConceptPropertiesModel propertyModel = new ConceptPropertiesModel();
+                String propertyIri = propertyResource.getURI();
+
+                Statement nameStmt = propertyResource.getProperty(org.apache.jena.vocabulary.SKOS.prefLabel);
+                String name = nameStmt != null ? nameStmt.getString() : null;
+
+                propertyModel.setName(name);
+                Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(propertyIri);
+                propertyModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+
+                properties.add(propertyModel);
             }
         }
 
@@ -155,6 +179,40 @@ public class OntologyDetailExtractor {
         return relationships;
     }
 
+    public List<ConceptRelationshipsModel> extractConceptRelationshipsFromModel(OntModel ontModel, String conceptIri) {
+        List<ConceptRelationshipsModel> relationships = new ArrayList<>();
+
+        Resource conceptResource = ontModel.getResource(conceptIri);
+        Resource vztahType = ontModel.getResource(OFN_NAMESPACE + VZTAH);
+
+        ResIterator relationshipIterator = ontModel.listSubjectsWithProperty(
+            org.apache.jena.vocabulary.RDFS.domain,
+            conceptResource
+        );
+
+        while (relationshipIterator.hasNext()) {
+            Resource relationshipResource = relationshipIterator.next();
+
+            if (relationshipResource.hasProperty(ResourceFactory.createProperty(
+                "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "type"), vztahType)) {
+
+                ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
+                String relationshipIri = relationshipResource.getURI();
+
+                Statement nameStmt = relationshipResource.getProperty(SKOS.prefLabel);
+                String name = nameStmt != null ? nameStmt.getString() : null;
+
+                relationshipModel.setName(name);
+                Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(relationshipIri);
+                relationshipModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+
+                relationships.add(relationshipModel);
+            }
+        }
+
+        return relationships;
+    }
+
     private String extractFirstAvailableName(Map<String, String> nameMap) {
         if (nameMap == null || nameMap.isEmpty()) {
             return null;
@@ -167,12 +225,27 @@ public class OntologyDetailExtractor {
         return nameMap.values().iterator().next();
     }
 
-    @SuppressWarnings("unchecked")
     private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap, ConceptData conceptData) {
+        return mapToConceptDetailModel(conceptMap, conceptData, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap, ConceptData conceptData, OntModel ontModel) {
         String conceptIri = (String) conceptMap.get("iri");
 
-        List<ConceptPropertiesModel> properties = extractConceptProperties(conceptIri, conceptData);
-        List<ConceptRelationshipsModel> relationships = extractConceptRelationships(conceptIri, conceptData);
+        List<ConceptPropertiesModel> properties;
+        List<ConceptRelationshipsModel> relationships;
+
+        if (conceptData != null) {
+            properties = extractConceptProperties(conceptIri, conceptData);
+            relationships = extractConceptRelationships(conceptIri, conceptData);
+        } else if (ontModel != null) {
+            properties = extractConceptPropertiesFromModel(ontModel, conceptIri);
+            relationships = extractConceptRelationshipsFromModel(ontModel, conceptIri);
+        } else {
+            properties = Collections.emptyList();
+            relationships = Collections.emptyList();
+        }
 
         return OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(conceptIri)

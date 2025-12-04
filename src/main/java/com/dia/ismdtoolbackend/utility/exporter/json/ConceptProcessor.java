@@ -57,6 +57,38 @@ public class ConceptProcessor {
         }
     }
 
+    public Map<String, Object> processConceptByIri(OntModel ontModel, ModelStructure structure, String conceptIri) {
+        if (ontModel == null) {
+            throw new ModelProcessingException("OntModel cannot be null");
+        }
+        if (structure == null) {
+            throw new ModelProcessingException("ModelStructure cannot be null");
+        }
+        if (conceptIri == null || conceptIri.isEmpty()) {
+            throw new ModelProcessingException("Concept IRI cannot be null or empty");
+        }
+
+        log.debug("Processing single concept with IRI: {}", conceptIri);
+
+        try {
+            Resource concept = ontModel.getResource(conceptIri);
+            if (concept == null) {
+                throw new ModelProcessingException("Concept not found: " + conceptIri);
+            }
+
+            Set<Resource> conceptTypes = getConceptTypes(ontModel);
+            if (!isConceptResource(concept, conceptTypes)) {
+                throw new ModelProcessingException("Resource is not a valid concept: " + conceptIri);
+            }
+
+            return createConceptObject(concept, ontModel, structure);
+
+        } catch (Exception e) {
+            log.error("Failed to process concept {}: {}", conceptIri, e.getMessage(), e);
+            throw new ModelProcessingException("Failed to process concept: " + e.getMessage(), e);
+        }
+    }
+
     private int processSingleConcept(Resource resource, OntModel ontModel, ModelStructure structure, List<Map<String, Object>> concepts) {
         try {
             Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
