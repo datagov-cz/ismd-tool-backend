@@ -109,18 +109,17 @@ public class ConceptServiceImpl implements ConceptService {
 
     @Override
     @Transactional
-    public ConceptMetadataModel editConcept(ConceptEditModel conceptEditModel) {
-        log.info("Editing concept: IRI={}, type={}",
-                conceptEditModel.getConceptIRI(), conceptEditModel.getConceptType());
-        String conceptIRI = conceptEditModel.getConceptIRI();
+    public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
+        log.info("Editing concept: ID={}, type={}",
+                conceptId, conceptEditModel.getConceptType());
 
-        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptIRI);
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId);
         String graphName = metadata.getGraphName();
 
         Model model = fetchAndValidateGraph(graphName);
-        validateConceptInGraph(conceptIRI, graphName, model);
+        validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
-        ConceptEditor.EditResult editResult = performConceptEdit(conceptEditModel, model, graphName);
+        ConceptEditor.EditResult editResult = performConceptEdit(metadata.getConceptIri(), conceptEditModel, model, graphName);
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
 
@@ -171,8 +170,7 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
-        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(processedModel, conceptIri);
+        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(rawModel, conceptIri);
 
         if (conceptDetail == null) {
             log.error("Concept detail not found for IRI: {}", conceptIri);
@@ -277,11 +275,11 @@ public class ConceptServiceImpl implements ConceptService {
         return entity;
     }
 
-    private ConceptMetadataEntity fetchAndValidateMetadata(String conceptIRI) {
-        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findByConceptIri(conceptIRI);
+    private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {
+        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findById(conceptId);
         if (metadataOpt.isEmpty()) {
-            log.error("Concept metadata not found for IRI: {}", conceptIRI);
-            throw new OntologyException("Metadata pojmu s IRI " + conceptIRI + " nebyla nalezena.");
+            log.error("Concept metadata not found for ID: {}", conceptId);
+            throw new OntologyException("Metadata pojmu s ID " + conceptId + " nebyla nalezena.");
         }
         return metadataOpt.get();
     }
@@ -303,9 +301,9 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private ConceptEditor.EditResult performConceptEdit(ConceptEditModel conceptEditModel, Model model, String graphName) {
+    private ConceptEditor.EditResult performConceptEdit(String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
         try {
-            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptEditModel, model, graphName);
+            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName);
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;

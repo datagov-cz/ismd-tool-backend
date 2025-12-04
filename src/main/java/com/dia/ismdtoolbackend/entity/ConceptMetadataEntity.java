@@ -45,7 +45,7 @@ public class ConceptMetadataEntity {
     private Boolean isPublished;
 
     @Column(name = "in_tezaurus")
-    private String inTezaurus;
+    private Boolean inTezaurus;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)

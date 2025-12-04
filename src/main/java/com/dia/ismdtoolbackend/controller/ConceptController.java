@@ -97,14 +97,15 @@ public class ConceptController {
         }
     }
 
-    @PatchMapping("/edit")
+    @PatchMapping("{conceptId}/edit")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
             @RequestBody ConceptEditModel conceptEditModel,
-            @RequestParam String userId
+            @RequestParam String userId,
+            @PathVariable Long conceptId
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Concept edit requested, concept IRI: {}", conceptEditModel.getConceptIRI());
+        log.info("Concept edit requested, concept ID: {}", conceptId);
 
         try {
             if (userId == null || userId.trim().isEmpty()) {
@@ -112,7 +113,7 @@ public class ConceptController {
                 return ResponseEntity.badRequest().body(ApiResponseDto.error("ID uživatele je povinné."));
             }
 
-            ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptEditModel);
+            ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptId, conceptEditModel);
             log.info("Concept edit successful: {}", editedConceptModel);
 
             return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));

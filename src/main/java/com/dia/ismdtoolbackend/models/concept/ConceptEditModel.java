@@ -24,8 +24,6 @@ import java.util.List;
 })
 public abstract class ConceptEditModel {
     @NotBlank
-    protected String conceptIRI;
-    @NotBlank
     protected String conceptType;
     protected String namespace;
     protected NameModel nameModel;
@@ -38,7 +36,7 @@ public abstract class ConceptEditModel {
     protected List<String> relatedNonLegalSource;
     protected List<String> relatedLegalSource;
     protected List<String> exactMatch;
-    protected String inTezaurus;
+    protected Boolean inTezaurus;
 
     public abstract ConceptType getConceptTypeEnum();
 

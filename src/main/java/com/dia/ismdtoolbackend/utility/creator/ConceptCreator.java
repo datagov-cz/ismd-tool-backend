@@ -122,25 +122,25 @@ public class ConceptCreator {
     }
 
     private boolean hasPublicDataFromModel(PropertyConceptModel model) {
-        String isPublic = model.getIsPublic();
-        return isPublic != null && hasPublicDataValue(isPublic) &&
+        Boolean isPublic = model.getIsPublic();
+        return isPublic != null && isPublic &&
                 (model.getPrivacyProvision() == null || model.getPrivacyProvision().trim().isEmpty());
     }
 
     private boolean hasPrivateDataFromModel(PropertyConceptModel model) {
         return (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty()) ||
-                (model.getIsPublic() != null && hasPrivateDataValue(model.getIsPublic()));
+                (model.getIsPublic() != null && !model.getIsPublic());
     }
 
     private boolean hasPublicDataFromRelationship(RelationshipConceptModel model) {
-        String isPublic = model.getIsPublic();
-        return isPublic != null && hasPublicDataValue(isPublic) &&
+        Boolean isPublic = model.getIsPublic();
+        return isPublic != null && isPublic &&
                 (model.getPrivacyProvision() == null || model.getPrivacyProvision().trim().isEmpty());
     }
 
     private boolean hasPrivateDataFromRelationship(RelationshipConceptModel model) {
         return (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty()) ||
-                (model.getIsPublic() != null && hasPrivateDataValue(model.getIsPublic()));
+                (model.getIsPublic() != null && !model.getIsPublic());
     }
 
     private void addTypeSpecificClass(Set<String> classes, String type) {
@@ -155,10 +155,10 @@ public class ConceptCreator {
     }
 
     private void addDataClassificationClasses(Set<String> classes, ClassConceptModel classModel) {
-        if (hasPublicData(classModel)) {
+        if (Boolean.TRUE.equals(classModel.getIsPublic())) {
             classes.add(VEREJNY_UDAJ);
         }
-        if (hasPrivateData(classModel)) {
+        if (Boolean.FALSE.equals(classModel.getIsPublic())) {
             classes.add(NEVEREJNY_UDAJ);
         }
     }
@@ -213,7 +213,7 @@ public class ConceptCreator {
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             properties.add(AIS);
         }
-        if (hasPrivateData(classModel)) {
+        if (Boolean.FALSE.equals(classModel.getIsPublic())) {
             properties.add(USTANOVENI_NEVEREJNOST);
         }
         if (hasGovernanceProperties(classModel)) {
@@ -462,13 +462,9 @@ public class ConceptCreator {
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
             addAIS(classResource, classModel.getAgendaSystemCode());
         }
-        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
-            for (String method : classModel.getSharingMethod()) {
-                if (method != null && !method.trim().isEmpty()) {
-                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
-                }
-            }
-        }
+
+        addClassSharingMethod(classResource, classModel);
+
         if (classModel.getAcquisitionMethod() != null && !classModel.getAcquisitionMethod().trim().isEmpty()) {
             addGovernanceProperty(classResource, classModel.getAcquisitionMethod(), ZPUSOB_ZISKANI);
         }
@@ -477,12 +473,28 @@ public class ConceptCreator {
         }
 
         addDataClassification(classResource, classModel);
+        addBroaderConcept(classResource, classModel);
+    }
 
-        if (classModel.getBroaderConcept() != null && !classModel.getBroaderConcept().trim().isEmpty()) {
-            addBroaderConcept(classResource, classModel.getBroaderConcept());
+    private void addClassSharingMethod(Resource classResource, ClassConceptModel classModel) {
+        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
+            for (String method : classModel.getSharingMethod()) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
+                }
+            }
         }
     }
 
+    private void addBroaderConcept(Resource classResource, ClassConceptModel classModel) {
+        if (classModel.getBroaderConcept() != null && !classModel.getBroaderConcept().isEmpty()) {
+            for (String broaderConcept : classModel.getBroaderConcept()) {
+                if (broaderConcept != null && !broaderConcept.trim().isEmpty()) {
+                    addBroaderConcept(classResource, broaderConcept);
+                }
+            }
+        }
+    }
 
     private void addPropertySpecificMetadata(Resource propertyResource, PropertyConceptModel propModel) {
         if (propModel.getDomain() != null && !propModel.getDomain().trim().isEmpty()) {
@@ -491,8 +503,12 @@ public class ConceptCreator {
 
         addRangeInformation(propertyResource, propModel.getDataType());
 
-        if (propModel.getSuperProperty() != null && !propModel.getSuperProperty().trim().isEmpty()) {
-            addSuperProperty(propertyResource, propModel.getSuperProperty());
+        if (propModel.getSuperProperty() != null && !propModel.getSuperProperty().isEmpty()) {
+            for (String superProperty : propModel.getSuperProperty()) {
+                if (superProperty != null && !superProperty.trim().isEmpty()) {
+                    addSuperProperty(propertyResource, superProperty);
+                }
+            }
         }
 
         if (propModel.getIsInPPDF() != null) {
@@ -506,7 +522,7 @@ public class ConceptCreator {
     }
 
     private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
-        String isPublic = propModel.getIsPublic();
+        Boolean isPublic = propModel.getIsPublic();
         String privacyProvision = propModel.getPrivacyProvision();
 
         if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
@@ -514,10 +530,10 @@ public class ConceptCreator {
             return;
         }
 
-        if (isPublic != null && !isPublic.trim().isEmpty()) {
-            if (hasPublicDataValue(isPublic)) {
+        if (isPublic != null) {
+            if (isPublic) {
                 propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
-            } else if (hasPrivateDataValue(isPublic)) {
+            } else {
                 propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
             }
         }
@@ -557,13 +573,17 @@ public class ConceptCreator {
     }
 
     private void addSuperRelation(Resource relationshipResource, RelationshipConceptModel relModel) {
-        if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().trim().isEmpty()) {
-            addSuperProperty(relationshipResource, relModel.getSuperRelation());
+        if (relModel.getSuperRelation() != null && !relModel.getSuperRelation().isEmpty()) {
+            for (String superRelation : relModel.getSuperRelation()) {
+                if (superRelation != null && !superRelation.trim().isEmpty()) {
+                    addSuperProperty(relationshipResource, superRelation);
+                }
+            }
         }
     }
 
     private void addRelationshipDataClassification(Resource relationshipResource, RelationshipConceptModel relModel) {
-        String isPublic = relModel.getIsPublic();
+        Boolean isPublic = relModel.getIsPublic();
         String privacyProvision = relModel.getPrivacyProvision();
 
         if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
@@ -571,10 +591,10 @@ public class ConceptCreator {
             return;
         }
 
-        if (isPublic != null && !isPublic.trim().isEmpty()) {
-            if (hasPublicDataValue(isPublic)) {
+        if (isPublic != null) {
+            if (isPublic) {
                 relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
-            } else if (hasPrivateDataValue(isPublic)) {
+            } else {
                 relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
             }
         }
@@ -595,13 +615,9 @@ public class ConceptCreator {
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             addAIS(resource, agendaSystemCode);
         }
-        if (sharingMethod != null && !sharingMethod.isEmpty()) {
-            for (String method : sharingMethod) {
-                if (method != null && !method.trim().isEmpty()) {
-                    addGovernanceProperty(resource, method, ZPUSOB_SDILENI);
-                }
-            }
-        }
+
+        addSharingMethodMetadata(sharingMethod, resource);
+
         if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
             addGovernanceProperty(resource, acquisitionMethod, ZPUSOB_ZISKANI);
         }
@@ -612,6 +628,15 @@ public class ConceptCreator {
         addPrivacyProvisionMetadata(resource, privacyProvision);
     }
 
+    private void addSharingMethodMetadata(List<String> sharingMethod, Resource resource) {
+        if (sharingMethod != null && !sharingMethod.isEmpty()) {
+            for (String method : sharingMethod) {
+                if (method != null && !method.trim().isEmpty()) {
+                    addGovernanceProperty(resource, method, ZPUSOB_SDILENI);
+                }
+            }
+        }
+    }
     private void addPrivacyProvisionMetadata(Resource resource, String privacyProvision) {
         if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
             String eliPart = UtilityMethods.extractEliPart(privacyProvision);
@@ -847,23 +872,6 @@ public class ConceptCreator {
         return DEFAULT_NS;
     }
 
-    private boolean hasPublicData(ClassConceptModel model) {
-        String isPublic = model.getIsPublic();
-        return isPublic != null && (
-                isPublic.toLowerCase().contains("ano") ||
-                        isPublic.toLowerCase().contains("true") ||
-                        isPublic.equalsIgnoreCase("yes")
-        );
-    }
-
-    private boolean hasPrivateData(ClassConceptModel model) {
-        return (model.getIsPublic() != null && (
-                model.getIsPublic().toLowerCase().contains("ne") ||
-                        model.getIsPublic().toLowerCase().contains("false") ||
-                        model.getIsPublic().equalsIgnoreCase("no")
-        )) || (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty());
-    }
-
     private boolean hasLegalSources(ConceptCreateModel model) {
         return (model.getDefiningLegalSource() != null && !model.getDefiningLegalSource().isEmpty()) ||
                 (model.getRelatedLegalSource() != null && !model.getRelatedLegalSource().isEmpty());
@@ -878,18 +886,6 @@ public class ConceptCreator {
         return (model.getSharingMethod() != null && !model.getSharingMethod().isEmpty()) ||
                 (model.getAcquisitionMethod() != null && !model.getAcquisitionMethod().isEmpty()) ||
                 (model.getContentType() != null && !model.getContentType().isEmpty());
-    }
-
-    private boolean hasPublicDataValue(String isPublic) {
-        return isPublic.toLowerCase().contains("ano") ||
-                isPublic.toLowerCase().contains("true") ||
-                isPublic.equalsIgnoreCase("yes");
-    }
-
-    private boolean hasPrivateDataValue(String isPublic) {
-        return isPublic.toLowerCase().contains("ne") ||
-                isPublic.toLowerCase().contains("false") ||
-                isPublic.equalsIgnoreCase("no");
     }
 
     private boolean hasPrivacyProvision(String privacyProvision) {

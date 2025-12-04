@@ -17,9 +17,9 @@ public class ClassConceptModel extends ConceptCreateModel {
     private String acquisitionMethod;
     private List<String> sharingMethod;
     private Boolean isInPPDF;
-    private String isPublic;
+    private Boolean isPublic;
     private String privacyProvision;
-    private String broaderConcept;
+    private List<String> broaderConcept;
 
     @Override
     public ConceptType getConceptTypeEnum() {
@@ -36,7 +36,7 @@ public class ClassConceptModel extends ConceptCreateModel {
             throw new OntologyException("ConceptType musí být 'TRIDA'");
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublicTrue(isPublic)) {
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
                 throw new OntologyException(
                         "Třída nemůže být současně veřejná a mít ustanovení o neveřejnosti"
                 );
@@ -54,12 +54,6 @@ public class ClassConceptModel extends ConceptCreateModel {
         if (contentType != null && !contentType.trim().isEmpty()) {
             validateGovernanceValue(contentType, "typ obsahu");
         }
-    }
-
-    private boolean isPublicTrue(String value) {
-        return value.toLowerCase().contains("ano") ||
-                value.toLowerCase().contains("true") ||
-                value.equalsIgnoreCase("yes");
     }
 
     private void validateGovernanceValue(String value, String fieldName) {
