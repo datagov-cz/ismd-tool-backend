@@ -11,7 +11,7 @@ import java.util.List;
 public interface ConceptService {
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId);
     void deleteConcept(Long conceptId);
-    ConceptMetadataModel editConcept(ConceptEditModel conceptEditModel);
+    ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel);
     List<ConceptMetadataModel> getAll(String userId, Boolean isPublished);
     GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException;
 }

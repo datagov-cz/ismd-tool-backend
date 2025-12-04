@@ -303,13 +303,13 @@ class ConceptServiceImplTest {
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
-        ConceptMetadataModel result = conceptService.editConcept(editModel);
+        ConceptMetadataModel result = conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
         assertNotNull(result);
         verify(jenaTDB2Repository).putOntologyModel(TEST_GRAPH_NAME, testModel);
@@ -325,13 +325,13 @@ class ConceptServiceImplTest {
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
-        ConceptMetadataModel result = conceptService.editConcept(editModel);
+        ConceptMetadataModel result = conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
         assertNotNull(result);
         ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
@@ -351,13 +351,13 @@ class ConceptServiceImplTest {
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
-        conceptService.editConcept(editModel);
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
         ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(captor.capture());
@@ -367,33 +367,55 @@ class ConceptServiceImplTest {
     @Test
     void editConcept_UpdatesInTezaurus() {
         ConceptEditModel editModel = createValidConceptEditModel();
-        editModel.setInTezaurus("true");
+        editModel.setInTezaurus(true);
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
         ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
-        conceptService.editConcept(editModel);
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
         ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(captor.capture());
-        assertEquals("true", captor.getValue().getInTezaurus());
+        assertTrue(captor.getValue().getInTezaurus());
+    }
+
+    @Test
+    void editConcept_UpdatesInTezaurusToFalse() {
+        ConceptEditModel editModel = createValidConceptEditModel();
+        editModel.setInTezaurus(false);
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
+        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
+
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
+        verify(conceptMetadataRepository).save(captor.capture());
+        assertFalse(captor.getValue().getInTezaurus());
     }
 
     @Test
     void editConcept_MetadataNotFound() {
         ConceptEditModel editModel = createValidConceptEditModel();
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.empty());
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.editConcept(editModel));
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
         verify(jenaTDB2Repository, never()).fetchGraph(anyString());
@@ -403,14 +425,14 @@ class ConceptServiceImplTest {
     void editConcept_EmptyGraph() {
         ConceptEditModel editModel = createValidConceptEditModel();
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.editConcept(editModel));
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("prázdný"));
-        verify(conceptEditor, never()).editConcept(any(), any(), anyString());
+        verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString());
     }
 
     @Test
@@ -420,14 +442,14 @@ class ConceptServiceImplTest {
         emptyModel.add(emptyModel.createResource("http://other.org/resource"),
                       emptyModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(emptyModel);
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.editConcept(editModel));
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(conceptEditor, never()).editConcept(any(), any(), anyString());
+        verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString());
     }
 
     @Test
@@ -436,13 +458,13 @@ class ConceptServiceImplTest {
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
                 .thenThrow(new RuntimeException("Editor error"));
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.editConcept(editModel));
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se upravit pojem"));
         verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any());
@@ -455,13 +477,13 @@ class ConceptServiceImplTest {
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         doThrow(new RuntimeException("TDB2 error")).when(jenaTDB2Repository).putOntologyModel(TEST_GRAPH_NAME, testModel);
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.editConcept(editModel));
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit upravený pojem do TDB2"));
         verify(conceptMetadataRepository, never()).save(any());
@@ -474,14 +496,14 @@ class ConceptServiceImplTest {
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
-        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
                 .thenThrow(new RuntimeException("DB error"));
 
         OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.editConcept(editModel));
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se aktualizovat metadata pojmu"));
     }
@@ -507,8 +529,7 @@ class ConceptServiceImplTest {
         ConceptEditModel model = new ConceptEditModel() {
             @Override
             public ConceptType getConceptTypeEnum() {
-                // Override method not applicable for this test
-                return null;
+                return ConceptType.TRIDA;
             }
 
             @Override
@@ -516,7 +537,6 @@ class ConceptServiceImplTest {
                 // Override method not applicable for this test
             }
         };
-        model.setConceptIRI(TEST_CONCEPT_IRI);
         model.setConceptType("TRIDA");
 
         NameModel nameModel = new NameModel();

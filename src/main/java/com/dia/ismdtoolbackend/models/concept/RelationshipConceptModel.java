@@ -14,14 +14,14 @@ import java.util.List;
 public class RelationshipConceptModel extends ConceptCreateModel {
     private String domain;
     private String range;
-    private String superRelation;
+    private List<String> superRelation;
     private String agendaCode;
     private String agendaSystemCode;
     private String contentType;
     private String acquisitionMethod;
     private List<String> sharingMethod;
     private Boolean isInPPDF;
-    private String isPublic;
+    private Boolean isPublic;
     private String privacyProvision;
 
     @Override
@@ -40,7 +40,7 @@ public class RelationshipConceptModel extends ConceptCreateModel {
             log.warn("Relationship '{}' without domain/range", nameModel);
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublicTrue(isPublic)) {
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
             throw new OntologyException(
                     "Vztah nemůže být současně veřejný a mít ustanovení o neveřejnosti"
             );
@@ -57,12 +57,6 @@ public class RelationshipConceptModel extends ConceptCreateModel {
         if (contentType != null && !contentType.trim().isEmpty()) {
             validateGovernanceValue(contentType, "typ obsahu");
         }
-    }
-
-    private boolean isPublicTrue(String value) {
-        return value.toLowerCase().contains("ano") ||
-                value.toLowerCase().contains("true") ||
-                value.equalsIgnoreCase("yes");
     }
 
     private void validateGovernanceValue(String value, String fieldName) {

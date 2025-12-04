@@ -34,12 +34,11 @@ public class ConceptEditor {
 
     private final URIGenerator uriGenerator = new URIGenerator();
 
-    public EditResult editConcept(ConceptEditModel editModel, Model model, String graphName) {
-        String oldConceptIRI = editModel.getConceptIRI();
-        Resource existingConcept = model.getResource(oldConceptIRI);
+    public EditResult editConcept(String conceptIri, ConceptEditModel editModel, Model model, String graphName) {
+        Resource existingConcept = model.getResource(conceptIri);
 
         if (existingConcept == null || !model.containsResource(existingConcept)) {
-            throw new IllegalArgumentException("Concept with IRI " + oldConceptIRI + " not found in the model");
+            throw new IllegalArgumentException("Concept with IRI " + conceptIri + " not found in the model");
         }
 
         String effectiveNamespace = determineEffectiveNamespace(graphName);
@@ -49,11 +48,11 @@ public class ConceptEditor {
         String oldName = getNameForUriGeneration(existingConcept);
         boolean nameChanged = newName != null && !newName.isEmpty() && !newName.equals(oldName);
 
-        String newConceptIRI = oldConceptIRI;
+        String newConceptIRI = conceptIri;
         if (nameChanged) {
             newConceptIRI = uriGenerator.generateConceptURI(newName, editModel.getIdentifier());
             log.info("Name changed from '{}' to '{}', updating IRI from {} to {}",
-                    oldName, newName, oldConceptIRI, newConceptIRI);
+                    oldName, newName, conceptIri, newConceptIRI);
         }
 
         Set<Statement> statementsToRemove = new HashSet<>();
@@ -68,8 +67,8 @@ public class ConceptEditor {
                     model, statementsToRemove, statementsToAdd, newConceptIRI);
         }
 
-        if (nameChanged && !oldConceptIRI.equals(newConceptIRI)) {
-            renameConceptIRI(model, oldConceptIRI, newConceptIRI, statementsToRemove, statementsToAdd);
+        if (nameChanged && !conceptIri.equals(newConceptIRI)) {
+            renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd);
         }
 
         model.remove(statementsToRemove.toArray(new Statement[0]));
@@ -93,9 +92,10 @@ public class ConceptEditor {
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
         updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
-        updateBroaderConcept(conceptResource, editModel.getBroaderConcept(), existingConcept, model, toRemove, toAdd);
+        updateBroaderConceptList(conceptResource, editModel.getBroaderConcept(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, JE_PPDF, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
     }
 
     private void editPropertyConcept(PropertyConceptEditModel editModel, Resource existingConcept,
@@ -107,14 +107,14 @@ public class ConceptEditor {
 
         updateDomainRange(conceptResource, RDFS.domain, editModel.getDomain(), existingConcept, model, toRemove, toAdd);
         updateDataTypeRange(conceptResource, editModel.getDataType(), existingConcept, model, toRemove, toAdd);
-        updateSuperProperty(conceptResource, editModel.getSuperProperty(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
+        updateSuperPropertyList(conceptResource, editModel.getSuperProperty(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, JE_PPDF, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
         updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
 
@@ -127,14 +127,14 @@ public class ConceptEditor {
 
         updateDomainRange(conceptResource, RDFS.domain, editModel.getDomain(), existingConcept, model, toRemove, toAdd);
         updateDomainRange(conceptResource, RDFS.range, editModel.getRange(), existingConcept, model, toRemove, toAdd);
-        updateSuperProperty(conceptResource, editModel.getSuperRelation(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
+        updateSuperPropertyList(conceptResource, editModel.getSuperRelation(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, JE_PPDF, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
         updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
 
@@ -150,7 +150,7 @@ public class ConceptEditor {
         updateLegalSources(conceptResource, editModel, existingConcept, model, toRemove, toAdd);
         updateNonLegalSources(conceptResource, editModel, existingConcept, model, toRemove, toAdd);
         updateExactMatch(conceptResource, editModel.getExactMatch(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, IN_TEZAURUS, editModel.getInTezaurus(), existingConcept, model, toRemove, toAdd);
+        updateBooleanProperty(conceptResource, IN_TEZAURUS, editModel.getInTezaurus(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, NAMESPACE, editModel.getNamespace(), existingConcept, model, toRemove, toAdd);
     }
 
@@ -341,7 +341,7 @@ public class ConceptEditor {
             case TYPE -> updateClassType(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             case AGENDA_CODE -> updateAgenda(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             case AIS -> updateAIS(newConcept, newValue, oldConcept, model, toRemove, toAdd);
-            case IS_PUBLIC, PRIVACY_PROVISION -> updatePrivacyProvision(newConcept, newValue, oldConcept, model, toRemove, toAdd);
+            case PRIVACY_PROVISION -> updatePrivacyProvision(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             default -> log.warn("Unknown string property: {}", propertyName);
         }
     }
@@ -498,7 +498,7 @@ public class ConceptEditor {
         }
     }
 
-    private void updateBroaderConcept(Resource newConcept, String broaderConcept, Resource oldConcept,
+    private void updateBroaderConceptList(Resource newConcept, List<String> broaderConcept, Resource oldConcept,
                                        Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (broaderConcept == null) return;
 
@@ -506,7 +506,7 @@ public class ConceptEditor {
         Set<String> oldBroader = getResourceURIs(oldConcept, RDFS.subClassOf);
         Set<String> newBroader = parseBroaderConcepts(broaderConcept);
 
-        if (broaderConcept.trim().isEmpty()) {
+        if (broaderConcept.isEmpty() || newBroader.isEmpty()) {
             if (!oldBroader.isEmpty()) {
                 removeAllByPredicate(oldConcept, RDFS.subClassOf, toRemove);
                 removeAllByPredicate(oldConcept, hierarchyProp, toRemove);
@@ -564,34 +564,57 @@ public class ConceptEditor {
         }
     }
 
-    private void updateSuperProperty(Resource newConcept, String superProperty, Resource oldConcept,
-                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (superProperty == null) return;
+    private void updateSuperPropertyList(Resource newConcept, List<String> superProperties, Resource oldConcept,
+                                          Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        if (superProperties == null) return;
 
-        String oldURI = getResourceURI(oldConcept, RDFS.subPropertyOf);
+        Set<String> oldSuperProps = getResourceURIs(oldConcept, RDFS.subPropertyOf);
+        Set<String> newSuperProps = parseSuperProperties(superProperties);
 
-        if (superProperty.trim().isEmpty()) {
-            if (oldURI != null) {
+        if (superProperties.isEmpty() || newSuperProps.isEmpty()) {
+            if (!oldSuperProps.isEmpty()) {
                 removeAllByPredicate(oldConcept, RDFS.subPropertyOf, toRemove);
             }
-            return;
-        }
-
-        String newURI = DataTypeConverter.isUri(superProperty) ? superProperty :
-                        uriGenerator.generateConceptURI(superProperty, null);
-
-        if (!Objects.equals(oldURI, newURI)) {
+        } else if (!oldSuperProps.equals(newSuperProps)) {
             removeAllByPredicate(oldConcept, RDFS.subPropertyOf, toRemove);
-            toAdd.add(model.createStatement(newConcept, RDFS.subPropertyOf, model.createResource(newURI)));
+            for (String superProp : newSuperProps) {
+                toAdd.add(model.createStatement(newConcept, RDFS.subPropertyOf, model.createResource(superProp)));
+            }
         }
     }
 
-    private void updateBooleanProperty(Resource newConcept, Boolean newValue,
+    private Set<String> parseSuperProperties(List<String> superProperties) {
+        if (superProperties == null || superProperties.isEmpty()) return Collections.emptySet();
+        Set<String> result = new HashSet<>();
+        for (String prop : superProperties) {
+            String trimmed = prop.trim();
+            if (!trimmed.isEmpty()) {
+                String uri = DataTypeConverter.isUri(trimmed) ? trimmed :
+                        uriGenerator.generateConceptURI(trimmed, null);
+                result.add(uri);
+            }
+        }
+        return result;
+    }
+
+    private void updateBooleanProperty(Resource newConcept, String propertyName, Boolean newValue,
                                        Resource oldConcept, Model model, Set<Statement> toRemove,
                                        Set<Statement> toAdd) {
         if (newValue == null) return;
 
-        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
+        String propertyUri = switch (propertyName) {
+            case JE_PPDF -> JE_PPDF;
+            case IS_PUBLIC -> JE_VEREJNY;
+            case IN_TEZAURUS -> IN_TEZAURUS;
+            default -> {
+                log.warn("Unknown boolean property: {}", propertyName);
+                yield null;
+            }
+        };
+
+        if (propertyUri == null) return;
+
+        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + propertyUri);
         String oldValue = getPropertyValue(oldConcept, property);
         String newValueStr = newValue.toString();
 
@@ -641,7 +664,7 @@ public class ConceptEditor {
 
         List<String> validSources = new ArrayList<>();
         for (String source : newSources) {
-            if (source != null && !source.trim().isEmpty() && UtilityMethods.isValidUrl(source)) {
+            if (source != null && !source.trim().isEmpty()) {
                 validSources.add(source.trim());
             }
         }
@@ -653,12 +676,22 @@ public class ConceptEditor {
 
         removeAllByPredicate(oldConcept, property, toRemove);
 
+        Resource digitalObjectType = model.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
         Property schemaUrlProperty = model.createProperty("http://schema.org/url");
-        for (String source : validSources) {
-            String documentUri = uriGenerator.getEffectiveNamespace() + "digitální-dokument-" + System.currentTimeMillis();
-            Resource digitalDocument = model.createResource(documentUri);
+        Property dctermsTitle = model.createProperty("http://purl.org/dc/terms/title");
 
-            toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, model.createResource(source)));
+        for (String source : validSources) {
+            Resource digitalDocument = model.createResource();
+
+            toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
+
+            if (UtilityMethods.isValidUrl(source)) {
+                Literal urlLiteral = model.createTypedLiteral(source, "http://www.w3.org/2001/XMLSchema#anyURI");
+                toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, urlLiteral));
+            } else {
+                toAdd.add(model.createStatement(digitalDocument, dctermsTitle, model.createLiteral(source, DEFAULT_LANG)));
+            }
+
             toAdd.add(model.createStatement(newConcept, property, digitalDocument));
         }
     }
@@ -780,10 +813,10 @@ public class ConceptEditor {
         }
     }
 
-    private Set<String> parseBroaderConcepts(String broaderConcept) {
-        if (broaderConcept == null || broaderConcept.trim().isEmpty()) return Collections.emptySet();
+    private Set<String> parseBroaderConcepts(List<String> broaderConcept) {
+        if (broaderConcept == null || broaderConcept.isEmpty()) return Collections.emptySet();
         Set<String> result = new HashSet<>();
-        for (String concept : broaderConcept.split(";")) {
+        for (String concept : broaderConcept) {
             String trimmed = concept.trim();
             if (!trimmed.isEmpty()) {
                 String uri = DataTypeConverter.isUri(trimmed) ? trimmed :
