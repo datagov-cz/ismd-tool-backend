@@ -167,8 +167,7 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
-        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(processedModel, conceptIri);
+        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(rawModel, conceptIri);
 
         if (conceptDetail == null) {
             log.error("Concept detail not found for IRI: {}", conceptIri);

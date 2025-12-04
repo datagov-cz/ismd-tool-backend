@@ -221,9 +221,6 @@ public class TurtleFormatterUtil {
             model.remove(stmt);
             model.add(stmt.getSubject(), skosPrefLabel, stmt.getObject());
         }
-
-        // Keep dct:description as is - it's semantically different from skos:definition
-        // dct:description = general description, skos:definition = formal definition
     }
 
     private static void ensureConceptSchemeFormat(OntModel model) {
