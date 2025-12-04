@@ -40,7 +40,6 @@ class ConceptControllerTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(conceptController).build();
     }
-    /*
 
     // ========== Create Concept Tests ==========
 
@@ -375,10 +374,10 @@ class ConceptControllerTest {
         expectedMetadata.setConceptName("UpdatedConcept");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(conceptService.editConcept(any(ConceptEditModel.class)))
+        when(conceptService.editConcept(anyLong(), any(ConceptEditModel.class)))
                 .thenReturn(expectedMetadata);
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/1/edit")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest)
                         .param("userId", userId))
@@ -400,10 +399,11 @@ class ConceptControllerTest {
                 }
                 """;
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/1/edit")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest)
-                        .param("userId", ""))
+                        .param("userId", "")
+                )
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -419,9 +419,10 @@ class ConceptControllerTest {
                 }
                 """;
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/1/edit")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(jsonRequest))
+                        .content(jsonRequest)
+                .param("conceptId", "1"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -435,10 +436,10 @@ class ConceptControllerTest {
                 }
                 """;
 
-        when(conceptService.editConcept(any()))
+        when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new IllegalArgumentException("Invalid concept IRI"));
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/1/edit")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest)
                         .param("userId", userId))
@@ -458,10 +459,10 @@ class ConceptControllerTest {
                 }
                 """;
 
-        when(conceptService.editConcept(any()))
+        when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new SecurityException("Security violation"));
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/1/edit")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest)
                         .param("userId", userId))
@@ -481,18 +482,17 @@ class ConceptControllerTest {
                 }
                 """;
 
-        when(conceptService.editConcept(any()))
+        when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
-        mockMvc.perform(patch("/api/concept/edit")
+        mockMvc.perform(patch("/api/concept/1/edit")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest)
-                        .param("userId", userId))
+                        .param("userId", userId)
+                )
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při úpravě pojmu."));
     }
-    
-     */
 }

@@ -36,7 +36,7 @@ public abstract class ConceptEditModel {
     protected List<String> relatedNonLegalSource;
     protected List<String> relatedLegalSource;
     protected List<String> exactMatch;
-    protected String inTezaurus;
+    protected Boolean inTezaurus;
 
     public abstract ConceptType getConceptTypeEnum();
 

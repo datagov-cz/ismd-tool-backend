@@ -19,7 +19,7 @@ public class PropertyConceptModel extends ConceptCreateModel {
     private Boolean isInPPDF;
     private String agendaCode;
     private String agendaSystemCode;
-    private String isPublic;
+    private Boolean isPublic;
     private String privacyProvision;
     private List<String> sharingMethod;
     private String acquisitionMethod;
@@ -45,7 +45,7 @@ public class PropertyConceptModel extends ConceptCreateModel {
             DataTypeConverter.isValidXSDType(dataType.trim());
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublicTrue(isPublic)) {
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
             throw new OntologyException(
                     "Vlastnost nemůže být současně veřejná a mít ustanovení o neveřejnosti"
             );
@@ -62,12 +62,6 @@ public class PropertyConceptModel extends ConceptCreateModel {
         if (contentType != null && !contentType.trim().isEmpty()) {
             validateGovernanceValue(contentType, "typ obsahu");
         }
-    }
-
-    private boolean isPublicTrue(String value) {
-        return value.toLowerCase().contains("ano") ||
-                value.toLowerCase().contains("true") ||
-                value.equalsIgnoreCase("yes");
     }
 
     private void validateGovernanceValue(String value, String fieldName) {

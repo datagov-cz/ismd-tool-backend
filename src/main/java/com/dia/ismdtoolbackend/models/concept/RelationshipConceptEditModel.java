@@ -18,7 +18,7 @@ public class RelationshipConceptEditModel extends ConceptEditModel {
     private Boolean isInPPDF;
     private String agendaCode;
     private String agendaSystemCode;
-    private String isPublic;
+    private Boolean isPublic;
     private String privacyProvision;
     private List<String> sharingMethod;
     private String acquisitionMethod;
@@ -40,7 +40,7 @@ public class RelationshipConceptEditModel extends ConceptEditModel {
             log.warn("Relationship '{}' without domain/range", nameModel);
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublicTrue(isPublic)) {
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
             throw new OntologyException(
                     "Vztah nemůže být současně veřejný a mít ustanovení o neveřejnosti"
             );
@@ -57,12 +57,6 @@ public class RelationshipConceptEditModel extends ConceptEditModel {
         if (contentType != null && !contentType.trim().isEmpty()) {
             validateGovernanceValue(contentType, "typ obsahu");
         }
-    }
-
-    private boolean isPublicTrue(String value) {
-        return value.toLowerCase().contains("ano") ||
-                value.toLowerCase().contains("true") ||
-                value.equalsIgnoreCase("yes");
     }
 
     private void validateGovernanceValue(String value, String fieldName) {
