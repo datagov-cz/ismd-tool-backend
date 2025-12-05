@@ -164,9 +164,9 @@ public class ConceptEditor {
 
         Map<String, String> mergedNames = new HashMap<>(existingNames);
         for (Map.Entry<String, String> entry : newNames.entrySet()) {
-            if (entry.getValue() == null) {
+            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                 mergedNames.remove(entry.getKey());
-            } else if (!entry.getValue().trim().isEmpty()) {
+            } else {
                 mergedNames.put(entry.getKey(), entry.getValue().trim());
             }
         }
@@ -202,9 +202,9 @@ public class ConceptEditor {
 
         Map<String, String> mergedDescriptions = new HashMap<>(existingDescriptions);
         for (Map.Entry<String, String> entry : newDescriptions.entrySet()) {
-            if (entry.getValue() == null) {
+            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                 mergedDescriptions.remove(entry.getKey());
-            } else if (!entry.getValue().trim().isEmpty()) {
+            } else {
                 mergedDescriptions.put(entry.getKey(), entry.getValue().trim());
             }
         }
@@ -238,9 +238,9 @@ public class ConceptEditor {
 
         Map<String, String> mergedDefinitions = new HashMap<>(existingDefinitions);
         for (Map.Entry<String, String> entry : newDefinitions.entrySet()) {
-            if (entry.getValue() == null) {
+            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                 mergedDefinitions.remove(entry.getKey());
-            } else if (!entry.getValue().trim().isEmpty()) {
+            } else {
                 mergedDefinitions.put(entry.getKey(), entry.getValue().trim());
             }
         }
@@ -662,15 +662,12 @@ public class ConceptEditor {
                                            Set<Statement> toAdd) {
         if (newSources == null) return;
 
-        List<String> validSources = new ArrayList<>();
-        for (String source : newSources) {
-            if (source != null && !source.trim().isEmpty()) {
-                validSources.add(source.trim());
-            }
-        }
+        List<String> validUrls = newSources.stream()
+                .filter(this::isValidUrl)
+                .toList();
 
-        if (validSources.isEmpty()) {
-            removeAllByPredicate(newConcept, property, toRemove);
+        if (validUrls.isEmpty()) {
+            removeAllByPredicate(oldConcept, property, toRemove);
             return;
         }
 
@@ -680,7 +677,7 @@ public class ConceptEditor {
         Property schemaUrlProperty = model.createProperty("http://schema.org/url");
         Property dctermsTitle = model.createProperty("http://purl.org/dc/terms/title");
 
-        for (String source : validSources) {
+        for (String source : validUrls) {
             Resource digitalDocument = model.createResource();
 
             toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
@@ -694,6 +691,10 @@ public class ConceptEditor {
 
             toAdd.add(model.createStatement(newConcept, property, digitalDocument));
         }
+    }
+
+    private boolean isValidUrl(String url) {
+        return UtilityMethods.isValidUrl(url);
     }
 
     private void renameConceptIRI(Model model, String oldIRI, String newIRI,
