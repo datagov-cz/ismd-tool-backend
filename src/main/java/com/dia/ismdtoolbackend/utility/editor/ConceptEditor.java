@@ -58,6 +58,10 @@ public class ConceptEditor {
         Set<Statement> statementsToRemove = new HashSet<>();
         Set<Statement> statementsToAdd = new HashSet<>();
 
+        if (nameChanged && !conceptIri.equals(newConceptIRI)) {
+            renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd);
+        }
+
         switch (editModel.getConceptTypeEnum()) {
             case TRIDA -> editClassConcept((ClassConceptEditModel) editModel, existingConcept,
                     model, statementsToRemove, statementsToAdd, newConceptIRI);
@@ -65,10 +69,6 @@ public class ConceptEditor {
                     model, statementsToRemove, statementsToAdd, newConceptIRI);
             case VZTAH -> editRelationshipConcept((RelationshipConceptEditModel) editModel, existingConcept,
                     model, statementsToRemove, statementsToAdd, newConceptIRI);
-        }
-
-        if (nameChanged && !conceptIri.equals(newConceptIRI)) {
-            renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd);
         }
 
         model.remove(statementsToRemove.toArray(new Statement[0]));
@@ -172,7 +172,7 @@ public class ConceptEditor {
         }
 
         if (!existingNames.equals(mergedNames)) {
-            removeAllByPredicate(oldConcept, SKOS.prefLabel, toRemove);
+            removeAllByPredicate(newConcept, SKOS.prefLabel, toRemove);
             for (Map.Entry<String, String> entry : mergedNames.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
@@ -195,7 +195,7 @@ public class ConceptEditor {
 
         if (newDescriptions == null || newDescriptions.isEmpty()) {
             if (!existingDescriptions.isEmpty()) {
-                removeAllByPredicate(oldConcept, descProperty, toRemove);
+                removeAllByPredicate(newConcept, descProperty, toRemove);
             }
             return;
         }
@@ -210,7 +210,7 @@ public class ConceptEditor {
         }
 
         if (!existingDescriptions.equals(mergedDescriptions)) {
-            removeAllByPredicate(oldConcept, descProperty, toRemove);
+            removeAllByPredicate(newConcept, descProperty, toRemove);
             for (Map.Entry<String, String> entry : mergedDescriptions.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
@@ -231,7 +231,7 @@ public class ConceptEditor {
 
         if (newDefinitions == null || newDefinitions.isEmpty()) {
             if (!existingDefinitions.isEmpty()) {
-                removeAllByPredicate(oldConcept, SKOS.definition, toRemove);
+                removeAllByPredicate(newConcept, SKOS.definition, toRemove);
             }
             return;
         }
@@ -246,7 +246,7 @@ public class ConceptEditor {
         }
 
         if (!existingDefinitions.equals(mergedDefinitions)) {
-            removeAllByPredicate(oldConcept, SKOS.definition, toRemove);
+            removeAllByPredicate(newConcept, SKOS.definition, toRemove);
             for (Map.Entry<String, String> entry : mergedDefinitions.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
@@ -276,7 +276,7 @@ public class ConceptEditor {
         }
 
         if (!oldAltNamesWithLang.equals(newAltNamesWithLang)) {
-            removeAllByPredicate(oldConcept, SKOS.altLabel, toRemove);
+            removeAllByPredicate(newConcept, SKOS.altLabel, toRemove);
             for (Map.Entry<String, String> entry : newAltNamesWithLang.entrySet()) {
                 toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
                         model.createLiteral(entry.getKey(), entry.getValue())));
@@ -322,10 +322,10 @@ public class ConceptEditor {
 
         if (exactMatchList.isEmpty() || newMatches.isEmpty()) {
             if (!oldMatches.isEmpty()) {
-                removeAllByPredicate(oldConcept, exactMatchProp, toRemove);
+                removeAllByPredicate(newConcept, exactMatchProp, toRemove);
             }
         } else if (!oldMatches.equals(newMatches)) {
-            removeAllByPredicate(oldConcept, exactMatchProp, toRemove);
+            removeAllByPredicate(newConcept, exactMatchProp, toRemove);
             for (String match : newMatches) {
                 if (UtilityMethods.isValidIRI(match)) {
                     toAdd.add(model.createStatement(newConcept, exactMatchProp, model.createResource(match)));
@@ -380,11 +380,11 @@ public class ConceptEditor {
         Property agendaProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA);
 
         if (agendaCode.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, agendaProperty, toRemove);
+            removeAllByPredicate(newConcept, agendaProperty, toRemove);
             return;
         }
 
-        removeAllByPredicate(oldConcept, agendaProperty, toRemove);
+        removeAllByPredicate(newConcept, agendaProperty, toRemove);
 
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformed = UtilityMethods.transformAgendaValue(agendaCode);
@@ -404,11 +404,11 @@ public class ConceptEditor {
         Property aisProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AIS);
 
         if (aisCode.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, aisProperty, toRemove);
+            removeAllByPredicate(newConcept, aisProperty, toRemove);
             return;
         }
 
-        removeAllByPredicate(oldConcept, aisProperty, toRemove);
+        removeAllByPredicate(newConcept, aisProperty, toRemove);
 
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformed = UtilityMethods.transformAISValue(aisCode);
@@ -428,7 +428,7 @@ public class ConceptEditor {
         Property provisionProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
 
         if (privacyProvision.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, provisionProperty, toRemove);
+            removeAllByPredicate(newConcept, provisionProperty, toRemove);
             return;
         }
 
@@ -453,7 +453,7 @@ public class ConceptEditor {
 
         if (newValue.trim().isEmpty()) {
             if (oldIRI != null) {
-                removeAllByPredicate(oldConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove);
             }
             return;
         }
@@ -461,7 +461,7 @@ public class ConceptEditor {
         String newIRI = generateGovernanceIRI(newValue, propertyName);
 
         if (!Objects.equals(oldIRI, newIRI)) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove);
             if (newIRI != null) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(newIRI)));
             }
@@ -488,10 +488,10 @@ public class ConceptEditor {
 
         if (newValues.isEmpty() || newIRIs.isEmpty()) {
             if (!oldIRIs.isEmpty()) {
-                removeAllByPredicate(oldConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove);
             }
         } else if (!oldIRIs.equals(newIRIs)) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove);
             for (String iri : newIRIs) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(iri)));
             }
@@ -508,12 +508,12 @@ public class ConceptEditor {
 
         if (broaderConcept.isEmpty() || newBroader.isEmpty()) {
             if (!oldBroader.isEmpty()) {
-                removeAllByPredicate(oldConcept, RDFS.subClassOf, toRemove);
-                removeAllByPredicate(oldConcept, hierarchyProp, toRemove);
+                removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove);
+                removeAllByPredicate(newConcept, hierarchyProp, toRemove);
             }
         } else if (!oldBroader.equals(newBroader)) {
-            removeAllByPredicate(oldConcept, RDFS.subClassOf, toRemove);
-            removeAllByPredicate(oldConcept, hierarchyProp, toRemove);
+            removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove);
+            removeAllByPredicate(newConcept, hierarchyProp, toRemove);
             for (String broader : newBroader) {
                 toAdd.add(model.createStatement(newConcept, RDFS.subClassOf, model.createResource(broader)));
                 toAdd.add(model.createStatement(newConcept, hierarchyProp, model.createResource(broader)));
@@ -530,7 +530,7 @@ public class ConceptEditor {
 
         if (newValue.trim().isEmpty()) {
             if (oldURI != null) {
-                removeAllByPredicate(oldConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove);
             }
             return;
         }
@@ -538,7 +538,7 @@ public class ConceptEditor {
         String newURI = DataTypeConverter.isUri(newValue) ? newValue : uriGenerator.generateConceptURI(newValue, null);
 
         if (!Objects.equals(oldURI, newURI)) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove);
             toAdd.add(model.createStatement(newConcept, property, model.createResource(newURI)));
         }
     }
@@ -551,7 +551,7 @@ public class ConceptEditor {
 
         if (dataType.trim().isEmpty()) {
             if (oldRangeURI != null) {
-                removeAllByPredicate(oldConcept, RDFS.range, toRemove);
+                removeAllByPredicate(newConcept, RDFS.range, toRemove);
             }
             return;
         }
@@ -559,7 +559,7 @@ public class ConceptEditor {
         String newRangeURI = DataTypeConverter.getXSDTypeURI(dataType.trim());
 
         if (!Objects.equals(oldRangeURI, newRangeURI)) {
-            removeAllByPredicate(oldConcept, RDFS.range, toRemove);
+            removeAllByPredicate(newConcept, RDFS.range, toRemove);
             toAdd.add(model.createStatement(newConcept, RDFS.range, model.createResource(newRangeURI)));
         }
     }
@@ -573,10 +573,10 @@ public class ConceptEditor {
 
         if (superProperties.isEmpty() || newSuperProps.isEmpty()) {
             if (!oldSuperProps.isEmpty()) {
-                removeAllByPredicate(oldConcept, RDFS.subPropertyOf, toRemove);
+                removeAllByPredicate(newConcept, RDFS.subPropertyOf, toRemove);
             }
         } else if (!oldSuperProps.equals(newSuperProps)) {
-            removeAllByPredicate(oldConcept, RDFS.subPropertyOf, toRemove);
+            removeAllByPredicate(newConcept, RDFS.subPropertyOf, toRemove);
             for (String superProp : newSuperProps) {
                 toAdd.add(model.createStatement(newConcept, RDFS.subPropertyOf, model.createResource(superProp)));
             }
@@ -619,7 +619,7 @@ public class ConceptEditor {
         String newValueStr = newValue.toString();
 
         if (!Objects.equals(oldValue, newValueStr)) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove);
             toAdd.add(model.createStatement(newConcept, property, model.createLiteral(newValueStr)));
         }
     }
@@ -644,13 +644,13 @@ public class ConceptEditor {
 
         if (newSources.isEmpty() || newSourceURIs.isEmpty()) {
             if (!oldSourceURIs.isEmpty()) {
-                removeAllByPredicate(oldConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove);
             }
             return;
         }
 
         if (!oldSourceURIs.equals(newSourceURIs)) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove);
             for (String sourceURI : newSourceURIs) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(sourceURI)));
             }
@@ -670,11 +670,11 @@ public class ConceptEditor {
         }
 
         if (validSources.isEmpty()) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove);
             return;
         }
 
-        removeAllByPredicate(oldConcept, property, toRemove);
+        removeAllByPredicate(newConcept, property, toRemove);
 
         Resource digitalObjectType = model.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
         Property schemaUrlProperty = model.createProperty("http://schema.org/url");

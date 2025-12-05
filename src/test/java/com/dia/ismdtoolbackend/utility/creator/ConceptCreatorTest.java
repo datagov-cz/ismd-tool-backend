@@ -260,7 +260,7 @@ class ConceptCreatorTest {
             when(classConceptModel.getAltNameModel()).thenReturn(createAltNameModel("cs", "Alt name"));
 
             when(classConceptModel.getType()).thenReturn("subjekt");
-            when(classConceptModel.getIsPublic()).thenReturn("ano");
+            when(classConceptModel.getIsPublic()).thenReturn(true);
             when(classConceptModel.getPrivacyProvision()).thenReturn("");
 
             when(classConceptModel.getAgendaCode()).thenReturn(null);
@@ -316,7 +316,7 @@ class ConceptCreatorTest {
         void createSingleConcept_ShouldAddBroaderConceptAndSubclassRelation() {
             // arrange
             setupBasicClassConcept("Child class", "objekt");
-            when(classConceptModel.getBroaderConcept()).thenReturn("ParentOne; ParentTwo");
+            when(classConceptModel.getBroaderConcept()).thenReturn(List.of("ParentOne", "ParentTwo"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -565,7 +565,7 @@ class ConceptCreatorTest {
             // arrange
             setupBasicClassConcept("Class without broader", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("NO-BROADER");
-            when(classConceptModel.getBroaderConcept()).thenReturn("   ");
+            when(classConceptModel.getBroaderConcept()).thenReturn(List.of());
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -678,9 +678,9 @@ class ConceptCreatorTest {
             setupBasicPropertyConcept("Property name", "xsd:string");
             when(propertyConceptModel.getIdentifier()).thenReturn("PROP-1");
             when(propertyConceptModel.getDomain()).thenReturn("TestDomain");
-            when(propertyConceptModel.getSuperProperty()).thenReturn("Super property");
+            when(propertyConceptModel.getSuperProperty()).thenReturn(List.of("SuperProperty"));
             when(propertyConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
-            when(propertyConceptModel.getIsPublic()).thenReturn("ano");
+            when(propertyConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
             when(propertyConceptModel.getPrivacyProvision()).thenReturn("");
 
             // act
@@ -697,7 +697,7 @@ class ConceptCreatorTest {
             // arrange
             setupBasicPropertyConcept("Object property", "SomeOtherClass");
             when(propertyConceptModel.getIdentifier()).thenReturn("OBJ-PROP");
-            when(propertyConceptModel.getIsPublic()).thenReturn("ne");
+            when(propertyConceptModel.getIsPublic()).thenReturn(Boolean.FALSE);
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -732,7 +732,7 @@ class ConceptCreatorTest {
             setupBasicPropertyConcept("PropertyWithUriDomainAndSuper", "xsd:string");
             when(propertyConceptModel.getIdentifier()).thenReturn("PROP-URI-DOM-SUPER");
             when(propertyConceptModel.getDomain()).thenReturn(domainIri);
-            when(propertyConceptModel.getSuperProperty()).thenReturn(superPropertyIri);
+            when(propertyConceptModel.getSuperProperty()).thenReturn(List.of(superPropertyIri));
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -751,7 +751,7 @@ class ConceptCreatorTest {
             when(propertyConceptModel.getIdentifier()).thenReturn("PROP-GOV-1");
             when(propertyConceptModel.getDomain()).thenReturn("DomainForGovernedProperty");
             when(propertyConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
-            when(propertyConceptModel.getIsPublic()).thenReturn("ano");
+            when(propertyConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
             when(propertyConceptModel.getSharingMethod()).thenReturn(List.of("sdileni-property"));
             when(propertyConceptModel.getAcquisitionMethod()).thenReturn("ziskani-property");
             when(propertyConceptModel.getContentType()).thenReturn("obsah-property");
@@ -760,7 +760,7 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
 
             // assert
-            assertTrue(result.listProperties().toList().size() > 0);
+            assertFalse(result.listProperties().toList().isEmpty());
         }
 
         @Test
@@ -820,7 +820,7 @@ class ConceptCreatorTest {
 
             // assert
             assertNotNull(result);
-            assertTrue(result.listProperties().toList().size() > 0);
+            assertFalse(result.listProperties().toList().isEmpty());
         }
     }
 
@@ -836,7 +836,7 @@ class ConceptCreatorTest {
             // arrange
             setupBasicRelationshipConcept("Private relation", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-PRIVATE");
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ne");
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.FALSE);
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -862,7 +862,7 @@ class ConceptCreatorTest {
             setupBasicRelationshipConcept("Relation with custom ns", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getOntologyGraphName()).thenReturn(customNamespace);
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-CUSTOM-NS");
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -883,8 +883,8 @@ class ConceptCreatorTest {
 
             setupBasicRelationshipConcept("Relation with URI domain/range/super", domainIri, rangeIri);
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-URI-DOM-RANGE-SUPER");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn(superRelationIri);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getSuperRelation()).thenReturn(List.of(superRelationIri));
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -910,8 +910,8 @@ class ConceptCreatorTest {
             // arrange
             setupBasicRelationshipConcept("Relation with label-based domain/range/super", "DomainLabel", "RangeLabel");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-LABEL-DOM-RANGE-SUPER");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn("SuperRelationLabel");
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getSuperRelation()).thenReturn(List.of("SuperRelationLabel"));
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -940,8 +940,8 @@ class ConceptCreatorTest {
             // arrange
             setupBasicRelationshipConcept("Relation with blank domain/range/super", "   ", "");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-BLANK-DOM-RANGE-SUPER");
-            when(relationshipConceptModel.getSuperRelation()).thenReturn("  ");
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getSuperRelation()).thenReturn(List.of(""));
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -961,7 +961,7 @@ class ConceptCreatorTest {
             setupBasicRelationshipConcept("Relation with empty governance", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-EMPTY-GOV");
             when(relationshipConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getSharingMethod()).thenReturn(List.of("   "));
             when(relationshipConceptModel.getAcquisitionMethod()).thenReturn("");
             when(relationshipConceptModel.getContentType()).thenReturn(" ");
@@ -984,7 +984,7 @@ class ConceptCreatorTest {
             setupBasicRelationshipConcept("Relation with sources", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-SOURCES-1");
             when(relationshipConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getPrivacyProvision()).thenReturn("");
             when(relationshipConceptModel.getSharingMethod()).thenReturn(List.of("sdileni-rel"));
             when(relationshipConceptModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
@@ -1028,7 +1028,7 @@ class ConceptCreatorTest {
             // arrange
             setupBasicRelationshipConcept("Relationship with mixed legal sources", "RelDomain", "RelRange");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-MIXED-LEGAL");
-            when(relationshipConceptModel.getIsPublic()).thenReturn("ano");
+            when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(
                     List.of(
                             "https://eselpoint.cz/eli/cz/act/2020/5",
