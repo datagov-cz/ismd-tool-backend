@@ -91,7 +91,7 @@ public class ConceptEditor {
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), existingConcept, model, toRemove, toAdd);
         updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
         updateBroaderConceptList(conceptResource, editModel.getBroaderConcept(), existingConcept, model, toRemove, toAdd);
@@ -113,7 +113,7 @@ public class ConceptEditor {
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), existingConcept, model, toRemove, toAdd);
         updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
@@ -133,7 +133,7 @@ public class ConceptEditor {
         updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
         updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), ZPUSOB_SDILENI, existingConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), existingConcept, model, toRemove, toAdd);
         updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
         updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
     }
@@ -172,7 +172,7 @@ public class ConceptEditor {
         }
 
         if (!existingNames.equals(mergedNames)) {
-            removeAllByPredicate(newConcept, SKOS.prefLabel, toRemove);
+            removeAllByPredicate(newConcept, SKOS.prefLabel, toRemove, toAdd);
             for (Map.Entry<String, String> entry : mergedNames.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
@@ -195,7 +195,7 @@ public class ConceptEditor {
 
         if (newDescriptions == null || newDescriptions.isEmpty()) {
             if (!existingDescriptions.isEmpty()) {
-                removeAllByPredicate(newConcept, descProperty, toRemove);
+                removeAllByPredicate(newConcept, descProperty, toRemove, toAdd);
             }
             return;
         }
@@ -210,7 +210,7 @@ public class ConceptEditor {
         }
 
         if (!existingDescriptions.equals(mergedDescriptions)) {
-            removeAllByPredicate(newConcept, descProperty, toRemove);
+            removeAllByPredicate(newConcept, descProperty, toRemove, toAdd);
             for (Map.Entry<String, String> entry : mergedDescriptions.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
@@ -231,7 +231,7 @@ public class ConceptEditor {
 
         if (newDefinitions == null || newDefinitions.isEmpty()) {
             if (!existingDefinitions.isEmpty()) {
-                removeAllByPredicate(newConcept, SKOS.definition, toRemove);
+                removeAllByPredicate(newConcept, SKOS.definition, toRemove, toAdd);
             }
             return;
         }
@@ -246,7 +246,7 @@ public class ConceptEditor {
         }
 
         if (!existingDefinitions.equals(mergedDefinitions)) {
-            removeAllByPredicate(newConcept, SKOS.definition, toRemove);
+            removeAllByPredicate(newConcept, SKOS.definition, toRemove, toAdd);
             for (Map.Entry<String, String> entry : mergedDefinitions.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
@@ -276,7 +276,7 @@ public class ConceptEditor {
         }
 
         if (!oldAltNamesWithLang.equals(newAltNamesWithLang)) {
-            removeAllByPredicate(newConcept, SKOS.altLabel, toRemove);
+            removeAllByPredicate(newConcept, SKOS.altLabel, toRemove, toAdd);
             for (Map.Entry<String, String> entry : newAltNamesWithLang.entrySet()) {
                 toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
                         model.createLiteral(entry.getKey(), entry.getValue())));
@@ -322,10 +322,10 @@ public class ConceptEditor {
 
         if (exactMatchList.isEmpty() || newMatches.isEmpty()) {
             if (!oldMatches.isEmpty()) {
-                removeAllByPredicate(newConcept, exactMatchProp, toRemove);
+                removeAllByPredicate(newConcept, exactMatchProp, toRemove, toAdd);
             }
         } else if (!oldMatches.equals(newMatches)) {
-            removeAllByPredicate(newConcept, exactMatchProp, toRemove);
+            removeAllByPredicate(newConcept, exactMatchProp, toRemove, toAdd);
             for (String match : newMatches) {
                 if (UtilityMethods.isValidIRI(match)) {
                     toAdd.add(model.createStatement(newConcept, exactMatchProp, model.createResource(match)));
@@ -353,8 +353,8 @@ public class ConceptEditor {
         Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
         Resource topType = model.getResource(OFN_NAMESPACE + TOP);
 
-        boolean oldHasTSP = oldConcept.hasProperty(RDF.type, tspType);
-        boolean oldHasTOP = oldConcept.hasProperty(RDF.type, topType);
+        boolean oldHasTSP = newConcept.hasProperty(RDF.type, tspType);
+        boolean oldHasTOP = newConcept.hasProperty(RDF.type, topType);
 
         boolean newHasTSP = newType.toLowerCase().contains("subjekt");
         boolean newHasTOP = newType.toLowerCase().contains("objekt");
@@ -380,11 +380,11 @@ public class ConceptEditor {
         Property agendaProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA);
 
         if (agendaCode.trim().isEmpty()) {
-            removeAllByPredicate(newConcept, agendaProperty, toRemove);
+            removeAllByPredicate(oldConcept, agendaProperty, toRemove, toAdd);
             return;
         }
 
-        removeAllByPredicate(newConcept, agendaProperty, toRemove);
+        removeAllByPredicate(newConcept, agendaProperty, toRemove, toAdd);
 
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformed = UtilityMethods.transformAgendaValue(agendaCode);
@@ -404,11 +404,11 @@ public class ConceptEditor {
         Property aisProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AIS);
 
         if (aisCode.trim().isEmpty()) {
-            removeAllByPredicate(newConcept, aisProperty, toRemove);
+            removeAllByPredicate(oldConcept, aisProperty, toRemove, toAdd);
             return;
         }
 
-        removeAllByPredicate(newConcept, aisProperty, toRemove);
+        removeAllByPredicate(newConcept, aisProperty, toRemove, toAdd);
 
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformed = UtilityMethods.transformAISValue(aisCode);
@@ -428,11 +428,11 @@ public class ConceptEditor {
         Property provisionProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
 
         if (privacyProvision.trim().isEmpty()) {
-            removeAllByPredicate(newConcept, provisionProperty, toRemove);
+            removeAllByPredicate(oldConcept, provisionProperty, toRemove, toAdd);
             return;
         }
 
-        removeAllByPredicate(oldConcept, provisionProperty, toRemove);
+        removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
 
         if (UtilityMethods.containsEliPattern(privacyProvision)) {
             String eliPart = UtilityMethods.extractEliPart(privacyProvision);
@@ -453,7 +453,7 @@ public class ConceptEditor {
 
         if (newValue.trim().isEmpty()) {
             if (oldIRI != null) {
-                removeAllByPredicate(newConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove, toAdd);
             }
             return;
         }
@@ -461,25 +461,25 @@ public class ConceptEditor {
         String newIRI = generateGovernanceIRI(newValue, propertyName);
 
         if (!Objects.equals(oldIRI, newIRI)) {
-            removeAllByPredicate(newConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
             if (newIRI != null) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(newIRI)));
             }
         }
     }
 
-    private void updateGovernancePropertyList(Resource newConcept, List<String> newValues, String propertyName,
-                                               Resource oldConcept, Model model, Set<Statement> toRemove,
+    private void updateGovernancePropertyList(Resource newConcept, List<String> newValues,
+                                              Resource oldConcept, Model model, Set<Statement> toRemove,
                                                Set<Statement> toAdd) {
         if (newValues == null) return;
 
-        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + propertyName);
+        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + com.dia.constants.VocabularyConstants.ZPUSOB_SDILENI);
         Set<String> oldIRIs = getResourceURIs(oldConcept, property);
         Set<String> newIRIs = new HashSet<>();
 
         for (String value : newValues) {
             if (value != null && !value.trim().isEmpty()) {
-                String newIRI = generateGovernanceIRI(value, propertyName);
+                String newIRI = generateGovernanceIRI(value, com.dia.constants.VocabularyConstants.ZPUSOB_SDILENI);
                 if (newIRI != null) {
                     newIRIs.add(newIRI);
                 }
@@ -488,10 +488,10 @@ public class ConceptEditor {
 
         if (newValues.isEmpty() || newIRIs.isEmpty()) {
             if (!oldIRIs.isEmpty()) {
-                removeAllByPredicate(newConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove, toAdd);
             }
         } else if (!oldIRIs.equals(newIRIs)) {
-            removeAllByPredicate(newConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
             for (String iri : newIRIs) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(iri)));
             }
@@ -508,12 +508,12 @@ public class ConceptEditor {
 
         if (broaderConcept.isEmpty() || newBroader.isEmpty()) {
             if (!oldBroader.isEmpty()) {
-                removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove);
-                removeAllByPredicate(newConcept, hierarchyProp, toRemove);
+                removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove, toAdd);
+                removeAllByPredicate(newConcept, hierarchyProp, toRemove, toAdd);
             }
         } else if (!oldBroader.equals(newBroader)) {
-            removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove);
-            removeAllByPredicate(newConcept, hierarchyProp, toRemove);
+            removeAllByPredicate(newConcept, RDFS.subClassOf, toRemove, toAdd);
+            removeAllByPredicate(newConcept, hierarchyProp, toRemove, toAdd);
             for (String broader : newBroader) {
                 toAdd.add(model.createStatement(newConcept, RDFS.subClassOf, model.createResource(broader)));
                 toAdd.add(model.createStatement(newConcept, hierarchyProp, model.createResource(broader)));
@@ -530,7 +530,7 @@ public class ConceptEditor {
 
         if (newValue.trim().isEmpty()) {
             if (oldURI != null) {
-                removeAllByPredicate(newConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove, toAdd);
             }
             return;
         }
@@ -538,7 +538,7 @@ public class ConceptEditor {
         String newURI = DataTypeConverter.isUri(newValue) ? newValue : uriGenerator.generateConceptURI(newValue, null);
 
         if (!Objects.equals(oldURI, newURI)) {
-            removeAllByPredicate(newConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
             toAdd.add(model.createStatement(newConcept, property, model.createResource(newURI)));
         }
     }
@@ -551,7 +551,7 @@ public class ConceptEditor {
 
         if (dataType.trim().isEmpty()) {
             if (oldRangeURI != null) {
-                removeAllByPredicate(newConcept, RDFS.range, toRemove);
+                removeAllByPredicate(newConcept, RDFS.range, toRemove, toAdd);
             }
             return;
         }
@@ -559,7 +559,7 @@ public class ConceptEditor {
         String newRangeURI = DataTypeConverter.getXSDTypeURI(dataType.trim());
 
         if (!Objects.equals(oldRangeURI, newRangeURI)) {
-            removeAllByPredicate(newConcept, RDFS.range, toRemove);
+            removeAllByPredicate(newConcept, RDFS.range, toRemove, toAdd);
             toAdd.add(model.createStatement(newConcept, RDFS.range, model.createResource(newRangeURI)));
         }
     }
@@ -573,10 +573,10 @@ public class ConceptEditor {
 
         if (superProperties.isEmpty() || newSuperProps.isEmpty()) {
             if (!oldSuperProps.isEmpty()) {
-                removeAllByPredicate(newConcept, RDFS.subPropertyOf, toRemove);
+                removeAllByPredicate(newConcept, RDFS.subPropertyOf, toRemove, toAdd);
             }
         } else if (!oldSuperProps.equals(newSuperProps)) {
-            removeAllByPredicate(newConcept, RDFS.subPropertyOf, toRemove);
+            removeAllByPredicate(newConcept, RDFS.subPropertyOf, toRemove, toAdd);
             for (String superProp : newSuperProps) {
                 toAdd.add(model.createStatement(newConcept, RDFS.subPropertyOf, model.createResource(superProp)));
             }
@@ -619,7 +619,7 @@ public class ConceptEditor {
         String newValueStr = newValue.toString();
 
         if (!Objects.equals(oldValue, newValueStr)) {
-            removeAllByPredicate(newConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
             toAdd.add(model.createStatement(newConcept, property, model.createLiteral(newValueStr)));
         }
     }
@@ -644,13 +644,13 @@ public class ConceptEditor {
 
         if (newSources.isEmpty() || newSourceURIs.isEmpty()) {
             if (!oldSourceURIs.isEmpty()) {
-                removeAllByPredicate(newConcept, property, toRemove);
+                removeAllByPredicate(newConcept, property, toRemove, toAdd);
             }
             return;
         }
 
         if (!oldSourceURIs.equals(newSourceURIs)) {
-            removeAllByPredicate(newConcept, property, toRemove);
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
             for (String sourceURI : newSourceURIs) {
                 toAdd.add(model.createStatement(newConcept, property, model.createResource(sourceURI)));
             }
@@ -667,11 +667,11 @@ public class ConceptEditor {
                 .toList();
 
         if (validUrls.isEmpty()) {
-            removeAllByPredicate(oldConcept, property, toRemove);
+            removeAllByPredicate(oldConcept, property, toRemove, toAdd);
             return;
         }
 
-        removeAllByPredicate(newConcept, property, toRemove);
+        removeAllByPredicate(newConcept, property, toRemove, toAdd);
 
         Resource digitalObjectType = model.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
         Property schemaUrlProperty = model.createProperty("http://schema.org/url");
@@ -683,8 +683,7 @@ public class ConceptEditor {
             toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
 
             if (UtilityMethods.isValidUrl(source)) {
-                Literal urlLiteral = model.createTypedLiteral(source, "http://www.w3.org/2001/XMLSchema#anyURI");
-                toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, urlLiteral));
+                toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, model.createResource(source)));
             } else {
                 toAdd.add(model.createStatement(digitalDocument, dctermsTitle, model.createLiteral(source, DEFAULT_LANG)));
             }
@@ -807,11 +806,16 @@ public class ConceptEditor {
         return uris;
     }
 
-    private void removeAllByPredicate(Resource resource, Property property, Set<Statement> toRemove) {
+    private void removeAllByPredicate(Resource resource, Property property, Set<Statement> toRemove, Set<Statement> toAdd) {
         StmtIterator iter = resource.listProperties(property);
         while (iter.hasNext()) {
             toRemove.add(iter.next());
         }
+
+        toAdd.removeIf(stmt ->
+                stmt.getSubject().equals(resource) &&
+                        stmt.getPredicate().equals(property)
+        );
     }
 
     private Set<String> parseBroaderConcepts(List<String> broaderConcept) {

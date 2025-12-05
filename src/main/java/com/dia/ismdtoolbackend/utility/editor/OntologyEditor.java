@@ -95,7 +95,7 @@ public class OntologyEditor {
 
         if (!existingNames.equals(mergedNames)) {
             Resource ontologyResource = model.getResource(newOntologyIRI);
-            removeAllByPredicate(existingOntology, SKOS.prefLabel, toRemove);
+            removeAllByPredicate(existingOntology, SKOS.prefLabel, toRemove, toAdd);
 
             for (Map.Entry<String, String> entry : mergedNames.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
@@ -119,7 +119,7 @@ public class OntologyEditor {
 
         if (newDescriptions == null || newDescriptions.isEmpty()) {
             if (!existingDescriptions.isEmpty()) {
-                removeAllByPredicate(existingOntology, descProperty, toRemove);
+                removeAllByPredicate(existingOntology, descProperty, toRemove, toAdd);
             }
             return;
         }
@@ -135,7 +135,7 @@ public class OntologyEditor {
 
         if (!existingDescriptions.equals(mergedDescriptions)) {
             Resource ontologyResource = model.getResource(newOntologyIRI);
-            removeAllByPredicate(existingOntology, descProperty, toRemove);
+            removeAllByPredicate(existingOntology, descProperty, toRemove, toAdd);
 
             for (Map.Entry<String, String> entry : mergedDescriptions.entrySet()) {
                 String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
@@ -221,11 +221,16 @@ public class OntologyEditor {
         }
     }
 
-    private void removeAllByPredicate(Resource resource, Property property, Set<Statement> toRemove) {
+    private void removeAllByPredicate(Resource resource, Property property, Set<Statement> toRemove, Set<Statement> toAdd) {
         StmtIterator iter = resource.listProperties(property);
         while (iter.hasNext()) {
             toRemove.add(iter.next());
         }
+
+        toAdd.removeIf(stmt ->
+                stmt.getSubject().equals(resource) &&
+                        stmt.getPredicate().equals(property)
+        );
     }
 
     private Map<String, String> getAllPropertyValuesWithLanguage(Resource resource, Property property) {

@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
+import lombok.Getter;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
@@ -65,9 +66,13 @@ class ConceptEditorTest {
     @Mock
     private RelationshipConceptEditModel relationshipConceptEditModel;
 
+    @Getter
     private NameModel nameModel;
+    @Getter
     private DescriptionModel descriptionModel;
+    @Getter
     private DefinitionModel definitionModel;
+    @Getter
     private AltNameModel altNameModel;
 
     private Model model;
@@ -88,36 +93,36 @@ class ConceptEditorTest {
      * Creates a NameModel with the given language code and value
      */
     private NameModel createNameModel(String languageCode, String value) {
-        NameModel model = new NameModel();
-        model.setName(Map.of(languageCode, value));
-        return model;
+        NameModel nameModel1 = new NameModel();
+        nameModel1.setName(Map.of(languageCode, value));
+        return nameModel1;
     }
 
     /**
      * Creates a DescriptionModel with the given language code and value
      */
     private DescriptionModel createDescriptionModel(String languageCode, String value) {
-        DescriptionModel model = new DescriptionModel();
-        model.setDescription(Map.of(languageCode, value));
-        return model;
+        DescriptionModel descriptionModel1 = new DescriptionModel();
+        descriptionModel1.setDescription(Map.of(languageCode, value));
+        return descriptionModel1;
     }
 
     /**
      * Creates a DefinitionModel with the given language code and value
      */
     private DefinitionModel createDefinitionModel(String languageCode, String value) {
-        DefinitionModel model = new DefinitionModel();
-        model.setDefinition(Map.of(languageCode, value));
-        return model;
+        DefinitionModel definitionModel1 = new DefinitionModel();
+        definitionModel1.setDefinition(Map.of(languageCode, value));
+        return definitionModel1;
     }
 
     /**
      * Creates an AltNameModel with the given language code and value
      */
     private AltNameModel createAltNameModel(String languageCode, String value) {
-        AltNameModel model = new AltNameModel();
-        model.setAltName(Map.of(languageCode, value));
-        return model;
+        AltNameModel altNameModel1 = new AltNameModel();
+        altNameModel1.setAltName(Map.of(languageCode, value));
+        return altNameModel1;
     }
 
     // ===================== A. ClassConcept (TRIDA) =====================
@@ -656,8 +661,8 @@ class ConceptEditorTest {
         assertEquals("New definition",
                 updated.getProperty(SKOS.definition).getObject().asLiteral().getString());
 
-        // altLabel is unchanged, verify that the original value is preserved
-        assertEquals("Old alt",
+        // altLabel is updated with the new value provided in newAlt
+        assertEquals("New alt",
                 updated.getProperty(SKOS.altLabel).getObject().asLiteral().getString());
     }
 
