@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.utility.UtilityMethods;
+import lombok.Getter;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +34,9 @@ class OntologyEditorTest {
     @Mock
     private OntologyEditModel editModel;
 
+    @Getter
     private NameModel nameModel;
+    @Getter
     private DescriptionModel descriptionModel;
 
     private Model model;
@@ -53,18 +56,18 @@ class OntologyEditorTest {
      * Creates a NameModel with the given language code and value
      */
     private NameModel createNameModel(String languageCode, String value) {
-        NameModel model = new NameModel();
-        model.setName(Map.of(languageCode, value));
-        return model;
+        NameModel nameModel1 = new NameModel();
+        nameModel1.setName(Map.of(languageCode, value));
+        return nameModel1;
     }
 
     /**
      * Creates a DescriptionModel with the given language code and value
      */
     private DescriptionModel createDescriptionModel(String languageCode, String value) {
-        DescriptionModel model = new DescriptionModel();
-        model.setDescription(Map.of(languageCode, value));
-        return model;
+        DescriptionModel descriptionModel1 = new DescriptionModel();
+        descriptionModel1.setDescription(Map.of(languageCode, value));
+        return descriptionModel1;
     }
 
     // ========== E. OntologyEditor Tests ==========
@@ -199,9 +202,8 @@ class OntologyEditorTest {
 
             Resource ontology = model.createResource(oldOntologyIRI);
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            ontology.addProperty(descProperty, model.createProperty("Some description", "cs"));
+            ontology.addProperty(descProperty, model.createLiteral("Some description", "cs"));
 
-            // TODO
             DescriptionModel blankDesc = createDescriptionModel("cs", "");
 
             when(editModel.getNameModel()).thenReturn(null);

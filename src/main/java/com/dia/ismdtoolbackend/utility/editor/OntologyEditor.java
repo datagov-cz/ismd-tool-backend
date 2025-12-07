@@ -86,9 +86,9 @@ public class OntologyEditor {
 
         Map<String, String> mergedNames = new HashMap<>(existingNames);
         for (Map.Entry<String, String> entry : newNames.entrySet()) {
-            if (entry.getValue() == null) {
+            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                 mergedNames.remove(entry.getKey());
-            } else if (!entry.getValue().trim().isEmpty()) {
+            } else {
                 mergedNames.put(entry.getKey(), entry.getValue().trim());
             }
         }
@@ -126,9 +126,9 @@ public class OntologyEditor {
 
         Map<String, String> mergedDescriptions = new HashMap<>(existingDescriptions);
         for (Map.Entry<String, String> entry : newDescriptions.entrySet()) {
-            if (entry.getValue() == null) {
+            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
                 mergedDescriptions.remove(entry.getKey());
-            } else if (!entry.getValue().trim().isEmpty()) {
+            } else {
                 mergedDescriptions.put(entry.getKey(), entry.getValue().trim());
             }
         }
