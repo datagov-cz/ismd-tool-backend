@@ -55,103 +55,116 @@ public class ConceptEditor {
                     oldName, newName, conceptIri, newConceptIRI);
         }
 
+        EditContext context = new EditContext(model, conceptIri, newConceptIRI);
+
         Set<Statement> statementsToRemove = new HashSet<>();
         Set<Statement> statementsToAdd = new HashSet<>();
 
-        if (nameChanged && !conceptIri.equals(newConceptIRI)) {
-            renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd);
+        boolean supportsTransactions = model.supportsTransactions();
+        if (supportsTransactions) {
+            model.begin();
         }
 
-        switch (editModel.getConceptTypeEnum()) {
-            case TRIDA -> editClassConcept((ClassConceptEditModel) editModel, existingConcept,
-                    model, statementsToRemove, statementsToAdd, newConceptIRI);
-            case VLASTNOST -> editPropertyConcept((PropertyConceptEditModel) editModel, existingConcept,
-                    model, statementsToRemove, statementsToAdd, newConceptIRI);
-            case VZTAH -> editRelationshipConcept((RelationshipConceptEditModel) editModel, existingConcept,
-                    model, statementsToRemove, statementsToAdd, newConceptIRI);
+        try {
+            if (nameChanged && !conceptIri.equals(newConceptIRI)) {
+                Set<Property> predicatesToExclude = buildPredicatesToExclude(editModel, model);
+                renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd, predicatesToExclude);
+            }
+
+            switch (editModel.getConceptTypeEnum()) {
+                case TRIDA -> editClassConcept((ClassConceptEditModel) editModel, context,
+                        model, statementsToRemove, statementsToAdd);
+                case VLASTNOST -> editPropertyConcept((PropertyConceptEditModel) editModel, context,
+                        model, statementsToRemove, statementsToAdd);
+                case VZTAH -> editRelationshipConcept((RelationshipConceptEditModel) editModel, context,
+                        model, statementsToRemove, statementsToAdd);
+            }
+
+            model.remove(statementsToRemove.toArray(new Statement[0]));
+            model.add(statementsToAdd.toArray(new Statement[0]));
+
+            log.info("Applied {} removals and {} additions", statementsToRemove.size(), statementsToAdd.size());
+
+            if (supportsTransactions) {
+                model.commit();
+            }
+
+            return new EditResult(newConceptIRI, nameChanged, statementsToRemove.size() + statementsToAdd.size());
+
+        } catch (Exception e) {
+            if (supportsTransactions) {
+                try {
+                    model.abort();
+                    log.error("Transaction rolled back due to error during concept edit", e);
+                } catch (Exception rollbackException) {
+                    log.error("Failed to rollback transaction", rollbackException);
+                }
+            }
+            throw new RuntimeException("Failed to edit concept: " + conceptIri, e);
         }
-
-        model.remove(statementsToRemove.toArray(new Statement[0]));
-        model.add(statementsToAdd.toArray(new Statement[0]));
-
-        log.info("Applied {} removals and {} additions", statementsToRemove.size(), statementsToAdd.size());
-
-        return new EditResult(newConceptIRI, nameChanged, statementsToRemove.size() + statementsToAdd.size());
     }
 
-    private void editClassConcept(ClassConceptEditModel editModel, Resource existingConcept,
-                                   Model model, Set<Statement> toRemove, Set<Statement> toAdd,
-                                   String newConceptIRI) {
-        editCommonFields(editModel, existingConcept, model, toRemove, toAdd, newConceptIRI);
+    private void editClassConcept(ClassConceptEditModel editModel, EditContext context,
+                                   Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        editCommonFields(editModel, context, model, toRemove, toAdd);
 
-        Resource conceptResource = model.getResource(newConceptIRI);
-
-        updateStringProperty(conceptResource, TYPE, editModel.getType(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
-        updateBroaderConceptList(conceptResource, editModel.getBroaderConcept(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, JE_PPDF, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, TYPE, editModel.getType(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, AGENDA_CODE, editModel.getAgendaCode(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, AIS, editModel.getAgendaSystemCode(), context.oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(context.newConcept, editModel.getContentType(), TYP_OBSAHU, context.oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(context.newConcept, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, context.oldConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(context.newConcept, editModel.getSharingMethod(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, IS_PUBLIC, editModel.getIsPublic(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
+        updateBroaderConceptList(context.newConcept, editModel.getBroaderConcept(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, JE_PPDF, editModel.getIsInPPDF(), context.oldConcept, model, toRemove, toAdd);
     }
 
-    private void editPropertyConcept(PropertyConceptEditModel editModel, Resource existingConcept,
-                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd,
-                                      String newConceptIRI) {
-        editCommonFields(editModel, existingConcept, model, toRemove, toAdd, newConceptIRI);
+    private void editPropertyConcept(PropertyConceptEditModel editModel, EditContext context,
+                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        editCommonFields(editModel, context, model, toRemove, toAdd);
 
-        Resource conceptResource = model.getResource(newConceptIRI);
-
-        updateDomainRange(conceptResource, RDFS.domain, editModel.getDomain(), existingConcept, model, toRemove, toAdd);
-        updateDataTypeRange(conceptResource, editModel.getDataType(), existingConcept, model, toRemove, toAdd);
-        updateSuperPropertyList(conceptResource, editModel.getSuperProperty(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, JE_PPDF, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
+        updateDomainRange(context.newConcept, RDFS.domain, editModel.getDomain(), context.oldConcept, model, toRemove, toAdd);
+        updateDataTypeRange(context.newConcept, editModel.getDataType(), context.oldConcept, model, toRemove, toAdd);
+        updateSuperPropertyList(context.newConcept, editModel.getSuperProperty(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, JE_PPDF, editModel.getIsInPPDF(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, AGENDA_CODE, editModel.getAgendaCode(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, AIS, editModel.getAgendaSystemCode(), context.oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(context.newConcept, editModel.getContentType(), TYP_OBSAHU, context.oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(context.newConcept, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, context.oldConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(context.newConcept, editModel.getSharingMethod(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, IS_PUBLIC, editModel.getIsPublic(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
     }
 
-    private void editRelationshipConcept(RelationshipConceptEditModel editModel, Resource existingConcept,
-                                          Model model, Set<Statement> toRemove, Set<Statement> toAdd,
-                                          String newConceptIRI) {
-        editCommonFields(editModel, existingConcept, model, toRemove, toAdd, newConceptIRI);
+    private void editRelationshipConcept(RelationshipConceptEditModel editModel, EditContext context,
+                                          Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        editCommonFields(editModel, context, model, toRemove, toAdd);
 
-        Resource conceptResource = model.getResource(newConceptIRI);
-
-        updateDomainRange(conceptResource, RDFS.domain, editModel.getDomain(), existingConcept, model, toRemove, toAdd);
-        updateDomainRange(conceptResource, RDFS.range, editModel.getRange(), existingConcept, model, toRemove, toAdd);
-        updateSuperPropertyList(conceptResource, editModel.getSuperRelation(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, JE_PPDF, editModel.getIsInPPDF(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, AGENDA_CODE, editModel.getAgendaCode(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, AIS, editModel.getAgendaSystemCode(), existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getContentType(), TYP_OBSAHU, existingConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(conceptResource, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, existingConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(conceptResource, editModel.getSharingMethod(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, IS_PUBLIC, editModel.getIsPublic(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, PRIVACY_PROVISION, editModel.getPrivacyProvision(), existingConcept, model, toRemove, toAdd);
+        updateDomainRange(context.newConcept, RDFS.domain, editModel.getDomain(), context.oldConcept, model, toRemove, toAdd);
+        updateDomainRange(context.newConcept, RDFS.range, editModel.getRange(), context.oldConcept, model, toRemove, toAdd);
+        updateSuperPropertyList(context.newConcept, editModel.getSuperRelation(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, JE_PPDF, editModel.getIsInPPDF(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, AGENDA_CODE, editModel.getAgendaCode(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, AIS, editModel.getAgendaSystemCode(), context.oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(context.newConcept, editModel.getContentType(), TYP_OBSAHU, context.oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(context.newConcept, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, context.oldConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(context.newConcept, editModel.getSharingMethod(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, IS_PUBLIC, editModel.getIsPublic(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
     }
 
-    private void editCommonFields(ConceptEditModel editModel, Resource existingConcept,
-                                   Model model, Set<Statement> toRemove, Set<Statement> toAdd,
-                                   String newConceptIRI) {
-        Resource conceptResource = model.getResource(newConceptIRI);
-
-        updateNameModel(conceptResource, editModel.getNameModel(), existingConcept, model, toRemove, toAdd);
-        updateDescriptionModel(conceptResource, editModel.getDescriptionModel(), existingConcept, model, toRemove, toAdd);
-        updateDefinitionModel(conceptResource, editModel.getDefinitionModel(), existingConcept, model, toRemove, toAdd);
-        updateAltNameModel(conceptResource, editModel.getAltNameModel(), existingConcept, model, toRemove, toAdd);
-        updateLegalSources(conceptResource, editModel, existingConcept, model, toRemove, toAdd);
-        updateNonLegalSources(conceptResource, editModel, existingConcept, model, toRemove, toAdd);
-        updateExactMatch(conceptResource, editModel.getExactMatch(), existingConcept, model, toRemove, toAdd);
-        updateBooleanProperty(conceptResource, IN_TEZAURUS, editModel.getInTezaurus(), existingConcept, model, toRemove, toAdd);
-        updateStringProperty(conceptResource, NAMESPACE, editModel.getNamespace(), existingConcept, model, toRemove, toAdd);
+    private void editCommonFields(ConceptEditModel editModel, EditContext context,
+                                   Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        updateNameModel(context.newConcept, editModel.getNameModel(), context.oldConcept, model, toRemove, toAdd);
+        updateDescriptionModel(context.newConcept, editModel.getDescriptionModel(), context.oldConcept, model, toRemove, toAdd);
+        updateDefinitionModel(context.newConcept, editModel.getDefinitionModel(), context.oldConcept, model, toRemove, toAdd);
+        updateAltNameModel(context.newConcept, editModel.getAltNameModel(), context.oldConcept, model, toRemove, toAdd);
+        updateLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
+        updateNonLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
+        updateExactMatch(context.newConcept, editModel.getExactMatch(), context.oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(context.newConcept, IN_TEZAURUS, editModel.getInTezaurus(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, NAMESPACE, editModel.getNamespace(), context.oldConcept, model, toRemove, toAdd);
     }
 
     private void updateNameModel(Resource newConcept, NameModel nameModel, Resource oldConcept,
@@ -697,16 +710,24 @@ public class ConceptEditor {
     }
 
     private void renameConceptIRI(Model model, String oldIRI, String newIRI,
-                                   Set<Statement> toRemove, Set<Statement> toAdd) {
+                                   Set<Statement> toRemove, Set<Statement> toAdd,
+                                   Set<Property> excludePredicates) {
         Resource oldConcept = model.getResource(oldIRI);
 
         StmtIterator iter = model.listStatements(oldConcept, null, (RDFNode) null);
         while (iter.hasNext()) {
             Statement stmt = iter.next();
+            Property predicate = stmt.getPredicate();
+
+            if (excludePredicates.contains(predicate)) {
+                toRemove.add(stmt);
+                continue;
+            }
+
             toRemove.add(stmt);
             toAdd.add(model.createStatement(
                     model.getResource(newIRI),
-                    stmt.getPredicate(),
+                    predicate,
                     stmt.getObject()
             ));
         }
@@ -720,6 +741,145 @@ public class ConceptEditor {
                     stmt.getPredicate(),
                     model.getResource(newIRI)
             ));
+        }
+    }
+
+    private Set<Property> buildPredicatesToExclude(ConceptEditModel editModel, Model model) {
+        Set<Property> predicates = new HashSet<>();
+
+        if (editModel.getNameModel() != null) predicates.add(SKOS.prefLabel);
+        if (editModel.getDefinitionModel() != null) predicates.add(SKOS.definition);
+        if (editModel.getAltNameModel() != null) predicates.add(SKOS.altLabel);
+        if (editModel.getDescriptionModel() != null) {
+            predicates.add(model.createProperty("http://purl.org/dc/terms/description"));
+        }
+        if (editModel.getExactMatch() != null) {
+            predicates.add(model.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch"));
+        }
+        if (editModel.getDefiningLegalSource() != null || editModel.getRelatedLegalSource() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_USTANOVENI));
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_USTANOVENI));
+        }
+        if (editModel.getDefiningNonLegalSource() != null || editModel.getRelatedNonLegalSource() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_NELEGISLATIVNI_ZDROJ));
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_NELEGISLATIVNI_ZDROJ));
+        }
+        if (editModel.getInTezaurus() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + IN_TEZAURUS));
+        }
+        if (editModel.getNamespace() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + NAMESPACE));
+        }
+
+        switch (editModel.getConceptTypeEnum()) {
+            case TRIDA -> {
+                ClassConceptEditModel classModel = (ClassConceptEditModel) editModel;
+                if (classModel.getType() != null) {
+                    predicates.add(RDF.type);
+                }
+                if (classModel.getBroaderConcept() != null) {
+                    predicates.add(RDFS.subClassOf);
+                    predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + "nadřazená-třída"));
+                }
+                addCommonConceptPredicates(predicates, classModel, model);
+            }
+            case VLASTNOST -> {
+                PropertyConceptEditModel propModel = (PropertyConceptEditModel) editModel;
+                if (propModel.getDomain() != null) predicates.add(RDFS.domain);
+                if (propModel.getDataType() != null) predicates.add(RDFS.range);
+                if (propModel.getSuperProperty() != null) predicates.add(RDFS.subPropertyOf);
+                addCommonConceptPredicates(predicates, propModel, model);
+            }
+            case VZTAH -> {
+                RelationshipConceptEditModel relModel = (RelationshipConceptEditModel) editModel;
+                if (relModel.getDomain() != null) predicates.add(RDFS.domain);
+                if (relModel.getRange() != null) predicates.add(RDFS.range);
+                if (relModel.getSuperRelation() != null) predicates.add(RDFS.subPropertyOf);
+                addCommonConceptPredicates(predicates, relModel, model);
+            }
+        }
+
+        return predicates;
+    }
+
+    private void addCommonConceptPredicates(Set<Property> predicates, ClassConceptEditModel editModel, Model model) {
+        if (editModel.getIsInPPDF() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF));
+        }
+        if (editModel.getIsPublic() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_VEREJNY));
+        }
+        if (editModel.getAgendaCode() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA));
+        }
+        if (editModel.getAgendaSystemCode() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AIS));
+        }
+        if (editModel.getContentType() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + TYP_OBSAHU));
+        }
+        if (editModel.getAcquisitionMethod() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_ZISKANI));
+        }
+        if (editModel.getSharingMethod() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_SDILENI));
+        }
+        if (editModel.getPrivacyProvision() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST));
+        }
+    }
+
+    private void addCommonConceptPredicates(Set<Property> predicates, PropertyConceptEditModel editModel, Model model) {
+        if (editModel.getIsInPPDF() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF));
+        }
+        if (editModel.getIsPublic() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_VEREJNY));
+        }
+        if (editModel.getAgendaCode() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA));
+        }
+        if (editModel.getAgendaSystemCode() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AIS));
+        }
+        if (editModel.getContentType() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + TYP_OBSAHU));
+        }
+        if (editModel.getAcquisitionMethod() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_ZISKANI));
+        }
+        if (editModel.getSharingMethod() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_SDILENI));
+        }
+        if (editModel.getPrivacyProvision() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST));
+        }
+    }
+
+    private void addCommonConceptPredicates(Set<Property> predicates, RelationshipConceptEditModel editModel, Model model) {
+        if (editModel.getIsInPPDF() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF));
+        }
+        if (editModel.getIsPublic() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_VEREJNY));
+        }
+        if (editModel.getAgendaCode() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA));
+        }
+        if (editModel.getAgendaSystemCode() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AIS));
+        }
+        if (editModel.getContentType() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + TYP_OBSAHU));
+        }
+        if (editModel.getAcquisitionMethod() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_ZISKANI));
+        }
+        if (editModel.getSharingMethod() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_SDILENI));
+        }
+        if (editModel.getPrivacyProvision() != null) {
+            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST));
         }
     }
 
@@ -847,6 +1007,30 @@ public class ConceptEditor {
             return UtilityMethods.ensureNamespaceEndsWithDelimiter(namespace);
         }
         return DEFAULT_NS;
+    }
+
+    private static class EditContext {
+        final Resource oldConcept;
+        final Resource newConcept;
+        final Model model;
+        final boolean iriChanged;
+        final Map<Property, List<Statement>> existingStatements;
+
+        public EditContext(Model model, String oldIRI, String newIRI) {
+            this.model = model;
+            this.oldConcept = model.getResource(oldIRI);
+            this.newConcept = model.getResource(newIRI);
+            this.iriChanged = !oldIRI.equals(newIRI);
+
+            this.existingStatements = new HashMap<>();
+            StmtIterator iter = oldConcept.listProperties();
+            while (iter.hasNext()) {
+                Statement stmt = iter.next();
+                existingStatements
+                        .computeIfAbsent(stmt.getPredicate(), k -> new ArrayList<>())
+                        .add(stmt);
+            }
+        }
     }
 
     public static class EditResult {
