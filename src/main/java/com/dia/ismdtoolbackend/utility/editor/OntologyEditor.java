@@ -7,6 +7,7 @@ import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
@@ -52,28 +53,50 @@ public class OntologyEditor {
         Set<Statement> statementsToRemove = new HashSet<>();
         Set<Statement> statementsToAdd = new HashSet<>();
 
-        if (editModel.getNameModel() != null) {
-            updateName(existingOntology, editModel.getNameModel(), model, statementsToRemove, statementsToAdd,
-                    newOntologyIRI);
+        boolean supportsTransactions = model.supportsTransactions();
+        if (supportsTransactions) {
+            model.begin();
         }
 
-        if (editModel.getDescriptionModel() != null) {
-            updateDescription(existingOntology, editModel.getDescriptionModel(), model, statementsToRemove,
-                    statementsToAdd, newOntologyIRI);
+        try {
+            if (editModel.getNameModel() != null) {
+                updateName(existingOntology, editModel.getNameModel(), model, statementsToRemove, statementsToAdd,
+                        newOntologyIRI);
+            }
+
+            if (editModel.getDescriptionModel() != null) {
+                updateDescription(existingOntology, editModel.getDescriptionModel(), model, statementsToRemove,
+                        statementsToAdd, newOntologyIRI);
+            }
+
+            if (nameChanged && !iri.equals(newOntologyIRI)) {
+                renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
+                updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
+            }
+
+            model.remove(statementsToRemove.toArray(new Statement[0]));
+            model.add(statementsToAdd.toArray(new Statement[0]));
+
+            log.info("Applied {} removals and {} additions for ontology edit",
+                    statementsToRemove.size(), statementsToAdd.size());
+
+            if (supportsTransactions) {
+                model.commit();
+            }
+
+            return new EditResult(newOntologyIRI, nameChanged);
+
+        } catch (Exception e) {
+            if (supportsTransactions) {
+                try {
+                    model.abort();
+                    log.error("Transaction rolled back due to error during ontology edit", e);
+                } catch (Exception rollbackException) {
+                    log.error("Failed to rollback transaction", rollbackException);
+                }
+            }
+            throw new OntologyException("Failed to edit ontology: " + iri);
         }
-
-        if (nameChanged && !iri.equals(newOntologyIRI)) {
-            renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
-            updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
-        }
-
-        model.remove(statementsToRemove.toArray(new Statement[0]));
-        model.add(statementsToAdd.toArray(new Statement[0]));
-
-        log.info("Applied {} removals and {} additions for ontology edit",
-                statementsToRemove.size(), statementsToAdd.size());
-
-        return new EditResult(newOntologyIRI, nameChanged);
     }
 
     private void updateName(Resource existingOntology, NameModel nameModel, Model model,

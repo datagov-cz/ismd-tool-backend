@@ -185,7 +185,6 @@ class ConceptEditorTest {
         existing.addProperty(RDFS.subClassOf, oldBroader);
         existing.addProperty(hierarchyProperty, oldBroader);
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -270,7 +269,6 @@ class ConceptEditorTest {
                 )
         );
 
-        // conceptIri is now passed directly to editConcept method
         when(propertyConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
         when(propertyConceptEditModel.getNameModel()).thenReturn(null);
         when(propertyConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -377,7 +375,6 @@ class ConceptEditorTest {
                 )
         );
 
-        // conceptIri is now passed directly to editConcept method
         when(relationshipConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
         when(relationshipConceptEditModel.getNameModel()).thenReturn(null);
         when(relationshipConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -467,7 +464,6 @@ class ConceptEditorTest {
         existing.addProperty(definingProp, oldDef);
         existing.addProperty(relatedProp, oldRel);
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -541,7 +537,6 @@ class ConceptEditorTest {
         Property relatedProp = model.createProperty(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
         Property schemaUrlProp = model.createProperty("http://schema.org/url");
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -624,7 +619,6 @@ class ConceptEditorTest {
         DefinitionModel newDef = createDefinitionModel("cs", "New definition");
         AltNameModel newAlt = createAltNameModel("cs", "New alt");
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
 
         when(classConceptEditModel.getNameModel()).thenReturn(newName);
@@ -651,17 +645,11 @@ class ConceptEditorTest {
 
         Resource updated = model.getResource(result.newConceptIRI);
 
-        // BUG: When IRI changes, renameConceptIRI copies ALL old statements to new IRI
-        // This causes duplicate properties (both old and new values exist)
-        // getProperty() returns the first match, which may be the old value
-        // See CONCEPT_EDITOR_BUGS.md for details
-
         assertEquals("New description",
                 updated.getProperty(descProperty).getObject().asLiteral().getString());
         assertEquals("New definition",
                 updated.getProperty(SKOS.definition).getObject().asLiteral().getString());
 
-        // altLabel is updated with the new value provided in newAlt
         assertEquals("New alt",
                 updated.getProperty(SKOS.altLabel).getObject().asLiteral().getString());
     }
@@ -683,7 +671,6 @@ class ConceptEditorTest {
         DescriptionModel emptyDesc = createDescriptionModel("cs", "");
         DefinitionModel emptyDef = createDefinitionModel("cs", " ");
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
 
         when(classConceptEditModel.getNameModel()).thenReturn(null);
@@ -711,7 +698,6 @@ class ConceptEditorTest {
 
         assertFalse(updated.hasProperty(descProperty));
         assertFalse(updated.hasProperty(SKOS.definition));
-        // altLabel is not cleared because AltNameModel is null (not an empty AltNameModel)
         assertTrue(updated.hasProperty(SKOS.altLabel));
     }
 
@@ -726,7 +712,6 @@ class ConceptEditorTest {
 
         Property provisionProperty = model.createProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -784,7 +769,6 @@ class ConceptEditorTest {
         Resource oldProvision = model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/10");
         existing.addProperty(provisionProperty, oldProvision);
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -837,7 +821,6 @@ class ConceptEditorTest {
         existing.addProperty(definingProp, model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/1"));
         existing.addProperty(relatedProp, model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/2"));
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
@@ -891,7 +874,6 @@ class ConceptEditorTest {
         existing.addProperty(definingProp, model.createResource(DEFAULT_NS + "digitální-dokument-1"));
         existing.addProperty(relatedProp, model.createResource(DEFAULT_NS + "digitální-dokument-2"));
 
-        // conceptIri is now passed directly to editConcept method
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
         when(classConceptEditModel.getDescriptionModel()).thenReturn(null);

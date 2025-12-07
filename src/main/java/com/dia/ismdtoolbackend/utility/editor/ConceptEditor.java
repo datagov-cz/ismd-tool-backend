@@ -8,6 +8,7 @@ import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
@@ -100,7 +101,7 @@ public class ConceptEditor {
                     log.error("Failed to rollback transaction", rollbackException);
                 }
             }
-            throw new RuntimeException("Failed to edit concept: " + conceptIri, e);
+            throw new OntologyException("Failed to edit concept: " + conceptIri);
         }
     }
 

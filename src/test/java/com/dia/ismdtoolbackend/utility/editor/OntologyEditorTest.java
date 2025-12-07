@@ -219,7 +219,6 @@ class OntologyEditorTest {
 
             Resource sameOntology = model.getResource(oldOntologyIRI);
 
-            // Description must be removed
             assertNull(sameOntology.getProperty(descProperty));
         }
 
