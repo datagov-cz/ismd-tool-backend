@@ -187,7 +187,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(providedName), any(OntModel.class));
 
@@ -229,7 +229,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
 
@@ -265,7 +265,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -300,7 +300,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -345,7 +345,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -371,7 +371,7 @@ class OntologyUploadServiceImplTest {
 
         // NKD check returns some published concepts
         List<String> publishedConcepts = List.of("http://example.org/concept1", "http://example.org/concept2");
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(publishedConcepts);
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(publishedConcepts);
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(providedName);
@@ -420,7 +420,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         // Simulate TDB2 failure
         doThrow(new RuntimeException("TDB2 connection failed"))
@@ -462,7 +462,7 @@ class OntologyUploadServiceImplTest {
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
 
-        when(nkdSparqlClient.getPublishedConceptsList(anyList())).thenReturn(Collections.emptyList());
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 

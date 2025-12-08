@@ -186,7 +186,7 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(processedModel, metadataModel);
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(rawModel, metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
         return result;
     }
