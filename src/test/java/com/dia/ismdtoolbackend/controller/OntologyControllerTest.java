@@ -444,13 +444,12 @@ class OntologyControllerTest {
     void testEditOntology_Success() throws Exception {
         Long ontologyId = 1L;
         OntologyEditModel editModel = new OntologyEditModel();
-        editModel.setOntologyIRI("http://example.org/test-ontology");
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
         TestOntologySecurityService.setAllowModify(true);
-        when(ontologyService.editOntology(any(OntologyEditModel.class)))
+        when(ontologyService.editOntology(eq(ontologyId), any(OntologyEditModel.class)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
@@ -467,10 +466,9 @@ class OntologyControllerTest {
     void testEditOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
         OntologyEditModel editModel = new OntologyEditModel();
-        editModel.setOntologyIRI("http://example.org/nonexistent");
 
         TestOntologySecurityService.setAllowModify(true);
-        when(ontologyService.editOntology(any()))
+        when(ontologyService.editOntology(eq(ontologyId), any()))
                 .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník nebyl nalezen"));
 
         mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)

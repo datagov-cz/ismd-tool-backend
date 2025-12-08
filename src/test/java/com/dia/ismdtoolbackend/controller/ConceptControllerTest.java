@@ -7,7 +7,6 @@ import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.exception.ConceptStorageException;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.UserModel;
-import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
@@ -383,7 +382,7 @@ class ConceptControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         TestOntologySecurityService.setAllowModify(true);
-        when(conceptService.editConcept(any(ConceptEditModel.class)))
+        when(conceptService.editConcept(anyLong(), any(ConceptEditModel.class)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
@@ -410,7 +409,7 @@ class ConceptControllerTest {
                 """;
 
         TestOntologySecurityService.setAllowModify(true);
-        when(conceptService.editConcept(any()))
+        when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new ConceptValidationException("Invalid concept IRI"));
 
         mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
@@ -434,7 +433,7 @@ class ConceptControllerTest {
                 """;
 
         TestOntologySecurityService.setAllowModify(false);
-        when(conceptService.editConcept(any()))
+        when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new SecurityException("Security violation"));
 
         mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
@@ -458,7 +457,7 @@ class ConceptControllerTest {
                 """;
 
         TestOntologySecurityService.setAllowModify(true);
-        when(conceptService.editConcept(any()))
+        when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
         mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)

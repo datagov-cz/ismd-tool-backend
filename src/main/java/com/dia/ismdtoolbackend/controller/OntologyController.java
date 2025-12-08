@@ -127,7 +127,7 @@ public class OntologyController {
         );
 
 
-        OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyEditModel);
+        OntologyMetadataModel updatedOntology = ontologyService.editOntology(ontologyId, ontologyEditModel);
         log.info("Ontology edit successful: {}", updatedOntology);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));

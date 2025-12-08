@@ -428,7 +428,7 @@ class OntologyUploadServiceImplTest {
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
-        ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId);
+        ontologyUploadService.uploadFromFile(multipartFile, providedName, userId);
 
         // Verify metadata save happens
         verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
@@ -467,7 +467,7 @@ class OntologyUploadServiceImplTest {
 
         // Expect exception to be thrown
         assertThrows(Exception.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId)
+            ontologyUploadService.uploadFromFile(multipartFile, providedName, userId)
         );
 
         // Verify rollback: metadata should be deleted
@@ -510,7 +510,7 @@ class OntologyUploadServiceImplTest {
 
         // Expect exception to be thrown
         assertThrows(Exception.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId)
+            ontologyUploadService.uploadFromFile(multipartFile, providedName, userId)
         );
 
         // Verify rollback: metadata should be deleted
