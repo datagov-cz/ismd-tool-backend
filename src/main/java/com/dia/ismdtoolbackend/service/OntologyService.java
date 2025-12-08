@@ -11,7 +11,7 @@ public interface OntologyService {
     void deleteOntology(Long ontologyId);
     OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId);
     GetOntologyDto getOntologyDetailModel(String ontologySlug);
-    OntologyMetadataModel editOntology(OntologyEditModel ontologyEditModel);
+    OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel);
     List<OntologyMetadataModel> getAll(String userId, Boolean isPublished);
     List<OntologyMetadataModel> getBySlugs(List<String> slugs);
     String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel);

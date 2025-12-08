@@ -6,7 +6,6 @@ import lombok.Getter;
 @Getter
 @Data
 public class OntologyEditModel {
-    private String ontologyIRI;
     private NameModel nameModel;
     private DescriptionModel descriptionModel;
 }

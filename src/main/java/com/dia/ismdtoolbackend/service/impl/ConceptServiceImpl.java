@@ -1,19 +1,14 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
-import com.dia.ismdtoolbackend.exception.ConceptStorageException;
-import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
-import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -51,8 +46,6 @@ public class ConceptServiceImpl implements ConceptService {
     private final JenaTDB2Repository jenaTDB2Repository;
     private final OntologyDetailExtractor detailExtractor;
     private final CommentRepository commentRepository;
-    private final NkdSparqlClient nkdSparqlClient;
-    private final ConceptDeviationComparator deviationComparator;
 
     @Override
     @Transactional
@@ -83,7 +76,7 @@ public class ConceptServiceImpl implements ConceptService {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findById(conceptId);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptId {} not found", conceptId);
-            throw new ConceptNotFoundException("Metadata pojmu s id " + conceptId + " nebyla nalezena.");
+            throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
         }
 
         String graphName = conceptMetadataOpt.get().getGraphName();
@@ -93,13 +86,13 @@ public class ConceptServiceImpl implements ConceptService {
 
         if (model.isEmpty()) {
             log.error("Ontology model is empty.");
-            throw new ConceptNotFoundException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
+            throw new OntologyException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
         }
 
         Resource conceptResource = model.getResource(conceptUri);
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept resource {} not found in graph {}", conceptUri, graphName);
-            throw new ConceptNotFoundException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
+            throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
         }
 
         List<String> relatedConceptUris = findRelatedConcepts(model, conceptUri);
@@ -112,18 +105,17 @@ public class ConceptServiceImpl implements ConceptService {
 
     @Override
     @Transactional
-    public ConceptMetadataModel editConcept(ConceptEditModel conceptEditModel) {
-        log.info("Editing concept: IRI={}, type={}",
-                conceptEditModel.getConceptIRI(), conceptEditModel.getConceptType());
-        String conceptIRI = conceptEditModel.getConceptIRI();
+    public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
+        log.info("Editing concept: ID={}, type={}",
+                conceptId, conceptEditModel.getConceptType());
 
-        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptIRI);
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId);
         String graphName = metadata.getGraphName();
 
         Model model = fetchAndValidateGraph(graphName);
-        validateConceptInGraph(conceptIRI, graphName, model);
+        validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
-        ConceptEditor.EditResult editResult = performConceptEdit(conceptEditModel, model, graphName);
+        ConceptEditor.EditResult editResult = performConceptEdit(metadata.getConceptIri(), conceptEditModel, model, graphName);
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
 
@@ -156,7 +148,7 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
-    public GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException {
+    public GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptSlug {} not found", conceptSlug);
@@ -174,8 +166,7 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
-        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(processedModel, conceptIri);
+        OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(rawModel, conceptIri);
 
         if (conceptDetail == null) {
             log.error("Concept detail not found for IRI: {}", conceptIri);
@@ -191,8 +182,6 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(processedModel, metadataModel);
-        result.setPublishedConceptDeviationModel(conceptDeviation);
         return result;
     }
 
@@ -238,11 +227,11 @@ public class ConceptServiceImpl implements ConceptService {
 
     private void validateInput(ConceptCreateModel createModel, String userId) {
         if (createModel == null) {
-            throw new ConceptValidationException("Data pro vytvoření pojmu jsou prázdná");
+            throw new OntologyException("Data pro vytvoření pojmu jsou prázdná");
         }
 
         if (userId == null || userId.trim().isEmpty()) {
-            throw new ConceptValidationException("ID uživatele je povinné");
+            throw new OntologyException("ID uživatele je povinné");
         }
     }
 
@@ -280,11 +269,11 @@ public class ConceptServiceImpl implements ConceptService {
         return entity;
     }
 
-    private ConceptMetadataEntity fetchAndValidateMetadata(String conceptIRI) {
-        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findByConceptIri(conceptIRI);
+    private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {
+        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findById(conceptId);
         if (metadataOpt.isEmpty()) {
-            log.error("Concept metadata not found for IRI: {}", conceptIRI);
-            throw new ConceptNotFoundException("Metadata pojmu s IRI " + conceptIRI + " nebyla nalezena.");
+            log.error("Concept metadata not found for ID: {}", conceptId);
+            throw new OntologyException("Metadata pojmu s ID " + conceptId + " nebyla nalezena.");
         }
         return metadataOpt.get();
     }
@@ -293,7 +282,7 @@ public class ConceptServiceImpl implements ConceptService {
         Model model = jenaTDB2Repository.fetchGraph(graphName);
         if (model.isEmpty()) {
             log.error("Graph {} is empty or not found", graphName);
-            throw new ConceptNotFoundException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
+            throw new OntologyException("Slovník " + graphName + " je prázdný nebo nebyl nalezen.");
         }
         return model;
     }
@@ -302,19 +291,19 @@ public class ConceptServiceImpl implements ConceptService {
         Resource conceptResource = model.getResource(conceptIRI);
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept {} not found in graph {}", conceptIRI, graphName);
-            throw new ConceptNotFoundException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
+            throw new OntologyException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
         }
     }
 
-    private ConceptEditor.EditResult performConceptEdit(ConceptEditModel conceptEditModel, Model model, String graphName) {
+    private ConceptEditor.EditResult performConceptEdit(String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
         try {
-            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptEditModel, model, graphName);
+            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName);
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
-            throw new ConceptStorageException("Nepodařilo se upravit pojem: " + e.getMessage(), e);
+            throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
         }
     }
 
@@ -324,14 +313,13 @@ public class ConceptServiceImpl implements ConceptService {
             log.info("Updated model saved to TDB2 graph: {}", graphName);
         } catch (Exception e) {
             log.error("Failed to save updated model to TDB2", e);
-            throw new ConceptStorageException("Nepodařilo se uložit upravený pojem do TDB2: " + e.getMessage(), e);
+            throw new OntologyException("Nepodařilo se uložit upravený pojem do TDB2: " + e.getMessage());
         }
     }
 
     private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel, ConceptEditor.EditResult editResult) {
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
-            metadata.setSlug(com.dia.utility.UtilityMethods.extractNameFromIRI(editResult.newConceptIRI));
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
@@ -350,7 +338,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptMetadataMapper.toDto(savedMetadata);
         } catch (Exception e) {
             log.error("Failed to update concept metadata", e);
-            throw new ConceptStorageException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage(), e);
+            throw new OntologyException("Nepodařilo se aktualizovat metadata pojmu: " + e.getMessage());
         }
     }
 
@@ -361,7 +349,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptResource;
         } catch (Exception e) {
             log.error("Failed to transform concept to Jena Resource", e);
-            throw new ConceptValidationException("Nepodařilo se transformovat pojem: " + e.getMessage(), e);
+            throw new OntologyException("Nepodařilo se transformovat pojem: " + e.getMessage());
         }
     }
 
@@ -380,7 +368,7 @@ public class ConceptServiceImpl implements ConceptService {
             log.info("Concept saved to TDB2 graph {} successfully: {}", ontologyGraphName, conceptIRI);
         } catch (Exception e) {
             log.error("Failed to save concept to TDB2 graph {}", ontologyGraphName, e);
-            throw new ConceptStorageException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage(), e);
+            throw new OntologyException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage());
         }
     }
 
@@ -396,7 +384,7 @@ public class ConceptServiceImpl implements ConceptService {
         } catch (Exception e) {
             log.error("Failed to save concept metadata, rolling back TDB2 data", e);
             rollbackTDB2Data(conceptUri, ontologyGraphName);
-            throw new ConceptStorageException("Nepodařilo se uložit metadata pojmu: " + e.getMessage(), e);
+            throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
         }
     }
 
@@ -408,57 +396,6 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
-    }
-
-    private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
-        if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
-            return null;
-        }
-
-        String conceptIri = conceptMetadata.getConceptIri();
-
-        try {
-            OntologyDetailModel.ConceptDetailModel localConcept =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
-
-            if (localConcept == null) {
-                log.error("Local concept detail not found for IRI: {}", conceptIri);
-                return createErrorDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
-                );
-            }
-
-            Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
-                    nkdSparqlClient.fetchPublishedConcept(conceptIri);
-
-            if (publishedConceptOpt.isEmpty()) {
-                log.warn("Published concept not found in NKD: {}", conceptIri);
-                return createErrorDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Concept not found in NKD SPARQL endpoint"
-                );
-            }
-
-            OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
-            return deviationComparator.compareConceptDetails(localConcept, publishedConcept);
-
-        } catch (Exception e) {
-            log.error("Error checking published concept deviation: {}", e.getMessage(), e);
-            return createErrorDeviation(
-                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
-            );
-        }
-    }
-
-    private PublishedConceptDeviationModel createErrorDeviation(
-            PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage) {
-        return PublishedConceptDeviationModel.builder()
-                .status(status)
-                .errorMessage(errorMessage)
-                .build();
     }
 
     private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {

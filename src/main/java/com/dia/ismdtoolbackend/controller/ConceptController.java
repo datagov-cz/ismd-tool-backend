@@ -71,9 +71,9 @@ public class ConceptController {
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Concept edit requested, concept IRI: {}, conceptId: {}, userId: {}", conceptEditModel.getConceptIRI(), conceptId, securityUser.getUserId());
+        log.info("Concept edit requested, conceptId: {}, userId: {}", conceptId, securityUser.getUserId());
 
-        ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptEditModel);
+        ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptId, conceptEditModel);
         log.info("Concept edit successful: {}", editedConceptModel);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));

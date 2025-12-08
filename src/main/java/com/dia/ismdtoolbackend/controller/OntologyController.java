@@ -120,8 +120,7 @@ public class OntologyController {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info(
-                "Ontology edit requested, ontologyIRI: {}, ontologyId: {}, userId: {}, isAdmin: {}",
-                ontologyEditModel.getOntologyIRI(),
+                "Ontology edit requested, ontologyId: {}, userId: {}, isAdmin: {}",
                 ontologyId,
                 securityUser.getUserId(),
                 securityUser.isAdmin()

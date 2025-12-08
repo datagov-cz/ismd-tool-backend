@@ -22,7 +22,7 @@ public class ConceptMetadataModel {
     private String conceptName;
     private UserModel user;
     private Boolean isPublished;
-    private String inTezaurus;
+    private Boolean inTezaurus;
     private List<CommentModel> comments;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -57,6 +57,38 @@ public class ConceptProcessor {
         }
     }
 
+    public Map<String, Object> processConceptByIri(OntModel ontModel, ModelStructure structure, String conceptIri) {
+        if (ontModel == null) {
+            throw new ModelProcessingException("OntModel cannot be null");
+        }
+        if (structure == null) {
+            throw new ModelProcessingException("ModelStructure cannot be null");
+        }
+        if (conceptIri == null || conceptIri.isEmpty()) {
+            throw new ModelProcessingException("Concept IRI cannot be null or empty");
+        }
+
+        log.debug("Processing single concept with IRI: {}", conceptIri);
+
+        try {
+            Resource concept = ontModel.getResource(conceptIri);
+            if (concept == null) {
+                throw new ModelProcessingException("Concept not found: " + conceptIri);
+            }
+
+            Set<Resource> conceptTypes = getConceptTypes(ontModel);
+            if (!isConceptResource(concept, conceptTypes)) {
+                throw new ModelProcessingException("Resource is not a valid concept: " + conceptIri);
+            }
+
+            return createConceptObject(concept, ontModel, structure);
+
+        } catch (Exception e) {
+            log.error("Failed to process concept {}: {}", conceptIri, e.getMessage(), e);
+            throw new ModelProcessingException("Failed to process concept: " + e.getMessage(), e);
+        }
+    }
+
     private int processSingleConcept(Resource resource, OntModel ontModel, ModelStructure structure, List<Map<String, Object>> concepts) {
         try {
             Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
@@ -101,8 +133,7 @@ public class ConceptProcessor {
         Property definitionProperty = ontModel.createProperty(SKOS_NS + "definition");
         addMultilingualProperty(concept, definitionProperty, DEFINICE, conceptObj);
 
-        Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
-        addMultilingualProperty(concept, descriptionProperty, POPIS, conceptObj);
+        addDescriptionProperty(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
 
         Property identifierProperty = ontModel.createProperty(DCT_NS + "identifier");
         addResourceArrayProperty(concept, identifierProperty, IDENTIFIKATOR, conceptObj);
@@ -364,19 +395,30 @@ public class ConceptProcessor {
                                                  String propertyName, String jsonFieldName) {
         Property sourceProperty = findSourceProperty(concept, ontModel, namespace, propertyName);
 
-        if (sourceProperty == null) {
-            return;
+        StmtIterator propIter = null;
+        if (sourceProperty != null) {
+            propIter = concept.listProperties(sourceProperty);
         }
 
-        StmtIterator propIter = concept.listProperties(sourceProperty);
-        if (!propIter.hasNext()) {
-            return;
+        if (propIter == null || !propIter.hasNext()) {
+            Statement fallbackStmt = findPropertyByLocalName(concept, propertyName);
+            if (fallbackStmt != null && fallbackStmt.getObject().isResource()) {
+                List<Map<String, Object>> sourceArray = new ArrayList<>();
+                Resource digitalDoc = fallbackStmt.getObject().asResource();
+                Map<String, Object> docObj = createDigitalDocumentObject(digitalDoc, ontModel);
+                if (!docObj.isEmpty()) {
+                    sourceArray.add(docObj);
+                    conceptObj.put(jsonFieldName, sourceArray);
+                }
+                return;
+            }
         }
 
-        List<Map<String, Object>> sourceArray = extractDigitalDocuments(propIter, ontModel);
-
-        if (!sourceArray.isEmpty()) {
-            conceptObj.put(jsonFieldName, sourceArray);
+        if (propIter != null && propIter.hasNext()) {
+            List<Map<String, Object>> sourceArray = extractDigitalDocuments(propIter, ontModel);
+            if (!sourceArray.isEmpty()) {
+                conceptObj.put(jsonFieldName, sourceArray);
+            }
         }
     }
 
@@ -417,6 +459,11 @@ public class ConceptProcessor {
 
     private Map<String, Object> createDigitalDocumentObject(Resource digitalDoc, OntModel ontModel) {
         Map<String, Object> docObj = new LinkedHashMap<>();
+
+        // Always include the IRI of the digital document
+        if (digitalDoc.getURI() != null) {
+            docObj.put("iri", digitalDoc.getURI());
+        }
 
         Resource digitalObjectType = ontModel.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
         if (digitalDoc.hasProperty(RDF.type, digitalObjectType)) {
@@ -562,12 +609,25 @@ public class ConceptProcessor {
         Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
                 ZPUSOB_SDILENI_UDAJE, ZPUSOB_SDILENI, ZPUSOB_SDILENI_ALT);
 
-        if (property == null) {
-            return;
+        List<String> allValues = new ArrayList<>();
+
+        if (property != null) {
+            StmtIterator propIter = concept.listProperties(property);
+            allValues = extractGovernanceValues(propIter);
         }
 
-        StmtIterator propIter = concept.listProperties(property);
-        List<String> allValues = extractGovernanceValues(propIter);
+        if (allValues.isEmpty()) {
+            Statement fallbackStmt = findPropertyByLocalName(concept, ZPUSOB_SDILENI_ALT);
+            if (fallbackStmt == null) {
+                fallbackStmt = findPropertyByLocalName(concept, ZPUSOB_SDILENI);
+            }
+            if (fallbackStmt != null) {
+                String value = extractStatementValue(fallbackStmt);
+                if (value != null && !value.trim().isEmpty()) {
+                    addSplitValues(value, allValues);
+                }
+            }
+        }
 
         if (!allValues.isEmpty()) {
             conceptObj.put(ZPUSOB_SDILENI_ALT, allValues);
@@ -596,11 +656,19 @@ public class ConceptProcessor {
         Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
                 propertyName + "-údaje", propertyName, jsonFieldName);
 
-        if (property == null) {
-            return;
+        Statement stmt = null;
+        if (property != null) {
+            stmt = concept.getProperty(property);
         }
 
-        Statement stmt = concept.getProperty(property);
+        if (stmt == null) {
+            stmt = findPropertyByLocalName(concept, jsonFieldName);
+        }
+
+        if (stmt == null) {
+            stmt = findPropertyByLocalName(concept, propertyName);
+        }
+
         if (stmt != null) {
             String value = extractStatementValue(stmt);
             if (value != null && !value.trim().isEmpty()) {
@@ -697,6 +765,10 @@ public class ConceptProcessor {
             }
         }
 
+        if (stmt == null) {
+            stmt = findPropertyByLocalName(concept, primaryProperty);
+        }
+
         if (stmt != null) {
             if (stmt.getObject().isResource()) {
                 conceptObj.put(primaryProperty, stmt.getObject().asResource().getURI());
@@ -722,6 +794,78 @@ public class ConceptProcessor {
             Property suppLong = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_LONG);
             if (concept.hasProperty(suppLong)) {
                 addResourceArrayProperty(concept, suppLong, USTANOVENI_NEVEREJNOST, conceptObj);
+            }
+        }
+    }
+
+    private Statement findPropertyByLocalName(Resource concept, String localName) {
+        StmtIterator propIter = concept.listProperties();
+
+        while (propIter.hasNext()) {
+            Statement stmt = propIter.next();
+            Property predicate = stmt.getPredicate();
+            String propertyUri = predicate.getURI();
+
+            if (propertyUri != null) {
+                String propertyLocalName = extractLocalName(propertyUri);
+                if (localName.equals(propertyLocalName)) {
+                    return stmt;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private String extractLocalName(String uri) {
+        if (uri == null) {
+            return null;
+        }
+
+        int lastSlash = uri.lastIndexOf('/');
+        int lastHash = uri.lastIndexOf('#');
+        int lastSeparator = Math.max(lastSlash, lastHash);
+
+        if (lastSeparator >= 0 && lastSeparator < uri.length() - 1) {
+            return uri.substring(lastSeparator + 1);
+        }
+
+        return uri;
+    }
+
+    private void addDescriptionProperty(Resource concept, Map<String, Object> conceptObj,
+                                       OntModel ontModel, String namespace) {
+        Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
+        StmtIterator descIter = concept.listProperties(descriptionProperty);
+
+        if (!descIter.hasNext()) {
+            Property customDescProperty = ontModel.getProperty(namespace + POPIS);
+            descIter = concept.listProperties(customDescProperty);
+        }
+
+        if (!descIter.hasNext()) {
+            Property defaultDescProperty = ontModel.getProperty(DEFAULT_NS + POPIS);
+            descIter = concept.listProperties(defaultDescProperty);
+        }
+
+        if (descIter.hasNext()) {
+            Map<String, Object> descObj = new LinkedHashMap<>();
+            boolean hasNonEmptyValue = false;
+
+            while (descIter.hasNext()) {
+                Statement descStmt = descIter.next();
+                String value = descStmt.getString();
+                if (value == null || value.isEmpty()) {
+                    continue;
+                }
+
+                String lang = getLanguageOrDefault(descStmt);
+                addValueToLanguageMap(descObj, lang, value);
+                hasNonEmptyValue = true;
+            }
+
+            if (hasNonEmptyValue && !descObj.isEmpty()) {
+                conceptObj.put(POPIS, descObj);
             }
         }
     }
