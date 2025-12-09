@@ -93,7 +93,8 @@ public class SecurityConfig {
                         "/actuator/info",
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
-                        "/api/ontology/list"
+                        "/api/ontology/list",
+                        "/api/concept/list"
                 )
                 // Allow all requests to these endpoints
                 .authorizeHttpRequests(auth -> auth
