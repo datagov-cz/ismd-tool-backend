@@ -727,7 +727,7 @@ public class ConceptCreator {
         String trimmedConcept = broaderConcept.trim();
         if (!trimmedConcept.isEmpty()) {
             String broaderURI;
-            if (DataTypeConverter.isUri(trimmedConcept)) {
+            if (UtilityMethods.isValidIRI(trimmedConcept)) {
                 broaderURI = trimmedConcept;
             } else {
                 broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
@@ -739,7 +739,7 @@ public class ConceptCreator {
 
     private void addSuperProperty(Resource resource, String superProperty) {
         String superURI;
-        if (DataTypeConverter.isUri(superProperty)) {
+        if (UtilityMethods.isValidIRI(superProperty)) {
             superURI = superProperty;
         } else {
             superURI = uriGenerator.generateConceptURI(superProperty, null);
@@ -748,7 +748,7 @@ public class ConceptCreator {
     }
 
     private void addResourceReference(Resource subject, Property property, String referenceName) {
-        if (DataTypeConverter.isUri(referenceName)) {
+        if (UtilityMethods.isValidIRI(referenceName)) {
             subject.addProperty(property, ontModel.createResource(referenceName));
         } else {
             String conceptUri = uriGenerator.generateConceptURI(referenceName, null);
