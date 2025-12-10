@@ -761,27 +761,14 @@ public class ConceptCreator {
         Property hierarchyProperty = ontModel.createProperty(
                 uriGenerator.getEffectiveNamespace() + "nadřazená-třída");
 
-        if (broaderConcept.contains(";")) {
-            String[] concepts = broaderConcept.split(";");
-            for (String concept : concepts) {
-                String trimmedConcept = concept.trim();
-                if (!trimmedConcept.isEmpty()) {
-                    String broaderURI;
-                    if (DataTypeConverter.isUri(trimmedConcept)) {
-                        broaderURI = trimmedConcept;
-                    } else {
-                        broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
-                    }
-                    resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
-                    resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
-                }
-            }
-        } else {
+
+        String trimmedConcept = broaderConcept.trim();
+        if (!trimmedConcept.isEmpty()) {
             String broaderURI;
-            if (DataTypeConverter.isUri(broaderConcept)) {
-                broaderURI = broaderConcept;
+            if (DataTypeConverter.isUri(trimmedConcept)) {
+                broaderURI = trimmedConcept;
             } else {
-                broaderURI = uriGenerator.generateConceptURI(broaderConcept, null);
+                broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
             }
             resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
             resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
