@@ -4,6 +4,7 @@ import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -39,7 +40,8 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "ontology_iri", columnDefinition = "text")
     private String getOntologyIri;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public ValidationReportEntity(ValidationReport report, Long ontologyMetadataId) {
         this.id = report.getId();

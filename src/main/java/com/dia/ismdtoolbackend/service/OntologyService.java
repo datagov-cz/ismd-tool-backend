@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface OntologyService {
     void deleteOntology(Long ontologyId);
@@ -15,4 +16,5 @@ public interface OntologyService {
     List<OntologyMetadataModel> getAll(String userId, Boolean isPublished);
     List<OntologyMetadataModel> getBySlugs(List<String> slugs);
     String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel);
+    OntologyMetadataModel getOntologyMetadata(Long ontologyId);
 }

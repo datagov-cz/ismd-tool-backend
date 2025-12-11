@@ -116,7 +116,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
-        List<String> publishedConceptIris = checkPublishedConceptsInNKD(finalModel);
+        List<String> publishedConceptIris = checkPublishedResourcesInNKD(finalModel);
         if (!publishedConceptIris.isEmpty()) {
             log.info("Model contains published concepts: {}", publishedConceptIris.size());
         }
@@ -184,28 +184,31 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private List<String> checkPublishedConceptsInNKD(OntModel finalModel) {
-        List<String> conceptIris = new ArrayList<>();
+    private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
+        List<String> resourceIris = new ArrayList<>();
 
+        Resource slovnikResource = finalModel.createResource(OWL2.Ontology);
         Resource pojemResource = finalModel.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = finalModel.listResourcesWithProperty(RDF.type, pojemResource);
+
+        resourceIris.add(slovnikResource.getURI());
 
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
 
             if (conceptResource.isURIResource()) {
                 String conceptIri = conceptResource.getURI();
-                conceptIris.add(conceptIri);
+                resourceIris.add(conceptIri);
             }
         }
 
-        log.debug("Extracted {} concept IRIs from model for NKD verification", conceptIris.size());
+        log.debug("Extracted {} concept IRIs from model for NKD verification", resourceIris.size());
 
-        if (conceptIris.isEmpty()) {
+        if (resourceIris.isEmpty()) {
             return Collections.emptyList();
         }
 
-        return nkdSparqlClient.getPublishedConceptsList(conceptIris);
+        return nkdSparqlClient.getPublishedResourcesList(resourceIris);
     }
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {

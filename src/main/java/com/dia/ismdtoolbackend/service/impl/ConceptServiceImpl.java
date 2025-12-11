@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -181,6 +182,9 @@ public class ConceptServiceImpl implements ConceptService {
         GetConceptDto result = new GetConceptDto();
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
+
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(rawModel, metadataModel);
+        result.setPublishedConceptDeviationModel(conceptDeviation);
 
         return result;
     }
