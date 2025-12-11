@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -65,6 +66,12 @@ class OntologyServiceImplTest {
 
     @Mock
     private OntologyDetailExtractor detailExtractor;
+
+    @Mock
+    private NkdSparqlClient nkdSparqlClient;
+
+    @Mock
+    private com.dia.ismdtoolbackend.service.impl.OntologyDeviationComparator ontologyDeviationComparator;
 
     @InjectMocks
     private OntologyServiceImpl ontologyService;
@@ -272,7 +279,8 @@ class OntologyServiceImplTest {
         assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
         verify(jenaTDB2Repository, times(2)).fetchGraph(TEST_GRAPH_NAME);
         verify(detailExtractor).applyOFNTransformations(modelWithData);
-        verify(detailExtractor).extractOntologyDetail(modelWithData);
+        // extractOntologyDetail is called twice: once in main flow and once in checkPublishedOntology
+        verify(detailExtractor, times(2)).extractOntologyDetail(modelWithData);
         verify(conceptMetadataMapper).toDto(conceptEntity);
     }
 
