@@ -358,6 +358,12 @@ public class OntologyServiceImpl implements OntologyService {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public OntologyMetadataModel getOntologyMetadata(Long ontologyId) throws OntologyException {
+        return ontologyMetadataMapper.toDto(ontologyMetadataRepository.findById(ontologyId).orElseThrow());
+    }
+
     private String extractNameFromGraphName(String graphName) {
         if (graphName == null || graphName.isEmpty()) {
             return graphName;
