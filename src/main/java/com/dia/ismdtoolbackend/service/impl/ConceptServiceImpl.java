@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -47,6 +48,8 @@ public class ConceptServiceImpl implements ConceptService {
     private final JenaTDB2Repository jenaTDB2Repository;
     private final OntologyDetailExtractor detailExtractor;
     private final CommentRepository commentRepository;
+    private final NkdSparqlClient nkdSparqlClient;
+    private final ConceptDeviationComparator deviationComparator;
 
     @Override
     @Transactional
@@ -411,5 +414,56 @@ public class ConceptServiceImpl implements ConceptService {
             return names.get("cs");
         }
         return names.values().iterator().next();
+    }
+
+    private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
+        if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
+            return null;
+        }
+
+        String conceptIri = conceptMetadata.getConceptIri();
+
+        try {
+            OntologyDetailModel.ConceptDetailModel localConcept =
+                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
+
+            if (localConcept == null) {
+                log.error("Local concept detail not found for IRI: {}", conceptIri);
+                return createErrorDeviation(
+                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
+                        "Local concept detail not available"
+                );
+            }
+
+            Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
+                    nkdSparqlClient.fetchPublishedConcept(conceptIri);
+
+            if (publishedConceptOpt.isEmpty()) {
+                log.warn("Published concept not found in NKD: {}", conceptIri);
+                return createErrorDeviation(
+                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
+                        "Concept not found in NKD SPARQL endpoint"
+                );
+            }
+
+            OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
+            return deviationComparator.compareConceptDetails(localConcept, publishedConcept);
+
+        } catch (Exception e) {
+            log.error("Error checking published concept deviation: {}", e.getMessage(), e);
+            return createErrorDeviation(
+                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
+                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
+            );
+        }
+    }
+
+    private PublishedConceptDeviationModel createErrorDeviation(
+            PublishedConceptDeviationModel.DeviationStatus status,
+            String errorMessage) {
+        return PublishedConceptDeviationModel.builder()
+                .status(status)
+                .errorMessage(errorMessage)
+                .build();
     }
 }

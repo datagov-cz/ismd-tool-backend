@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
@@ -11,6 +13,7 @@ import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.ismdtoolbackend.service.ValidationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,10 +64,13 @@ class OntologyControllerTest {
     private OntologyDownloadService ontologyDownloadService;
 
     @MockBean
-    private com.dia.ismdtoolbackend.service.ValidationService validationService;
+    private ValidationService validationService;
 
     @MockBean
-    private com.dia.ismdtoolbackend.client.ValidationClient validationClient;
+    private ValidationClient validationClient;
+
+    @MockBean
+    private ValidationConfig validationConfig;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -143,6 +149,7 @@ class OntologyControllerTest {
                 new byte[0]
         );
 
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
@@ -166,6 +173,7 @@ class OntologyControllerTest {
                 "some content".getBytes()
         );
 
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
                 .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
@@ -210,6 +218,7 @@ class OntologyControllerTest {
                 "".getBytes()
         );
 
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
@@ -427,7 +436,7 @@ class OntologyControllerTest {
         descModel.setDescription(java.util.Map.of("cs", "Test description"));
         createModel.setDescriptionModel(descModel);
 
-        when(ontologyService.createOntology(any(), eq(userId)))
+        when(ontologyService.createOntology(any(OntologyCreateModel.class), eq(userId)))
                 .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException("Namespace je povinný"));
 
         mockMvc.perform(post("/api/ontology/create")
