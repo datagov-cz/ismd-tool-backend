@@ -617,11 +617,11 @@ public class ConceptProcessor {
         }
 
         if (allValues.isEmpty()) {
-            Statement fallbackStmt = findPropertyByLocalName(concept, ZPUSOB_SDILENI_ALT);
-            if (fallbackStmt == null) {
-                fallbackStmt = findPropertyByLocalName(concept, ZPUSOB_SDILENI);
+            List<Statement> fallbackStmts = findAllPropertiesByLocalName(concept, ZPUSOB_SDILENI_ALT);
+            if (fallbackStmts.isEmpty()) {
+                fallbackStmts = findAllPropertiesByLocalName(concept, ZPUSOB_SDILENI);
             }
-            if (fallbackStmt != null) {
+            for (Statement fallbackStmt : fallbackStmts) {
                 String value = extractStatementValue(fallbackStmt);
                 if (value != null && !value.trim().isEmpty()) {
                     addSplitValues(value, allValues);
@@ -815,6 +815,26 @@ public class ConceptProcessor {
         }
 
         return null;
+    }
+
+    private List<Statement> findAllPropertiesByLocalName(Resource concept, String localName) {
+        List<Statement> matchingStatements = new ArrayList<>();
+        StmtIterator propIter = concept.listProperties();
+
+        while (propIter.hasNext()) {
+            Statement stmt = propIter.next();
+            Property predicate = stmt.getPredicate();
+            String propertyUri = predicate.getURI();
+
+            if (propertyUri != null) {
+                String propertyLocalName = extractLocalName(propertyUri);
+                if (localName.equals(propertyLocalName)) {
+                    matchingStatements.add(stmt);
+                }
+            }
+        }
+
+        return matchingStatements;
     }
 
     private String extractLocalName(String uri) {

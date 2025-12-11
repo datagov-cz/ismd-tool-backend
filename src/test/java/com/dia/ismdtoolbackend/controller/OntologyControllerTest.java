@@ -1,10 +1,12 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
+import com.dia.ismdtoolbackend.service.ValidationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +43,12 @@ class OntologyControllerTest {
 
     @Mock
     private OntologyDownloadService ontologyDownloadService;
+
+    @Mock
+    private ValidationService validationService;
+
+    @Mock
+    private ValidationConfig validationConfig;
 
     @InjectMocks
     private OntologyController ontologyController;
