@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
@@ -25,6 +26,8 @@ import org.mockito.quality.Strictness;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -60,6 +63,9 @@ class OntologyUploadServiceImplTest {
     @Mock
     private MultipartFile multipartFile;
 
+    @Mock
+    private NkdSparqlClient nkdSparqlClient;
+
     @InjectMocks
     private OntologyUploadServiceImpl ontologyUploadService;
 
@@ -72,7 +78,8 @@ class OntologyUploadServiceImplTest {
                 validationClient,
                 validationReportRepository,
                 ontologyAnalyzer,
-                jenaTDB2Repository
+                jenaTDB2Repository,
+                nkdSparqlClient
         );
     }
 
@@ -164,18 +171,23 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         expectedDto.setGraphName(providedName);
         expectedDto.setUser(new UserModel(userId));
+        expectedDto.setId(1L);
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(providedName);
         savedEntity.setUserId(userId);
+        savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(providedName), any(OntModel.class));
 
@@ -201,18 +213,23 @@ class OntologyUploadServiceImplTest {
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
         expectedDto.setGraphName(ontologyIRI);
         expectedDto.setUser(new UserModel(userId));
+        expectedDto.setId(1L);
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(ontologyIRI);
         savedEntity.setUserId(userId);
+        savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
 
@@ -235,15 +252,20 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn(filename);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+        expectedDto.setId(1L);
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -265,15 +287,20 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn(filename);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+        expectedDto.setId(1L);
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -305,15 +332,20 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn(null);
 
         OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+        expectedDto.setId(1L);
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setId(1L);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
         AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
         when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
@@ -323,5 +355,128 @@ class OntologyUploadServiceImplTest {
         verify(jenaTDB2Repository).putOntologyModel(argThat(graphName ->
             graphName.contains("ontology") && graphName.startsWith("https://slovník.gov.cz/")
         ), any(OntModel.class));
+    }
+
+    @Test
+    void testUploadFromFile_NKDCheckBeforeMetadataCreation() throws IOException {
+        String providedName = "test-ontology";
+        String userId = "user123";
+        byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
+
+        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        // NKD check returns some published concepts
+        List<String> publishedConcepts = List.of("http://example.org/concept1", "http://example.org/concept2");
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(publishedConcepts);
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(providedName);
+        savedEntity.setUserId(userId);
+        savedEntity.setId(1L);
+
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+        expectedDto.setId(1L);
+
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
+
+        doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+
+        ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId);
+
+        // Verify metadata save happens
+        verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
+    }
+
+    @Test
+    void testUploadFromFile_RollbackOnTDB2Failure() throws IOException {
+        String providedName = "test-ontology";
+        String userId = "user123";
+        byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
+
+        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(providedName);
+        savedEntity.setUserId(userId);
+        savedEntity.setId(1L);
+
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+        expectedDto.setId(1L);
+
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
+
+        // Simulate TDB2 failure
+        doThrow(new RuntimeException("TDB2 connection failed"))
+            .when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+
+        // Expect exception to be thrown
+        assertThrows(Exception.class, () ->
+            ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId)
+        );
+
+        // Verify rollback: metadata should be deleted
+        verify(ontologyMetadataRepository).deleteById(1L);
+        // Verify rollback: TDB2 graph should be deleted
+        verify(jenaTDB2Repository).deleteGraph(providedName);
+    }
+
+    @Test
+    void testUploadFromFile_RollbackOnConceptMetadataExtractionFailure() throws IOException {
+        String providedName = "test-ontology";
+        String userId = "user123";
+        byte[] fileContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .".getBytes();
+
+        when(multipartFile.getBytes()).thenReturn(fileContent);
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(providedName);
+        savedEntity.setUserId(userId);
+        savedEntity.setId(1L);
+
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+        expectedDto.setId(1L);
+
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
+        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+
+        AnalysisResult mockAnalysisResult = new AnalysisResult(Set.of(), Set.of());
+        when(ontologyAnalyzer.analyzeUploadedOntology(any(OntModel.class))).thenReturn(mockAnalysisResult);
+
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
+
+        doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+
+        // Simulate failure when finding metadata for concept extraction
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.empty());
+
+        // Expect exception to be thrown
+        assertThrows(Exception.class, () ->
+            ontologyUploadService.uploadFromFile(multipartFile, providedName, Lang.TURTLE, userId)
+        );
+
+        // Verify rollback: metadata should be deleted
+        verify(ontologyMetadataRepository).deleteById(1L);
+        // Verify rollback: TDB2 graph should be deleted
+        verify(jenaTDB2Repository).deleteGraph(providedName);
     }
 }
