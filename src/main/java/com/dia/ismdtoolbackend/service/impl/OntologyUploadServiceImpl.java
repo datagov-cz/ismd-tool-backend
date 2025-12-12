@@ -341,7 +341,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
 
-            ConceptType conceptType = determineConceptType(conceptResource, model, graphName);
+            ConceptType conceptType = determineConceptType(conceptResource);
 
             ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
             conceptEntity.setSlug(slug);
@@ -391,20 +391,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return false;
     }
 
-    private ConceptType determineConceptType(Resource conceptResource, OntModel model, String graphName) {
-        if (hasOFNType(conceptResource, VLASTNOST, model, graphName)) {
+    private ConceptType determineConceptType(Resource conceptResource) {
+        if (conceptResource.hasProperty(RDF.type, OWL2.DatatypeProperty)) {
             return ConceptType.VLASTNOST;
         }
-        if (hasOFNType(conceptResource, VZTAH, model, graphName)) {
+        if (conceptResource.hasProperty(RDF.type, OWL2.ObjectProperty)) {
             return ConceptType.VZTAH;
         }
-        return ConceptType.TRIDA;
-    }
-
-    private boolean hasOFNType(Resource conceptResource, String typeName, OntModel model, String graphName) {
-        String typeUri = graphName + typeName;
-        Resource typeResource = model.getResource(typeUri);
-        return conceptResource.hasProperty(RDF.type, typeResource);
+        if (conceptResource.hasProperty(RDF.type, OWL2.Class)) {
+            return ConceptType.TRIDA;
+        }
+        return null;
     }
 
     private String generateConceptSlug(String graphName, String conceptName) {
