@@ -116,7 +116,7 @@ public class ConceptEditor {
                 editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
                 editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvision(),
+        updateDataClassification(context.newConcept, editModel.getIsPublic(),
                                 context.oldConcept, model, toRemove, toAdd);
     }
 
@@ -132,7 +132,7 @@ public class ConceptEditor {
                 editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
                 editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvision(),
+        updateDataClassification(context.newConcept, editModel.getIsPublic(),
                                 context.oldConcept, model, toRemove, toAdd);
     }
 
@@ -148,7 +148,7 @@ public class ConceptEditor {
                 editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
                 editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvision(),
+        updateDataClassification(context.newConcept, editModel.getIsPublic(),
                                 context.oldConcept, model, toRemove, toAdd);
     }
 
@@ -1007,27 +1007,59 @@ public class ConceptEditor {
         return DEFAULT_NS;
     }
 
-    private void updateDataClassification(Resource newConcept, Boolean isPublic, String privacyProvision,
+    private void updateDataClassification(Resource newConcept, Boolean isPublic,
                                           Resource oldConcept, Model model, Set<Statement> toRemove,
                                           Set<Statement> toAdd) {
-        Resource verejnyOld = model.getResource(OFN_NAMESPACE + VEREJNY_UDAJ);
-        Resource neverejnyOld = model.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ);
-        // TODO implement after OFN_NAMESPACE_LEGAL merge
-        // Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        // Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+        Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
+        Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+        Resource verejnyGeneric = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
+        Resource neverejnyGeneric = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
-        if (oldConcept.hasProperty(RDF.type, verejnyOld)) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyOld));
+        if (oldConcept.hasProperty(RDF.type, verejnyGeneric) || oldConcept.hasProperty(RDF.type, neverejnyGeneric)) {
+            processPropertyWithGenericNamespace(newConcept, isPublic, oldConcept, model, toRemove, toAdd, verejnyGeneric, neverejnyGeneric);
         }
-        if (oldConcept.hasProperty(RDF.type, neverejnyOld)) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyOld));
+        if (oldConcept.hasProperty(RDF.type, verejnyLegal) || oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
+            processPropertyWithLegalNamespace(newConcept, isPublic, oldConcept, model, toRemove, toAdd, verejnyLegal, neverejnyLegal);
+        }
+
+    }
+
+    private void processPropertyWithLegalNamespace(Resource newConcept, Boolean isPublic,
+                                                   Resource oldConcept, Model model, Set<Statement> toRemove,
+                                                   Set<Statement> toAdd, Resource verejnyLegal, Resource neverejnyLegal) {
+        if (oldConcept.hasProperty(RDF.type, verejnyLegal)) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyLegal));
+        }
+
+        if (oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyLegal));
         }
 
         if (isPublic != null) {
             if (isPublic) {
-                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyOld));
+                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyLegal));
             } else {
-                toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyOld));
+                toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyLegal));
+            }
+        }
+    }
+
+    private void processPropertyWithGenericNamespace(Resource newConcept, Boolean isPublic,
+                                                   Resource oldConcept, Model model, Set<Statement> toRemove,
+                                                   Set<Statement> toAdd, Resource verejnyGeneric, Resource neverejnyGeneric) {
+        if (oldConcept.hasProperty(RDF.type, verejnyGeneric)) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyGeneric));
+        }
+
+        if (oldConcept.hasProperty(RDF.type, neverejnyGeneric)) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyGeneric));
+        }
+
+        if (isPublic != null) {
+            if (isPublic) {
+                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyGeneric));
+            } else {
+                toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyGeneric));
             }
         }
     }
