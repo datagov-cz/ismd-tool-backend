@@ -110,15 +110,14 @@ public class ConceptEditor {
         editCommonFields(editModel, context, model, toRemove, toAdd);
 
         updateStringProperty(context.newConcept, TYPE, editModel.getType(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, AGENDA_CODE, editModel.getAgendaCode(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, AIS, editModel.getAgendaSystemCode(), context.oldConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(context.newConcept, editModel.getContentType(), TYP_OBSAHU, context.oldConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(context.newConcept, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, context.oldConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(context.newConcept, editModel.getSharingMethod(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanProperty(context.newConcept, IS_PUBLIC, editModel.getIsPublic(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
         updateBroaderConceptList(context.newConcept, editModel.getBroaderConcept(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanProperty(context.newConcept, JE_PPDF, editModel.getIsInPPDF(), context.oldConcept, model, toRemove, toAdd);
+
+        updateSharedGovernanceMetadata(context.newConcept, editModel.getIsInPPDF(), editModel.getAgendaCode(),
+                editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
+                editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
+
+        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvision(),
+                                context.oldConcept, model, toRemove, toAdd);
     }
 
     private void editPropertyConcept(PropertyConceptEditModel editModel, EditContext context,
@@ -128,14 +127,13 @@ public class ConceptEditor {
         updateDomainRange(context.newConcept, RDFS.domain, editModel.getDomain(), context.oldConcept, model, toRemove, toAdd);
         updateDataTypeRange(context.newConcept, editModel.getDataType(), context.oldConcept, model, toRemove, toAdd);
         updateSuperPropertyList(context.newConcept, editModel.getSuperProperty(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanProperty(context.newConcept, JE_PPDF, editModel.getIsInPPDF(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, AGENDA_CODE, editModel.getAgendaCode(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, AIS, editModel.getAgendaSystemCode(), context.oldConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(context.newConcept, editModel.getContentType(), TYP_OBSAHU, context.oldConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(context.newConcept, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, context.oldConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(context.newConcept, editModel.getSharingMethod(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanProperty(context.newConcept, IS_PUBLIC, editModel.getIsPublic(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
+
+        updateSharedGovernanceMetadata(context.newConcept, editModel.getIsInPPDF(), editModel.getAgendaCode(),
+                editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
+                editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
+
+        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvision(),
+                                context.oldConcept, model, toRemove, toAdd);
     }
 
     private void editRelationshipConcept(RelationshipConceptEditModel editModel, EditContext context,
@@ -145,14 +143,13 @@ public class ConceptEditor {
         updateDomainRange(context.newConcept, RDFS.domain, editModel.getDomain(), context.oldConcept, model, toRemove, toAdd);
         updateDomainRange(context.newConcept, RDFS.range, editModel.getRange(), context.oldConcept, model, toRemove, toAdd);
         updateSuperPropertyList(context.newConcept, editModel.getSuperRelation(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanProperty(context.newConcept, JE_PPDF, editModel.getIsInPPDF(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, AGENDA_CODE, editModel.getAgendaCode(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, AIS, editModel.getAgendaSystemCode(), context.oldConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(context.newConcept, editModel.getContentType(), TYP_OBSAHU, context.oldConcept, model, toRemove, toAdd);
-        updateGovernanceProperty(context.newConcept, editModel.getAcquisitionMethod(), ZPUSOB_ZISKANI, context.oldConcept, model, toRemove, toAdd);
-        updateGovernancePropertyList(context.newConcept, editModel.getSharingMethod(), context.oldConcept, model, toRemove, toAdd);
-        updateBooleanProperty(context.newConcept, IS_PUBLIC, editModel.getIsPublic(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
+
+        updateSharedGovernanceMetadata(context.newConcept, editModel.getIsInPPDF(), editModel.getAgendaCode(),
+                editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
+                editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
+
+        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvision(),
+                                context.oldConcept, model, toRemove, toAdd);
     }
 
     private void editCommonFields(ConceptEditModel editModel, EditContext context,
@@ -1008,6 +1005,44 @@ public class ConceptEditor {
             return UtilityMethods.ensureNamespaceEndsWithDelimiter(namespace);
         }
         return DEFAULT_NS;
+    }
+
+    private void updateDataClassification(Resource newConcept, Boolean isPublic, String privacyProvision,
+                                          Resource oldConcept, Model model, Set<Statement> toRemove,
+                                          Set<Statement> toAdd) {
+        Resource verejnyOld = model.getResource(OFN_NAMESPACE + VEREJNY_UDAJ);
+        Resource neverejnyOld = model.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ);
+        // TODO implement after OFN_NAMESPACE_LEGAL merge
+        // Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
+        // Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+
+        if (oldConcept.hasProperty(RDF.type, verejnyOld)) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyOld));
+        }
+        if (oldConcept.hasProperty(RDF.type, neverejnyOld)) {
+            toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyOld));
+        }
+
+        if (isPublic != null) {
+            if (isPublic) {
+                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyOld));
+            } else {
+                toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyOld));
+            }
+        }
+    }
+
+    private void updateSharedGovernanceMetadata(Resource newConcept, Boolean isInPPDF, String agendaCode,
+                                                 String agendaSystemCode, List<String> sharingMethod,
+                                                 String acquisitionMethod, String contentType,
+                                                 Resource oldConcept, Model model, Set<Statement> toRemove,
+                                                 Set<Statement> toAdd) {
+        updateBooleanProperty(newConcept, JE_PPDF, isInPPDF, oldConcept, model, toRemove, toAdd);
+        updateStringProperty(newConcept, AGENDA_CODE, agendaCode, oldConcept, model, toRemove, toAdd);
+        updateStringProperty(newConcept, AIS, agendaSystemCode, oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(newConcept, contentType, TYP_OBSAHU, oldConcept, model, toRemove, toAdd);
+        updateGovernanceProperty(newConcept, acquisitionMethod, ZPUSOB_ZISKANI, oldConcept, model, toRemove, toAdd);
+        updateGovernancePropertyList(newConcept, sharingMethod, oldConcept, model, toRemove, toAdd);
     }
 
     private static class EditContext {

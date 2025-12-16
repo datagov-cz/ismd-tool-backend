@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
@@ -16,6 +17,8 @@ import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
+import com.dia.validation.ValidationReportDto;
+import com.dia.validation.ValidationResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -47,6 +50,7 @@ public class OntologyController {
     private final OntologyDownloadService ontologyDownloadService;
     private final ValidationService validationService;
     private final ValidationClient validationClient;
+    private final ValidationConfig validationConfig;
 
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
@@ -202,6 +206,13 @@ public class OntologyController {
             String contentType = getContentType(format);
 
             ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
+
+            if (!validationConfig.isEnableOntologyViolationDownload()) {
+                ValidationReportDto validationReport = validationService.getValidationReport(ontologyService.getOntologyMetadata(ontologyId));
+                if (validationReport != null && validationReport.getResults().stream().anyMatch(ValidationResult::isError)) {
+                    return ResponseEntity.badRequest().build();
+                }
+            }
 
             return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"").contentType(MediaType.parseMediaType(contentType)).contentLength(resource.contentLength()).body(resource);
 

@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
@@ -57,6 +58,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ValidationReportRepository validationReportRepository;
     private final OntologyAnalyzer ontologyAnalyzer;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final NkdSparqlClient nkdSparqlClient;
+
+    private static final String POJEM_GENERIC = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
     @Override
     public Lang determineRDFFormat(MultipartFile file) {
@@ -93,6 +97,11 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
+        List<String> publishedConceptIris = checkPublishedResourcesInNKD(finalModel);
+        if (!publishedConceptIris.isEmpty()) {
+            log.info("Model contains published concepts: {}", publishedConceptIris.size());
+        }
+
         OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
 
         try {
@@ -102,15 +111,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             }
 
             jenaTDB2Repository.putOntologyModel(graphName, finalModel);
+
+            extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId(), publishedConceptIris);
         } catch (Exception e) {
             ontologyMetadataRepository.deleteById(metadata.getId());
-            throw new OntoloyUploadException("Failed to upload to TDB2", e);
-        }
-
-        try {
-            extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId());
-        } catch (Exception e) {
-            log.warn("Failed to extract concept metadata from uploaded ontology: {}", e.getMessage(), e);
+            try {
+                jenaTDB2Repository.deleteGraph(graphName);
+                log.info("Successfully rolled back TDB2 data for graph: {}", graphName);
+            } catch (Exception tdbException) {
+                log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
+            }
+            throw new OntoloyUploadException("Failed to upload ontology: " + e.getMessage(), e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
@@ -152,6 +163,33 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         } catch (Exception e) {
             throw new OntologyAnalysisException(e, e.getMessage());
         }
+    }
+
+    private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
+        List<String> resourceIris = new ArrayList<>();
+
+        Resource slovnikResource = finalModel.createResource(OWL2.Ontology);
+        Resource pojemResource = finalModel.createResource(POJEM_GENERIC);
+        ResIterator conceptIterator = finalModel.listResourcesWithProperty(RDF.type, pojemResource);
+
+        resourceIris.add(slovnikResource.getURI());
+
+        while (conceptIterator.hasNext()) {
+            Resource conceptResource = conceptIterator.next();
+
+            if (conceptResource.isURIResource()) {
+                String conceptIri = conceptResource.getURI();
+                resourceIris.add(conceptIri);
+            }
+        }
+
+        log.debug("Extracted {} concept IRIs from model for NKD verification", resourceIris.size());
+
+        if (resourceIris.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return nkdSparqlClient.getPublishedResourcesList(resourceIris);
     }
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {
@@ -260,7 +298,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     private int ensureConceptsHaveSkosType(OntModel model) {
-        Resource pojemResource = model.createResource("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
         int addedSkosConceptCount = 0;
 
@@ -282,13 +320,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return addedSkosConceptCount;
     }
 
-    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId) {
+    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {
         log.info("Extracting concept metadata from ontology: {}", graphName);
 
         OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
                 .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
 
-        Resource pojemResource = model.createResource("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
         List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
 
@@ -303,7 +341,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
 
-            ConceptType conceptType = determineConceptType(conceptResource, model);
+            ConceptType conceptType = determineConceptType(conceptResource);
 
             ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
             conceptEntity.setSlug(slug);
@@ -316,6 +354,18 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             conceptEntity.setOntologyMetadata(ontologyMetadata);
 
             conceptEntities.add(conceptEntity);
+        }
+
+        List<ConceptMetadataEntity> publishedConcepts = conceptEntities.stream()
+                .filter(concept -> publishedConceptIris.contains((concept.getConceptIri())))
+                .toList();
+
+        if (!publishedConcepts.isEmpty()) {
+            log.info("Setting isPublished = true for {} concepts", publishedConcepts.size());
+            for (ConceptMetadataEntity conceptMetadataEntity : publishedConcepts) {
+                conceptMetadataEntity.setIsPublished(true);
+                log.info("IsPublished set for concept {}", conceptMetadataEntity.getConceptIri());
+            }
         }
 
         if (!conceptEntities.isEmpty()) {
@@ -341,20 +391,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return false;
     }
 
-    private ConceptType determineConceptType(Resource conceptResource, OntModel model) {
-        if (hasOFNType(conceptResource, VLASTNOST, model)) {
+    private ConceptType determineConceptType(Resource conceptResource) {
+        if (conceptResource.hasProperty(RDF.type, OWL2.DatatypeProperty)) {
             return ConceptType.VLASTNOST;
         }
-        if (hasOFNType(conceptResource, VZTAH, model)) {
+        if (conceptResource.hasProperty(RDF.type, OWL2.ObjectProperty)) {
             return ConceptType.VZTAH;
         }
-        return ConceptType.TRIDA;
-    }
-
-    private boolean hasOFNType(Resource conceptResource, String typeName, OntModel model) {
-        String typeUri = OFN_NAMESPACE + typeName;
-        Resource typeResource = model.getResource(typeUri);
-        return conceptResource.hasProperty(RDF.type, typeResource);
+        if (conceptResource.hasProperty(RDF.type, OWL2.Class)) {
+            return ConceptType.TRIDA;
+        }
+        return null;
     }
 
     private String generateConceptSlug(String graphName, String conceptName) {

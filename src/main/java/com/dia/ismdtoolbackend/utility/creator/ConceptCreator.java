@@ -258,8 +258,15 @@ public class ConceptCreator {
     }
 
     private Resource createClassResource(ClassConceptModel classModel) {
-        String nameForUri = getNameForUriGeneration(classModel.getNameModel());
-        String classURI = uriGenerator.generateConceptURI(nameForUri, classModel.getIdentifier());
+        String classURI;
+        if (classModel.getIdentifier() != null && UtilityMethods.isValidIRI(classModel.getIdentifier())) {
+            classURI = classModel.getIdentifier();
+            log.info("Using custom IRI from identifier: {}", classURI);
+        } else {
+            String name = getNameForUriGeneration(classModel.getNameModel());
+            classURI = uriGenerator.generateConceptURI(name, classModel.getIdentifier());
+        }
+
         Resource classResource = ontModel.createResource(classURI);
 
         classResource.addProperty(RDF.type, SKOS.Concept);
@@ -278,8 +285,14 @@ public class ConceptCreator {
     }
 
     private Resource createPropertyResource(PropertyConceptModel propModel) {
-        String nameForUri = getNameForUriGeneration(propModel.getNameModel());
-        String propertyURI = uriGenerator.generateConceptURI(nameForUri, propModel.getIdentifier());
+        String propertyURI;
+        if (propModel.getIdentifier() != null && UtilityMethods.isValidIRI(propModel.getIdentifier())) {
+            propertyURI = propModel.getIdentifier();
+            log.info("Using custom IRI from identifier: {}", propertyURI);
+        } else {
+            String name = getNameForUriGeneration(propModel.getNameModel());
+            propertyURI = uriGenerator.generateConceptURI(name, propModel.getIdentifier());
+        }
 
         OntProperty propertyResource;
         if (isObjectProperty(propModel)) {
@@ -302,8 +315,14 @@ public class ConceptCreator {
     }
 
     private Resource createRelationshipResource(RelationshipConceptModel relModel) {
-        String nameForUri = getNameForUriGeneration(relModel.getNameModel());
-        String relationshipURI = uriGenerator.generateConceptURI(nameForUri, relModel.getIdentifier());
+        String relationshipURI;
+        if (relModel.getIdentifier() != null && UtilityMethods.isValidIRI(relModel.getIdentifier())) {
+            relationshipURI = relModel.getIdentifier();
+            log.info("Using custom IRI from identifier: {}", relationshipURI);
+        } else {
+            String name = getNameForUriGeneration(relModel.getNameModel());
+            relationshipURI = uriGenerator.generateConceptURI(name, relModel.getIdentifier());
+        }
 
         OntProperty relationshipResource = ontModel.createObjectProperty(relationshipURI);
 
@@ -379,17 +398,6 @@ public class ConceptCreator {
         }
     }
 
-    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey(DEFAULT_LANG)) {
-            return names.get(DEFAULT_LANG);
-        }
-        return names.values().iterator().next();
-    }
-
     private void addSourceMetadata(Resource resource, ConceptCreateModel model) {
         addLegalSourceMetadata(resource, model);
         addNonLegalSourceMetadata(resource, model);
@@ -448,34 +456,12 @@ public class ConceptCreator {
     }
 
     private void addClassSpecificMetadata(Resource classResource, ClassConceptModel classModel) {
-        if (classModel.getAgendaCode() != null && !classModel.getAgendaCode().trim().isEmpty()) {
-            addAgenda(classResource, classModel.getAgendaCode());
-        }
-        if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
-            addAIS(classResource, classModel.getAgendaSystemCode());
-        }
-
-        addClassSharingMethod(classResource, classModel);
-
-        if (classModel.getAcquisitionMethod() != null && !classModel.getAcquisitionMethod().trim().isEmpty()) {
-            addGovernanceProperty(classResource, classModel.getAcquisitionMethod(), ZPUSOB_ZISKANI);
-        }
-        if (classModel.getContentType() != null && !classModel.getContentType().trim().isEmpty()) {
-            addGovernanceProperty(classResource, classModel.getContentType(), TYP_OBSAHU);
-        }
-
-        addDataClassification(classResource, classModel);
+        addIsInPPDF(classResource, classModel.getIsInPPDF());
+        addSharedGovernanceMetadata(classResource, classModel.getAgendaCode(), classModel.getAgendaSystemCode(),
+                classModel.getSharingMethod(), classModel.getAcquisitionMethod(), classModel.getContentType(),
+                classModel.getPrivacyProvision());
+        addDataClassification(classResource, classModel.getIsPublic(), classModel.getPrivacyProvision());
         addBroaderConcept(classResource, classModel);
-    }
-
-    private void addClassSharingMethod(Resource classResource, ClassConceptModel classModel) {
-        if (classModel.getSharingMethod() != null && !classModel.getSharingMethod().isEmpty()) {
-            for (String method : classModel.getSharingMethod()) {
-                if (method != null && !method.trim().isEmpty()) {
-                    addGovernanceProperty(classResource, method, ZPUSOB_SDILENI);
-                }
-            }
-        }
     }
 
     private void addBroaderConcept(Resource classResource, ClassConceptModel classModel) {
@@ -503,32 +489,13 @@ public class ConceptCreator {
             }
         }
 
-        if (propModel.getIsInPPDF() != null) {
-            Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
-            DataTypeConverter.addTypedProperty(propertyResource, ppdfProperty,
-                    propModel.getIsInPPDF().toString(), null, ontModel);
-        }
-
+        addIsInPPDF(propertyResource, propModel.getIsInPPDF());
         addPropertyDataClassification(propertyResource, propModel);
         addPropertyGovernanceMetadata(propertyResource, propModel);
     }
 
     private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
-        Boolean isPublic = propModel.getIsPublic();
-        String privacyProvision = propModel.getPrivacyProvision();
-
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
-            propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
-            return;
-        }
-
-        if (isPublic != null) {
-            if (isPublic) {
-                propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
-            } else {
-                propertyResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
-            }
-        }
+        addDataClassification(propertyResource, propModel.getIsPublic(), propModel.getPrivacyProvision());
     }
 
     private void addPropertyGovernanceMetadata(Resource propertyResource, PropertyConceptModel propModel) {
@@ -542,14 +509,9 @@ public class ConceptCreator {
        addRange(relationshipResource, relModel);
        addSuperRelation(relationshipResource, relModel);
 
-       if (relModel.getIsInPPDF() != null) {
-           Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
-           DataTypeConverter.addTypedProperty(relationshipResource, ppdfProperty,
-                   relModel.getIsInPPDF().toString(), null, ontModel);
-       }
-
-        addRelationshipDataClassification(relationshipResource, relModel);
-        addRelationshipGovernanceMetadata(relationshipResource, relModel);
+       addIsInPPDF(relationshipResource, relModel.getIsInPPDF());
+       addRelationshipDataClassification(relationshipResource, relModel);
+       addRelationshipGovernanceMetadata(relationshipResource, relModel);
     }
 
     private void addDomain(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -575,21 +537,7 @@ public class ConceptCreator {
     }
 
     private void addRelationshipDataClassification(Resource relationshipResource, RelationshipConceptModel relModel) {
-        Boolean isPublic = relModel.getIsPublic();
-        String privacyProvision = relModel.getPrivacyProvision();
-
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
-            relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
-            return;
-        }
-
-        if (isPublic != null) {
-            if (isPublic) {
-                relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
-            } else {
-                relationshipResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
-            }
-        }
+        addDataClassification(relationshipResource, relModel.getIsPublic(), relModel.getPrivacyProvision());
     }
 
     private void addRelationshipGovernanceMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -743,17 +691,39 @@ public class ConceptCreator {
         }
     }
 
-    private void addDataClassification(Resource classResource, ClassConceptModel classModel) {
-        String privacyProvision = classModel.getPrivacyProvision();
+    private void addDataClassification(Resource resource, Boolean isPublic, String privacyProvision) {
+        if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
+            // TODO replace with OFN_NAMESPACE_LEGAL once merged
+            resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
-            String eliPart = UtilityMethods.extractEliPart(privacyProvision);
-            if (eliPart != null) {
-                String transformedProvision = ELI_PATTERN + eliPart;
-                Property provisionProperty = ontModel.createProperty(
-                        uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
-                classResource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+            if (UtilityMethods.containsEliPattern(privacyProvision)) {
+                String eliPart = UtilityMethods.extractEliPart(privacyProvision);
+                if (eliPart != null) {
+                    String transformedProvision = ELI_PATTERN + eliPart;
+                    Property provisionProperty = ontModel.createProperty(
+                            uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+                    resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+                }
             }
+            return;
+        }
+
+        if (isPublic != null) {
+            if (isPublic) {
+                // TODO replace with OFN_NAMESPACE_LEGAL once merged
+                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
+            } else {
+                // TODO replace with OFN_NAMESPACE_LEGAL once merged
+                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+            }
+        }
+    }
+
+    private void addIsInPPDF(Resource resource, Boolean isInPPDF) {
+        if (isInPPDF != null) {
+            Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
+            DataTypeConverter.addTypedProperty(resource, ppdfProperty,
+                    isInPPDF.toString(), null, ontModel);
         }
     }
 
@@ -761,27 +731,14 @@ public class ConceptCreator {
         Property hierarchyProperty = ontModel.createProperty(
                 uriGenerator.getEffectiveNamespace() + "nadřazená-třída");
 
-        if (broaderConcept.contains(";")) {
-            String[] concepts = broaderConcept.split(";");
-            for (String concept : concepts) {
-                String trimmedConcept = concept.trim();
-                if (!trimmedConcept.isEmpty()) {
-                    String broaderURI;
-                    if (DataTypeConverter.isUri(trimmedConcept)) {
-                        broaderURI = trimmedConcept;
-                    } else {
-                        broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
-                    }
-                    resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
-                    resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
-                }
-            }
-        } else {
+
+        String trimmedConcept = broaderConcept.trim();
+        if (!trimmedConcept.isEmpty()) {
             String broaderURI;
-            if (DataTypeConverter.isUri(broaderConcept)) {
-                broaderURI = broaderConcept;
+            if (UtilityMethods.isValidIRI(trimmedConcept)) {
+                broaderURI = trimmedConcept;
             } else {
-                broaderURI = uriGenerator.generateConceptURI(broaderConcept, null);
+                broaderURI = uriGenerator.generateConceptURI(trimmedConcept, null);
             }
             resource.addProperty(RDFS.subClassOf, ontModel.createResource(broaderURI));
             resource.addProperty(hierarchyProperty, ontModel.createResource(broaderURI));
@@ -790,7 +747,7 @@ public class ConceptCreator {
 
     private void addSuperProperty(Resource resource, String superProperty) {
         String superURI;
-        if (DataTypeConverter.isUri(superProperty)) {
+        if (UtilityMethods.isValidIRI(superProperty)) {
             superURI = superProperty;
         } else {
             superURI = uriGenerator.generateConceptURI(superProperty, null);
@@ -799,7 +756,7 @@ public class ConceptCreator {
     }
 
     private void addResourceReference(Resource subject, Property property, String referenceName) {
-        if (DataTypeConverter.isUri(referenceName)) {
+        if (UtilityMethods.isValidIRI(referenceName)) {
             subject.addProperty(property, ontModel.createResource(referenceName));
         } else {
             String conceptUri = uriGenerator.generateConceptURI(referenceName, null);
@@ -888,5 +845,16 @@ public class ConceptCreator {
         return (sharingMethod != null && !sharingMethod.isEmpty()) ||
                 (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) ||
                 (contentType != null && !contentType.trim().isEmpty());
+    }
+
+    private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey(DEFAULT_LANG)) {
+            return names.get(DEFAULT_LANG);
+        }
+        return names.values().iterator().next();
     }
 }
