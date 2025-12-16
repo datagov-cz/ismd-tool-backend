@@ -27,7 +27,11 @@ public class TurtleFilterUtil {
             "https://slovník.gov.cz/číselník",
             "https://slovník.gov.cz/položka-číselníku",
             "https://slovník.gov.cz/typ-vlastnosti",
-            "http://www.w3.org/2004/02/skos/core#Concept"
+            "http://www.w3.org/2004/02/skos/core#Concept",
+            "https://slovník.gov.cz/slovník",
+            "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/veřejný-údaj",
+            "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/neveřejný-údaj",
+            "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/"
     );
 
     private static final Set<String> VOCABULARY_URIS_TO_FILTER = Set.of(
@@ -122,7 +126,7 @@ public class TurtleFilterUtil {
         String subjectUri = subject.getURI();
 
         if (subjectUri == null) {
-            return false;
+            return shouldFilterBlankNode(subject);
         }
 
         if (EXPLICIT_BASE_FRAMEWORK_URIS.contains(subjectUri)) {
@@ -140,6 +144,11 @@ public class TurtleFilterUtil {
         }
 
         if (isBaseSchemaResource(subjectUri)) {
+            return true;
+        }
+
+        if (hasOnlyVocabularyTypes(subject)) {
+            log.debug("Filtering resource with only vocabulary types: {}", subjectUri);
             return true;
         }
 
@@ -254,5 +263,73 @@ public class TurtleFilterUtil {
         return predicate.equals(RDFS.subClassOf) &&
                 stmt.getObject().isResource() &&
                 subject.equals(stmt.getObject().asResource());
+    }
+
+    private static boolean shouldFilterBlankNode(Resource blankNode) {
+        if (!blankNode.isAnon()) {
+            return false;
+        }
+
+        Model model = blankNode.getModel();
+        StmtIterator typeStatements = model.listStatements(blankNode, RDF.type, (RDFNode) null);
+
+        boolean hasTypes = false;
+        boolean allTypesAreVocabulary = true;
+
+        while (typeStatements.hasNext()) {
+            Statement typeStmt = typeStatements.next();
+            hasTypes = true;
+
+            if (typeStmt.getObject().isResource()) {
+                String typeUri = typeStmt.getObject().asResource().getURI();
+
+                if (typeUri != null && !isVocabularyType(typeUri)) {
+                    allTypesAreVocabulary = false;
+                    break;
+                }
+            }
+        }
+
+        if (hasTypes && allTypesAreVocabulary) {
+            log.debug("Filtering blank node with only vocabulary types");
+            return true;
+        }
+
+        return false;
+    }
+
+    private static boolean isVocabularyType(String typeUri) {
+        if (typeUri == null) {
+            return false;
+        }
+
+        return VOCABULARY_URIS_TO_FILTER.contains(typeUri) ||
+               EXPLICIT_BASE_FRAMEWORK_URIS.contains(typeUri) ||
+               typeUri.startsWith("http://www.w3.org/2001/XMLSchema#") ||
+               typeUri.startsWith("http://schema.org/");
+    }
+
+    private static boolean hasOnlyVocabularyTypes(Resource resource) {
+        Model model = resource.getModel();
+        StmtIterator typeStatements = model.listStatements(resource, RDF.type, (RDFNode) null);
+
+        boolean hasTypes = false;
+        boolean allTypesAreVocabulary = true;
+
+        while (typeStatements.hasNext()) {
+            Statement typeStmt = typeStatements.next();
+            hasTypes = true;
+
+            if (typeStmt.getObject().isResource()) {
+                String typeUri = typeStmt.getObject().asResource().getURI();
+
+                if (typeUri != null && !isVocabularyType(typeUri)) {
+                    allTypesAreVocabulary = false;
+                    break;
+                }
+            }
+        }
+
+        return hasTypes && allTypesAreVocabulary;
     }
 }

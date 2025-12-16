@@ -110,6 +110,7 @@ public class ConceptEditor {
         editCommonFields(editModel, context, model, toRemove, toAdd);
 
         updateStringProperty(context.newConcept, TYPE, editModel.getType(), context.oldConcept, model, toRemove, toAdd);
+        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
         updateBroaderConceptList(context.newConcept, editModel.getBroaderConcept(), context.oldConcept, model, toRemove, toAdd);
 
         updateSharedGovernanceMetadata(context.newConcept, editModel.getIsInPPDF(), editModel.getAgendaCode(),

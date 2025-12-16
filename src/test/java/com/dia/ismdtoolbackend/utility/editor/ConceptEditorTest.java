@@ -140,6 +140,8 @@ class ConceptEditorTest {
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(newName);
         when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
+        when(classConceptEditModel.getIsPublic()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
         // Act
         ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
@@ -198,8 +200,16 @@ class ConceptEditorTest {
         when(classConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani");
         when(classConceptEditModel.getSharingMethod()).thenReturn(java.util.List.of("sdileni"));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getPrivacyProvision()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(java.util.List.of("https://example.com/new-broader"));
+
+        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
+        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
+        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
+        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
+        when(classConceptEditModel.getExactMatch()).thenReturn(null);
+        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
+        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         // Act
         ConceptEditor.EditResult result =
@@ -285,7 +295,6 @@ class ConceptEditorTest {
         when(propertyConceptEditModel.getAcquisitionMethod()).thenReturn(null);
         when(propertyConceptEditModel.getSharingMethod()).thenReturn(null);
         when(propertyConceptEditModel.getIsPublic()).thenReturn(null);
-        when(propertyConceptEditModel.getPrivacyProvision()).thenReturn(null);
 
         when(propertyConceptEditModel.getDefiningLegalSource()).thenReturn(null);
         when(propertyConceptEditModel.getRelatedLegalSource()).thenReturn(null);
@@ -391,7 +400,6 @@ class ConceptEditorTest {
         when(relationshipConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
         when(relationshipConceptEditModel.getSharingMethod()).thenReturn(java.util.List.of("sdileni-rel"));
         when(relationshipConceptEditModel.getIsPublic()).thenReturn(null);
-        when(relationshipConceptEditModel.getPrivacyProvision()).thenReturn(null);
 
         when(relationshipConceptEditModel.getDefiningLegalSource()).thenReturn(null);
         when(relationshipConceptEditModel.getRelatedLegalSource()).thenReturn(null);
@@ -477,7 +485,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
         when(classConceptEditModel.getSharingMethod()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getPrivacyProvision()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
 
         when(classConceptEditModel.getDefiningLegalSource())
@@ -550,7 +558,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
         when(classConceptEditModel.getSharingMethod()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getPrivacyProvision()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
 
         when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
@@ -633,6 +641,8 @@ class ConceptEditorTest {
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
         when(classConceptEditModel.getNamespace()).thenReturn(null);
+        when(classConceptEditModel.getIsPublic()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
         // Act
         ConceptEditor.EditResult result =
@@ -685,6 +695,8 @@ class ConceptEditorTest {
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
         when(classConceptEditModel.getNamespace()).thenReturn(null);
+        when(classConceptEditModel.getIsPublic()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
         // Act
         ConceptEditor.EditResult result =
@@ -721,6 +733,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getPrivacyProvision())
                 .thenReturn("https://eselpoint.cz/eli/cz/act/2023/50");
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getType()).thenReturn(null);
         when(classConceptEditModel.getAgendaCode()).thenReturn(null);
         when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
@@ -777,6 +790,7 @@ class ConceptEditorTest {
 
         when(classConceptEditModel.getPrivacyProvision()).thenReturn(" ");
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getType()).thenReturn(null);
         when(classConceptEditModel.getAgendaCode()).thenReturn(null);
         when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
@@ -839,7 +853,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
         when(classConceptEditModel.getSharingMethod()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getPrivacyProvision()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
@@ -894,7 +908,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
         when(classConceptEditModel.getSharingMethod()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getPrivacyProvision()).thenReturn(null);
+        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
