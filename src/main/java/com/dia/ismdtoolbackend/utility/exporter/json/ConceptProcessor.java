@@ -361,9 +361,9 @@ public class ConceptProcessor {
     private void addSourceProperties(Resource concept, Map<String, Object> conceptObj,
                                      OntModel ontModel, String effectiveNamespace) {
         addSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
-                DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU, DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
+                DEFINUJICI_USTANOVENI, DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
         addSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
-                SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU, SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU);
+                SOUVISEJICI_USTANOVENI, SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU);
         addNonLegislativeSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
                 DEFINUJICI_NELEGISLATIVNI_ZDROJ, DEFINUJICI_NELEGISLATIVNI_ZDROJ);
         addNonLegislativeSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
