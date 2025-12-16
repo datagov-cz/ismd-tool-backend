@@ -376,6 +376,14 @@ public class ConceptProcessor {
         Property defaultProperty = ontModel.getProperty(DEFAULT_NS + propertyName);
         Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
 
+
+        Property ofnShortFormProperty = null;
+        if (propertyName.equals(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)) {
+            ofnShortFormProperty = ontModel.getProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+        } else if (propertyName.equals(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU)) {
+            ofnShortFormProperty = ontModel.getProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
+        }
+
         Property sourceProperty = null;
         if (concept.hasProperty(customProperty)) {
             sourceProperty = customProperty;
@@ -383,6 +391,8 @@ public class ConceptProcessor {
             sourceProperty = defaultProperty;
         } else if (concept.hasProperty(ofnProperty)) {
             sourceProperty = ofnProperty;
+        } else if (ofnShortFormProperty != null && concept.hasProperty(ofnShortFormProperty)) {
+            sourceProperty = ofnShortFormProperty;
         }
 
         if (sourceProperty != null) {
@@ -460,7 +470,6 @@ public class ConceptProcessor {
     private Map<String, Object> createDigitalDocumentObject(Resource digitalDoc, OntModel ontModel) {
         Map<String, Object> docObj = new LinkedHashMap<>();
 
-        // Always include the IRI of the digital document
         if (digitalDoc.getURI() != null) {
             docObj.put("iri", digitalDoc.getURI());
         }
@@ -607,7 +616,7 @@ public class ConceptProcessor {
     private void addGovernancePropertyArray(Resource concept, Map<String, Object> conceptObj,
                                             OntModel ontModel, String namespace) {
         Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
-                ZPUSOB_SDILENI_UDAJE, ZPUSOB_SDILENI, ZPUSOB_SDILENI_ALT);
+                ZPUSOBY_SDILENI_UDAJE, ZPUSOB_SDILENI, ZPUSOBY_SDILENI_ALT);
 
         List<String> allValues = new ArrayList<>();
 
@@ -617,7 +626,7 @@ public class ConceptProcessor {
         }
 
         if (allValues.isEmpty()) {
-            List<Statement> fallbackStmts = findAllPropertiesByLocalName(concept, ZPUSOB_SDILENI_ALT);
+            List<Statement> fallbackStmts = findAllPropertiesByLocalName(concept, ZPUSOBY_SDILENI_ALT);
             if (fallbackStmts.isEmpty()) {
                 fallbackStmts = findAllPropertiesByLocalName(concept, ZPUSOB_SDILENI);
             }
@@ -630,7 +639,7 @@ public class ConceptProcessor {
         }
 
         if (!allValues.isEmpty()) {
-            conceptObj.put(ZPUSOB_SDILENI_ALT, allValues);
+            conceptObj.put(ZPUSOBY_SDILENI_ALT, allValues);
         }
     }
 

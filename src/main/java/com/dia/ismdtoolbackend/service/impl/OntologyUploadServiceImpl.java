@@ -93,7 +93,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Override
     @Transactional
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
-        OntModel finalModel = createMergedOntologyModel(file, rdfLang);
+        OntModel finalModel = getOntologyModel(file, rdfLang);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
@@ -130,39 +130,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         );
 
         return metadata;
-    }
-
-    private OntModel createMergedOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
-        OntModel uploadedModel = getOntologyModel(file, rdfLang);
-
-        try {
-            AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
-            Set<String> requiredBaseClasses = analysisResult.requiredBaseClasses();
-            Set<String> requiredProperties = analysisResult.requiredProperties();
-
-            log.info("Analysis complete - Required base classes: {}, Required properties: {}",
-                    requiredBaseClasses.size(), requiredProperties.size());
-            log.debug("Base classes: {}", requiredBaseClasses);
-            log.debug("Properties: {}", requiredProperties);
-
-            if (requiredBaseClasses.isEmpty() && requiredProperties.isEmpty()) {
-                log.info("Ontology is complete, using as-is with {} statements", uploadedModel.size());
-                return uploadedModel;
-            }
-
-            OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
-
-            OntModel mergedModel = ModelFactory.createOntologyModel();
-            mergedModel.add(uploadedModel);
-            mergedModel.add(baseModel.getOntModel());
-
-            log.info("Created merged model with {} statements (uploaded: {}, base: {})",
-                    mergedModel.size(), uploadedModel.size(), baseModel.getOntModel().size());
-
-            return mergedModel;
-        } catch (Exception e) {
-            throw new OntologyAnalysisException(e, e.getMessage());
-        }
     }
 
     private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
@@ -283,6 +250,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
             RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
         }
+
         return uploadedModel;
     }
 
