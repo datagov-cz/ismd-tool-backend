@@ -17,7 +17,7 @@ public class ClassConceptEditModel extends ConceptEditModel {
     private String acquisitionMethod;
     private List<String> sharingMethod;
     private Boolean isPublic;
-    private String privacyProvision;
+    private List<String> privacyProvisions;
     private List<String> broaderConcept;
     private Boolean isInPPDF;
 
@@ -32,7 +32,7 @@ public class ClassConceptEditModel extends ConceptEditModel {
             throw new OntologyException("ConceptType musí být 'TRIDA'");
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
+        if (privacyProvisions != null && !privacyProvisions.isEmpty() && isPublic != null && isPublic) {
             throw new OntologyException(
                     "Třída nemůže být současně veřejná a mít ustanovení o neveřejnosti"
             );

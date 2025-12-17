@@ -124,22 +124,22 @@ public class ConceptCreator {
     private boolean hasPublicDataFromModel(PropertyConceptModel model) {
         Boolean isPublic = model.getIsPublic();
         return isPublic != null && isPublic &&
-                (model.getPrivacyProvision() == null || model.getPrivacyProvision().trim().isEmpty());
+                (model.getPrivacyProvisions() == null || model.getPrivacyProvisions().isEmpty());
     }
 
     private boolean hasPrivateDataFromModel(PropertyConceptModel model) {
-        return (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty()) ||
+        return (model.getPrivacyProvisions() != null && !model.getPrivacyProvisions().isEmpty()) ||
                 (model.getIsPublic() != null && !model.getIsPublic());
     }
 
     private boolean hasPublicDataFromRelationship(RelationshipConceptModel model) {
         Boolean isPublic = model.getIsPublic();
         return isPublic != null && isPublic &&
-                (model.getPrivacyProvision() == null || model.getPrivacyProvision().trim().isEmpty());
+                (model.getPrivacyProvisions() == null || model.getPrivacyProvisions().isEmpty());
     }
 
     private boolean hasPrivateDataFromRelationship(RelationshipConceptModel model) {
-        return (model.getPrivacyProvision() != null && !model.getPrivacyProvision().trim().isEmpty()) ||
+        return (model.getPrivacyProvisions() != null && !model.getPrivacyProvisions().isEmpty()) ||
                 (model.getIsPublic() != null && !model.getIsPublic());
     }
 
@@ -225,18 +225,18 @@ public class ConceptCreator {
 
     private void addPropertySpecificProperties(Set<String> properties, PropertyConceptModel propModel) {
         addCommonGovernanceProperties(properties, propModel.getIsInPPDF(), propModel.getAgendaCode(),
-                propModel.getAgendaSystemCode(), propModel.getPrivacyProvision(),
+                propModel.getAgendaSystemCode(), propModel.getPrivacyProvisions(),
                 propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType());
     }
 
     private void addRelationshipSpecificProperties(Set<String> properties, RelationshipConceptModel relModel) {
         addCommonGovernanceProperties(properties, relModel.getIsInPPDF(), relModel.getAgendaCode(),
-                relModel.getAgendaSystemCode(), relModel.getPrivacyProvision(),
+                relModel.getAgendaSystemCode(), relModel.getPrivacyProvisions(),
                 relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType());
     }
 
     private void addCommonGovernanceProperties(Set<String> properties, Boolean isInPPDF, String agendaCode,
-                                                 String agendaSystemCode, String privacyProvision,
+                                                 String agendaSystemCode, List<String> privacyProvisions,
                                                  List<String> sharingMethod, String acquisitionMethod, String contentType) {
         if (isInPPDF != null) {
             properties.add(JE_PPDF);
@@ -247,7 +247,7 @@ public class ConceptCreator {
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
             properties.add(AIS);
         }
-        if (hasPrivacyProvision(privacyProvision)) {
+        if (hasPrivacyProvisions(privacyProvisions)) {
             properties.add(USTANOVENI_NEVEREJNOST);
         }
         if (hasGovernancePropertiesValues(sharingMethod, acquisitionMethod, contentType)) {
@@ -459,8 +459,8 @@ public class ConceptCreator {
         addIsInPPDF(classResource, classModel.getIsInPPDF());
         addSharedGovernanceMetadata(classResource, classModel.getAgendaCode(), classModel.getAgendaSystemCode(),
                 classModel.getSharingMethod(), classModel.getAcquisitionMethod(), classModel.getContentType(),
-                classModel.getPrivacyProvision());
-        addDataClassification(classResource, classModel.getIsPublic(), classModel.getPrivacyProvision());
+                classModel.getPrivacyProvisions());
+        addDataClassification(classResource, classModel.getIsPublic(), classModel.getPrivacyProvisions());
         addBroaderConcept(classResource, classModel);
     }
 
@@ -495,13 +495,13 @@ public class ConceptCreator {
     }
 
     private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
-        addDataClassification(propertyResource, propModel.getIsPublic(), propModel.getPrivacyProvision());
+        addDataClassification(propertyResource, propModel.getIsPublic(), propModel.getPrivacyProvisions());
     }
 
     private void addPropertyGovernanceMetadata(Resource propertyResource, PropertyConceptModel propModel) {
         addSharedGovernanceMetadata(propertyResource, propModel.getAgendaCode(), propModel.getAgendaSystemCode(),
                 propModel.getSharingMethod(), propModel.getAcquisitionMethod(), propModel.getContentType(),
-                propModel.getPrivacyProvision());
+                propModel.getPrivacyProvisions());
     }
 
     private void addRelationshipSpecificMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -537,18 +537,18 @@ public class ConceptCreator {
     }
 
     private void addRelationshipDataClassification(Resource relationshipResource, RelationshipConceptModel relModel) {
-        addDataClassification(relationshipResource, relModel.getIsPublic(), relModel.getPrivacyProvision());
+        addDataClassification(relationshipResource, relModel.getIsPublic(), relModel.getPrivacyProvisions());
     }
 
     private void addRelationshipGovernanceMetadata(Resource relationshipResource, RelationshipConceptModel relModel) {
         addSharedGovernanceMetadata(relationshipResource, relModel.getAgendaCode(), relModel.getAgendaSystemCode(),
                 relModel.getSharingMethod(), relModel.getAcquisitionMethod(), relModel.getContentType(),
-                relModel.getPrivacyProvision());
+                relModel.getPrivacyProvisions());
     }
 
     private void addSharedGovernanceMetadata(Resource resource, String agendaCode, String agendaSystemCode,
                                               List<String> sharingMethod, String acquisitionMethod, String contentType,
-                                              String privacyProvision) {
+                                              List<String> privacyProvisions) {
         if (agendaCode != null && !agendaCode.trim().isEmpty()) {
             addAgenda(resource, agendaCode);
         }
@@ -565,7 +565,7 @@ public class ConceptCreator {
             addGovernanceProperty(resource, contentType, TYP_OBSAHU);
         }
 
-        addPrivacyProvisionMetadata(resource, privacyProvision);
+        addPrivacyProvisionsMetadata(resource, privacyProvisions);
     }
 
     private void addSharingMethodMetadata(List<String> sharingMethod, Resource resource) {
@@ -577,14 +577,18 @@ public class ConceptCreator {
             }
         }
     }
-    private void addPrivacyProvisionMetadata(Resource resource, String privacyProvision) {
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && UtilityMethods.containsEliPattern(privacyProvision)) {
-            String eliPart = UtilityMethods.extractEliPart(privacyProvision);
-            if (eliPart != null) {
-                String transformedProvision = ELI_PATTERN + eliPart;
-                Property provisionProperty = ontModel.createProperty(
-                        uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
-                resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+    private void addPrivacyProvisionsMetadata(Resource resource, List<String> privacyProvisions) {
+        if (privacyProvisions != null && !privacyProvisions.isEmpty()) {
+            for (String provision : privacyProvisions) {
+                if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
+                    String eliPart = UtilityMethods.extractEliPart(provision);
+                    if (eliPart != null) {
+                        String transformedProvision = ELI_PATTERN + eliPart;
+                        Property provisionProperty = ontModel.createProperty(
+                                uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+                        resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+                    }
+                }
             }
         }
     }
@@ -691,17 +695,19 @@ public class ConceptCreator {
         }
     }
 
-    private void addDataClassification(Resource resource, Boolean isPublic, String privacyProvision) {
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
+    private void addDataClassification(Resource resource, Boolean isPublic, List<String> privacyProvisions) {
+        if (privacyProvisions != null && !privacyProvisions.isEmpty()) {
             resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
 
-            if (UtilityMethods.containsEliPattern(privacyProvision)) {
-                String eliPart = UtilityMethods.extractEliPart(privacyProvision);
-                if (eliPart != null) {
-                    String transformedProvision = ELI_PATTERN + eliPart;
-                    Property provisionProperty = ontModel.createProperty(
-                            OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-                    resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+            for (String provision : privacyProvisions) {
+                if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
+                    String eliPart = UtilityMethods.extractEliPart(provision);
+                    if (eliPart != null) {
+                        String transformedProvision = ELI_PATTERN + eliPart;
+                        Property provisionProperty = ontModel.createProperty(
+                                OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+                        resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+                    }
                 }
             }
             return;
@@ -834,8 +840,8 @@ public class ConceptCreator {
                 (model.getContentType() != null && !model.getContentType().isEmpty());
     }
 
-    private boolean hasPrivacyProvision(String privacyProvision) {
-        return privacyProvision != null && !privacyProvision.trim().isEmpty();
+    private boolean hasPrivacyProvisions(List<String> privacyProvisions) {
+        return privacyProvisions != null && !privacyProvisions.isEmpty();
     }
 
     private boolean hasGovernancePropertiesValues(List<String> sharingMethod, String acquisitionMethod, String contentType) {

@@ -29,7 +29,7 @@ public class ConceptEditor {
     private static final String AGENDA_CODE = "agendaCode";
     private static final String AIS = "agendaSystemCode";
     private static final String IS_PUBLIC = "isPublic";
-    private static final String PRIVACY_PROVISION = "privacyProvision";
+    private static final String PRIVACY_PROVISIONS = "privacyProvisions";
     private static final String IN_TEZAURUS = "inTezaurus";
     private static final String NAMESPACE = "namespace";
 
@@ -110,7 +110,7 @@ public class ConceptEditor {
         editCommonFields(editModel, context, model, toRemove, toAdd);
 
         updateStringProperty(context.newConcept, TYPE, editModel.getType(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, PRIVACY_PROVISION, editModel.getPrivacyProvision(), context.oldConcept, model, toRemove, toAdd);
+        updatePrivacyProvisionsList(context.newConcept, editModel.getPrivacyProvisions(), context.oldConcept, model, toRemove, toAdd);
         updateBroaderConceptList(context.newConcept, editModel.getBroaderConcept(), context.oldConcept, model, toRemove, toAdd);
 
         updateSharedGovernanceMetadata(context.newConcept, editModel.getIsInPPDF(), editModel.getAgendaCode(),
@@ -353,7 +353,6 @@ public class ConceptEditor {
             case TYPE -> updateClassType(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             case AGENDA_CODE -> updateAgenda(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             case AIS -> updateAIS(newConcept, newValue, oldConcept, model, toRemove, toAdd);
-            case PRIVACY_PROVISION -> updatePrivacyProvision(newConcept, newValue, oldConcept, model, toRemove, toAdd);
             default -> log.warn("Unknown string property: {}", propertyName);
         }
     }
@@ -433,24 +432,33 @@ public class ConceptEditor {
         }
     }
 
-    private void updatePrivacyProvision(Resource newConcept, String privacyProvision, Resource oldConcept,
-                                        Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (privacyProvision == null) return;
+    private void updatePrivacyProvisionsList(Resource newConcept, List<String> privacyProvisions,
+                                             Resource oldConcept, Model model, Set<Statement> toRemove,
+                                             Set<Statement> toAdd) {
+        if (privacyProvisions == null) return;
 
         Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        Set<String> oldProvisions = getResourceURIs(oldConcept, provisionProperty);
+        Set<String> newProvisions = new HashSet<>();
 
-        if (privacyProvision.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, provisionProperty, toRemove, toAdd);
-            return;
+        for (String provision : privacyProvisions) {
+            if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
+                String eliPart = UtilityMethods.extractEliPart(provision);
+                if (eliPart != null) {
+                    String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
+                    newProvisions.add(transformedProvision);
+                }
+            }
         }
 
-        removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
-
-        if (UtilityMethods.containsEliPattern(privacyProvision)) {
-            String eliPart = UtilityMethods.extractEliPart(privacyProvision);
-            if (eliPart != null) {
-                String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
-                toAdd.add(model.createStatement(newConcept, provisionProperty, model.createResource(transformedProvision)));
+        if (privacyProvisions.isEmpty() || newProvisions.isEmpty()) {
+            if (!oldProvisions.isEmpty()) {
+                removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
+            }
+        } else if (!oldProvisions.equals(newProvisions)) {
+            removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
+            for (String provisionURI : newProvisions) {
+                toAdd.add(model.createStatement(newConcept, provisionProperty, model.createResource(provisionURI)));
             }
         }
     }
@@ -819,7 +827,7 @@ public class ConceptEditor {
         if (editModel.getSharingMethod() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
         }
-        if (editModel.getPrivacyProvision() != null) {
+        if (editModel.getPrivacyProvisions() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
         }
     }
@@ -846,7 +854,7 @@ public class ConceptEditor {
         if (editModel.getSharingMethod() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
         }
-        if (editModel.getPrivacyProvision() != null) {
+        if (editModel.getPrivacyProvisions() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
         }
     }
@@ -873,7 +881,7 @@ public class ConceptEditor {
         if (editModel.getSharingMethod() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
         }
-        if (editModel.getPrivacyProvision() != null) {
+        if (editModel.getPrivacyProvisions() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
         }
     }
