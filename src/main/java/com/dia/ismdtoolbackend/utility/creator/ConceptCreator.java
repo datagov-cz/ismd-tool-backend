@@ -239,7 +239,7 @@ public class ConceptCreator {
                                                  String agendaSystemCode, List<String> privacyProvisions,
                                                  List<String> sharingMethod, String acquisitionMethod, String contentType) {
         if (isInPPDF != null) {
-            properties.add(JE_PPDF);
+            properties.add(JE_PPDF_LONG);
         }
         if (agendaCode != null && !agendaCode.trim().isEmpty()) {
             properties.add(AGENDA_LONG);
@@ -724,7 +724,7 @@ public class ConceptCreator {
 
     private void addIsInPPDF(Resource resource, Boolean isInPPDF) {
         if (isInPPDF != null) {
-            Property ppdfProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF);
+            Property ppdfProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
             DataTypeConverter.addTypedProperty(resource, ppdfProperty,
                     isInPPDF.toString(), null, ontModel);
         }

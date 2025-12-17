@@ -623,7 +623,7 @@ public class ConceptEditor {
         if (newValue == null) return;
 
         Property property = switch (propertyName) {
-            case JE_PPDF -> model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF);
+            case JE_PPDF_LONG -> model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
             case IS_PUBLIC -> model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY);
             case IN_TEZAURUS -> model.createProperty(uriGenerator.getEffectiveNamespace() + IN_TEZAURUS);
             default -> {
@@ -807,7 +807,7 @@ public class ConceptEditor {
 
     private void addCommonConceptPredicates(Set<Property> predicates, ClassConceptEditModel editModel, Model model) {
         if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG));
         }
         if (editModel.getIsPublic() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
@@ -834,7 +834,7 @@ public class ConceptEditor {
 
     private void addCommonConceptPredicates(Set<Property> predicates, PropertyConceptEditModel editModel, Model model) {
         if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG));
         }
         if (editModel.getIsPublic() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
@@ -861,7 +861,7 @@ public class ConceptEditor {
 
     private void addCommonConceptPredicates(Set<Property> predicates, RelationshipConceptEditModel editModel, Model model) {
         if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG));
         }
         if (editModel.getIsPublic() != null) {
             predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
