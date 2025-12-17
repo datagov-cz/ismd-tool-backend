@@ -133,7 +133,7 @@ public class ConceptProcessor {
         Property definitionProperty = ontModel.createProperty(SKOS_NS + "definition");
         addMultilingualProperty(concept, definitionProperty, DEFINICE, conceptObj);
 
-        addDescriptionProperty(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
+        addDescriptionProperty(concept, conceptObj, ontModel);
 
         Property identifierProperty = ontModel.createProperty(DCT_NS + "identifier");
         addResourceArrayProperty(concept, identifierProperty, IDENTIFIKATOR, conceptObj);
@@ -148,7 +148,7 @@ public class ConceptProcessor {
 
         addGovernanceProperties(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
 
-        addMetadataProperties(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
+        addMetadataProperties(concept, conceptObj, ontModel);
 
         return conceptObj;
     }
@@ -362,9 +362,9 @@ public class ConceptProcessor {
 
     private void addSourceProperties(Resource concept, Map<String, Object> conceptObj,
                                      OntModel ontModel, String effectiveNamespace) {
-        addSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
+        addSourceProperty(concept, conceptObj, ontModel,
                 DEFINUJICI_USTANOVENI, DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
-        addSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
+        addSourceProperty(concept, conceptObj, ontModel,
                 SOUVISEJICI_USTANOVENI, SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU);
         addNonLegislativeSourceProperty(concept, conceptObj, ontModel, effectiveNamespace,
                 DEFINUJICI_NELEGISLATIVNI_ZDROJ, DEFINUJICI_NELEGISLATIVNI_ZDROJ);
@@ -372,8 +372,7 @@ public class ConceptProcessor {
                 SOUVISEJICI_NELEGISLATIVNI_ZDROJ, SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
     }
 
-    private void addSourceProperty(Resource concept, Map<String, Object> conceptObj, OntModel ontModel,
-                                   String namespace, String propertyName, String jsonFieldName) {
+    private void addSourceProperty(Resource concept, Map<String, Object> conceptObj, OntModel ontModel, String propertyName, String jsonFieldName) {
         String fullPropertyUri = OFN_NAMESPACE + propertyName;
         log.debug("addSourceProperty - Checking for property: {}", fullPropertyUri);
         log.debug("  propertyName: {}, jsonFieldName: {}", propertyName, jsonFieldName);
@@ -613,7 +612,7 @@ public class ConceptProcessor {
         }
     }
 
-    private Property findGovernancePropertyWithFallbacks(Resource concept, OntModel ontModel, String namespace,
+    private Property findGovernancePropertyWithFallbacks(Resource concept, OntModel ontModel,
                                                          String... propertyNames) {
         for (String propertyName : propertyNames) {
             Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
@@ -680,18 +679,18 @@ public class ConceptProcessor {
     }
 
     private void addMetadataProperties(Resource concept, Map<String, Object> conceptObj,
-                                       OntModel ontModel, String namespace) {
-        addPpdfProperty(concept, conceptObj, ontModel, namespace);
+                                       OntModel ontModel) {
+        addPpdfProperty(concept, conceptObj, ontModel);
 
-        addMetadataProperty(concept, conceptObj, ontModel, namespace, AIS, UDAJE_AIS);
+        addMetadataProperty(concept, conceptObj, ontModel, AIS, UDAJE_AIS);
 
-        addMetadataProperty(concept, conceptObj, ontModel, namespace, AGENDA, AGENDA_LONG);
+        addMetadataProperty(concept, conceptObj, ontModel, AGENDA, AGENDA_LONG);
 
-        addUstanoveniProperty(concept, conceptObj, ontModel, namespace);
+        addUstanoveniProperty(concept, conceptObj, ontModel);
     }
 
     private void addPpdfProperty(Resource concept, Map<String, Object> conceptObj,
-                                 OntModel ontModel, String namespace) {
+                                 OntModel ontModel) {
         Property ppdfProperty = ontModel.getProperty(A104_NAMESPACE + JE_PPDF_LONG);
 
         Statement stmt = concept.getProperty(ppdfProperty);
@@ -702,7 +701,7 @@ public class ConceptProcessor {
     }
 
     private void addMetadataProperty(Resource concept, Map<String, Object> conceptObj,
-                                     OntModel ontModel, String namespace,
+                                     OntModel ontModel,
                                      String primaryProperty, String longProperty) {
         Property a104Property = ontModel.getProperty(A104_NAMESPACE + longProperty);
 
@@ -724,7 +723,7 @@ public class ConceptProcessor {
     }
 
     private void addUstanoveniProperty(Resource concept, Map<String, Object> conceptObj,
-                                       OntModel ontModel, String namespace) {
+                                       OntModel ontModel) {
         Property suppLegal = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_LONG);
 
         if (concept.hasProperty(suppLegal)) {
@@ -751,26 +750,6 @@ public class ConceptProcessor {
         return null;
     }
 
-    private List<Statement> findAllPropertiesByLocalName(Resource concept, String localName) {
-        List<Statement> matchingStatements = new ArrayList<>();
-        StmtIterator propIter = concept.listProperties();
-
-        while (propIter.hasNext()) {
-            Statement stmt = propIter.next();
-            Property predicate = stmt.getPredicate();
-            String propertyUri = predicate.getURI();
-
-            if (propertyUri != null) {
-                String propertyLocalName = extractLocalName(propertyUri);
-                if (localName.equals(propertyLocalName)) {
-                    matchingStatements.add(stmt);
-                }
-            }
-        }
-
-        return matchingStatements;
-    }
-
     private String extractLocalName(String uri) {
         if (uri == null) {
             return null;
@@ -788,7 +767,7 @@ public class ConceptProcessor {
     }
 
     private void addDescriptionProperty(Resource concept, Map<String, Object> conceptObj,
-                                       OntModel ontModel, String namespace) {
+                                       OntModel ontModel) {
         Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
         StmtIterator descIter = concept.listProperties(descriptionProperty);
 
