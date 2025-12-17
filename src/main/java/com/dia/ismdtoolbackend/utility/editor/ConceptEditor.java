@@ -298,8 +298,8 @@ public class ConceptEditor {
 
     private void updateLegalSources(Resource newConcept, ConceptEditModel editModel, Resource oldConcept,
                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        Property definingProp = model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_USTANOVENI);
-        Property relatedProp = model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_USTANOVENI);
+        Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+        Property relatedProp = model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
         updateLegalSourceList(newConcept, definingProp, editModel.getDefiningLegalSource(),
                 oldConcept, model, toRemove, toAdd);
@@ -389,7 +389,7 @@ public class ConceptEditor {
                               Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (agendaCode == null) return;
 
-        Property agendaProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA);
+        Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA);
 
         if (agendaCode.trim().isEmpty()) {
             removeAllByPredicate(oldConcept, agendaProperty, toRemove, toAdd);
@@ -413,7 +413,7 @@ public class ConceptEditor {
                            Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (aisCode == null) return;
 
-        Property aisProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + AIS);
+        Property aisProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS);
 
         if (aisCode.trim().isEmpty()) {
             removeAllByPredicate(oldConcept, aisProperty, toRemove, toAdd);
@@ -437,7 +437,7 @@ public class ConceptEditor {
                                         Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (privacyProvision == null) return;
 
-        Property provisionProperty = model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
 
         if (privacyProvision.trim().isEmpty()) {
             removeAllByPredicate(oldConcept, provisionProperty, toRemove, toAdd);
@@ -460,7 +460,7 @@ public class ConceptEditor {
                                            Set<Statement> toAdd) {
         if (newValue == null) return;
 
-        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + propertyName);
+        Property property = model.createProperty(OFN_NAMESPACE + propertyName);
         String oldIRI = getResourceURI(oldConcept, property);
 
         if (newValue.trim().isEmpty()) {
@@ -485,13 +485,13 @@ public class ConceptEditor {
                                                Set<Statement> toAdd) {
         if (newValues == null) return;
 
-        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + com.dia.constants.VocabularyConstants.ZPUSOB_SDILENI);
+        Property property = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         Set<String> oldIRIs = getResourceURIs(oldConcept, property);
         Set<String> newIRIs = new HashSet<>();
 
         for (String value : newValues) {
             if (value != null && !value.trim().isEmpty()) {
-                String newIRI = generateGovernanceIRI(value, com.dia.constants.VocabularyConstants.ZPUSOB_SDILENI);
+                String newIRI = generateGovernanceIRI(value, ZPUSOB_SDILENI);
                 if (newIRI != null) {
                     newIRIs.add(newIRI);
                 }
@@ -614,19 +614,18 @@ public class ConceptEditor {
                                        Set<Statement> toAdd) {
         if (newValue == null) return;
 
-        String propertyUri = switch (propertyName) {
-            case JE_PPDF -> JE_PPDF;
-            case IS_PUBLIC -> JE_VEREJNY;
-            case IN_TEZAURUS -> IN_TEZAURUS;
+        Property property = switch (propertyName) {
+            case JE_PPDF -> model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF);
+            case IS_PUBLIC -> model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY);
+            case IN_TEZAURUS -> model.createProperty(uriGenerator.getEffectiveNamespace() + IN_TEZAURUS);
             default -> {
                 log.warn("Unknown boolean property: {}", propertyName);
                 yield null;
             }
         };
 
-        if (propertyUri == null) return;
+        if (property == null) return;
 
-        Property property = model.createProperty(uriGenerator.getEffectiveNamespace() + propertyUri);
         String oldValue = getPropertyValue(oldConcept, property);
         String newValueStr = newValue.toString();
 
@@ -674,11 +673,12 @@ public class ConceptEditor {
                                            Set<Statement> toAdd) {
         if (newSources == null) return;
 
-        List<String> validUrls = newSources.stream()
-                .filter(this::isValidUrl)
+        List<String> nonEmptySources = newSources.stream()
+                .filter(s -> s != null && !s.trim().isEmpty())
+                .map(String::trim)
                 .toList();
 
-        if (validUrls.isEmpty()) {
+        if (nonEmptySources.isEmpty()) {
             removeAllByPredicate(oldConcept, property, toRemove, toAdd);
             return;
         }
@@ -689,7 +689,7 @@ public class ConceptEditor {
         Property schemaUrlProperty = model.createProperty("http://schema.org/url");
         Property dctermsTitle = model.createProperty("http://purl.org/dc/terms/title");
 
-        for (String source : validUrls) {
+        for (String source : nonEmptySources) {
             Resource digitalDocument = model.createResource();
 
             toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
@@ -702,10 +702,6 @@ public class ConceptEditor {
 
             toAdd.add(model.createStatement(newConcept, property, digitalDocument));
         }
-    }
-
-    private boolean isValidUrl(String url) {
-        return UtilityMethods.isValidUrl(url);
     }
 
     private void renameConceptIRI(Model model, String oldIRI, String newIRI,
@@ -756,8 +752,8 @@ public class ConceptEditor {
             predicates.add(model.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch"));
         }
         if (editModel.getDefiningLegalSource() != null || editModel.getRelatedLegalSource() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_USTANOVENI));
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_USTANOVENI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI));
         }
         if (editModel.getDefiningNonLegalSource() != null || editModel.getRelatedNonLegalSource() != null) {
             predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_NELEGISLATIVNI_ZDROJ));
@@ -803,82 +799,82 @@ public class ConceptEditor {
 
     private void addCommonConceptPredicates(Set<Property> predicates, ClassConceptEditModel editModel, Model model) {
         if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF));
         }
         if (editModel.getIsPublic() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_VEREJNY));
+            predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
         }
         if (editModel.getAgendaCode() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA));
         }
         if (editModel.getAgendaSystemCode() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AIS));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS));
         }
         if (editModel.getContentType() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + TYP_OBSAHU));
+            predicates.add(model.createProperty(OFN_NAMESPACE + TYP_OBSAHU));
         }
         if (editModel.getAcquisitionMethod() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_ZISKANI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI));
         }
         if (editModel.getSharingMethod() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_SDILENI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
         }
         if (editModel.getPrivacyProvision() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST));
+            predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
         }
     }
 
     private void addCommonConceptPredicates(Set<Property> predicates, PropertyConceptEditModel editModel, Model model) {
         if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF));
         }
         if (editModel.getIsPublic() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_VEREJNY));
+            predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
         }
         if (editModel.getAgendaCode() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA));
         }
         if (editModel.getAgendaSystemCode() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AIS));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS));
         }
         if (editModel.getContentType() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + TYP_OBSAHU));
+            predicates.add(model.createProperty(OFN_NAMESPACE + TYP_OBSAHU));
         }
         if (editModel.getAcquisitionMethod() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_ZISKANI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI));
         }
         if (editModel.getSharingMethod() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_SDILENI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
         }
         if (editModel.getPrivacyProvision() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST));
+            predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
         }
     }
 
     private void addCommonConceptPredicates(Set<Property> predicates, RelationshipConceptEditModel editModel, Model model) {
         if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF));
         }
         if (editModel.getIsPublic() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + JE_VEREJNY));
+            predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
         }
         if (editModel.getAgendaCode() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA));
         }
         if (editModel.getAgendaSystemCode() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + AIS));
+            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS));
         }
         if (editModel.getContentType() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + TYP_OBSAHU));
+            predicates.add(model.createProperty(OFN_NAMESPACE + TYP_OBSAHU));
         }
         if (editModel.getAcquisitionMethod() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_ZISKANI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI));
         }
         if (editModel.getSharingMethod() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + ZPUSOB_SDILENI));
+            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
         }
         if (editModel.getPrivacyProvision() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST));
+            predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
         }
     }
 
