@@ -123,7 +123,7 @@ class ConceptCreatorTest {
         when(classConceptModel.getAltNameModel()).thenReturn(null);
         when(classConceptModel.getType()).thenReturn(type);
         when(classConceptModel.getIsPublic()).thenReturn(null);
-        when(classConceptModel.getPrivacyProvision()).thenReturn(null);
+        when(classConceptModel.getPrivacyProvisions()).thenReturn(null);
         setupNullGovernanceFields(classConceptModel);
         setupNullSourceFields(classConceptModel);
     }
@@ -210,7 +210,7 @@ class ConceptCreatorTest {
         when(propertyConceptModel.getSuperProperty()).thenReturn(null);
         when(propertyConceptModel.getIsPublic()).thenReturn(null);
         when(propertyConceptModel.getIsInPPDF()).thenReturn(null);
-        when(propertyConceptModel.getPrivacyProvision()).thenReturn(null);
+        when(propertyConceptModel.getPrivacyProvisions()).thenReturn(null);
         setupNullGovernanceFields(propertyConceptModel);
         setupNullSourceFields(propertyConceptModel);
     }
@@ -230,7 +230,7 @@ class ConceptCreatorTest {
         when(relationshipConceptModel.getSuperRelation()).thenReturn(null);
         when(relationshipConceptModel.getIsInPPDF()).thenReturn(null);
         when(relationshipConceptModel.getIsPublic()).thenReturn(null);
-        when(relationshipConceptModel.getPrivacyProvision()).thenReturn(null);
+        when(relationshipConceptModel.getPrivacyProvisions()).thenReturn(null);
         setupNullGovernanceFields(relationshipConceptModel);
         setupNullSourceFields(relationshipConceptModel);
     }
@@ -261,7 +261,7 @@ class ConceptCreatorTest {
 
             when(classConceptModel.getType()).thenReturn("subjekt");
             when(classConceptModel.getIsPublic()).thenReturn(true);
-            when(classConceptModel.getPrivacyProvision()).thenReturn("");
+            when(classConceptModel.getPrivacyProvisions()).thenReturn(List.of(""));
 
             when(classConceptModel.getAgendaCode()).thenReturn(null);
             when(classConceptModel.getAgendaSystemCode()).thenReturn(null);
@@ -519,8 +519,8 @@ class ConceptCreatorTest {
             // arrange
             setupBasicClassConcept("PrivateClass", "objekt");
             when(classConceptModel.getIdentifier()).thenReturn("PP-1");
-            when(classConceptModel.getPrivacyProvision())
-                    .thenReturn("https://eselpoint.cz/eli/cz/act/2020/50");
+            when(classConceptModel.getPrivacyProvisions())
+                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2020/50"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -580,8 +580,8 @@ class ConceptCreatorTest {
             // arrange
             setupBasicClassConcept("Class without privacy ELI", "objekt");
             when(classConceptModel.getIdentifier()).thenReturn("NO-PRIV-ELI");
-            when(classConceptModel.getPrivacyProvision())
-                    .thenReturn("http://example.org/not-eli-format");
+            when(classConceptModel.getPrivacyProvisions())
+                    .thenReturn(List.of("http://example.org/not-eli-format"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -681,7 +681,7 @@ class ConceptCreatorTest {
             when(propertyConceptModel.getSuperProperty()).thenReturn(List.of("SuperProperty"));
             when(propertyConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
             when(propertyConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
-            when(propertyConceptModel.getPrivacyProvision()).thenReturn("");
+            when(propertyConceptModel.getPrivacyProvisions()).thenReturn(List.of(""));
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -985,7 +985,7 @@ class ConceptCreatorTest {
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-SOURCES-1");
             when(relationshipConceptModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
-            when(relationshipConceptModel.getPrivacyProvision()).thenReturn("");
+            when(relationshipConceptModel.getPrivacyProvisions()).thenReturn(List.of(""));
             when(relationshipConceptModel.getSharingMethod()).thenReturn(List.of("sdileni-rel"));
             when(relationshipConceptModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
             when(relationshipConceptModel.getContentType()).thenReturn("obsah-rel");

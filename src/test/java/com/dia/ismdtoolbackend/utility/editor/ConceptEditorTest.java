@@ -23,6 +23,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -730,8 +731,8 @@ class ConceptEditorTest {
         when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
         when(classConceptEditModel.getAltNameModel()).thenReturn(null);
 
-        when(classConceptEditModel.getPrivacyProvision())
-                .thenReturn("https://eselpoint.cz/eli/cz/act/2023/50");
+        when(classConceptEditModel.getPrivacyProvisions())
+                .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2023/50"));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getType()).thenReturn(null);
@@ -788,7 +789,7 @@ class ConceptEditorTest {
         when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
         when(classConceptEditModel.getAltNameModel()).thenReturn(null);
 
-        when(classConceptEditModel.getPrivacyProvision()).thenReturn(" ");
+        when(classConceptEditModel.getPrivacyProvisions()).thenReturn(List.of(" "));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getType()).thenReturn(null);
