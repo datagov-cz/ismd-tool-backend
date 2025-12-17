@@ -1009,16 +1009,10 @@ public class ConceptEditor {
                                           Set<Statement> toAdd) {
         Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
         Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
-        Resource verejnyGeneric = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        Resource neverejnyGeneric = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
-        if (oldConcept.hasProperty(RDF.type, verejnyGeneric) || oldConcept.hasProperty(RDF.type, neverejnyGeneric)) {
-            processPropertyWithGenericNamespace(newConcept, isPublic, oldConcept, model, toRemove, toAdd, verejnyGeneric, neverejnyGeneric);
-        }
         if (oldConcept.hasProperty(RDF.type, verejnyLegal) || oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
             processPropertyWithLegalNamespace(newConcept, isPublic, oldConcept, model, toRemove, toAdd, verejnyLegal, neverejnyLegal);
         }
-
     }
 
     private void processPropertyWithLegalNamespace(Resource newConcept, Boolean isPublic,
@@ -1037,26 +1031,6 @@ public class ConceptEditor {
                 toAdd.add(model.createStatement(newConcept, RDF.type, verejnyLegal));
             } else {
                 toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyLegal));
-            }
-        }
-    }
-
-    private void processPropertyWithGenericNamespace(Resource newConcept, Boolean isPublic,
-                                                   Resource oldConcept, Model model, Set<Statement> toRemove,
-                                                   Set<Statement> toAdd, Resource verejnyGeneric, Resource neverejnyGeneric) {
-        if (oldConcept.hasProperty(RDF.type, verejnyGeneric)) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyGeneric));
-        }
-
-        if (oldConcept.hasProperty(RDF.type, neverejnyGeneric)) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyGeneric));
-        }
-
-        if (isPublic != null) {
-            if (isPublic) {
-                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyGeneric));
-            } else {
-                toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyGeneric));
             }
         }
     }

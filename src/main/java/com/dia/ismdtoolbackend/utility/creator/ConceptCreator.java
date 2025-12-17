@@ -605,7 +605,7 @@ public class ConceptCreator {
 
     private void processLegalSource(Resource resource, String source, boolean isDefining) {
         String propertyName = isDefining ? DEFINUJICI_USTANOVENI : SOUVISEJICI_USTANOVENI;
-        Property property = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + propertyName);
+        Property property = ontModel.createProperty(OFN_NAMESPACE + propertyName);
 
         if (UtilityMethods.containsEliPattern(source)) {
             String eliPart = UtilityMethods.extractEliPart(source);
@@ -651,7 +651,7 @@ public class ConceptCreator {
     private void addAgenda(Resource resource, String agendaCode) {
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformedAgenda = UtilityMethods.transformAgendaValue(agendaCode);
-            Property agendaProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + AGENDA);
+            Property agendaProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA);
 
             if (DataTypeConverter.isUri(transformedAgenda)) {
                 resource.addProperty(agendaProperty, ontModel.createResource(transformedAgenda));
@@ -664,7 +664,7 @@ public class ConceptCreator {
     private void addAIS(Resource resource, String aisCode) {
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformedAIS = UtilityMethods.transformAISValue(aisCode);
-            Property aisProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + AIS);
+            Property aisProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS);
 
             if (DataTypeConverter.isUri(transformedAIS)) {
                 resource.addProperty(aisProperty, ontModel.createResource(transformedAIS));
@@ -686,22 +686,21 @@ public class ConceptCreator {
         };
 
         if (governanceIRI != null) {
-            Property property = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + propertyName);
+            Property property = ontModel.createProperty(OFN_NAMESPACE + propertyName);
             resource.addProperty(property, ontModel.createResource(governanceIRI));
         }
     }
 
     private void addDataClassification(Resource resource, Boolean isPublic, String privacyProvision) {
         if (privacyProvision != null && !privacyProvision.trim().isEmpty()) {
-            // TODO replace with OFN_NAMESPACE_LEGAL once merged
-            resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+            resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
 
             if (UtilityMethods.containsEliPattern(privacyProvision)) {
                 String eliPart = UtilityMethods.extractEliPart(privacyProvision);
                 if (eliPart != null) {
                     String transformedProvision = ELI_PATTERN + eliPart;
                     Property provisionProperty = ontModel.createProperty(
-                            uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+                            OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
                     resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
                 }
             }
@@ -710,18 +709,16 @@ public class ConceptCreator {
 
         if (isPublic != null) {
             if (isPublic) {
-                // TODO replace with OFN_NAMESPACE_LEGAL once merged
-                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + VEREJNY_UDAJ));
+                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ));
             } else {
-                // TODO replace with OFN_NAMESPACE_LEGAL once merged
-                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + NEVEREJNY_UDAJ));
+                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
             }
         }
     }
 
     private void addIsInPPDF(Resource resource, Boolean isInPPDF) {
         if (isInPPDF != null) {
-            Property ppdfProperty = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + JE_PPDF);
+            Property ppdfProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF);
             DataTypeConverter.addTypedProperty(resource, ppdfProperty,
                     isInPPDF.toString(), null, ontModel);
         }
