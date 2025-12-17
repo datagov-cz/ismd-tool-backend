@@ -177,7 +177,7 @@ public class TurtleFormatterUtil {
 
     private static void transformConformsToProperties(OntModel model) {
         Property conformsTo = model.getProperty(DCT_NS + "conformsTo");
-        Property ofnDefinujiciUstanoveni = model.getProperty(OFN_NAMESPACE + "definující-ustanovení-právního-předpisu");
+        Property ofnDefinujiciUstanoveni = model.getProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
 
         List<Statement> toReplace = new ArrayList<>();
         StmtIterator iter = model.listStatements(null, conformsTo, (RDFNode) null);
@@ -214,7 +214,6 @@ public class TurtleFormatterUtil {
 
     private static void transformLabelsToSKOS(OntModel model) {
         Property skosPrefLabel = model.getProperty(SKOS_NS + "prefLabel");
-        Property skosDefinition = model.getProperty(SKOS_NS + "definition");
 
         List<Statement> labelStatements = new ArrayList<>();
         StmtIterator iter = model.listStatements(null, RDFS.label, (RDFNode) null);
