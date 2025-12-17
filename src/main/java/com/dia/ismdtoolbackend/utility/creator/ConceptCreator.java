@@ -208,10 +208,10 @@ public class ConceptCreator {
 
     private void addClassSpecificProperties(Set<String> properties, ClassConceptModel classModel) {
         if (classModel.getAgendaCode() != null && !classModel.getAgendaCode().trim().isEmpty()) {
-            properties.add(AGENDA);
+            properties.add(AGENDA_LONG);
         }
         if (classModel.getAgendaSystemCode() != null && !classModel.getAgendaSystemCode().trim().isEmpty()) {
-            properties.add(AIS);
+            properties.add(UDAJE_AIS);
         }
         if (Boolean.FALSE.equals(classModel.getIsPublic())) {
             properties.add(USTANOVENI_NEVEREJNOST);
@@ -242,10 +242,10 @@ public class ConceptCreator {
             properties.add(JE_PPDF);
         }
         if (agendaCode != null && !agendaCode.trim().isEmpty()) {
-            properties.add(AGENDA);
+            properties.add(AGENDA_LONG);
         }
         if (agendaSystemCode != null && !agendaSystemCode.trim().isEmpty()) {
-            properties.add(AIS);
+            properties.add(UDAJE_AIS);
         }
         if (hasPrivacyProvisions(privacyProvisions)) {
             properties.add(USTANOVENI_NEVEREJNOST);
@@ -655,7 +655,7 @@ public class ConceptCreator {
     private void addAgenda(Resource resource, String agendaCode) {
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformedAgenda = UtilityMethods.transformAgendaValue(agendaCode);
-            Property agendaProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA);
+            Property agendaProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
 
             if (DataTypeConverter.isUri(transformedAgenda)) {
                 resource.addProperty(agendaProperty, ontModel.createResource(transformedAgenda));
@@ -668,7 +668,7 @@ public class ConceptCreator {
     private void addAIS(Resource resource, String aisCode) {
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformedAIS = UtilityMethods.transformAISValue(aisCode);
-            Property aisProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS);
+            Property aisProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
 
             if (DataTypeConverter.isUri(transformedAIS)) {
                 resource.addProperty(aisProperty, ontModel.createResource(transformedAIS));

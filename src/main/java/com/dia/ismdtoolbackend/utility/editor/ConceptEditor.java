@@ -388,7 +388,7 @@ public class ConceptEditor {
                               Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (agendaCode == null) return;
 
-        Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA);
+        Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
 
         if (agendaCode.trim().isEmpty()) {
             removeAllByPredicate(oldConcept, agendaProperty, toRemove, toAdd);
@@ -402,7 +402,7 @@ public class ConceptEditor {
             if (DataTypeConverter.isUri(transformed)) {
                 toAdd.add(model.createStatement(newConcept, agendaProperty, model.createResource(transformed)));
             } else {
-                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AGENDA);
+                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AGENDA_LONG);
                 toAdd.add(model.createStatement(newConcept, agendaProperty, typedLiteral));
             }
         }
@@ -412,7 +412,7 @@ public class ConceptEditor {
                            Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (aisCode == null) return;
 
-        Property aisProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS);
+        Property aisProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
 
         if (aisCode.trim().isEmpty()) {
             removeAllByPredicate(oldConcept, aisProperty, toRemove, toAdd);
@@ -426,7 +426,7 @@ public class ConceptEditor {
             if (DataTypeConverter.isUri(transformed)) {
                 toAdd.add(model.createStatement(newConcept, aisProperty, model.createResource(transformed)));
             } else {
-                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AIS);
+                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, UDAJE_AIS);
                 toAdd.add(model.createStatement(newConcept, aisProperty, typedLiteral));
             }
         }
