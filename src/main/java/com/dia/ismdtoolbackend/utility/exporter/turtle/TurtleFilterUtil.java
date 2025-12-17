@@ -108,6 +108,10 @@ public class TurtleFilterUtil {
             return shouldFilterBlankNode(subject);
         }
 
+        if (isOntologyResource(subject)) {
+            return false;
+        }
+
         if (hasOnlyVocabularyTypes(subject)) {
             log.debug("Filtering resource with only vocabulary types: {}", subjectUri);
             return true;
@@ -153,6 +157,27 @@ public class TurtleFilterUtil {
         if (hasTypes && allTypesAreVocabulary) {
             log.debug("Filtering blank node with only vocabulary types");
             return true;
+        }
+
+        return false;
+    }
+
+    private static boolean isOntologyResource(Resource resource) {
+        if (resource == null || !resource.isURIResource()) {
+            return false;
+        }
+
+        Model model = resource.getModel();
+        StmtIterator typeStatements = model.listStatements(resource, RDF.type, (RDFNode) null);
+
+        while (typeStatements.hasNext()) {
+            Statement typeStmt = typeStatements.next();
+            if (typeStmt.getObject().isResource()) {
+                String typeUri = typeStmt.getObject().asResource().getURI();
+                if (OWL2.Ontology.getURI().equals(typeUri)) {
+                    return true;
+                }
+            }
         }
 
         return false;
