@@ -386,12 +386,19 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private Model fetchOntologyModel(String ontologyIRI) throws OntologyException {
-        Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
-        if (model.isEmpty()) {
-            log.error("Ontology model is empty for IRI: {}", ontologyIRI);
-            throw new OntologyException("Model slovníku je prázdný nebo nebyl nalezen.");
+        try {
+            Model model = jenaTDB2Repository.fetchGraph(ontologyIRI);
+            if (model.isEmpty()) {
+                log.error("Ontology model is empty for IRI: {}", ontologyIRI);
+                throw new OntologyException("Model slovníku je prázdný nebo nebyl nalezen.");
+            }
+            return model;
+        } catch (Exception e) {
+            log.error("Failed to fetch ontology model for IRI: {}. Error: {}", ontologyIRI, e.getMessage());
+            throw new OntologyException("Slovník s IRI " + ontologyIRI + " nebyl nalezen v úložišti. " +
+                    "Je možné, že došlo k nesrovnalosti mezi databází a RDF úložištěm. " +
+                    "Zkontrolujte, zda slovník existuje v Fuseki.");
         }
-        return model;
     }
 
     private OntologyEditor.EditResult performOntologyEdit(OntologyEditModel editModel, Model model, String oldNamespace, String iri) {
@@ -401,30 +408,55 @@ public class OntologyServiceImpl implements OntologyService {
     private OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
                                                            Model model, OntologyMetadataEntity metadataEntity)
             throws OntologyException {
+        log.info("Starting ontology IRI change: {} -> {}", oldOntologyIRI, newOntologyIRI);
+
+        try {
+            saveOntologyModel(newOntologyIRI, model);
+            log.info("Successfully saved ontology to new graph: {}", newOntologyIRI);
+        } catch (Exception e) {
+            log.error("Failed to save new graph to Fuseki: {}", e.getMessage());
+            throw new OntologyException("Nepodařilo se uložit nový graf do Fuseki: " + e.getMessage());
+        }
+
         try {
             String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
 
-            saveOntologyModel(newOntologyIRI, model);
-            log.info("Saved ontology to new graph: {}", newOntologyIRI);
+            updateConceptMetadataIRIs(metadataEntity.getId(), newOntologyIRI, oldNamespace);
+            log.info("Successfully updated concept metadata in SQL");
 
-            updateConceptMetadataIRIs(oldOntologyIRI, newOntologyIRI, oldNamespace);
+            OntologyMetadataEntity updatedEntity = updateOntologyMetadata(metadataEntity, newOntologyIRI);
+            log.info("Successfully updated ontology metadata in SQL");
 
-            deleteOntologyGraph(oldOntologyIRI);
-            log.info("Deleted old graph: {}", oldOntologyIRI);
+            try {
+                deleteOntologyGraph(oldOntologyIRI);
+                log.info("Successfully deleted old graph: {}", oldOntologyIRI);
+            } catch (Exception e) {
+                log.warn("Failed to delete old graph {}, but operation succeeded. Manual cleanup may be needed: {}",
+                        oldOntologyIRI, e.getMessage());
+            }
 
-            return updateOntologyMetadata(metadataEntity, newOntologyIRI);
+            return updatedEntity;
         } catch (Exception e) {
-            log.error("Failed to update ontology with new IRI: {}", e.getMessage());
-            throw new OntologyException("Nepodařilo se uložit změny slovníku: " + e.getMessage());
+            log.error("Failed to update SQL, rolling back. Attempting to clean up new graph: {}", newOntologyIRI);
+
+            try {
+                deleteOntologyGraph(newOntologyIRI);
+                log.info("Successfully cleaned up new graph after SQL failure: {}", newOntologyIRI);
+            } catch (Exception cleanupException) {
+                log.error("Failed to cleanup new graph {} after SQL failure. Manual cleanup required: {}",
+                        newOntologyIRI, cleanupException.getMessage());
+            }
+
+            throw new OntologyException("Nepodařilo se aktualizovat databázi: " + e.getMessage());
         }
     }
 
-    private void updateConceptMetadataIRIs(String oldGraphName, String newGraphName,
+    private void updateConceptMetadataIRIs(Long ontologyMetadataId, String newGraphName,
                                            String oldNamespace) {
-        List<ConceptMetadataEntity> concepts = conceptMetadataRepository.findByGraphName(oldGraphName);
+        List<ConceptMetadataEntity> concepts = conceptMetadataRepository.findByOntologyMetadataId(ontologyMetadataId);
 
         if (concepts.isEmpty()) {
-            log.info("No concepts found for ontology {}, skipping concept metadata updates", oldGraphName);
+            log.info("No concepts found for ontology ID {}, skipping concept metadata updates", ontologyMetadataId);
             return;
         }
 
@@ -433,24 +465,29 @@ public class OntologyServiceImpl implements OntologyService {
         URIGenerator uriGenerator = new URIGenerator();
         uriGenerator.setEffectiveNamespace(newGraphName);
 
-        int updatedCount = 0;
+        int updatedIRICount = 0;
+        int updatedGraphNameOnlyCount = 0;
+
         for (ConceptMetadataEntity concept : concepts) {
             String oldConceptIRI = concept.getConceptIri();
             String conceptName = concept.getConceptName();
 
             if (oldConceptIRI != null && conceptName != null && oldConceptIRI.startsWith(oldNamespace)) {
                 String newConceptIRI = uriGenerator.generateConceptURI(conceptName, null);
-
                 concept.setConceptIri(newConceptIRI);
                 concept.setGraphName(newGraphName);
-
-                log.debug("Updated concept metadata: {} -> {}", oldConceptIRI, newConceptIRI);
-                updatedCount++;
+                log.debug("Updated concept IRI and graphName: {} -> {}", oldConceptIRI, newConceptIRI);
+                updatedIRICount++;
+            } else {
+                concept.setGraphName(newGraphName);
+                log.debug("Updated graphName only for concept with custom identifier: {}", oldConceptIRI);
+                updatedGraphNameOnlyCount++;
             }
         }
 
         conceptMetadataRepository.saveAll(concepts);
-        log.info("Successfully updated {} concept metadata entries", updatedCount);
+        log.info("Successfully updated {} concept IRIs and {} graphNames for concepts with custom identifiers",
+                 updatedIRICount, updatedGraphNameOnlyCount);
     }
 
     private void saveOntologyModel(String ontologyIRI, Model model) throws OntologyException {
