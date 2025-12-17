@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
 
@@ -201,14 +202,18 @@ public class OntologyEditor {
                                       Set<Statement> toRemove, Set<Statement> toAdd) {
         log.info("Updating all concept IRIs from namespace '{}' to '{}'", oldNamespace, newNamespace);
 
-        ResIterator resIter = model.listSubjects();
         Set<Resource> conceptsToUpdate = new HashSet<>();
+        String oldOntologyIRI = oldNamespace.replaceAll("[/#]$", "");
 
+        ResIterator resIter = model.listSubjects();
         while (resIter.hasNext()) {
             Resource resource = resIter.next();
-            if (resource.isURIResource() && resource.getURI().startsWith(oldNamespace) && !resource.getURI().equals(oldNamespace.replaceAll("[/#]$", ""))) {
-                    conceptsToUpdate.add(resource);
-                }
+            if (resource.isURIResource()
+                && resource.getURI().startsWith(oldNamespace)
+                && !resource.getURI().equals(oldOntologyIRI)
+                && resource.hasProperty(RDF.type, SKOS.Concept)) {
+                conceptsToUpdate.add(resource);
+            }
         }
 
         log.info("Found {} concepts to update", conceptsToUpdate.size());

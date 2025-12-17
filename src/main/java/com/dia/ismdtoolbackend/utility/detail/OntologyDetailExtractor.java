@@ -71,12 +71,14 @@ public class OntologyDetailExtractor {
                 .map(conceptMap -> mapToConceptDetailModel(conceptMap, conceptData))
                 .toList();
 
+        Map<String, String> descriptionMap = extractMultilingualDescription(structure.getVocabularyResource());
+
         return OntologyDetailModel.builder()
                 .context(CONTEXT_JSONLD)
                 .iri(structure.getOntologyIRI())
                 .types(structure.getVocabularyTypes())
                 .name(createMultilingualMap(structure.getModelName()))
-                .description(createMultilingualMap(structure.getModelDescription()))
+                .description(descriptionMap)
                 .creationDate(structure.getCreationDate())
                 .modificationDate(structure.getModificationDate())
                 .concepts(concepts)
@@ -265,7 +267,7 @@ public class OntologyDetailExtractor {
                 .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
                 .definingNonLegalSources((List<Map<String, Object>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
                 .relatedNonLegalSources((List<Map<String, Object>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
-                .sharingMethods((List<String>) conceptMap.get(ZPUSOB_SDILENI_ALT))
+                .sharingMethods((List<String>) conceptMap.get(ZPUSOBY_SDILENI_ALT))
                 .acquisitionMethod(extractStringFromValue(conceptMap.get(ZPUSOB_ZISKANI_ALT)))
                 .contentType(extractStringFromValue(conceptMap.get(TYP_OBSAHU_ALT)))
                 .isPpdf((Boolean) conceptMap.get(JE_PPDF))
@@ -298,5 +300,31 @@ public class OntologyDetailExtractor {
         Map<String, String> map = new LinkedHashMap<>();
         map.put(DEFAULT_LANG, value);
         return map;
+    }
+
+    private Map<String, String> extractMultilingualDescription(Resource vocabularyResource) {
+        if (vocabularyResource == null) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> descriptionMap = new LinkedHashMap<>();
+        Property descProperty = ResourceFactory.createProperty(DCT_NS + "description");
+
+        StmtIterator iter = vocabularyResource.listProperties(descProperty);
+        while (iter.hasNext()) {
+            Statement stmt = iter.next();
+            if (stmt.getObject().isLiteral()) {
+                Literal literal = stmt.getObject().asLiteral();
+                String lang = literal.getLanguage();
+                String value = literal.getString();
+
+                if (value != null && !value.trim().isEmpty()) {
+                    String languageTag = (lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG;
+                    descriptionMap.put(languageTag, value);
+                }
+            }
+        }
+
+        return descriptionMap;
     }
 }
