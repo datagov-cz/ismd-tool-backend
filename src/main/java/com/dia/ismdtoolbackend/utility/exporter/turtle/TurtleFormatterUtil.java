@@ -23,6 +23,12 @@ public class TurtleFormatterUtil {
     private static final String NADRAZENA_TRIDA = "https://slovník.gov.cz/nadřazená-třída";
     private static final String POJEM_URI = "/pojem/";
     private static final String CONCEPT = "Concept";
+    private static final String AGENDOVY_POJEM = "https://slovník.gov.cz/agendový/104/pojem/";
+    private static final String SCHEMA = "http://schema.org/";
+    private static final String TYP_OBSAHU_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-typ-obsahu-údaje";
+    private static final String ZPUSOB_SDILENI_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-způsob-sdílení-údaje";
+    private static final String ZPUSOB_ZISKANI_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-způsob-získání-údaje";
+    private static final String USTANOVENI_NEVEREJNOST= "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/je-vymezen-ustanovení-stanovujícím-jeho-neveřejnost";
 
     private static final Map<String, String> OFN_PREFIXES = new HashMap<>();
 
@@ -33,12 +39,16 @@ public class TurtleFormatterUtil {
         OFN_PREFIXES.put("rdfs", RDFS.getURI());
         OFN_PREFIXES.put("skos", SKOS_NS);
         OFN_PREFIXES.put("slovníky", OFN_NAMESPACE);
-        OFN_PREFIXES.put("vsgov", "https://slovník.gov.cz/veřejný-sektor/pojem/");
+        OFN_PREFIXES.put("vsgov", OFN_NAMESPACE_VS);
         OFN_PREFIXES.put("xsd", XSD);
         OFN_PREFIXES.put("čas", CAS_NS);
-        OFN_PREFIXES.put("a104", "https://slovník.gov.cz/agendový/104/pojem/");
-        OFN_PREFIXES.put("l111-2009", "https://slovník.gov.cz/legislativním/sbírka/111/2009/pojem/");
-        OFN_PREFIXES.put("schema", "http://schema.org/");
+        OFN_PREFIXES.put("a104", AGENDOVY_POJEM);
+        OFN_PREFIXES.put("l111-2009", OFN_NAMESPACE_LEGAL);
+        OFN_PREFIXES.put("schema", SCHEMA);
+        OFN_PREFIXES.put("typ-obsahu-údajů", TYP_OBSAHU_UDAJU);
+        OFN_PREFIXES.put("způsoby-sdílení-údajů", ZPUSOB_SDILENI_UDAJU);
+        OFN_PREFIXES.put("způsoby-získání-údajů", ZPUSOB_ZISKANI_UDAJU);
+        OFN_PREFIXES.put("ustanovení-dokládající-neveřejnost-pojmu", USTANOVENI_NEVEREJNOST);
     }
 
     private TurtleFormatterUtil() {}

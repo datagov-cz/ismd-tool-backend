@@ -398,7 +398,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         if (conceptResource.hasProperty(RDF.type, OWL2.ObjectProperty)) {
             return ConceptType.VZTAH;
         }
-        if (conceptResource.hasProperty(RDF.type, OWL2.Class)) {
+        if (conceptResource.hasProperty(RDF.type, SKOS.Concept) || conceptResource.hasProperty(RDF.type, OWL2.Class)) {
             return ConceptType.TRIDA;
         }
         return null;

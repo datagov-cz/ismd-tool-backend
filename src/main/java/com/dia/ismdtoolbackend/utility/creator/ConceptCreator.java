@@ -404,8 +404,8 @@ public class ConceptCreator {
     }
 
     private void addLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
-        processLegalSources(resource, model.getDefiningNonLegalSource(), true);
-        processLegalSources(resource, model.getRelatedNonLegalSource(), false);
+        processLegalSources(resource, model.getDefiningLegalSource(), true);
+        processLegalSources(resource, model.getRelatedLegalSource(), false);
     }
 
     private void addNonLegalSourceMetadata(Resource resource, ConceptCreateModel model) {
