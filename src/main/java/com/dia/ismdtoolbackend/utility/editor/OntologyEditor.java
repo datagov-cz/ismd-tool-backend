@@ -85,7 +85,8 @@ public class OntologyEditor {
                 model.commit();
             }
 
-            return new EditResult(newOntologyIRI, nameChanged);
+            boolean iriActuallyChanged = nameChanged && !iri.equals(newOntologyIRI);
+            return new EditResult(newOntologyIRI, iriActuallyChanged);
 
         } catch (Exception e) {
             if (supportsTransactions) {
