@@ -1047,7 +1047,7 @@ public class ConceptEditor {
                                                  String acquisitionMethod, String contentType,
                                                  Resource oldConcept, Model model, Set<Statement> toRemove,
                                                  Set<Statement> toAdd) {
-        updateBooleanProperty(newConcept, JE_PPDF, isInPPDF, oldConcept, model, toRemove, toAdd);
+        updateBooleanProperty(newConcept, JE_PPDF_LONG, isInPPDF, oldConcept, model, toRemove, toAdd);
         updateStringProperty(newConcept, AGENDA_CODE, agendaCode, oldConcept, model, toRemove, toAdd);
         updateStringProperty(newConcept, AIS, agendaSystemCode, oldConcept, model, toRemove, toAdd);
         updateGovernanceProperty(newConcept, contentType, TYP_OBSAHU, oldConcept, model, toRemove, toAdd);
