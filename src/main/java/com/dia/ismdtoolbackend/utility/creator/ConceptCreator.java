@@ -238,7 +238,7 @@ public class ConceptCreator {
     private void addCommonGovernanceProperties(Set<String> properties, Boolean isInPPDF, String agendaCode,
                                                  String agendaSystemCode, List<String> privacyProvisions,
                                                  List<String> sharingMethod, String acquisitionMethod, String contentType) {
-        if (isInPPDF != null) {
+        if (Boolean.TRUE.equals(isInPPDF)) {
             properties.add(JE_PPDF_LONG);
         }
         if (agendaCode != null && !agendaCode.trim().isEmpty()) {
