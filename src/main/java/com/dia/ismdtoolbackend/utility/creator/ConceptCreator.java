@@ -696,30 +696,32 @@ public class ConceptCreator {
     }
 
     private void addDataClassification(Resource resource, Boolean isPublic, List<String> privacyProvisions) {
-        if (privacyProvisions != null && !privacyProvisions.isEmpty()) {
-            resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
+        boolean hasNonEmptyProvisions = privacyProvisions != null &&
+                privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());
 
+        List<String> validProvisions = new java.util.ArrayList<>();
+        if (privacyProvisions != null) {
             for (String provision : privacyProvisions) {
                 if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
                     String eliPart = UtilityMethods.extractEliPart(provision);
                     if (eliPart != null) {
-                        String transformedProvision = ELI_PATTERN + eliPart;
-                        Property provisionProperty = ontModel.createProperty(
-                                OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-                        resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+                        validProvisions.add(ELI_PATTERN + eliPart);
                     }
                 }
             }
-            return;
         }
 
-        if (isPublic != null) {
-            if (isPublic) {
+        if (Boolean.TRUE.equals(isPublic)) {
+            if (!hasNonEmptyProvisions) {
                 resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ));
-            } else {
-                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
             }
-        }
+        } else if (Boolean.FALSE.equals(isPublic) && !validProvisions.isEmpty()) {
+                resource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ));
+                Property provisionProperty = ontModel.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+                for (String transformedProvision : validProvisions) {
+                    resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
+                }
+            }
     }
 
     private void addIsInPPDF(Resource resource, Boolean isInPPDF) {

@@ -29,7 +29,6 @@ public class ConceptEditor {
     private static final String AGENDA_CODE = "agendaCode";
     private static final String AIS = "agendaSystemCode";
     private static final String IS_PUBLIC = "isPublic";
-    private static final String PRIVACY_PROVISIONS = "privacyProvisions";
     private static final String IN_TEZAURUS = "inTezaurus";
     private static final String NAMESPACE = "namespace";
 
@@ -117,7 +116,7 @@ public class ConceptEditor {
                 editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
                 editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        updateDataClassification(context.newConcept, editModel.getIsPublic(),
+        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvisions(),
                                 context.oldConcept, model, toRemove, toAdd);
     }
 
@@ -133,7 +132,7 @@ public class ConceptEditor {
                 editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
                 editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        updateDataClassification(context.newConcept, editModel.getIsPublic(),
+        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvisions(),
                                 context.oldConcept, model, toRemove, toAdd);
     }
 
@@ -149,7 +148,7 @@ public class ConceptEditor {
                 editModel.getAgendaSystemCode(), editModel.getSharingMethod(), editModel.getAcquisitionMethod(),
                 editModel.getContentType(), context.oldConcept, model, toRemove, toAdd);
 
-        updateDataClassification(context.newConcept, editModel.getIsPublic(),
+        updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvisions(),
                                 context.oldConcept, model, toRemove, toAdd);
     }
 
@@ -1012,34 +1011,34 @@ public class ConceptEditor {
         return DEFAULT_NS;
     }
 
-    private void updateDataClassification(Resource newConcept, Boolean isPublic,
+    private void updateDataClassification(Resource newConcept, Boolean isPublic, List<String> privacyProvisions,
                                           Resource oldConcept, Model model, Set<Statement> toRemove,
                                           Set<Statement> toAdd) {
         Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
         Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
-        if (oldConcept.hasProperty(RDF.type, verejnyLegal) || oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
-            processPropertyWithLegalNamespace(newConcept, isPublic, oldConcept, model, toRemove, toAdd, verejnyLegal, neverejnyLegal);
-        }
-    }
-
-    private void processPropertyWithLegalNamespace(Resource newConcept, Boolean isPublic,
-                                                   Resource oldConcept, Model model, Set<Statement> toRemove,
-                                                   Set<Statement> toAdd, Resource verejnyLegal, Resource neverejnyLegal) {
         if (oldConcept.hasProperty(RDF.type, verejnyLegal)) {
             toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyLegal));
         }
-
         if (oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
             toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyLegal));
         }
+        boolean hasNonEmptyProvisions = privacyProvisions != null &&
+                privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());
 
-        if (isPublic != null) {
-            if (isPublic) {
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        boolean hasValidProvisions = toAdd.stream().anyMatch(stmt ->
+                stmt.getSubject().equals(newConcept) &&
+                stmt.getPredicate().equals(provisionProperty));
+        if (Boolean.TRUE.equals(isPublic)) {
+            if (!hasNonEmptyProvisions) {
                 toAdd.add(model.createStatement(newConcept, RDF.type, verejnyLegal));
-            } else {
-                toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyLegal));
             }
+        } else if (Boolean.FALSE.equals(isPublic)) {
+            if (!hasValidProvisions) {
+                return;
+            }
+            toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyLegal));
         }
     }
 
