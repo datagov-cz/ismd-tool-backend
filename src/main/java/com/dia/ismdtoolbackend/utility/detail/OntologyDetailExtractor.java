@@ -270,7 +270,7 @@ public class OntologyDetailExtractor {
                 .sharingMethods((List<String>) conceptMap.get(ZPUSOBY_SDILENI_ALT))
                 .acquisitionMethod(extractStringFromValue(conceptMap.get(ZPUSOB_ZISKANI_ALT)))
                 .contentType(extractStringFromValue(conceptMap.get(TYP_OBSAHU_ALT)))
-                .isPpdf((Boolean) conceptMap.get(JE_PPDF_LONG))
+                .isPpdf((Boolean) conceptMap.get(JE_PPDF))
                 .ais(extractStringFromValue(conceptMap.get(UDAJE_AIS)))
                 .agenda(extractStringFromValue(conceptMap.get(AGENDA_LONG)))
                 .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
