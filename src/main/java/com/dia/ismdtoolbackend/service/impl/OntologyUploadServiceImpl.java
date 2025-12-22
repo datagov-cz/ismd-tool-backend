@@ -1,9 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
-import com.dia.ismdtoolbackend.exception.*;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.utility.analyzer.AnalysisResult;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -13,19 +11,19 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
-import com.dia.ismdtoolbackend.exception.OntologyAnalysisException;
+import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
-import com.dia.models.OFNBaseModel;
 import com.dia.utility.UtilityMethods;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
@@ -92,27 +90,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) {
-        if (file.isEmpty()) {
-            log.error("Ontology upload file is empty");
-            throw new EmptyFileException("Ontology upload file is empty");
-        }
-
-        Lang rdfLang = determineRDFFormat(file);
-        if (rdfLang == null) {
-            log.error("Ontology RDF language is not supported");
-            throw new UnsupportedRdfFormatException("Ontology RDF language is not supported");
-        }
-
-        OntModel finalModel;
-        try {
-            finalModel = createMergedOntologyModel(file, rdfLang);
-        } catch (IOException e) {
-            log.error("Failed to read uploaded file: {}", e.getMessage(), e);
-            throw new OntologyUploadException("Nepodařilo se načíst nahraný soubor: " + e.getMessage(), e);
-        }
-
-
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
+        OntModel finalModel = getOntologyModel(file, rdfLang);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
@@ -140,7 +119,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             } catch (Exception tdbException) {
                 log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
             }
-            throw new OntologyUploadException("Failed to upload ontology: " + e.getMessage(), e);
+            throw new OntoloyUploadException("Failed to upload ontology: " + e.getMessage(), e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
@@ -149,39 +128,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         );
 
         return metadata;
-    }
-
-    private OntModel createMergedOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
-        OntModel uploadedModel = getOntologyModel(file, rdfLang);
-
-        try {
-            AnalysisResult analysisResult = ontologyAnalyzer.analyzeUploadedOntology(uploadedModel);
-            Set<String> requiredBaseClasses = analysisResult.requiredBaseClasses();
-            Set<String> requiredProperties = analysisResult.requiredProperties();
-
-            log.info("Analysis complete - Required base classes: {}, Required properties: {}",
-                    requiredBaseClasses.size(), requiredProperties.size());
-            log.debug("Base classes: {}", requiredBaseClasses);
-            log.debug("Properties: {}", requiredProperties);
-
-            if (requiredBaseClasses.isEmpty() && requiredProperties.isEmpty()) {
-                log.info("Ontology is complete, using as-is with {} statements", uploadedModel.size());
-                return uploadedModel;
-            }
-
-            OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
-
-            OntModel mergedModel = ModelFactory.createOntologyModel();
-            mergedModel.add(uploadedModel);
-            mergedModel.add(baseModel.getOntModel());
-
-            log.info("Created merged model with {} statements (uploaded: {}, base: {})",
-                    mergedModel.size(), uploadedModel.size(), baseModel.getOntModel().size());
-
-            return mergedModel;
-        } catch (Exception e) {
-            throw new OntologyAnalysisException(e, e.getMessage());
-        }
     }
 
     private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
@@ -297,11 +243,12 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
-        OntModel uploadedModel = ModelFactory.createOntologyModel();
+        OntModel uploadedModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
 
         try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
             RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
         }
+
         return uploadedModel;
     }
 
@@ -360,7 +307,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
 
-            ConceptType conceptType = determineConceptType(conceptResource, model);
+            ConceptType conceptType = determineConceptType(conceptResource);
 
             ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
             conceptEntity.setSlug(slug);
@@ -410,20 +357,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return false;
     }
 
-    private ConceptType determineConceptType(Resource conceptResource, OntModel model) {
-        if (hasOFNType(conceptResource, VLASTNOST, model)) {
+    private ConceptType determineConceptType(Resource conceptResource) {
+        if (conceptResource.hasProperty(RDF.type, OWL2.DatatypeProperty)) {
             return ConceptType.VLASTNOST;
         }
-        if (hasOFNType(conceptResource, VZTAH, model)) {
+        if (conceptResource.hasProperty(RDF.type, OWL2.ObjectProperty)) {
             return ConceptType.VZTAH;
         }
-        return ConceptType.TRIDA;
-    }
-
-    private boolean hasOFNType(Resource conceptResource, String typeName, OntModel model) {
-        String typeUri = OFN_NAMESPACE + typeName;
-        Resource typeResource = model.getResource(typeUri);
-        return conceptResource.hasProperty(RDF.type, typeResource);
+        if (conceptResource.hasProperty(RDF.type, SKOS.Concept) || conceptResource.hasProperty(RDF.type, OWL2.Class)) {
+            return ConceptType.TRIDA;
+        }
+        return null;
     }
 
     private String generateConceptSlug(String graphName, String conceptName) {

@@ -13,23 +13,6 @@ import com.dia.ismdtoolbackend.exception.TurtleExportException;
 @Slf4j
 public class TurtleFilterUtil {
 
-    private static final Set<String> EXPLICIT_BASE_FRAMEWORK_URIS = Set.of(
-            "https://slovník.gov.cz/pojem",
-            "https://slovník.gov.cz/třída",
-            "https://slovník.gov.cz/typ-subjektu-práva",
-            "https://slovník.gov.cz/typ-objektu-práva",
-            "https://slovník.gov.cz/datový-typ",
-            "https://slovník.gov.cz/údaj",
-            "https://slovník.gov.cz/veřejný-údaj",
-            "https://slovník.gov.cz/neveřejný-údaj",
-            "https://slovník.gov.cz/způsob-sdílení-údaje",
-            "https://slovník.gov.cz/způsob-získání-údaje",
-            "https://slovník.gov.cz/číselník",
-            "https://slovník.gov.cz/položka-číselníku",
-            "https://slovník.gov.cz/typ-vlastnosti",
-            "http://www.w3.org/2004/02/skos/core#Concept"
-    );
-
     private static final Set<String> VOCABULARY_URIS_TO_FILTER = Set.of(
             // RDF vocabulary
             RDF.getURI() + "type",
@@ -122,114 +105,19 @@ public class TurtleFilterUtil {
         String subjectUri = subject.getURI();
 
         if (subjectUri == null) {
+            return shouldFilterBlankNode(subject);
+        }
+
+        if (isOntologyResource(subject)) {
             return false;
         }
 
-        if (EXPLICIT_BASE_FRAMEWORK_URIS.contains(subjectUri)) {
-            log.debug("Filtering statement about base framework class: {}", subjectUri);
+        if (hasOnlyVocabularyTypes(subject)) {
+            log.debug("Filtering resource with only vocabulary types: {}", subjectUri);
             return true;
-        }
-
-        if (isVocabularyDefinition(subjectUri)) {
-            return true;
-        }
-
-
-        if (isVocabularySelfReference(stmt)) {
-            return true;
-        }
-
-        if (isBaseSchemaResource(subjectUri)) {
-            return true;
-        }
-
-        if (stmt.getObject().isResource()) {
-            String objectUri = stmt.getObject().asResource().getURI();
-            Property predicate = stmt.getPredicate();
-
-            if ("https://slovník.gov.cz/nadřazená-třída".equals(predicate.getURI()) &&
-                    EXPLICIT_BASE_FRAMEWORK_URIS.contains(objectUri)) {
-                log.debug("Filtering nadřazená-třída relationship to base class: {} -> {}", subjectUri, objectUri);
-                return true;
-            }
-
-            if (RDFS.subClassOf.equals(predicate) &&
-                    EXPLICIT_BASE_FRAMEWORK_URIS.contains(objectUri) &&
-                    !objectUri.contains("/legislativní/") &&
-                    !objectUri.contains("/agendový/")) {
-                log.debug("Filtering subClassOf relationship to base framework class: {} -> {}", subjectUri, objectUri);
-                return true;
-            }
         }
 
         return false;
-    }
-
-    private static boolean isBaseSchemaResource(String uri) {
-        if (uri == null) return false;
-
-        if (EXPLICIT_BASE_FRAMEWORK_URIS.contains(uri)) {
-            log.debug("Filtering explicit base framework URI: {}", uri);
-            return true;
-        }
-
-        if (uri.startsWith("http://www.w3.org/2001/XMLSchema#")) {
-            return true;
-        }
-
-        if (uri.startsWith("http://schema.org/")) {
-            return true;
-        }
-
-        if (uri.startsWith("https://slovník.gov.cz/")) {
-
-            if (uri.startsWith("https://slovník.gov.cz/datový") ||
-                    uri.startsWith("https://slovník.gov.cz/legislativní") ||
-                    uri.startsWith("https://slovník.gov.cz/veřejný-sektor")) {
-                return false;
-            }
-
-            if (uri.contains("/datový-slovník-ofn-slovníků/pojem/")) {
-                return true;
-            }
-
-            if (uri.startsWith("https://slovník.gov.cz/agendový") && !uri.contains("/pojem/")) {
-                log.debug("Filtering out base schema property: {}", uri);
-                return true;
-            }
-
-            if (uri.startsWith("https://slovník.gov.cz/agendový") && uri.contains("/pojem/")) {
-                return false;
-            }
-
-            if (uri.startsWith("https://slovník.gov.cz/generický") ||
-                    (uri.startsWith("https://slovník.gov.cz/") &&
-                            !uri.contains("/pojem/") &&
-                            !uri.contains("/slovník") &&
-                            !uri.contains("/legislativní/") &&
-                            !uri.contains("/datový/") &&
-                            !uri.contains("/agendový/"))) {
-                log.debug("Filtering out base schema property: {}", uri);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static boolean isVocabularyDefinition(String uri) {
-        if (uri == null) return false;
-
-        if (VOCABULARY_URIS_TO_FILTER.contains(uri)) {
-            return true;
-        }
-
-        if (EXPLICIT_BASE_FRAMEWORK_URIS.contains(uri)) {
-            return true;
-        }
-
-        return uri.startsWith("http://www.w3.org/2001/XMLSchema#") ||
-                uri.startsWith("http://schema.org/");
     }
 
     private static boolean isEmptyLiteralStatement(Statement stmt) {
@@ -241,18 +129,91 @@ public class TurtleFilterUtil {
         return false;
     }
 
-    private static boolean isVocabularySelfReference(Statement stmt) {
-        Resource subject = stmt.getSubject();
-        Property predicate = stmt.getPredicate();
+    private static boolean shouldFilterBlankNode(Resource blankNode) {
+        if (!blankNode.isAnon()) {
+            return false;
+        }
 
-        if (predicate.equals(RDFS.subPropertyOf) &&
-                stmt.getObject().isResource() &&
-                subject.equals(stmt.getObject().asResource())) {
+        Model model = blankNode.getModel();
+        StmtIterator typeStatements = model.listStatements(blankNode, RDF.type, (RDFNode) null);
+
+        boolean hasTypes = false;
+        boolean allTypesAreVocabulary = true;
+
+        while (typeStatements.hasNext()) {
+            Statement typeStmt = typeStatements.next();
+            hasTypes = true;
+
+            if (typeStmt.getObject().isResource()) {
+                String typeUri = typeStmt.getObject().asResource().getURI();
+
+                if (typeUri != null && !isVocabularyType(typeUri)) {
+                    allTypesAreVocabulary = false;
+                    break;
+                }
+            }
+        }
+
+        if (hasTypes && allTypesAreVocabulary) {
+            log.debug("Filtering blank node with only vocabulary types");
             return true;
         }
 
-        return predicate.equals(RDFS.subClassOf) &&
-                stmt.getObject().isResource() &&
-                subject.equals(stmt.getObject().asResource());
+        return false;
+    }
+
+    private static boolean isOntologyResource(Resource resource) {
+        if (resource == null || !resource.isURIResource()) {
+            return false;
+        }
+
+        Model model = resource.getModel();
+        StmtIterator typeStatements = model.listStatements(resource, RDF.type, (RDFNode) null);
+
+        while (typeStatements.hasNext()) {
+            Statement typeStmt = typeStatements.next();
+            if (typeStmt.getObject().isResource()) {
+                String typeUri = typeStmt.getObject().asResource().getURI();
+                if (OWL2.Ontology.getURI().equals(typeUri)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static boolean isVocabularyType(String typeUri) {
+        if (typeUri == null) {
+            return false;
+        }
+
+        return VOCABULARY_URIS_TO_FILTER.contains(typeUri) ||
+               typeUri.startsWith("http://www.w3.org/2001/XMLSchema#") ||
+               typeUri.startsWith("http://schema.org/");
+    }
+
+    private static boolean hasOnlyVocabularyTypes(Resource resource) {
+        Model model = resource.getModel();
+        StmtIterator typeStatements = model.listStatements(resource, RDF.type, (RDFNode) null);
+
+        boolean hasTypes = false;
+        boolean allTypesAreVocabulary = true;
+
+        while (typeStatements.hasNext()) {
+            Statement typeStmt = typeStatements.next();
+            hasTypes = true;
+
+            if (typeStmt.getObject().isResource()) {
+                String typeUri = typeStmt.getObject().asResource().getURI();
+
+                if (typeUri != null && !isVocabularyType(typeUri)) {
+                    allTypesAreVocabulary = false;
+                    break;
+                }
+            }
+        }
+
+        return hasTypes && allTypesAreVocabulary;
     }
 }

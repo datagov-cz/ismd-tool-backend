@@ -20,7 +20,7 @@ public class PropertyConceptModel extends ConceptCreateModel {
     private String agendaCode;
     private String agendaSystemCode;
     private Boolean isPublic;
-    private String privacyProvision;
+    private List<String> privacyProvisions;
     private List<String> sharingMethod;
     private String acquisitionMethod;
     private String contentType;
@@ -45,7 +45,7 @@ public class PropertyConceptModel extends ConceptCreateModel {
             DataTypeConverter.isValidXSDType(dataType.trim());
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
+        if (privacyProvisions != null && !privacyProvisions.isEmpty() && isPublic != null && isPublic) {
             throw new OntologyException(
                     "Vlastnost nemůže být současně veřejná a mít ustanovení o neveřejnosti"
             );
