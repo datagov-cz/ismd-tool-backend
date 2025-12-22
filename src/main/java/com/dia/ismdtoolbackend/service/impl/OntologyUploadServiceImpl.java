@@ -133,11 +133,18 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
         List<String> resourceIris = new ArrayList<>();
 
-        Resource slovnikResource = finalModel.createResource(OWL2.Ontology);
+        ResIterator ontologyIterator = finalModel.listResourcesWithProperty(RDF.type, OWL2.Ontology);
+        if (ontologyIterator.hasNext()) {
+            Resource ontologyResource = ontologyIterator.next();
+            if (ontologyResource.isURIResource()) {
+                String ontologyIri = ontologyResource.getURI();
+                resourceIris.add(ontologyIri);
+                log.debug("Added ontology IRI to NKD verification list: {}", ontologyIri);
+            }
+        }
+
         Resource pojemResource = finalModel.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = finalModel.listResourcesWithProperty(RDF.type, pojemResource);
-
-        resourceIris.add(slovnikResource.getURI());
 
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
@@ -291,6 +298,12 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
         OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
                 .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
+
+        if (publishedConceptIris.contains(graphName)) {
+            log.info("Ontology {} is published in NKD, setting isPublished = true", graphName);
+            ontologyMetadata.setIsPublished(true);
+            ontologyMetadataRepository.save(ontologyMetadata);
+        }
 
         Resource pojemResource = model.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
