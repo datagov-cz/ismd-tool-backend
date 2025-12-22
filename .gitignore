@@ -45,4 +45,12 @@ build/
 data/
 *.tdb2/
 fuseki-base/
-*.md
+
+### Environment files with secrets ###
+.env
+
+### generated certificates ###
+*.crt
+*.key
+docker/keycloak/secrets/
+docker/nginx-mtls/certs/
