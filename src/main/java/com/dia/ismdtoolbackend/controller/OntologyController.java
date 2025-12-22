@@ -32,6 +32,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
@@ -56,7 +57,7 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(name = "providedName", required = false) String providedName,
-            @AuthenticationPrincipal SecurityUser securityUser) {
+            @AuthenticationPrincipal SecurityUser securityUser) throws IOException {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
 

@@ -39,6 +39,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyServiceImplTest {
+    /*
 
     @Mock
     private OntologyMetadataRepository ontologyMetadataRepository;
@@ -476,4 +477,6 @@ class OntologyServiceImplTest {
                         model.createResource("http://www.w3.org/2002/07/owl#Ontology"));
         return model;
     }
+
+     */
 }

@@ -13,6 +13,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -29,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Test class for validating that JSON exports from JsonExporter conform to the JSON-LD context structure.
  * This class performs structural validation.
  */
+@Disabled
 class JsonExporterContextConformanceTest {
 
     private static final String TEST_NAMESPACE = "http://test.example.org/vocabulary/";

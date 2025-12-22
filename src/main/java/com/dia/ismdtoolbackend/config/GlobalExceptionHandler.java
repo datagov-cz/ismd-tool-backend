@@ -12,6 +12,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.io.IOException;
+
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -148,6 +150,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(OntologyAnalysisException.class)
     public ResponseEntity<ApiResponseDto> handleOntologyAnalysisException(OntologyAnalysisException e) {
         log.error("Ontology analysis failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity<ApiResponseDto> handleIOException(IOException e) {
+        log.error("IO exception: {}", e.getMessage(), e);
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

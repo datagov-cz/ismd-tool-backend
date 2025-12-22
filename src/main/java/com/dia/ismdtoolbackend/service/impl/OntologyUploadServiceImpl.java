@@ -11,7 +11,7 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
-import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -90,8 +90,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
-        OntModel finalModel = getOntologyModel(file, rdfLang);
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
+        OntModel finalModel = getOntologyModel(file, determineRDFFormat(file));
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
@@ -119,7 +119,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             } catch (Exception tdbException) {
                 log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
             }
-            throw new OntoloyUploadException("Failed to upload ontology: " + e.getMessage(), e);
+            throw new OntologyUploadException("Failed to upload ontology: " + e.getMessage(), e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
