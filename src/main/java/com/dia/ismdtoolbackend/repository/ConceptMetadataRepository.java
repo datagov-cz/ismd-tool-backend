@@ -14,6 +14,8 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     List<ConceptMetadataEntity> findByGraphName(String graphName);
 
+    List<ConceptMetadataEntity> findByOntologyMetadataId(Long ontologyMetadataId);
+
     List<ConceptMetadataEntity> findAllByUserIdAndIsPublished(String userId, Boolean isPublished);
 
     List<ConceptMetadataEntity> findAllByUserId(String userId);

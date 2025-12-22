@@ -409,7 +409,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areEqual(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
-            builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+            builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getPrivacyProvisions())
                     .publishedValue(published.getPrivacyProvisions())
                     .isDifferent(true)

@@ -82,8 +82,8 @@ public class PublishedConceptDeviationModel {
     @JsonProperty("agenda")
     private PropertyDeviation<String> agenda;
 
-    @JsonProperty("ustanovení-neverejnost")
-    private PropertyDeviation<String> privacyProvisions;
+    @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
+    private PropertyDeviation<List<String>> privacyProvisions;
 
     @Data
     @Builder

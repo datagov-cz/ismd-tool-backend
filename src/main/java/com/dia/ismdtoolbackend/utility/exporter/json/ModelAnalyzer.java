@@ -132,8 +132,9 @@ public class ModelAnalyzer {
         };
 
         for (Property descProperty : descriptionProperties) {
-            if (vocabularyResource.hasProperty(descProperty)) {
-                Statement stmt = vocabularyResource.getProperty(descProperty);
+            StmtIterator iter = vocabularyResource.listProperties(descProperty);
+            while (iter.hasNext()) {
+                Statement stmt = iter.next();
                 if (stmt.getObject().isLiteral()) {
                     String value = stmt.getString();
                     if (value != null && !value.trim().isEmpty()) {

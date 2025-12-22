@@ -131,29 +131,33 @@ public class TurtleFormatterUtil {
     }
 
     private static void transformPropertiesToOFNFormat(OntModel model) {
-        Property slovnikyPojem = model.getProperty(OFN_NAMESPACE + "pojem");
         Property slovnikyVlastnost = model.getProperty(OFN_NAMESPACE + "vlastnost");
+        Property slovnikyVztah = model.getProperty(OFN_NAMESPACE + "vztah");
 
-        List<Resource> properties = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDF.type, OWL2.DatatypeProperty);
+        List<Resource> objectProperties = new ArrayList<>();
+        StmtIterator iter = model.listStatements(null, RDF.type, OWL2.ObjectProperty);
         while (iter.hasNext()) {
-            properties.add(iter.next().getSubject());
+            objectProperties.add(iter.next().getSubject());
         }
 
-        iter = model.listStatements(null, RDF.type, OWL2.ObjectProperty);
-        while (iter.hasNext()) {
-            properties.add(iter.next().getSubject());
+        for (Resource property : objectProperties) {
+            if (property.getURI() != null && property.getURI().contains(POJEM_URI) && !property.hasProperty(RDF.type, slovnikyVztah)) {
+                property.addProperty(RDF.type, slovnikyVztah);
+            }
         }
 
-        for (Resource property : properties) {
+        List<Resource> datatypeProperties = new ArrayList<>();
+        iter = model.listStatements(null, RDF.type, OWL2.DatatypeProperty);
+        while (iter.hasNext()) {
+            datatypeProperties.add(iter.next().getSubject());
+        }
+
+        for (Resource property : datatypeProperties) {
             if (property.getURI() != null && property.getURI().contains(POJEM_URI)) {
-                if (!property.hasProperty(RDF.type, slovnikyPojem)) {
-                    property.addProperty(RDF.type, slovnikyPojem);
+                if (property.hasProperty(RDF.type, OWL2.ObjectProperty)) {
+                    continue;
                 }
-
-                Property slovnikyVztah = model.getProperty(OFN_NAMESPACE + "vztah");
-                if (!property.hasProperty(RDF.type, slovnikyVztah) &&
-                        !property.hasProperty(RDF.type, slovnikyVlastnost)) {
+                if (!property.hasProperty(RDF.type, slovnikyVlastnost)) {
                     property.addProperty(RDF.type, slovnikyVlastnost);
                 }
             }

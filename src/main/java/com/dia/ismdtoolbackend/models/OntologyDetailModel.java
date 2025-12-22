@@ -115,8 +115,8 @@ public class OntologyDetailModel {
         @JsonProperty("agenda")
         private String agenda;
 
-        @JsonProperty("ustanovení-neveřejnost")
-        private String privacyProvisions;
+        @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
+        private List<String> privacyProvisions;
 
         private List<ConceptPropertiesModel> conceptProperties;
 

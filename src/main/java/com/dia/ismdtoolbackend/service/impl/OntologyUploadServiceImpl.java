@@ -23,6 +23,7 @@ import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
@@ -242,7 +243,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     private OntModel getOntologyModel(MultipartFile file, Lang rdfLang) throws IOException {
-        OntModel uploadedModel = ModelFactory.createOntologyModel();
+        OntModel uploadedModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
 
         try (ByteArrayInputStream inputStream = new ByteArrayInputStream(file.getBytes())) {
             RDFDataMgr.read(uploadedModel, inputStream, rdfLang);

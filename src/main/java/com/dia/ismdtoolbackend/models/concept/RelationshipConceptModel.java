@@ -22,7 +22,7 @@ public class RelationshipConceptModel extends ConceptCreateModel {
     private List<String> sharingMethod;
     private Boolean isInPPDF;
     private Boolean isPublic;
-    private String privacyProvision;
+    private List<String> privacyProvisions;
 
     @Override
     public ConceptType getConceptTypeEnum() {
@@ -40,7 +40,7 @@ public class RelationshipConceptModel extends ConceptCreateModel {
             log.warn("Relationship '{}' without domain/range", nameModel);
         }
 
-        if (privacyProvision != null && !privacyProvision.trim().isEmpty() && isPublic != null && isPublic) {
+        if (privacyProvisions != null && !privacyProvisions.isEmpty() && isPublic != null && isPublic) {
             throw new OntologyException(
                     "Vztah nemůže být současně veřejný a mít ustanovení o neveřejnosti"
             );
