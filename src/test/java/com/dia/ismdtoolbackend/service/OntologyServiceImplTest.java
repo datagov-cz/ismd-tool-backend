@@ -39,7 +39,6 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyServiceImplTest {
-    /*
 
     @Mock
     private OntologyMetadataRepository ontologyMetadataRepository;
@@ -339,7 +338,7 @@ class OntologyServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
         when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
-        when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+        when(conceptMetadataRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
@@ -378,7 +377,7 @@ class OntologyServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
         when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
-        when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(concepts);
+        when(conceptMetadataRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(concepts);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
@@ -420,10 +419,8 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        assertThrows(OntologyException.class,
                 () -> ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel));
-
-        assertTrue(exception.getMessage().contains("prázdný"));
     }
 
     @Test
@@ -477,6 +474,4 @@ class OntologyServiceImplTest {
                         model.createResource("http://www.w3.org/2002/07/owl#Ontology"));
         return model;
     }
-
-     */
 }

@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -54,7 +53,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
-    private final OntologyAnalyzer ontologyAnalyzer;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final NkdSparqlClient nkdSparqlClient;
 
@@ -91,7 +89,16 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Override
     @Transactional
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
-        OntModel finalModel = getOntologyModel(file, determineRDFFormat(file));
+        if (file.isEmpty()) {
+            throw new com.dia.ismdtoolbackend.exception.EmptyFileException("Uploaded file is empty");
+        }
+
+        Lang rdfFormat = determineRDFFormat(file);
+        if (rdfFormat == null) {
+            throw new com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException("Unsupported RDF format");
+        }
+
+        OntModel finalModel = getOntologyModel(file, rdfFormat);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 

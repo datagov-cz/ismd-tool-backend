@@ -39,7 +39,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
 @ActiveProfiles("test")
 class CommentControllerTest {
-    /*
 
     @Autowired
     private MockMvc mockMvc;
@@ -275,6 +274,4 @@ class CommentControllerTest {
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Neplatné ID komentáře"));
     }
-
-     */
 }

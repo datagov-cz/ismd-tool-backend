@@ -9,7 +9,6 @@ import org.apache.jena.vocabulary.SKOS;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,6 +19,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static com.dia.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -34,7 +34,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * - Multiple concept types correct handling
  */
 @DisplayName("JsonExporter - Semantic Validation Tests")
-@Disabled
 class JsonExporterSemanticTest {
 
     private static final String TEST_NAMESPACE = "http://test.example.org/vocabulary/";
@@ -216,8 +215,8 @@ class JsonExporterSemanticTest {
             Arguments.of("Vztah", OWL.ObjectProperty),
             Arguments.of("Typ subjektu práva", tempModel.getResource(OFN_NAMESPACE + "typ-subjektu-práva")),
             Arguments.of("Typ objektu práva", tempModel.getResource(OFN_NAMESPACE + "typ-objektu-práva")),
-            Arguments.of("Veřejný údaj", tempModel.getResource(OFN_NAMESPACE + "veřejný-údaj")),
-            Arguments.of("Neveřejný údaj", tempModel.getResource(OFN_NAMESPACE + "neveřejný-údaj"))
+            Arguments.of("Veřejný údaj", tempModel.getResource(OFN_NAMESPACE_LEGAL + "veřejný-údaj")),
+            Arguments.of("Neveřejný údaj", tempModel.getResource(OFN_NAMESPACE_LEGAL + "neveřejný-údaj"))
         );
     }
 
@@ -278,7 +277,6 @@ class JsonExporterSemanticTest {
 
         assertNotNull(childConcept, "Should find child concept");
 
-        // TODO verify
         assertTrue(childConcept.length() > 3,
             "Child concept should have more iri, typ, and název");
     }
@@ -346,7 +344,6 @@ class JsonExporterSemanticTest {
         JSONObject jsonObj = new JSONObject(json);
 
         assertTrue(jsonObj.has("iri"), "Empty vocabulary should have IRI");
-        // TODO disable filter
         assertTrue(jsonObj.has("pojmy"), "Should have empty pojmy array");
 
         JSONArray pojmy = jsonObj.getJSONArray("pojmy");

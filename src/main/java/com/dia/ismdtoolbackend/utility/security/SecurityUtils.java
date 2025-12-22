@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.utils;
+package com.dia.ismdtoolbackend.utility.security;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import lombok.AccessLevel;

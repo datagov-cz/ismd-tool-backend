@@ -48,7 +48,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
 @ActiveProfiles("test")
 class ConceptControllerTest {
-    /*
 
     @Autowired
     private MockMvc mockMvc;
@@ -673,6 +672,4 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.conceptMetadata.conceptType").value("VLASTNOST"))
                 .andExpect(jsonPath("$.conceptDetail.iri").value("http://example.org/PropertyConcept"));
     }
-
-     */
 }
