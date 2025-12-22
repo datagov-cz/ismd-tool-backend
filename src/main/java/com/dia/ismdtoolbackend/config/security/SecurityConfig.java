@@ -133,6 +133,7 @@ public class SecurityConfig {
                 // Authorization rules for authenticated endpoints
                 .authorizeHttpRequests(auth -> auth
                         // Explicitly configured authenticated endpoints
+                        .requestMatchers(HttpMethod.GET, "/api/user/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/upload").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
