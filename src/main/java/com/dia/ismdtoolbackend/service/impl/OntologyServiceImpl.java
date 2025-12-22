@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -17,6 +16,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
@@ -39,7 +39,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,9 +61,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final OntologyEditor ontologyEditor;
     private final OntologyDetailExtractor detailExtractor;
-    private final NkdSparqlClient nkdSparqlClient;
-    private final OntologyDeviationComparator ontologyDeviationComparator;
-    private final ConceptDeviationComparator conceptDeviationComparator;
+    private final PublishedResourceUtil deviationChecker;
 
     @Override
     @Transactional
@@ -175,11 +172,10 @@ public class OntologyServiceImpl implements OntologyService {
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 
-        PublishedOntologyDeviationModel ontologyDeviations = checkPublishedOntology(rawModel, metadataModel);
+        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(rawModel, metadataModel);
         result.setPublishedOntologyDeviationModel(ontologyDeviations);
 
-        // Check deviations for all published concepts
-        Map<String, PublishedConceptDeviationModel> conceptDeviations = checkPublishedConcepts(rawModel, conceptMetadataEntities);
+        Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(rawModel, conceptMetadataEntities);
         result.setPublishedConceptDeviations(conceptDeviations);
 
         return result;
@@ -591,138 +587,5 @@ public class OntologyServiceImpl implements OntologyService {
             return names.get(DEFAULT_LANG);
         }
         return names.values().iterator().next();
-    }
-
-    private PublishedOntologyDeviationModel checkPublishedOntology(Model processedModel, OntologyMetadataModel ontologyMetadata) {
-        if (Boolean.FALSE.equals(ontologyMetadata.getIsPublished())) {
-            return null;
-        }
-
-        String ontologyIri = ontologyMetadata.getGraphName();
-
-        try {
-            OntologyDetailModel localOntology = detailExtractor.extractOntologyDetail(processedModel);
-
-            if (localOntology == null) {
-                log.error("Local ontology detail not found for IRI: {}", ontologyIri);
-                return createErrorOntologyDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local ontology detail not available"
-                );
-            }
-
-            Optional<OntologyDetailModel> publishedOntologyOpt =
-                    nkdSparqlClient.fetchPublishedOntology(ontologyIri);
-
-            if (publishedOntologyOpt.isEmpty()) {
-                log.warn("Published ontology not found in NKD: {}", ontologyIri);
-                return createErrorOntologyDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Ontology not found in NKD SPARQL endpoint"
-                );
-            }
-
-            OntologyDetailModel publishedOntology = publishedOntologyOpt.get();
-            return ontologyDeviationComparator.compareOntologyDetails(localOntology, publishedOntology);
-
-        } catch (Exception e) {
-            log.error("Error checking published ontology deviation: {}", e.getMessage(), e);
-            return createErrorOntologyDeviation(
-                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
-            );
-        }
-    }
-
-    private PublishedOntologyDeviationModel createErrorOntologyDeviation(
-            PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage) {
-        return PublishedOntologyDeviationModel.builder()
-                .status(status)
-                .errorMessage(errorMessage)
-                .build();
-    }
-
-    private Map<String, PublishedConceptDeviationModel> checkPublishedConcepts(Model rawModel, List<ConceptMetadataEntity> conceptMetadataEntities) {
-        Map<String, PublishedConceptDeviationModel> deviations = new HashMap<>();
-
-        // Only check concepts that are marked as published
-        List<ConceptMetadataEntity> publishedConcepts = conceptMetadataEntities.stream()
-                .filter(concept -> Boolean.TRUE.equals(concept.getIsPublished()))
-                .toList();
-
-        if (publishedConcepts.isEmpty()) {
-            log.info("No published concepts found, skipping deviation checks");
-            return deviations;
-        }
-
-        log.info("Checking deviations for {} published concepts", publishedConcepts.size());
-
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
-
-        for (ConceptMetadataEntity conceptEntity : publishedConcepts) {
-            String conceptIri = conceptEntity.getConceptIri();
-
-            try {
-                PublishedConceptDeviationModel deviation = checkSinglePublishedConcept(processedModel, conceptIri);
-                if (deviation != null) {
-                    deviations.put(conceptIri, deviation);
-                }
-            } catch (Exception e) {
-                log.error("Error checking concept deviation for {}: {}", conceptIri, e.getMessage(), e);
-                deviations.put(conceptIri, createErrorConceptDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Error checking concept: " + e.getMessage()
-                ));
-            }
-        }
-
-        log.info("Completed deviation checks for {} concepts", deviations.size());
-        return deviations;
-    }
-
-    private PublishedConceptDeviationModel checkSinglePublishedConcept(Model processedModel, String conceptIri) {
-        try {
-            OntologyDetailModel.ConceptDetailModel localConcept =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
-
-            if (localConcept == null) {
-                log.error("Local concept detail not found for IRI: {}", conceptIri);
-                return createErrorConceptDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
-                );
-            }
-
-            Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
-                    nkdSparqlClient.fetchPublishedConcept(conceptIri);
-
-            if (publishedConceptOpt.isEmpty()) {
-                log.warn("Published concept not found in NKD: {}", conceptIri);
-                return createErrorConceptDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Concept not found in NKD SPARQL endpoint"
-                );
-            }
-
-            OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
-            return conceptDeviationComparator.compareConceptDetails(localConcept, publishedConcept);
-
-        } catch (Exception e) {
-            log.error("Error checking published concept deviation for {}: {}", conceptIri, e.getMessage(), e);
-            return createErrorConceptDeviation(
-                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
-            );
-        }
-    }
-
-    private PublishedConceptDeviationModel createErrorConceptDeviation(
-            PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage) {
-        return PublishedConceptDeviationModel.builder()
-                .status(status)
-                .errorMessage(errorMessage)
-                .build();
     }
 }

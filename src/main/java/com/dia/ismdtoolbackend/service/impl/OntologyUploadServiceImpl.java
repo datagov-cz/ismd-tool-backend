@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
+import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -56,7 +56,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ValidationReportRepository validationReportRepository;
     private final OntologyAnalyzer ontologyAnalyzer;
     private final JenaTDB2Repository jenaTDB2Repository;
-    private final NkdSparqlClient nkdSparqlClient;
+    private final PublishedResourceUtil deviationChecker;
 
     private static final String POJEM_GENERIC = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
@@ -95,9 +95,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
-        List<String> publishedConceptIris = checkPublishedResourcesInNKD(finalModel);
+        List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel);
         if (!publishedConceptIris.isEmpty()) {
-            log.info("Model contains published concepts: {}", publishedConceptIris.size());
+            log.info("Model contains published resources: {}", publishedConceptIris.size());
         }
 
         OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
@@ -128,40 +128,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         );
 
         return metadata;
-    }
-
-    private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
-        List<String> resourceIris = new ArrayList<>();
-
-        ResIterator ontologyIterator = finalModel.listResourcesWithProperty(RDF.type, OWL2.Ontology);
-        if (ontologyIterator.hasNext()) {
-            Resource ontologyResource = ontologyIterator.next();
-            if (ontologyResource.isURIResource()) {
-                String ontologyIri = ontologyResource.getURI();
-                resourceIris.add(ontologyIri);
-                log.debug("Added ontology IRI to NKD verification list: {}", ontologyIri);
-            }
-        }
-
-        Resource pojemResource = finalModel.createResource(POJEM_GENERIC);
-        ResIterator conceptIterator = finalModel.listResourcesWithProperty(RDF.type, pojemResource);
-
-        while (conceptIterator.hasNext()) {
-            Resource conceptResource = conceptIterator.next();
-
-            if (conceptResource.isURIResource()) {
-                String conceptIri = conceptResource.getURI();
-                resourceIris.add(conceptIri);
-            }
-        }
-
-        log.debug("Extracted {} concept IRIs from model for NKD verification", resourceIris.size());
-
-        if (resourceIris.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        return nkdSparqlClient.getPublishedResourcesList(resourceIris);
     }
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {
