@@ -94,7 +94,10 @@ public class SecurityConfig {
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
                         "/api/ontology/list",
-                        "/api/concept/list"
+                        "/api/concept/list",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html"
                 )
                 // Allow all requests to these endpoints
                 .authorizeHttpRequests(auth -> auth
@@ -143,7 +146,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated()
                         .anyRequest().denyAll()
                 )
                 // Disable CSRF for stateless JWT API
