@@ -1,0 +1,26 @@
+name: Build Dev Branch
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  run-tests:
+    name: Run Tests
+    uses: ./.github/workflows/reusable-test.yml
+    secrets: inherit
+
+  build-docker:
+    name: Build Docker Image
+    needs: run-tests
+    if: always() && needs.run-tests.result == 'success'
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      branch: dev
+    secrets: inherit
