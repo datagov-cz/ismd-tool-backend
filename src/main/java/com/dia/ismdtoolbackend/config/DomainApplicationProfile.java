@@ -10,6 +10,7 @@ public final class DomainApplicationProfile {
     public static final String NOT_TEST = "!" + TEST;
 
     public static final String LOCAL = "local";
+    public static final String DEV = "dev";
     public static final String STAGE = "stage";
     public static final String NOT_STAGING = "!" + STAGE;
 
@@ -28,6 +29,8 @@ public final class DomainApplicationProfile {
             return PRODUCTION;
         } else if (isActive(environment, STAGE)) {
             return STAGE;
+        } else if (isActive(environment, DEV)) {
+            return DEV;
         } else if (isActive(environment, LOCAL)) {
             return LOCAL;
         } else if (isActive(environment, TEST)) {
