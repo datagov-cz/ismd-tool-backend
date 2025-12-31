@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -29,6 +30,10 @@ public class ConceptController {
 
     private final ConceptService conceptService;
 
+    @Operation(
+            summary = "Vytvoření nového pojmu",
+            description = "Vytvoří nový pojem (třídu, vlastnost nebo vztah) ve slovníku. Podporuje různé typy pojmů podle OFN standardů. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
     @PostMapping("/{slug}/create")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
@@ -46,6 +51,10 @@ public class ConceptController {
         return ResponseEntity.ok().body(ApiResponseDto.success(createdConcept, "Pojem úspěšně vytvořen: "));
     }
 
+    @Operation(
+            summary = "Smazání pojmu",
+            description = "Smaže pojem z RDF úložiště i databáze včetně všech jeho vztahů. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
     @DeleteMapping("/{conceptId}/delete")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<Void>> deleteConcept(
@@ -62,6 +71,10 @@ public class ConceptController {
         return ResponseEntity.ok(ApiResponseDto.success("Pojem úspěšně smazán."));
     }
 
+    @Operation(
+            summary = "Úprava pojmu",
+            description = "Umožňuje upravit existující pojem včetně jeho názvu, definice, vztahů a dalších vlastností. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
     @PatchMapping("/{conceptId}/edit")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
@@ -79,6 +92,10 @@ public class ConceptController {
         return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
     }
 
+    @Operation(
+            summary = "Seznam pojmů",
+            description = "Vrací seznam pojmů s možností filtrování podle uživatele nebo stavu publikace. Veřejný endpoint."
+    )
     @GetMapping("/list")
     public ResponseEntity<ApiResponseDto<List<ConceptMetadataModel>>> getConceptList(
             @RequestParam(required = false) String userId,
@@ -92,6 +109,10 @@ public class ConceptController {
         return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
     }
 
+    @Operation(
+            summary = "Detail pojmu",
+            description = "Vrací kompletní detail pojmu včetně všech vlastností, vztahů, definic a dalších metadat. Obsahuje také informace o odchylkách od publikované verze. Veřejný endpoint."
+    )
     @GetMapping("/{slug}/detail")
     public ResponseEntity<GetConceptDto> getConceptDetail(@PathVariable String slug) {
         String requestId = UUID.randomUUID().toString();

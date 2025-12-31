@@ -19,6 +19,7 @@ import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -53,6 +54,10 @@ public class OntologyController {
     private final ValidationClient validationClient;
     private final ValidationConfig validationConfig;
 
+    @Operation(
+            summary = "Nahrání slovníku ze souboru",
+            description = "Umožňuje nahrát a importovat slovník z RDF souboru (Turtle, JSON-LD). Soubor je validován a uložen do RDF úložiště. Vyžaduje autentizaci."
+    )
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
             @RequestParam(value = "file", required = false) MultipartFile file,
@@ -74,6 +79,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
     }
 
+    @Operation(
+            summary = "Smazání slovníku",
+            description = "Smaže slovník a všechna jeho data z RDF úložiště i databáze. Vyžaduje oprávnění vlastníka nebo administrátora."
+    )
     @DeleteMapping("/{ontologyId}/delete")
     @PreAuthorize("@ontologySecurityService.canModify(#ontologyId)")
     public ResponseEntity<ApiResponseDto<Void>> deleteOntology(
@@ -93,6 +102,10 @@ public class OntologyController {
         return ResponseEntity.ok(ApiResponseDto.success("Slovník úspěšně smazán."));
     }
 
+    @Operation(
+            summary = "Vytvoření nového slovníku",
+            description = "Vytvoří nový prázdný slovník s definovaným jmenným prostorem, názvem a popisem. Slovník je uložen do RDF úložiště. Vyžaduje autentizaci."
+    )
     @PostMapping("/create")
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
             @RequestBody OntologyCreateModel ontologyCreateModel,
@@ -115,6 +128,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(createdOntology, "Slovník úspěšně vytvořen: " + createdOntology.getGraphName()));
     }
 
+    @Operation(
+            summary = "Úprava slovníku",
+            description = "Umožňuje upravit metadata slovníku (název, popis) v různých jazycích. Vyžaduje oprávnění vlastníka nebo administrátora."
+    )
     @PatchMapping("/{ontologyId}/edit")
     @PreAuthorize("@ontologySecurityService.canModify(#ontologyId)")
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> editOntology(
@@ -138,6 +155,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(updatedOntology, "Slovník úspěšně upraven: " + updatedOntology.getGraphName()));
     }
 
+    @Operation(
+            summary = "Stažení slovníku",
+            description = "Umožňuje stáhnout slovník v požadovaném formátu (TTL, JSON-LD). Pokud je povoleno omezení stahování slovníků s chybami, slovníky s validačními chybami nelze stáhnout. Veřejný endpoint."
+    )
     @GetMapping("/{ontologyId}/download")
     public ResponseEntity<Resource> downloadFile(
             @PathVariable Long ontologyId,
@@ -164,6 +185,10 @@ public class OntologyController {
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"").contentType(MediaType.parseMediaType(contentType)).contentLength(resource.contentLength()).body(resource);
     }
 
+    @Operation(
+            summary = "Detail slovníku",
+            description = "Vrací kompletní detail slovníku včetně všech pojmů, jejich vztahů a metadat. Obsahuje také informace o odchylkách od publikované verze, pokud existuje. Veřejný endpoint."
+    )
     @GetMapping("/{slug}/detail")
     public ResponseEntity<GetOntologyDto> getOntologyDetail(@PathVariable String slug) {
         String requestId = UUID.randomUUID().toString();
@@ -175,6 +200,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ontologyDto);
     }
 
+    @Operation(
+            summary = "Seznam slovníků",
+            description = "Vrací seznam slovníků s možností filtrování podle uživatele, stavu publikace nebo konkrétních slugů. Veřejný endpoint."
+    )
     @GetMapping("/list")
     public ResponseEntity<ApiResponseDto<List<OntologyMetadataModel>>> getOntologyList(
             @RequestParam(required = false) String userId,
@@ -195,6 +224,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(ontologies, "Žádost o seznam slovníků proběhla úspěšně."));
     }
 
+    @Operation(
+            summary = "Validace slovníku",
+            description = "Spustí validaci slovníku proti pravidlům SHACL/SKOS prostřednictvím externí validační služby. Výsledky validace jsou uloženy do databáze. Vyžaduje oprávnění vlastníka nebo administrátora."
+    )
     @PostMapping("{slug}/validate")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ValidationReport>> validateOntology(
@@ -219,6 +252,10 @@ public class OntologyController {
         return ResponseEntity.ok().body(ApiResponseDto.success(report, "Validace proběhla úspěšně."));
     }
 
+    @Operation(
+            summary = "Žádost o katalogizační záznam",
+            description = "Vyžádá katalogizační záznam slovníku z validační služby na základě RDF dat a výsledků validace. Vyžaduje oprávnění vlastníka nebo administrátora."
+    )
     @PostMapping("{slug}/catalog-record")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
