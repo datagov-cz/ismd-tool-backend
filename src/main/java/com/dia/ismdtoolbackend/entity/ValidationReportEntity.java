@@ -25,6 +25,9 @@ public class ValidationReportEntity implements ValidationReport {
     @Id
     private Long id;
 
+    @Column(name = "user_id")
+    private String userId;
+
     @Column(name = "ontology_metadata_id")
     private Long ontologyMetadataId;
 

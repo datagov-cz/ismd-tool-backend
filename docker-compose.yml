@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:17
     container_name: ismd-postgres-dev
     environment:
       POSTGRES_DB: ismd_tool_db
@@ -10,7 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./docker/init-scripts:/docker-entrypoint-initdb.d
     networks:
       - ismd-network
     restart: unless-stopped
@@ -19,6 +19,55 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: ismd-keycloak-dev
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://ismd-postgres-dev:5432/keycloak_db
+      KC_DB_USERNAME: ismd_user
+      KC_DB_PASSWORD: ismd_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # CAAIS IdP configuration
+      CAAIS_CLIENT_ID: ${CAAIS_CLIENT_ID:-your-client-id-here}
+      # Trust nginx-mtls internal certificate
+      KC_TRUSTSTORE_PATHS: /opt/keycloak/data/import/nginx-mtls-certs/internal.crt
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/keycloak/:/opt/keycloak/data/import/
+      # Mount nginx internal cert for Keycloak to trust
+      - ./docker/nginx-mtls/certs/internal.crt:/opt/keycloak/data/import/nginx-mtls-certs/internal.crt:ro
+    networks:
+      - ismd-network
+    depends_on:
+      - postgres
+      - nginx-mtls
+
+  nginx-mtls:
+    image: nginx:1.25-alpine
+    container_name: ismd-nginx-mtls
+    volumes:
+      - ./docker/nginx-mtls/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Internal TLS certificate (Keycloak -> nginx)
+      - ./docker/nginx-mtls/certs/internal.crt:/etc/nginx/certs/internal/internal.crt:ro
+      - ./docker/nginx-mtls/certs/internal.key:/etc/nginx/certs/internal/internal.key:ro
+      # CAAIS client certificate (nginx -> CAAIS)
+      - ./docker/keycloak/secrets/certifikate.crt:/etc/nginx/certs/caais/certifikate.crt:ro
+      - ./docker/keycloak/secrets/private.key:/etc/nginx/certs/caais/private.key:ro
+    networks:
+      - ismd-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
 
   fuseki:
     image: secoresearch/fuseki:latest
@@ -35,6 +84,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  postgres_keycloak_data:
     driver: local
   fuseki_data:
     driver: local

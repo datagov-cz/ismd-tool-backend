@@ -23,13 +23,14 @@ public class ValidationServiceImpl implements ValidationService {
 
     @Override
     @Transactional
-    public void saveValidationReport(ValidationReport validationReport, OntologyMetadataModel ontologyMetadataModel) throws ValidationException {
+    public void saveValidationReport(ValidationReport validationReport, OntologyMetadataModel ontologyMetadataModel, String userId) throws ValidationException {
         Optional<ValidationReportEntity> validationReportEntityOpt = validationReportRepository.findByOntologyMetadataId(ontologyMetadataModel.getId());
         validationReportEntityOpt.ifPresent(validationReportRepository::delete);
 
         try {
             ValidationReportEntity validationReportEntity = new ValidationReportEntity();
             validationReportEntity.setId(validationReport.getId());
+            validationReportEntity.setUserId(userId);
             validationReportEntity.setTimestamp(validationReport.getTimestamp());
             validationReportEntity.setOntologyMetadataId(ontologyMetadataModel.getId());
             validationReportEntity.setGetOntologyIri(ontologyMetadataModel.getGraphName());

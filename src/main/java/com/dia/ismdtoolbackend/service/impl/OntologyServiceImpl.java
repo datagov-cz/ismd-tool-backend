@@ -66,7 +66,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public void deleteOntology(Long ontologyId) throws OntologyException {
+    public void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologyId {} not found", ontologyId);
@@ -92,7 +92,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) throws OntologyException {
+    public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
         URIGenerator uriGenerator = new URIGenerator();
@@ -139,7 +139,7 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     @Override
-    public GetOntologyDto getOntologyDetailModel(String ontologySlug) throws OntologyException {
+    public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologySlug {} not found", ontologySlug);
@@ -179,13 +179,13 @@ public class OntologyServiceImpl implements OntologyService {
         return result;
     }
 
-    private void validateOntologyCreateModel(OntologyCreateModel model) throws OntologyException {
+    private void validateOntologyCreateModel(OntologyCreateModel model) {
         if (model == null) {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
         }
     }
 
-    private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) throws OntologyException {
+    private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
         OFNBaseModel ofnModel = new OFNBaseModel();
 
         OntModel model = ofnModel.getOntModel();
@@ -235,7 +235,7 @@ public class OntologyServiceImpl implements OntologyService {
         jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
-    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) throws OntologyException {
+    private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
         String slug = UtilityMethods.extractNameFromIRI(ontologyIRI);
         metadataEntity.setSlug(slug);
@@ -248,7 +248,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) throws OntologyException {
+    public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
             throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
         }
@@ -274,7 +274,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) throws OntologyException {
+    public List<OntologyMetadataModel> getAll(String userId, Boolean isPublished) {
         List<OntologyMetadataEntity> ontologyMetadataEntities;
 
         if (userId != null && isPublished != null) {
@@ -300,7 +300,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OntologyMetadataModel> getBySlugs(List<String> slugs) throws OntologyException {
+    public List<OntologyMetadataModel> getBySlugs(List<String> slugs) {
         if (slugs == null || slugs.isEmpty()) {
             throw new OntologyException("Seznam slugů je prázdný");
         }
@@ -323,7 +323,7 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     @Override
-    public String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel) throws OntologyException {
+    public String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel) {
         try {
             String graphName = ontologyMetadataModel.getGraphName();
 
@@ -360,7 +360,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
-    public OntologyMetadataModel getOntologyMetadata(Long ontologyId) throws OntologyException {
+    public OntologyMetadataModel getOntologyMetadata(Long ontologyId) {
         return ontologyMetadataMapper.toDto(ontologyMetadataRepository.findById(ontologyId).orElseThrow());
     }
 
@@ -376,7 +376,7 @@ public class OntologyServiceImpl implements OntologyService {
         return result;
     }
 
-    private OntologyMetadataEntity fetchOntologyMetadata(Long id) throws OntologyException {
+    private OntologyMetadataEntity fetchOntologyMetadata(Long id) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(id);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("Ontology with ID {} not found", id);
@@ -490,7 +490,7 @@ public class OntologyServiceImpl implements OntologyService {
                  updatedIRICount, updatedGraphNameOnlyCount);
     }
 
-    private void saveOntologyModel(String ontologyIRI, Model model) throws OntologyException {
+    private void saveOntologyModel(String ontologyIRI, Model model) {
         try {
             jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
             log.info("Saved/updated ontology model for graph: {}", ontologyIRI);

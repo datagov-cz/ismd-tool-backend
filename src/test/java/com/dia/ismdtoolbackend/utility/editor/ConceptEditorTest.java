@@ -172,10 +172,10 @@ class ConceptEditorTest {
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
 
-        Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDA);
+        Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
         existing.addProperty(agendaProperty, model.createLiteral("old-agenda"));
 
-        Property sharingProperty = model.createProperty(DEFAULT_NS + ZPUSOB_SDILENI);
+        Property sharingProperty = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         existing.addProperty(
                 sharingProperty,
                 model.createResource(
@@ -236,7 +236,7 @@ class ConceptEditorTest {
         assertFalse(updated.hasProperty(agendaProperty));
 
         // governance: sharing method updated to some governance IRI
-        Property sharingProp = model.createProperty(DEFAULT_NS + ZPUSOB_SDILENI);
+        Property sharingProp = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         assertTrue(updated.hasProperty(sharingProp));
         String sharingIri =
                 updated.getProperty(sharingProp).getObject().asResource().getURI();
@@ -269,10 +269,10 @@ class ConceptEditorTest {
         Resource oldSuper = model.createResource("https://example.com/old-super");
         existing.addProperty(RDFS.subPropertyOf, oldSuper);
 
-        Property ppdfProperty = model.createProperty(DEFAULT_NS + JE_PPDF);
+        Property ppdfProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
         existing.addProperty(ppdfProperty, model.createLiteral("false"));
 
-        Property contentTypeProperty = model.createProperty(DEFAULT_NS + TYP_OBSAHU);
+        Property contentTypeProperty = model.createProperty(OFN_NAMESPACE + TYP_OBSAHU);
         existing.addProperty(
                 contentTypeProperty,
                 model.createResource(
@@ -332,7 +332,7 @@ class ConceptEditorTest {
         String ppdfValue = updated.getProperty(ppdfProperty).getObject().asLiteral().getString();
         assertEquals("true", ppdfValue);
 
-        Property contentTypeProp = model.createProperty(DEFAULT_NS + TYP_OBSAHU);
+        Property contentTypeProp = model.createProperty(OFN_NAMESPACE + TYP_OBSAHU);
         assertTrue(updated.hasProperty(contentTypeProp));
         String contentTypeIri =
                 updated.getProperty(contentTypeProp).getObject().asResource().getURI();
@@ -358,10 +358,10 @@ class ConceptEditorTest {
         Resource oldSuper = model.createResource("https://example.com/old-rel-super");
         existing.addProperty(RDFS.subPropertyOf, oldSuper);
 
-        Property ppdfProperty = model.createProperty(DEFAULT_NS + JE_PPDF);
+        Property ppdfProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
         existing.addProperty(ppdfProperty, model.createLiteral("false"));
 
-        Property contentTypeProperty = model.createProperty(DEFAULT_NS + TYP_OBSAHU);
+        Property contentTypeProperty = model.createProperty(OFN_NAMESPACE + TYP_OBSAHU);
         existing.addProperty(
                 contentTypeProperty,
                 model.createResource(
@@ -369,7 +369,7 @@ class ConceptEditorTest {
                 )
         );
 
-        Property sharingProperty = model.createProperty(DEFAULT_NS + ZPUSOB_SDILENI);
+        Property sharingProperty = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         existing.addProperty(
                 sharingProperty,
                 model.createResource(
@@ -377,7 +377,7 @@ class ConceptEditorTest {
                 )
         );
 
-        Property acquisitionProperty = model.createProperty(DEFAULT_NS + ZPUSOB_ZISKANI);
+        Property acquisitionProperty = model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI);
         existing.addProperty(
                 acquisitionProperty,
                 model.createResource(
@@ -438,19 +438,19 @@ class ConceptEditorTest {
         String ppdfValue = updated.getProperty(ppdfProperty).getObject().asLiteral().getString();
         assertEquals("true", ppdfValue);
 
-        Property contentTypeProp = model.createProperty(DEFAULT_NS + TYP_OBSAHU);
+        Property contentTypeProp = model.createProperty(OFN_NAMESPACE + TYP_OBSAHU);
         assertTrue(updated.hasProperty(contentTypeProp));
         String contentTypeIri =
                 updated.getProperty(contentTypeProp).getObject().asResource().getURI();
         assertTrue(contentTypeIri.startsWith("https://data.dia.gov.cz/zdroj/"));
 
-        Property sharingProp = model.createProperty(DEFAULT_NS + ZPUSOB_SDILENI);
+        Property sharingProp = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         assertTrue(updated.hasProperty(sharingProp));
         String sharingIri =
                 updated.getProperty(sharingProp).getObject().asResource().getURI();
         assertTrue(sharingIri.startsWith("https://data.dia.gov.cz/zdroj/"));
 
-        Property acquisitionProp = model.createProperty(DEFAULT_NS + ZPUSOB_ZISKANI);
+        Property acquisitionProp = model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI);
         assertTrue(updated.hasProperty(acquisitionProp));
         String acquisitionIri =
                 updated.getProperty(acquisitionProp).getObject().asResource().getURI();
@@ -465,8 +465,8 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class legal", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
-        Property definingProp = model.createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-        Property relatedProp = model.createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+        Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+        Property relatedProp = model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
         Resource oldDef = model.createResource("https://old.example.com/eli/cz/act/2000/1");
         Resource oldRel = model.createResource("https://old.example.com/eli/cz/act/2000/2");
@@ -723,7 +723,7 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class privacy", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
-        Property provisionProperty = model.createProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
 
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
@@ -779,7 +779,7 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class privacy clear", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
-        Property provisionProperty = model.createProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
         Resource oldProvision = model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/10");
         existing.addProperty(provisionProperty, oldProvision);
 
@@ -830,8 +830,8 @@ class ConceptEditorTest {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class legal clear", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
-        Property definingProp = model.createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-        Property relatedProp = model.createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+        Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+        Property relatedProp = model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
         existing.addProperty(definingProp, model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/1"));
         existing.addProperty(relatedProp, model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/2"));
@@ -874,9 +874,9 @@ class ConceptEditorTest {
         assertFalse(updated.hasProperty(relatedProp));
     }
 
-    // A7 – Non-legal sources removed when no valid URLs are provided
+    // A7 – Non-legal sources created as digital documents with titles when non-URL values provided
     @Test
-    void editConcept_ShouldRemoveNonLegalSourcesWhenNoValidUrls() {
+    void editConcept_ShouldCreateNonLegalSourcesAsDigitalDocumentsForNonUrls() {
         // Arrange
         String conceptIri = DEFAULT_NS + "class-nonlegal-clear";
         Resource existing = model.createResource(conceptIri);
@@ -925,7 +925,22 @@ class ConceptEditorTest {
         assertFalse(result.iriChanged);
         assertEquals(conceptIri, result.newConceptIRI);
 
-        assertFalse(updated.hasProperty(definingProp));
-        assertFalse(updated.hasProperty(relatedProp));
+        // Non-URL values should create digital documents with titles instead of URLs
+        assertTrue(updated.hasProperty(definingProp));
+        assertTrue(updated.hasProperty(relatedProp));
+
+        Property dctermsTitle = model.createProperty("http://purl.org/dc/terms/title");
+
+        Resource definingDoc = updated.listProperties(definingProp)
+                .nextStatement()
+                .getObject()
+                .asResource();
+        assertTrue(definingDoc.hasProperty(dctermsTitle, model.createLiteral("not-a-url", "cs")));
+
+        Resource relatedDoc = updated.listProperties(relatedProp)
+                .nextStatement()
+                .getObject()
+                .asResource();
+        assertTrue(relatedDoc.hasProperty(dctermsTitle, model.createLiteral("also-not-a-url", "cs")));
     }
 }

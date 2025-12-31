@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
+import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
 import com.dia.ismdtoolbackend.mapper.CommentMapper;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
@@ -229,7 +230,7 @@ class CommentServiceImplTest {
     void deleteComment_CommentNotFound() {
         when(commentRepository.findById(TEST_COMMENT_ID)).thenReturn(Optional.empty());
 
-        CommentException exception = assertThrows(CommentException.class,
+        CommentNotFoundException exception = assertThrows(CommentNotFoundException.class,
                 () -> commentService.deleteComment(TEST_COMMENT_ID));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));

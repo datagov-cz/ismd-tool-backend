@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -11,7 +10,7 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
-import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -54,7 +53,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
-    private final OntologyAnalyzer ontologyAnalyzer;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final NkdSparqlClient nkdSparqlClient;
 
@@ -90,8 +88,17 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
-        OntModel finalModel = getOntologyModel(file, rdfLang);
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
+        if (file.isEmpty()) {
+            throw new com.dia.ismdtoolbackend.exception.EmptyFileException("Uploaded file is empty");
+        }
+
+        Lang rdfFormat = determineRDFFormat(file);
+        if (rdfFormat == null) {
+            throw new com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException("Unsupported RDF format");
+        }
+
+        OntModel finalModel = getOntologyModel(file, rdfFormat);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
@@ -119,7 +126,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             } catch (Exception tdbException) {
                 log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
             }
-            throw new OntoloyUploadException("Failed to upload ontology: " + e.getMessage(), e);
+            throw new OntologyUploadException("Failed to upload ontology: " + e.getMessage(), e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);

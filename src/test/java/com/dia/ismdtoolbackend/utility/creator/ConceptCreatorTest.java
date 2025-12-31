@@ -85,24 +85,6 @@ class ConceptCreatorTest {
     }
 
     /**
-     * Creates a DescriptionModel with the given language code and value
-     */
-    private DescriptionModel createDescriptionModel(String languageCode, String value) {
-        DescriptionModel model = new DescriptionModel();
-        model.setDescription(Map.of(languageCode, value));
-        return model;
-    }
-
-    /**
-     * Creates a DefinitionModel with the given language code and value
-     */
-    private DefinitionModel createDefinitionModel(String languageCode, String value) {
-        DefinitionModel model = new DefinitionModel();
-        model.setDefinition(Map.of(languageCode, value));
-        return model;
-    }
-
-    /**
      * Creates an AltNameModel with the given language code and value
      */
     private AltNameModel createAltNameModel(String languageCode, String value) {
@@ -348,8 +330,8 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
 
             // assert
-            Property defining = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property related = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
             assertTrue(result.hasProperty(defining));
             assertTrue(result.hasProperty(related));
@@ -377,8 +359,8 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
 
             // assert
-            Property defining = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property related = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
             assertTrue(result.hasProperty(defining));
             assertFalse(result.hasProperty(related));
@@ -406,8 +388,8 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
 
             // assert
-            Property defining = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property related = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
             assertFalse(result.hasProperty(defining));
             assertTrue(result.hasProperty(related));
@@ -435,8 +417,8 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
 
             // assert
-            Property defining = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property related = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
             assertTrue(result.hasProperty(defining));
             assertTrue(result.hasProperty(related));
@@ -470,8 +452,8 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
 
             // assert
-            Property defining = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property related = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
             assertFalse(result.hasProperty(defining));
             assertFalse(result.hasProperty(related));
@@ -550,13 +532,13 @@ class ConceptCreatorTest {
 
             // assert
             assertTrue(result.hasProperty(
-                    result.getModel().createProperty(DEFAULT_NS + ZPUSOB_SDILENI)
+                    result.getModel().createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI)
             ));
             assertTrue(result.hasProperty(
-                    result.getModel().createProperty(DEFAULT_NS + ZPUSOB_ZISKANI)
+                    result.getModel().createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI)
             ));
             assertTrue(result.hasProperty(
-                    result.getModel().createProperty(DEFAULT_NS + TYP_OBSAHU)
+                    result.getModel().createProperty(OFN_NAMESPACE + TYP_OBSAHU)
             ));
         }
 
@@ -837,6 +819,7 @@ class ConceptCreatorTest {
             setupBasicRelationshipConcept("Private relation", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-PRIVATE");
             when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.FALSE);
+            when(relationshipConceptModel.getPrivacyProvisions()).thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2020/50"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -845,11 +828,11 @@ class ConceptCreatorTest {
             assertNotNull(result);
             assertTrue(result.hasProperty(
                     RDF.type,
-                    result.getModel().createResource(OFN_NAMESPACE + NEVEREJNY_UDAJ)
+                    result.getModel().createResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ)
             ));
             assertFalse(result.hasProperty(
                     RDF.type,
-                    result.getModel().createResource(OFN_NAMESPACE + VEREJNY_UDAJ)
+                    result.getModel().createResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ)
             ));
         }
 
@@ -971,9 +954,9 @@ class ConceptCreatorTest {
 
             // assert
             assertNotNull(result);
-            assertFalse(result.hasProperty(result.getModel().createProperty(DEFAULT_NS + ZPUSOB_SDILENI)));
-            assertFalse(result.hasProperty(result.getModel().createProperty(DEFAULT_NS + ZPUSOB_ZISKANI)));
-            assertFalse(result.hasProperty(result.getModel().createProperty(DEFAULT_NS + TYP_OBSAHU)));
+            assertFalse(result.hasProperty(result.getModel().createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI)));
+            assertFalse(result.hasProperty(result.getModel().createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI)));
+            assertFalse(result.hasProperty(result.getModel().createProperty(OFN_NAMESPACE + TYP_OBSAHU)));
         }
 
         // --- C4. Sources and ExactMatch for RelationshipConcept ---
@@ -1006,8 +989,8 @@ class ConceptCreatorTest {
             // assert
             assertNotNull(result);
 
-            Property definingLegal = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property relatedLegal = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property definingLegal = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property relatedLegal = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
             Property definingNonLegal = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
             Property relatedNonLegal = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
 
@@ -1046,8 +1029,8 @@ class ConceptCreatorTest {
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
 
             // assert
-            Property defProp = result.getModel().createProperty(DEFAULT_NS + DEFINUJICI_USTANOVENI);
-            Property relProp = result.getModel().createProperty(DEFAULT_NS + SOUVISEJICI_USTANOVENI);
+            Property defProp = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property relProp = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
             assertTrue(result.hasProperty(defProp));
             assertTrue(result.hasProperty(relProp));
