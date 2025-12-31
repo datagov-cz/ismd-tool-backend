@@ -20,7 +20,5 @@ public class GetOntologyDto {
     private OntologyDetailModel ontologyDetail;
     private List<ConceptMetadataModel> conceptMetadataModelList;
     private PublishedOntologyDeviationModel publishedOntologyDeviationModel;
-
-    // Map of concept IRI to its deviation model
     private Map<String, PublishedConceptDeviationModel> publishedConceptDeviations;
 }

@@ -1,8 +1,10 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
-import com.dia.ismdtoolbackend.utility.analyzer.OntologyAnalyzer;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
+import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadException;
+import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -11,7 +13,6 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
-import com.dia.ismdtoolbackend.exception.OntoloyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -54,43 +55,54 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
-    private final OntologyAnalyzer ontologyAnalyzer;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final PublishedResourceUtil deviationChecker;
 
     private static final String POJEM_GENERIC = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
     @Override
-    public Lang determineRDFFormat(MultipartFile file) {
-        String fileName = file.getOriginalFilename();
-        if (fileName != null) {
-            String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+    public Lang determineRDFFormat(MultipartFile file) throws UnsupportedRdfFormatException {
+        try {
+            String fileName = file.getOriginalFilename();
+            if (fileName != null) {
+                String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
 
-            switch (extension) {
-                case "ttl", "turtle":
+                switch (extension) {
+                    case "ttl", "turtle":
+                        return Lang.TURTLE;
+                    case "jsonld", "json-ld":
+                        return Lang.JSONLD;
+                    default:
+                        break;
+                }
+            }
+
+            String contentType = file.getContentType();
+            if (contentType != null) {
+                if (contentType.contains("turtle")) {
                     return Lang.TURTLE;
-                case "jsonld", "json-ld":
+                } else if (contentType.contains("json")) {
                     return Lang.JSONLD;
-                default:
-                    break;
+                }
             }
+        } catch (Exception e) {
+            throw new UnsupportedRdfFormatException("Nepodporovaný RDF jazyk", e);
         }
-
-        String contentType = file.getContentType();
-        if (contentType != null) {
-            if (contentType.contains("turtle")) {
-                return Lang.TURTLE;
-            } else if (contentType.contains("json")) {
-                return Lang.JSONLD;
-            }
-        }
-
         return null;
     }
 
     @Override
     @Transactional
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, Lang rdfLang, String userId) throws IOException, OntoloyUploadException {
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
+        if (file.isEmpty()) {
+            throw new EmptyFileException("Uploaded file is empty");
+        }
+
+        Lang rdfLang = determineRDFFormat(file);
+        if (rdfLang == null) {
+            throw new UnsupportedRdfFormatException("Nepodporovaný RDF jazyk");
+        }
+
         OntModel finalModel = getOntologyModel(file, rdfLang);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
@@ -119,7 +131,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             } catch (Exception tdbException) {
                 log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
             }
-            throw new OntoloyUploadException("Failed to upload ontology: " + e.getMessage(), e);
+            throw new OntologyUploadException("Failed to upload ontology: " + e.getMessage(), e);
         }
 
         String ontologyContent = convertOntModelToTtl(finalModel);
