@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.service.CommentService;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -25,6 +26,10 @@ public class CommentController {
 
     private final CommentService commentService;
 
+    @Operation(
+            summary = "Přidání komentáře",
+            description = "Umožňuje přidat komentář ke slovníku nebo pojmu. Komentář je identifikován IRI slovníku nebo pojmu. Vyžaduje autentizaci."
+    )
     @PostMapping("/post")
     public ResponseEntity<ApiResponseDto<CommentModel>> postComment(
             @RequestBody CommentCreateModel commentCreateModel,
@@ -40,6 +45,10 @@ public class CommentController {
         return ResponseEntity.ok().body(ApiResponseDto.success(postedComment, "Komentář úspěšně přidán."));
     }
 
+    @Operation(
+            summary = "Smazání komentáře",
+            description = "Smaže komentář z databáze. Vyžaduje oprávnění autora komentáře nebo administrátora."
+    )
     @DeleteMapping("/{commentId}/delete")
     @PreAuthorize("@ontologySecurityService.canModifyComment(#commentId)")
     public ResponseEntity<ApiResponseDto<Void>> deleteComment(
