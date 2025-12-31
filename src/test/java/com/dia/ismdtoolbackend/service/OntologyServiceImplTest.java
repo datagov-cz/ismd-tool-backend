@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
+import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -71,7 +72,7 @@ class OntologyServiceImplTest {
     private NkdSparqlClient nkdSparqlClient;
 
     @Mock
-    private com.dia.ismdtoolbackend.service.impl.OntologyDeviationComparator ontologyDeviationComparator;
+    private PublishedResourceUtil deviationChecker;
 
     @InjectMocks
     private OntologyServiceImpl ontologyService;
@@ -277,10 +278,11 @@ class OntologyServiceImplTest {
         assertEquals(1, result.getConceptMetadataModelList().size());
         assertEquals(TEST_ONTOLOGY_SLUG, result.getOntologyMetadata().getSlug());
         assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
+        // fetchGraph is called twice: once in main flow and once in enrichMetadataFromRDF
         verify(jenaTDB2Repository, times(2)).fetchGraph(TEST_GRAPH_NAME);
         verify(detailExtractor).applyOFNTransformations(modelWithData);
-        // extractOntologyDetail is called twice: once in main flow and once in checkPublishedOntology
-        verify(detailExtractor, times(2)).extractOntologyDetail(modelWithData);
+        // extractOntologyDetail is called once in main flow (not in checkPublishedOntology since ontology is not published)
+        verify(detailExtractor).extractOntologyDetail(modelWithData);
         verify(conceptMetadataMapper).toDto(conceptEntity);
     }
 

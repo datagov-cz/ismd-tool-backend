@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
+import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,6 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -63,6 +63,9 @@ class OntologyUploadServiceImplTest {
     @Mock
     private NkdSparqlClient nkdSparqlClient;
 
+    @Mock
+    private PublishedResourceUtil publishedResourceUtil;
+
     @InjectMocks
     private OntologyUploadServiceImpl ontologyUploadService;
 
@@ -75,7 +78,7 @@ class OntologyUploadServiceImplTest {
                 validationClient,
                 validationReportRepository,
                 jenaTDB2Repository,
-                nkdSparqlClient
+                publishedResourceUtil
         );
     }
 

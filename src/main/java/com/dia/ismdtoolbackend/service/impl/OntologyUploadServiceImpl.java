@@ -1,7 +1,10 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
+import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadException;
+import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -10,7 +13,6 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
-import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -54,35 +56,38 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ValidationClient validationClient;
     private final ValidationReportRepository validationReportRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
-    private final NkdSparqlClient nkdSparqlClient;
+    private final PublishedResourceUtil deviationChecker;
 
     private static final String POJEM_GENERIC = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
     @Override
-    public Lang determineRDFFormat(MultipartFile file) {
-        String fileName = file.getOriginalFilename();
-        if (fileName != null) {
-            String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+    public Lang determineRDFFormat(MultipartFile file) throws UnsupportedRdfFormatException {
+        try {
+            String fileName = file.getOriginalFilename();
+            if (fileName != null) {
+                String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
 
-            switch (extension) {
-                case "ttl", "turtle":
+                switch (extension) {
+                    case "ttl", "turtle":
+                        return Lang.TURTLE;
+                    case "jsonld", "json-ld":
+                        return Lang.JSONLD;
+                    default:
+                        break;
+                }
+            }
+
+            String contentType = file.getContentType();
+            if (contentType != null) {
+                if (contentType.contains("turtle")) {
                     return Lang.TURTLE;
-                case "jsonld", "json-ld":
+                } else if (contentType.contains("json")) {
                     return Lang.JSONLD;
-                default:
-                    break;
+                }
             }
+        } catch (Exception e) {
+            throw new UnsupportedRdfFormatException("Nepodporovaný RDF jazyk", e);
         }
-
-        String contentType = file.getContentType();
-        if (contentType != null) {
-            if (contentType.contains("turtle")) {
-                return Lang.TURTLE;
-            } else if (contentType.contains("json")) {
-                return Lang.JSONLD;
-            }
-        }
-
         return null;
     }
 
@@ -90,21 +95,21 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Transactional
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
         if (file.isEmpty()) {
-            throw new com.dia.ismdtoolbackend.exception.EmptyFileException("Uploaded file is empty");
+            throw new EmptyFileException("Uploaded file is empty");
         }
 
-        Lang rdfFormat = determineRDFFormat(file);
-        if (rdfFormat == null) {
-            throw new com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException("Unsupported RDF format");
+        Lang rdfLang = determineRDFFormat(file);
+        if (rdfLang == null) {
+            throw new UnsupportedRdfFormatException("Nepodporovaný RDF jazyk");
         }
 
-        OntModel finalModel = getOntologyModel(file, rdfFormat);
+        OntModel finalModel = getOntologyModel(file, rdfLang);
         String graphName = determineGraphName(file, providedName, finalModel);
         log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
-        List<String> publishedConceptIris = checkPublishedResourcesInNKD(finalModel);
+        List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel);
         if (!publishedConceptIris.isEmpty()) {
-            log.info("Model contains published concepts: {}", publishedConceptIris.size());
+            log.info("Model contains published resources: {}", publishedConceptIris.size());
         }
 
         OntologyMetadataModel metadata = createOntologyMetadataEntity(graphName, userId);
@@ -135,33 +140,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         );
 
         return metadata;
-    }
-
-    private List<String> checkPublishedResourcesInNKD(OntModel finalModel) {
-        List<String> resourceIris = new ArrayList<>();
-
-        Resource slovnikResource = finalModel.createResource(OWL2.Ontology);
-        Resource pojemResource = finalModel.createResource(POJEM_GENERIC);
-        ResIterator conceptIterator = finalModel.listResourcesWithProperty(RDF.type, pojemResource);
-
-        resourceIris.add(slovnikResource.getURI());
-
-        while (conceptIterator.hasNext()) {
-            Resource conceptResource = conceptIterator.next();
-
-            if (conceptResource.isURIResource()) {
-                String conceptIri = conceptResource.getURI();
-                resourceIris.add(conceptIri);
-            }
-        }
-
-        log.debug("Extracted {} concept IRIs from model for NKD verification", resourceIris.size());
-
-        if (resourceIris.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        return nkdSparqlClient.getPublishedResourcesList(resourceIris);
     }
 
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {
@@ -298,6 +276,12 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
         OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
                 .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
+
+        if (publishedConceptIris.contains(graphName)) {
+            log.info("Ontology {} is published in NKD, setting isPublished = true", graphName);
+            ontologyMetadata.setIsPublished(true);
+            ontologyMetadataRepository.save(ontologyMetadata);
+        }
 
         Resource pojemResource = model.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
