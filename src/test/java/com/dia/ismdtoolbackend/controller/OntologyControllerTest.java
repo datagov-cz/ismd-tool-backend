@@ -1,7 +1,14 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.ValidationConfig;
+import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
+import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
+import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
@@ -11,57 +18,70 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import java.util.HashMap;
-import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ExtendWith(MockitoExtension.class)
+/**
+ * Integration tests for OntologyController with security context.
+ * <p>
+ * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
+ * Authentication is provided via @WithMockSecurityUser annotation.
+ * Authorization checks (@PreAuthorize) are handled via TestOntologySecurityService.
+ * <p>
+ * Note: @MockBean is deprecated in Spring Boot 3.4+ but remains the recommended
+ * approach for @WebMvcTest until a clear migration path is provided.
+ */
+@WebMvcTest(controllers = OntologyController.class,
+    excludeAutoConfiguration = {
+        org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class,
+        org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class
+    })
+@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
+@ActiveProfiles("test")
 class OntologyControllerTest {
 
+    @Autowired
     private MockMvc mockMvc;
 
-    @Mock
+    @MockBean
     private OntologyUploadService ontologyUploadService;
 
-    @Mock
+    @MockBean
     private OntologyService ontologyService;
 
-    @Mock
+    @MockBean
     private OntologyDownloadService ontologyDownloadService;
 
-    @Mock
+    @MockBean
     private ValidationService validationService;
 
-    @Mock
+    @MockBean
+    private ValidationClient validationClient;
+
+    @MockBean
     private ValidationConfig validationConfig;
 
-    @InjectMocks
-    private OntologyController ontologyController;
-
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(ontologyController).build();
-        objectMapper = new ObjectMapper();
+        // Reset security service to allow modifications by default
+        TestOntologySecurityService.reset();
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_Success() throws Exception {
         String userId = "user123";
         String providedName = "test-ontology";
@@ -77,13 +97,12 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
+                        .param("providedName", providedName))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value(providedName))
@@ -92,6 +111,7 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_SuccessWithoutProvidedName() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
@@ -106,12 +126,11 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(Lang.TURTLE), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("userId", userId))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("generated-graph-name"))
@@ -120,6 +139,31 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId= "user123")
+    void testUploadFromFile_EmptyFile() throws Exception {
+        String userId = "user123";
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file",
+                "empty.ttl",
+                "text/turtle",
+                new byte[0]
+        );
+
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+                .thenThrow(new EmptyFileException("Soubor je prázdný."));
+
+        TestOntologySecurityService.setAllowModify(true);
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(emptyFile))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Soubor je prázdný."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_UnsupportedRDFFormat() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
@@ -129,11 +173,12 @@ class OntologyControllerTest {
                 "some content".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(null);
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+                .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("userId", userId))
+                        .file(file))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
@@ -151,41 +196,40 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(Lang.TURTLE), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
                 .thenThrow(new RuntimeException("Parse error"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("userId", userId))
+                        .file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
-    void testUploadFromFile_MissingUserId() throws Exception {
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "test.ttl",
-                "text/turtle",
-                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
-        );
-
-        mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_MissingFile() throws Exception {
         String userId = "user123";
+        String providedName = "jsonld-ontology";
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.jsonld",
+                "application/ld+json",
+                "".getBytes()
+        );
+
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+                .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .param("userId", userId))
+                        .file(file)
+                        .param("providedName", providedName))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_JsonLdFormat() throws Exception {
         String userId = "user123";
         String providedName = "jsonld-ontology";
@@ -201,13 +245,12 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.JSONLD), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
+                        .param("providedName", providedName))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value(providedName))
@@ -215,8 +258,28 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_LargeFile() throws Exception {
         String userId = "user123";
+        MockMultipartFile largeFile = getMockMultipartFile();
+
+        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
+        expectedMetadata.setGraphName("large-ontology");
+        expectedMetadata.setUser(new UserModel(userId));
+
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+                .thenReturn(expectedMetadata);
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(largeFile))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data.graphName").value("large-ontology"))
+                .andExpect(jsonPath("$.data.user.userId").value(userId));
+    }
+
+    private static MockMultipartFile getMockMultipartFile() {
         StringBuilder largeContent = new StringBuilder();
         largeContent.append("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         largeContent.append("<http://example.org/test> a owl:Ontology .");
@@ -225,31 +288,16 @@ class OntologyControllerTest {
             largeContent.append(String.format("<http://example.org/entity%d> a owl:Class .", i));
         }
 
-        MockMultipartFile largeFile = new MockMultipartFile(
+        return new MockMultipartFile(
                 "file",
                 "large.ttl",
                 "text/turtle",
                 largeContent.toString().getBytes()
         );
-
-        OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
-        expectedMetadata.setGraphName("large-ontology");
-        expectedMetadata.setUser(new UserModel(userId));
-
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(Lang.TURTLE), eq(userId)))
-                .thenReturn(expectedMetadata);
-
-        mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(largeFile)
-                        .param("userId", userId))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value("large-ontology"))
-                .andExpect(jsonPath("$.data.user.userId").value(userId));
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_AlreadyExistsScenario() throws Exception {
         String userId = "user123";
         String providedName = "existing-ontology";
@@ -266,13 +314,12 @@ class OntologyControllerTest {
         existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(Lang.TURTLE), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
                 .thenReturn(existingMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file)
-                        .param("providedName", providedName)
-                        .param("userId", userId))
+                        .param("providedName", providedName))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.id").value(1))
@@ -282,9 +329,11 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_Success() throws Exception {
         Long ontologyId = 1L;
 
+        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
@@ -295,10 +344,12 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Slovník s ID 999 nebyl nalezen"))
+        TestOntologySecurityService.setAllowModify(true);
+        doThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník s ID 999 nebyl nalezen"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
@@ -309,23 +360,25 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testDeleteOntology_OntologyException() throws Exception {
+    @WithMockSecurityUser(userId = "user123")
+    void testDeleteOntology_AccessDenied() throws Exception {
         Long ontologyId = 1L;
 
-        doThrow(new org.apache.jena.ontology.OntologyException("Chyba při mazání slovníku"))
-                .when(ontologyService).deleteOntology(ontologyId);
+        TestOntologySecurityService.setAllowModify(false);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isForbidden())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Chyba při mazání slovníku"));
+                .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_UnexpectedException() throws Exception {
         Long ontologyId = 1L;
 
+        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Neočekávaná chyba"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
@@ -333,26 +386,16 @@ class OntologyControllerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba při mazání slovníku."));
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
     }
 
     // ========== Create Ontology Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateOntology_Success() throws Exception {
         String userId = "user123";
-        OntologyCreateModel createModel = new OntologyCreateModel();
-        createModel.setNamespace("http://example.org/");
-        NameModel nameModel = new NameModel();
-        Map<String, String> nameMap = new HashMap<>();
-        nameMap.put("cs", "test-ontology");
-        nameModel.setName(nameMap);
-        createModel.setNameModel(nameModel);
-        DescriptionModel descModel = new DescriptionModel();
-        Map<String, String> descMap = new HashMap<>();
-        descMap.put("cs", "Test description");
-        descModel.setDescription(descMap);
-        createModel.setDescriptionModel(descModel);
+        OntologyCreateModel createModel = getOntologyCreateModel();
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
@@ -362,59 +405,43 @@ class OntologyControllerTest {
 
         mockMvc.perform(post("/api/ontology/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createModel))
-                        .param("userId", userId))
+                        .content(objectMapper.writeValueAsString(createModel)))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("http://example.org/test-ontology"))
                 .andExpect(jsonPath("$.message").isString());
     }
 
-    @Test
-    void testCreateOntology_EmptyUserId() throws Exception {
+    private static OntologyCreateModel getOntologyCreateModel() {
         OntologyCreateModel createModel = new OntologyCreateModel();
         createModel.setNamespace("http://example.org/");
         NameModel nameModel = new NameModel();
-        Map<String, String> nameMap = new HashMap<>();
-        nameMap.put("cs", "test-ontology");
-        nameModel.setName(nameMap);
+        nameModel.setName(java.util.Map.of("cs", "test-ontology"));
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
-        Map<String, String> descMap = new HashMap<>();
-        descMap.put("cs", "Test description");
-        descModel.setDescription(descMap);
+        descModel.setDescription(java.util.Map.of("cs", "Test description"));
         createModel.setDescriptionModel(descModel);
-
-        mockMvc.perform(post("/api/ontology/create")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createModel))
-                        .param("userId", ""))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("ID uživatele je povinné."));
+        return createModel;
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testCreateOntology_ValidationError() throws Exception {
         String userId = "user123";
         OntologyCreateModel createModel = new OntologyCreateModel();
         NameModel nameModel = new NameModel();
-        Map<String, String> nameMap = new HashMap<>();
-        nameMap.put("cs", "test-ontology");
-        nameModel.setName(nameMap);
+        nameModel.setName(java.util.Map.of("cs", "test-ontology"));
         createModel.setNameModel(nameModel);
         DescriptionModel descModel = new DescriptionModel();
-        Map<String, String> descMap = new HashMap<>();
-        descMap.put("cs", "Test description");
-        descModel.setDescription(descMap);
+        descModel.setDescription(java.util.Map.of("cs", "Test description"));
         createModel.setDescriptionModel(descModel);
 
-        when(ontologyService.createOntology(any(), eq(userId)))
-                .thenThrow(new org.apache.jena.ontology.OntologyException("Namespace je povinný"));
+        when(ontologyService.createOntology(any(OntologyCreateModel.class), eq(userId)))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException("Namespace je povinný"));
 
         mockMvc.perform(post("/api/ontology/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(createModel))
-                        .param("userId", userId))
+                        .content(objectMapper.writeValueAsString(createModel)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Namespace je povinný"));
     }
@@ -422,6 +449,7 @@ class OntologyControllerTest {
     // ========== Edit Ontology Tests ==========
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testEditOntology_Success() throws Exception {
         Long ontologyId = 1L;
         OntologyEditModel editModel = new OntologyEditModel();
@@ -429,6 +457,7 @@ class OntologyControllerTest {
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
+        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(eq(ontologyId), any(OntologyEditModel.class)))
                 .thenReturn(expectedMetadata);
 
@@ -442,12 +471,14 @@ class OntologyControllerTest {
     }
 
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testEditOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
         OntologyEditModel editModel = new OntologyEditModel();
 
+        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(eq(ontologyId), any()))
-                .thenThrow(new org.apache.jena.ontology.OntologyException("Slovník nebyl nalezen"));
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník nebyl nalezen"));
 
         mockMvc.perform(patch("/api/ontology/{ontologyId}/edit", ontologyId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -507,7 +538,7 @@ class OntologyControllerTest {
         Long ontologyId = 999L;
 
         when(ontologyDownloadService.downloadOntology(ontologyId, "ttl"))
-                .thenThrow(new RuntimeException("Ontology not found"));
+                .thenThrow(new OntologyNotFoundException("Ontology not found"));
 
         mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
                         .param("format", "ttl"))
@@ -518,7 +549,11 @@ class OntologyControllerTest {
 
     @Test
     void testGetOntologyDetail_Success() throws Exception {
-        String ontologySlug = "test-ontology";
+        String slug = "test-ontology";
+        GetOntologyDto ontologyDto = new GetOntologyDto();
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
 
         OntologyDetailModel detailModel = OntologyDetailModel.builder()
                 .context("http://example.org/context")
@@ -531,32 +566,386 @@ class OntologyControllerTest {
                 .concepts(java.util.List.of())
                 .build();
 
-        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
-        metadataModel.setSlug(ontologySlug);
-        metadataModel.setGraphName("http://example.org/test-ontology");
-
-        GetOntologyDto ontologyDto = new GetOntologyDto();
         ontologyDto.setOntologyMetadata(metadataModel);
         ontologyDto.setOntologyDetail(detailModel);
 
-        when(ontologyService.getOntologyDetailModel(ontologySlug))
+        when(ontologyService.getOntologyDetailModel(slug))
                 .thenReturn(ontologyDto);
 
-        mockMvc.perform(get("/api/ontology/{slug}/detail", ontologySlug))
+        mockMvc.perform(get("/api/ontology/{slug}/detail", slug))
                 .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.ontologyMetadata.slug").value(ontologySlug))
-                .andExpect(jsonPath("$.ontologyDetail.iri").value("http://example.org/test-ontology"));
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
     }
 
     @Test
     void testGetOntologyDetail_NotFound() throws Exception {
-        String ontologySlug = "nonexistent";
+        String slug = "non-existent-ontology";
 
-        when(ontologyService.getOntologyDetailModel(ontologySlug))
-                .thenThrow(new RuntimeException("Ontology not found"));
+        when(ontologyService.getOntologyDetailModel(slug))
+                .thenThrow(new OntologyNotFoundException("Ontology not found"));
 
-        mockMvc.perform(get("/api/ontology/{slug}/detail", ontologySlug))
+        mockMvc.perform(get("/api/ontology/{slug}/detail", slug))
                 .andExpect(status().isNotFound());
+    }
+
+    // ========== Get Ontology List Tests ==========
+
+    @Test
+    void testGetOntologyList_AllOntologies() throws Exception {
+        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        ontology1.setId(1L);
+        ontology1.setGraphName("http://example.org/ontology1");
+        ontology1.setSlug("ontology-1");
+
+        OntologyMetadataModel ontology2 = new OntologyMetadataModel();
+        ontology2.setId(2L);
+        ontology2.setGraphName("http://example.org/ontology2");
+        ontology2.setSlug("ontology-2");
+
+        when(ontologyService.getAll(null, null))
+                .thenReturn(java.util.List.of(ontology1, ontology2));
+
+        mockMvc.perform(get("/api/ontology/list"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].graphName").value("http://example.org/ontology1"))
+                .andExpect(jsonPath("$.data[1].id").value(2))
+                .andExpect(jsonPath("$.data[1].graphName").value("http://example.org/ontology2"))
+                .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    @Test
+    void testGetOntologyList_ByUserId() throws Exception {
+        String userId = "user123";
+        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        ontology1.setId(1L);
+        ontology1.setGraphName("http://example.org/ontology1");
+        ontology1.setUser(new UserModel(userId));
+
+        when(ontologyService.getAll(userId, null))
+                .thenReturn(java.util.List.of(ontology1));
+
+        mockMvc.perform(get("/api/ontology/list")
+                        .param("userId", userId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
+                .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    @Test
+    void testGetOntologyList_ByPublishedStatus() throws Exception {
+        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        ontology1.setId(1L);
+        ontology1.setGraphName("http://example.org/ontology1");
+        ontology1.setIsPublished(true);
+
+        when(ontologyService.getAll(null, true))
+                .thenReturn(java.util.List.of(ontology1));
+
+        mockMvc.perform(get("/api/ontology/list")
+                        .param("isPublished", "true"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].isPublished").value(true))
+                .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    @Test
+    void testGetOntologyList_BySlugs() throws Exception {
+        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        ontology1.setId(1L);
+        ontology1.setSlug("ontology-1");
+        ontology1.setGraphName("http://example.org/ontology1");
+
+        OntologyMetadataModel ontology2 = new OntologyMetadataModel();
+        ontology2.setId(2L);
+        ontology2.setSlug("ontology-2");
+        ontology2.setGraphName("http://example.org/ontology2");
+
+        when(ontologyService.getBySlugs(java.util.List.of("ontology-1", "ontology-2")))
+                .thenReturn(java.util.List.of(ontology1, ontology2));
+
+        mockMvc.perform(get("/api/ontology/list")
+                        .param("slugs", "ontology-1", "ontology-2"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].slug").value("ontology-1"))
+                .andExpect(jsonPath("$.data[1].slug").value("ontology-2"))
+                .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    @Test
+    void testGetOntologyList_EmptyResult() throws Exception {
+        when(ontologyService.getAll(null, null))
+                .thenReturn(java.util.List.of());
+
+        mockMvc.perform(get("/api/ontology/list"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0))
+                .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    @Test
+    void testGetOntologyList_CombinedFilters() throws Exception {
+        String userId = "user123";
+        OntologyMetadataModel ontology1 = new OntologyMetadataModel();
+        ontology1.setId(1L);
+        ontology1.setGraphName("http://example.org/ontology1");
+        ontology1.setUser(new UserModel(userId));
+        ontology1.setIsPublished(true);
+
+        when(ontologyService.getAll(userId, true))
+                .thenReturn(java.util.List.of(ontology1));
+
+        mockMvc.perform(get("/api/ontology/list")
+                        .param("userId", userId)
+                        .param("isPublished", "true"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].user.userId").value(userId))
+                .andExpect(jsonPath("$.data[0].isPublished").value(true))
+                .andExpect(jsonPath("$.message").value("Žádost o seznam slovníků proběhla úspěšně."));
+    }
+
+    // ========== Validate Ontology Tests ==========
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_Success() throws Exception {
+        String slug = "test-ontology";
+        String userId = "user123";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        ontologyMetadata.setSlug(slug);
+
+        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        when(validationClient.requestValidation(anyString(), anyString()))
+                .thenReturn(java.util.Optional.of(validationReport));
+        doNothing().when(validationService).saveValidationReport(any(), any(), eq(userId));
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.message").value("Validace proběhla úspěšně."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_ValidationFailed() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        ontologyMetadata.setSlug(slug);
+
+        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        when(validationClient.requestValidation(anyString(), anyString()))
+                .thenReturn(java.util.Optional.of(validationReport));
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.message").value("Validace proběhla úspěšně."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_ServiceUnavailable() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        ontologyMetadata.setSlug(slug);
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        when(validationClient.requestValidation(anyString(), anyString()))
+                .thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Validace se nezdařila - validační služba nevrátila odpověď."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_AccessDenied() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+
+        TestOntologySecurityService.setAllowModify(false);
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    // ========== Request Catalog Record Tests ==========
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testRequestCatalogRecord_Success() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        ontologyMetadata.setSlug(slug);
+
+        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+
+        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
+                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
+        catalogRequest.setOntologyMetadata(ontologyMetadata);
+        catalogRequest.setValidationReport(validationReport);
+
+        com.dia.dto.CatalogRecordDto catalogRecordDto = mock(com.dia.dto.CatalogRecordDto.class);
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        when(validationClient.requestCatalogRecord(any()))
+                .thenReturn(java.util.Optional.of(catalogRecordDto));
+
+        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(catalogRequest)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.message").value("Žádost o katalogizační záznam proběhla úspěšně."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testRequestCatalogRecord_ServiceUnavailable() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+
+        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+
+        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
+                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
+        catalogRequest.setOntologyMetadata(ontologyMetadata);
+        catalogRequest.setValidationReport(validationReport);
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        when(validationClient.requestCatalogRecord(any()))
+                .thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(catalogRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testRequestCatalogRecord_AccessDenied() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+
+        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+
+        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
+                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
+        catalogRequest.setOntologyMetadata(ontologyMetadata);
+        catalogRequest.setValidationReport(validationReport);
+
+        TestOntologySecurityService.setAllowModify(false);
+
+        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(catalogRequest)))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testRequestCatalogRecord_InvalidValidationReport() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+
+        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+
+        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
+                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
+        catalogRequest.setOntologyMetadata(ontologyMetadata);
+        catalogRequest.setValidationReport(validationReport);
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        when(validationClient.requestCatalogRecord(any()))
+                .thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(catalogRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 }

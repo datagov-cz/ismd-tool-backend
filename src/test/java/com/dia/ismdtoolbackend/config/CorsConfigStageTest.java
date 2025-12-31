@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,6 +24,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @ActiveProfiles("stage")
 @AutoConfigureMockMvc
+@TestPropertySource(properties = {
+        "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
+        "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8080/realms/ismd"
+})
 class CorsConfigStageTest {
 
     @Autowired

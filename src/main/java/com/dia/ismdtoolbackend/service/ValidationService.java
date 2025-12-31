@@ -6,6 +6,6 @@ import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 
 public interface ValidationService {
-    void saveValidationReport(ValidationReport validationReport, OntologyMetadataModel ontologyMetadataModel) throws ValidationException;
+    void saveValidationReport(ValidationReport validationReport, OntologyMetadataModel ontologyMetadataModel, String userId) throws ValidationException;
     ValidationReportDto getValidationReport(OntologyMetadataModel ontologyMetadataModel) throws ValidationException;
 }

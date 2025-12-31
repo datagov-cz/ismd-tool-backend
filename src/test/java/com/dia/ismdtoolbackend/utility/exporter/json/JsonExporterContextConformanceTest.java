@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Stream;
 
+import static com.dia.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -46,11 +47,6 @@ class JsonExporterContextConformanceTest {
         try (InputStream is = JsonExporterContextConformanceTest.class.getResourceAsStream(CONTEXT_RESOURCE_PATH)) {
             assertNotNull(is, "JSON-LD context file not found at " + CONTEXT_RESOURCE_PATH);
             String contextContent = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-
-            // TODO to be removed when comment is resolved
-            if (contextContent.startsWith("\"//comment\"")) {
-                contextContent = contextContent.substring(contextContent.indexOf('\n') + 1);
-            }
 
             JSONObject fullContext = new JSONObject(contextContent);
             contextDefinition = fullContext.getJSONObject("@context");
@@ -301,8 +297,8 @@ class JsonExporterContextConformanceTest {
             Arguments.of("Vztah", OWL.ObjectProperty),
             Arguments.of("Typ objektu práva", tempModel.getResource(OFN_NAMESPACE + "typ-objektu-práva")),
             Arguments.of("Typ subjektu práva", tempModel.getResource(OFN_NAMESPACE + "typ-subjektu-práva")),
-            Arguments.of("Veřejný údaj", tempModel.getResource(OFN_NAMESPACE + "veřejný-údaj")),
-            Arguments.of("Neveřejný údaj", tempModel.getResource(OFN_NAMESPACE + "neveřejný-údaj"))
+            Arguments.of("Veřejný údaj", tempModel.getResource(OFN_NAMESPACE_LEGAL + "veřejný-údaj")),
+            Arguments.of("Neveřejný údaj", tempModel.getResource(OFN_NAMESPACE_LEGAL + "neveřejný-údaj"))
         );
     }
 

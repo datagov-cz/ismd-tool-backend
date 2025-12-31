@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.utility.UtilityMethods;
 import lombok.Getter;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -88,9 +89,11 @@ class OntologyEditorTest {
             ontology.addProperty(descProperty, model.createLiteral("Old description", "cs"));
 
             Resource concept1 = model.createResource(oldNamespace + "concept-1");
+            concept1.addProperty(RDF.type, SKOS.Concept);
             concept1.addProperty(SKOS.prefLabel, "Concept 1");
 
             Resource concept2 = model.createResource(oldNamespace + "concept-2");
+            concept2.addProperty(RDF.type, SKOS.Concept);
             concept2.addProperty(SKOS.prefLabel, "Concept 2");
 
             Property hasConcept = model.createProperty("http://example.com/hasConcept");
@@ -146,13 +149,16 @@ class OntologyEditorTest {
             String newNamespace =
                     UtilityMethods.ensureNamespaceEndsWithDelimiter(result.newOntologyIRI);
 
+            // Concepts should be renamed to the new namespace
             Resource renamedConcept1 = model.getResource(newNamespace + "concept-1");
             Resource renamedConcept2 = model.getResource(newNamespace + "concept-2");
-            Resource renamedOtherSubject = model.getResource(newNamespace + "other-subject");
 
             assertTrue(model.containsResource(renamedConcept1));
             assertTrue(model.containsResource(renamedConcept2));
-            assertTrue(model.containsResource(renamedOtherSubject));
+
+            // Non-concept resources (without RDF.type = SKOS.Concept) should remain in old namespace
+            Resource oldOtherSubject = model.getResource(oldNamespace + "other-subject");
+            assertTrue(model.containsResource(oldOtherSubject));
         }
 
         // --- E2. keep ontology IRI and concept IRIs when name is unchanged ---

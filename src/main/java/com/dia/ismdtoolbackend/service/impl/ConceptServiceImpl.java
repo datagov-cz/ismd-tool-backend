@@ -152,7 +152,7 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
-    public GetConceptDto getConceptDetail(String conceptSlug) throws OntologyException {
+    public GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptSlug {} not found", conceptSlug);
@@ -188,6 +188,7 @@ public class ConceptServiceImpl implements ConceptService {
 
         PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(rawModel, metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
+
         return result;
     }
 
@@ -404,6 +405,17 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
+    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
+        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
+            return "";
+        }
+        Map<String, String> names = nameModel.getName();
+        if (names.containsKey("cs")) {
+            return names.get("cs");
+        }
+        return names.values().iterator().next();
+    }
+
     private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
@@ -453,16 +465,5 @@ public class ConceptServiceImpl implements ConceptService {
                 .status(status)
                 .errorMessage(errorMessage)
                 .build();
-    }
-
-    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey("cs")) {
-            return names.get("cs");
-        }
-        return names.values().iterator().next();
     }
 }

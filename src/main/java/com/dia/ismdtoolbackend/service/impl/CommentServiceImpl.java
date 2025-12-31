@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
+import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
 import com.dia.ismdtoolbackend.mapper.CommentMapper;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
@@ -41,7 +43,7 @@ public class CommentServiceImpl implements CommentService {
         log.info("Deleting comment with ID: {}", commentId);
 
         commentRepository.findById(commentId)
-                .orElseThrow(() -> new CommentException("Komentář s ID " + commentId + " nebyl nalezen"));
+                .orElseThrow(() -> new CommentNotFoundException("Komentář s ID " + commentId + " nebyl nalezen"));
 
         commentRepository.deleteById(commentId);
         log.info("Successfully deleted comment {}", commentId);

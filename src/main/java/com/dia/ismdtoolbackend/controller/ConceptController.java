@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
@@ -9,9 +10,10 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,103 +29,54 @@ public class ConceptController {
 
     private final ConceptService conceptService;
 
-    @PostMapping("/create")
-    public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(@RequestBody ConceptCreateModel conceptCreateModel, @RequestParam String userId) {
+    @PostMapping("/{slug}/create")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
+    public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
+            @RequestBody ConceptCreateModel conceptCreateModel,
+            @PathVariable String slug,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), userId);
+        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
 
-        try {
-            if (userId == null || userId.trim().isEmpty()) {
-                log.error("UserId is null or empty");
-                return ResponseEntity.badRequest().body(ApiResponseDto.error("ID uživatele je povinné."));
-            }
+        ConceptMetadataModel createdConcept = conceptService.createConcept(conceptCreateModel, securityUser.getUserId());
+        log.info("Concept create successful: {}", createdConcept);
 
-            ConceptMetadataModel createdConcept = conceptService.createConcept(conceptCreateModel, userId);
-            log.info("Concept create successful: {}", createdConcept);
-
-            return ResponseEntity.ok().body(ApiResponseDto.success(createdConcept, "Pojem úspěšně vytvořen: "));
-        } catch (org.apache.jena.ontology.OntologyException e) {
-            if (e.getMessage().contains("není platné")) {
-                log.error("Invalid concept IRI: {}", e.getMessage());
-                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-            }
-            if (e.getMessage().contains("povinný")) {
-                log.error("Validation error: {}", e.getMessage());
-                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-            }
-            if (e.getMessage().contains("Data pro vytvoření pojmu jsou prázdná")) {
-                log.error("Create model validation failed: {}", e.getMessage());
-                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-            }
-            if (e.getMessage().contains("může obsahovat pouze písmena")) {
-                log.error("Name validation failed: {}", e.getMessage());
-                return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-            }
-            if (e.getMessage().contains("Nepodařilo se uložit")) {
-                log.error("Storage error: {}", e.getMessage());
-                return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
-            }
-            log.error("Error creating concept: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-        } catch (IllegalArgumentException | SecurityException e) {
-            log.error("Client error creating concept: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-        } catch (Exception e) {
-            log.error("Unexpected error creating concept: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při vytváření pojmu."));
-        }
+        return ResponseEntity.ok().body(ApiResponseDto.success(createdConcept, "Pojem úspěšně vytvořen: "));
     }
 
     @DeleteMapping("/{conceptId}/delete")
-    public ResponseEntity<ApiResponseDto<Void>> deleteConcept(@PathVariable Long conceptId) {
+    @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
+    public ResponseEntity<ApiResponseDto<Void>> deleteConcept(
+            @PathVariable Long conceptId,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology delete requested, ontologyId: {}", conceptId);
+        log.info("Concept delete requested, conceptId: {}, userId: {}", conceptId, securityUser.getUserId());
 
-        try {
-            conceptService.deleteConcept(conceptId);
-            return ResponseEntity.ok(ApiResponseDto.success("Pojem úspěšně smazán."));
-        } catch (org.apache.jena.ontology.OntologyException e) {
-            if (e.getMessage().contains("nebyl nalezen")) {
-                log.error("Concept not found: {}", conceptId);
-                return ResponseEntity.status(404).body(ApiResponseDto.error(e.getMessage()));
-            }
-            log.error("Error deleting concept: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-        } catch (Exception e) {
-            log.error("Unexpected error deleting concept: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při mazání pojmu."));
-        }
+        conceptService.deleteConcept(conceptId);
+        log.info("Concept delete successful: {}", conceptId);
+
+        return ResponseEntity.ok(ApiResponseDto.success("Pojem úspěšně smazán."));
     }
 
-    @PatchMapping("{conceptId}/edit")
+    @PatchMapping("/{conceptId}/edit")
+    @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
             @RequestBody ConceptEditModel conceptEditModel,
-            @RequestParam String userId,
+            @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long conceptId
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Concept edit requested, concept ID: {}", conceptId);
+        log.info("Concept edit requested, conceptId: {}, userId: {}", conceptId, securityUser.getUserId());
 
-        try {
-            if (userId == null || userId.trim().isEmpty()) {
-                log.error("UserId is null or empty");
-                return ResponseEntity.badRequest().body(ApiResponseDto.error("ID uživatele je povinné."));
-            }
+        ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptId, conceptEditModel);
+        log.info("Concept edit successful: {}", editedConceptModel);
 
-            ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptId, conceptEditModel);
-            log.info("Concept edit successful: {}", editedConceptModel);
-
-            return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
-        }catch (IllegalArgumentException | SecurityException e) {
-            log.error("Client error editing concept: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(ApiResponseDto.error(e.getMessage()));
-        } catch (Exception e) {
-            log.error("Unexpected error editing concept: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při úpravě pojmu."));
-        }
+        return ResponseEntity.ok().body(ApiResponseDto.success(editedConceptModel, "Pojem úspěšně upraven: "));
     }
 
     @GetMapping("/list")
@@ -135,16 +88,8 @@ public class ConceptController {
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
 
-        try {
-            List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
-            return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
-        } catch (OntologyException e) {
-            log.error("Error fetching concept list: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error(e.getMessage()));
-        } catch (Exception e) {
-            log.error("Unexpected error fetching concept list: {}", e.getMessage());
-            return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba při načítání seznamu pojmů."));
-        }
+        List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
+        return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Žádost o seznam pojmů proběhla úspěšně."));
     }
 
     @GetMapping("/{slug}/detail")
@@ -153,16 +98,7 @@ public class ConceptController {
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept detail requested, conceptSlug: {}", slug);
 
-        try {
-            GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
-            return ResponseEntity.ok().body(conceptDto);
-        } catch (RuntimeException e) {
-            if (e.getMessage().contains("not found") || e.getMessage().contains("nebyl nalezen") || e.getMessage().contains("nebyla nalezena")) {
-                log.error("Concept not found: {}", slug);
-                return ResponseEntity.notFound().build();
-            }
-            log.error("Error creating concept detail model: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
+        return ResponseEntity.ok().body(conceptDto);
     }
 }

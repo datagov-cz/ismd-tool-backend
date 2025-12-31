@@ -1,0 +1,108 @@
+{
+  "realm": "ismd",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "ismd-app",
+      "secret": "secret123",
+      "redirectUris": ["*"],
+      "publicClient": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "ismd-test-frontend",
+      "name": "Test Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": [
+        "http://localhost:8000/*",
+        "http://127.0.0.1:8000/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000"
+      ],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8000/*##http://127.0.0.1:8000/*##http://localhost:3000/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "user" },
+      { "name": "admin" }
+    ]
+  },
+  "identityProviders": [
+    {
+      "alias": "caais",
+      "displayName": "Login with CAAIS",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "issuer": "https://rest-openidconnectapi.caais-test-ext.gov.cz/",
+        "authorizationUrl": "https://rest-openidconnectapi.caais-test-ext.gov.cz/oauth2/authorize",
+        "tokenUrl": "https://nginx-mtls:8443/caais/oauth2/token",
+        "userInfoUrl": "https://rest-openidconnectapi.caais-test-ext.gov.cz/userinfo",
+        "jwksUrl": "https://rest-openidconnectapi.caais-test-ext.gov.cz/oauth2/jwks",
+        "clientId": "${CAAIS_CLIENT_ID}",
+        "clientAuthMethod": "client_secret_post",
+        "clientSecret": "",
+        "defaultScope": "openid profile role",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "syncMode": "FORCE",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256",
+        "hideOnLoginPage": "false"
+      }
+    }
+  ],
+  "identityProviderMappers": [],
+  "authenticationFlows": [
+    {
+      "alias": "first broker login",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "idp-create-user-if-unique",
+          "requirement": "REQUIRED",
+          "priority": 10
+        }
+      ]
+    }
+  ],
+  "requiredActions": [
+    {
+      "alias": "VERIFY_PROFILE",
+      "name": "Verify Profile",
+      "providerId": "VERIFY_PROFILE",
+      "enabled": false,
+      "defaultAction": false
+    }
+  ]
+}
