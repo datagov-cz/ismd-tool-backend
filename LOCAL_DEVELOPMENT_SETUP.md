@@ -20,13 +20,17 @@
 
 Before you begin, ensure you have the following installed:
 
-| Software | Version | Download Link |
-|----------|---------|---------------|
-| **Java JDK** | 17 or higher | https://adoptium.net/ |
-| **Maven** | 3.8+ | https://maven.apache.org/download.cgi |
-| **Docker** | Latest | https://www.docker.com/products/docker-desktop |
-| **Docker Compose** | Latest (included with Docker Desktop) | - |
-| **Git** | Latest | https://git-scm.com/downloads |
+| Software           | Version                               | Download Link                                             |
+|--------------------|---------------------------------------|-----------------------------------------------------------|
+| **Java JDK**       | 17 or higher                          | https://adoptium.net/                                     |
+| **Maven**          | 3.8+                                  | https://maven.apache.org/download.cgi                     |
+| **Docker**         | Latest                                | https://www.docker.com/products/docker-desktop            |
+| **Docker Compose** | Latest (included with Docker Desktop) | -                                                         |
+| **Git**            | Latest                                | https://git-scm.com/downloads                             |
+| **Common Library** | Latest dev*                           | https://github.com/datagov-cz/ismd-validator-backend.git  |
+*build version in pom.xml must match
+
+
 
 ### Optional Tools
 
