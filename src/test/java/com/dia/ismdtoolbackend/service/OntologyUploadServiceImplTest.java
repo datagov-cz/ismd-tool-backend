@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.client.ValidationClient;
@@ -24,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -80,6 +82,8 @@ class OntologyUploadServiceImplTest {
                 jenaTDB2Repository,
                 publishedResourceUtil
         );
+        ReflectionTestUtils.setField(ontologyUploadService, "maxFileSizeConfig", "10MB");
+        ReflectionTestUtils.setField(ontologyUploadService, "rdfParsingTimeoutSeconds", 60);
     }
 
     @Test
@@ -422,18 +426,7 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(fileContent);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
 
-        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
-        savedEntity.setGraphName(providedName);
-        savedEntity.setUserId(userId);
-        savedEntity.setId(1L);
-
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
-
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
-        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
 
         when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
@@ -442,14 +435,14 @@ class OntologyUploadServiceImplTest {
             .when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
         // Expect exception to be thrown
-        assertThrows(Exception.class, () ->
+        assertThrows(OntologyUploadException.class, () ->
             ontologyUploadService.uploadFromFile(multipartFile, providedName, userId)
         );
 
-        // Verify rollback: metadata should be deleted
-        verify(ontologyMetadataRepository).deleteById(1L);
-        // Verify rollback: TDB2 graph should be deleted
-        verify(jenaTDB2Repository).deleteGraph(providedName);
+        // TDB2 save fails before any metadata is created — no cleanup needed
+        verify(ontologyMetadataRepository, never()).save(any());
+        verify(ontologyMetadataRepository, never()).deleteById(anyLong());
+        verify(jenaTDB2Repository, never()).deleteGraph(anyString());
     }
 
     @Test
@@ -486,9 +479,9 @@ class OntologyUploadServiceImplTest {
             ontologyUploadService.uploadFromFile(multipartFile, providedName, userId)
         );
 
-        // Verify rollback: metadata should be deleted
-        verify(ontologyMetadataRepository).deleteById(1L);
-        // Verify rollback: TDB2 graph should be deleted
+        // PostgreSQL rollback is handled by @Transactional — no manual deleteById
+        verify(ontologyMetadataRepository, never()).deleteById(anyLong());
+        // TDB2 graph should be cleaned up since it was saved before the failure
         verify(jenaTDB2Repository).deleteGraph(providedName);
     }
 }

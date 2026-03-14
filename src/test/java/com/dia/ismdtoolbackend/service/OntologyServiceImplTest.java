@@ -103,8 +103,7 @@ class OntologyServiceImplTest {
         ValidationReportEntity validationReport = new ValidationReportEntity();
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(validationReport));
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
 
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
@@ -128,7 +127,7 @@ class OntologyServiceImplTest {
     @Test
     void deleteOntology_EmptyModel() {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(false);
 
         OntologyException exception = assertThrows(OntologyException.class,
                 () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
@@ -141,8 +140,7 @@ class OntologyServiceImplTest {
     void deleteOntology_NoValidationReport() throws OntologyException {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
 
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
@@ -278,8 +276,8 @@ class OntologyServiceImplTest {
         assertEquals(1, result.getConceptMetadataModelList().size());
         assertEquals(TEST_ONTOLOGY_SLUG, result.getOntologyMetadata().getSlug());
         assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
-        // fetchGraph is called twice: once in main flow and once in enrichMetadataFromRDF
-        verify(jenaTDB2Repository, times(2)).fetchGraph(TEST_GRAPH_NAME);
+        // fetchGraph is called once: enrichMetadataFromModel reuses the already-fetched rawModel
+        verify(jenaTDB2Repository, times(1)).fetchGraph(TEST_GRAPH_NAME);
         verify(detailExtractor).applyOFNTransformations(modelWithData);
         // extractOntologyDetail is called once in main flow (not in checkPublishedOntology since ontology is not published)
         verify(detailExtractor).extractOntologyDetail(modelWithData);

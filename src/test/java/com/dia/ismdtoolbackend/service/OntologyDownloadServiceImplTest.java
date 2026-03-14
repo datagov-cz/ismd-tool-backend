@@ -11,6 +11,8 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyDownloadServiceImpl;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.rdfconnection.RDFConnection;
+import org.apache.jena.rdfconnection.RDFConnectionRemote;
+import org.apache.jena.rdfconnection.RDFConnectionRemoteBuilder;
 import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +24,9 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.io.Writer;
+import java.net.http.HttpClient;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
 
 import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,6 +41,9 @@ class OntologyDownloadServiceImplTest {
 
     @Mock
     private JsonExporter jsonExporter;
+
+    @Mock
+    private HttpClient fusekiHttpClient;
 
     @Mock
     private RDFConnection rdfConnection;
@@ -67,7 +74,19 @@ class OntologyDownloadServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new OntologyDownloadServiceImpl(FUSEKI_ENDPOINT, ontologyMetadataRepository, jsonExporter);
+        Semaphore semaphore = new Semaphore(10, true);
+        service = new OntologyDownloadServiceImpl(FUSEKI_ENDPOINT, fusekiHttpClient, ontologyMetadataRepository, jsonExporter, semaphore, 30000);
+    }
+
+    private MockedStatic<RDFConnectionRemote> mockRDFConnectionRemote() {
+        RDFConnectionRemoteBuilder builder = mock(RDFConnectionRemoteBuilder.class);
+        when(builder.destination(anyString())).thenReturn(builder);
+        when(builder.httpClient(any(HttpClient.class))).thenReturn(builder);
+        when(builder.build()).thenReturn(rdfConnection);
+
+        MockedStatic<RDFConnectionRemote> staticMock = mockStatic(RDFConnectionRemote.class);
+        staticMock.when(RDFConnectionRemote::newBuilder).thenReturn(builder);
+        return staticMock;
     }
 
     @Test
@@ -76,9 +95,7 @@ class OntologyDownloadServiceImplTest {
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        // Mock RDFConnection static factory method
-        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
-            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnectionMock = mockRDFConnectionRemote()) {
 
             // Mock fetch returning non-empty model
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
@@ -127,8 +144,7 @@ class OntologyDownloadServiceImplTest {
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
-            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnectionMock = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -180,8 +196,7 @@ class OntologyDownloadServiceImplTest {
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
-            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnectionMock = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -235,8 +250,7 @@ class OntologyDownloadServiceImplTest {
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
-            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnectionMock = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -271,8 +285,7 @@ class OntologyDownloadServiceImplTest {
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
-            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnectionMock = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -359,8 +372,6 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_OntologyNotFound_ThrowsOntologyNotFoundException() {
-        // Mock repository.findById() to return Optional.empty()
-        // Assert OntologyNotFoundException is thrown
         // Arrange - repozitář vrací prázdný výsledek
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
@@ -374,14 +385,11 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_EmptyModel_ThrowsOntologyException() {
-        // Mock model.isEmpty() to return true
-        // Assert OntologyException is thrown with message "Slovník je prázdný, nebo nebyl nalezen."
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnectionMock = mockStatic(RDFConnection.class)) {
-            rdfConnectionMock.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnectionMock = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(true);
 
@@ -396,15 +404,11 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_UnsupportedFormat_ThrowsIllegalArgumentException() {
-        // Use format "xml" or "csv"
-        // Assert IllegalArgumentException is thrown with message containing "Nepodporovaný formát"
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        // Mock
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -436,15 +440,11 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_JsonLdFormat_Success() {
-        // Mock jsonExporter.exportToJson() to return JSON string
-        // Assert result matches JSON exporter output
-        // Verify model.write() was NOT called for TTL
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -477,22 +477,19 @@ class OntologyDownloadServiceImplTest {
     @ParameterizedTest
     @ValueSource(strings = {"JSON-LD", "json-ld", "Json-Ld"})
     void downloadOntology_CaseInsensitiveFormat_JsonLd(String formatVariant) {
-        // Test with "JSON-LD", "json-ld", "Json-Ld"
-        // Assert all variants work correctly
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(()-> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
             try (MockedStatic<TurtleFilterUtil> filterUtil = mockStatic(TurtleFilterUtil.class);
                  MockedStatic<TurtleFormatterUtil> fmtUtil = mockStatic(TurtleFormatterUtil.class)) {
 
-                filterUtil.when(()-> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
-                fmtUtil.when(()-> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
+                filterUtil.when(() -> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
+                fmtUtil.when(() -> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
 
                 mockValidationNoDuplicates(ofnFormattedModel);
 
@@ -517,14 +514,11 @@ class OntologyDownloadServiceImplTest {
     @ParameterizedTest
     @ValueSource(strings = {"TTL", "ttl", "TtL"})
     void downloadOntology_CaseInsensitiveFormat_Ttl(String formatVariant) {
-        // Test with "TTL", "ttl", "TtL"
-        // Assert all variants work correctly
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -560,14 +554,11 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_NullFormat_ThrowsException() {
-        // Pass null as format parameter
-        // Assert appropriate exception is thrown
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(() -> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
@@ -598,15 +589,11 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void applyAllOFNTransformations_StatementCountReduction() {
-        // Mock rawModel.size() = 100, filteredModel.size() = 80, ofnFormattedModel.size() = 75
-        // Verify transformation pipeline is called in correct order
-        // Optionally verify debug log messages
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(()-> RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
             when(rawModel.size()).thenReturn(100L);
@@ -614,18 +601,18 @@ class OntologyDownloadServiceImplTest {
             try (MockedStatic<TurtleFilterUtil> filterUtil = mockStatic(TurtleFilterUtil.class);
                 MockedStatic<TurtleFormatterUtil> ftmUtil = mockStatic(TurtleFormatterUtil.class)) {
 
-                filterUtil.when(()-> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
+                filterUtil.when(() -> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
                 when(filteredModel.size()).thenReturn(80L);
 
-                ftmUtil.when(()-> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
+                ftmUtil.when(() -> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
                 when(ofnFormattedModel.size()).thenReturn(75L);
 
                 mockValidationNoDuplicates(ofnFormattedModel);
 
-                doAnswer(invocation ->{
+                doAnswer(invocation -> {
                     Writer w = invocation.getArgument(0);
                     w.write("@prefix ex: <http://example.org/> .\n# size=75");
-                    return  null;
+                    return null;
                 }).when(ofnFormattedModel).write(any(Writer.class), eq("TTL"));
 
                 // Act
@@ -636,8 +623,8 @@ class OntologyDownloadServiceImplTest {
                 assertTrue(ttl.contains("@prefix ex:"), "TTL output should come from the formatted model");
 
                 // Verify
-                filterUtil.verify(()-> TurtleFilterUtil.createFilteredModel(rawModel), times(1));
-                ftmUtil.verify(()-> TurtleFormatterUtil.transformToOFNFormat(filteredModel), times(1));
+                filterUtil.verify(() -> TurtleFilterUtil.createFilteredModel(rawModel), times(1));
+                ftmUtil.verify(() -> TurtleFormatterUtil.transformToOFNFormat(filteredModel), times(1));
 
                 verify(ofnFormattedModel, times(1)).write(any(Writer.class), eq("TTL"));
                 verify(filteredModel, never()).write(any(Writer.class), anyString());
@@ -652,23 +639,19 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void exportToOFNJson_Success_ReturnsJsonString() {
-        // Mock jsonExporter.exportToJson() to return valid JSON
-        // Test through downloadOntology with json-ld format
-        // Assert result matches exporter output
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(()->RDFConnection.connect(FUSEKI_ENDPOINT)).thenReturn(rdfConnection);
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockRDFConnectionRemote()) {
             when(rdfConnection.fetch(GRAPH_NAME)).thenReturn(rawModel);
             when(rawModel.isEmpty()).thenReturn(false);
 
             try (MockedStatic<TurtleFilterUtil> filterUtil = mockStatic(TurtleFilterUtil.class);
                  MockedStatic<TurtleFormatterUtil> fmtUtil = mockStatic(TurtleFormatterUtil.class)) {
 
-                filterUtil.when(()-> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
-                fmtUtil.when(()-> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
+                filterUtil.when(() -> TurtleFilterUtil.createFilteredModel(rawModel)).thenReturn(filteredModel);
+                fmtUtil.when(() -> TurtleFormatterUtil.transformToOFNFormat(filteredModel)).thenReturn(ofnFormattedModel);
 
                 mockValidationNoDuplicates(ofnFormattedModel);
 
@@ -692,19 +675,23 @@ class OntologyDownloadServiceImplTest {
 
     @Test
     void downloadOntology_RdfConnectionException_PropagatesException() {
-        // Mock RDFConnection.connect() to throw exception
-        // Assert exception propagates appropriately
         // Arrange
         OntologyMetadataEntity metadata = createOntologyMetadata();
         when(ontologyMetadataRepository.findById(ONTOLOGY_ID)).thenReturn(Optional.of(metadata));
 
         RuntimeException runEx = new RuntimeException("Connection failed");
-        try (MockedStatic<RDFConnection> rdfConnStatic = mockStatic(RDFConnection.class)) {
-            rdfConnStatic.when(()-> RDFConnection.connect(FUSEKI_ENDPOINT)).thenThrow(runEx);
+
+        RDFConnectionRemoteBuilder builder = mock(RDFConnectionRemoteBuilder.class);
+        when(builder.destination(anyString())).thenReturn(builder);
+        when(builder.httpClient(any(HttpClient.class))).thenReturn(builder);
+        when(builder.build()).thenThrow(runEx);
+
+        try (MockedStatic<RDFConnectionRemote> rdfConnStatic = mockStatic(RDFConnectionRemote.class)) {
+            rdfConnStatic.when(RDFConnectionRemote::newBuilder).thenReturn(builder);
 
             // Act
             RuntimeException ex = assertThrows(RuntimeException.class,
-                    ()-> service.downloadOntology(ONTOLOGY_ID, "ttl"));
+                    () -> service.downloadOntology(ONTOLOGY_ID, "ttl"));
 
             // Assert
             assertSame(runEx, ex);

@@ -56,7 +56,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getTypes(), published.getTypes())) {
+        if (areDifferent(local.getTypes(), published.getTypes())) {
             builder.types(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getTypes())
                     .publishedValue(published.getTypes())
@@ -72,7 +72,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getName(), published.getName())) {
+        if (areDifferent(local.getName(), published.getName())) {
             builder.name(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
                     .localValue(local.getName())
                     .publishedValue(published.getName())
@@ -88,7 +88,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getAlternativeName(), published.getAlternativeName())) {
+        if (areDifferent(local.getAlternativeName(), published.getAlternativeName())) {
             builder.alternativeName(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, Object>>builder()
                     .localValue(local.getAlternativeName())
                     .publishedValue(published.getAlternativeName())
@@ -104,7 +104,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getDefinition(), published.getDefinition())) {
+        if (areDifferent(local.getDefinition(), published.getDefinition())) {
             builder.definition(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
                     .localValue(local.getDefinition())
                     .publishedValue(published.getDefinition())
@@ -120,7 +120,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getDescription(), published.getDescription())) {
+        if (areDifferent(local.getDescription(), published.getDescription())) {
             builder.description(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
                     .localValue(local.getDescription())
                     .publishedValue(published.getDescription())
@@ -136,7 +136,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getIdentifier(), published.getIdentifier())) {
+        if (areDifferent(local.getIdentifier(), published.getIdentifier())) {
             builder.identifier(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getIdentifier())
                     .publishedValue(published.getIdentifier())
@@ -152,7 +152,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getBroaderClasses(), published.getBroaderClasses())) {
+        if (areDifferent(local.getBroaderClasses(), published.getBroaderClasses())) {
             builder.broaderClasses(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getBroaderClasses())
                     .publishedValue(published.getBroaderClasses())
@@ -168,7 +168,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getBroaderRelations(), published.getBroaderRelations())) {
+        if (areDifferent(local.getBroaderRelations(), published.getBroaderRelations())) {
             builder.broaderRelations(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getBroaderRelations())
                     .publishedValue(published.getBroaderRelations())
@@ -184,7 +184,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getBroaderProperties(), published.getBroaderProperties())) {
+        if (areDifferent(local.getBroaderProperties(), published.getBroaderProperties())) {
             builder.broaderProperties(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getBroaderProperties())
                     .publishedValue(published.getBroaderProperties())
@@ -200,7 +200,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getDomain(), published.getDomain())) {
+        if (areDifferent(local.getDomain(), published.getDomain())) {
             builder.domain(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getDomain())
                     .publishedValue(published.getDomain())
@@ -216,7 +216,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getRange(), published.getRange())) {
+        if (areDifferent(local.getRange(), published.getRange())) {
             builder.range(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getRange())
                     .publishedValue(published.getRange())
@@ -232,7 +232,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getExactMatches(), published.getExactMatches())) {
+        if (areDifferent(local.getExactMatches(), published.getExactMatches())) {
             builder.exactMatches(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getExactMatches())
                     .publishedValue(published.getExactMatches())
@@ -248,7 +248,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getDefiningLegalSources(), published.getDefiningLegalSources())) {
+        if (areDifferent(local.getDefiningLegalSources(), published.getDefiningLegalSources())) {
             builder.definingLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getDefiningLegalSources())
                     .publishedValue(published.getDefiningLegalSources())
@@ -264,7 +264,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getRelatedLegalSources(), published.getRelatedLegalSources())) {
+        if (areDifferent(local.getRelatedLegalSources(), published.getRelatedLegalSources())) {
             builder.relatedLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getRelatedLegalSources())
                     .publishedValue(published.getRelatedLegalSources())
@@ -280,7 +280,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getDefiningNonLegalSources(), published.getDefiningNonLegalSources())) {
+        if (areDifferent(local.getDefiningNonLegalSources(), published.getDefiningNonLegalSources())) {
             builder.definingNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, Object>>>builder()
                     .localValue(local.getDefiningNonLegalSources())
                     .publishedValue(published.getDefiningNonLegalSources())
@@ -296,7 +296,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getRelatedNonLegalSources(), published.getRelatedNonLegalSources())) {
+        if (areDifferent(local.getRelatedNonLegalSources(), published.getRelatedNonLegalSources())) {
             builder.relatedNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, Object>>>builder()
                     .localValue(local.getRelatedNonLegalSources())
                     .publishedValue(published.getRelatedNonLegalSources())
@@ -312,7 +312,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getSharingMethods(), published.getSharingMethods())) {
+        if (areDifferent(local.getSharingMethods(), published.getSharingMethods())) {
             builder.sharingMethods(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getSharingMethods())
                     .publishedValue(published.getSharingMethods())
@@ -328,7 +328,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getAcquisitionMethod(), published.getAcquisitionMethod())) {
+        if (areDifferent(local.getAcquisitionMethod(), published.getAcquisitionMethod())) {
             builder.acquisitionMethod(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getAcquisitionMethod())
                     .publishedValue(published.getAcquisitionMethod())
@@ -344,7 +344,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getContentType(), published.getContentType())) {
+        if (areDifferent(local.getContentType(), published.getContentType())) {
             builder.contentType(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getContentType())
                     .publishedValue(published.getContentType())
@@ -360,7 +360,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getIsPpdf(), published.getIsPpdf())) {
+        if (areDifferent(local.getIsPpdf(), published.getIsPpdf())) {
             builder.isPpdf(PublishedConceptDeviationModel.PropertyDeviation.<Boolean>builder()
                     .localValue(local.getIsPpdf())
                     .publishedValue(published.getIsPpdf())
@@ -376,7 +376,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getAis(), published.getAis())) {
+        if (areDifferent(local.getAis(), published.getAis())) {
             builder.ais(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getAis())
                     .publishedValue(published.getAis())
@@ -392,7 +392,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getAgenda(), published.getAgenda())) {
+        if (areDifferent(local.getAgenda(), published.getAgenda())) {
             builder.agenda(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
                     .localValue(local.getAgenda())
                     .publishedValue(published.getAgenda())
@@ -408,7 +408,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areEqual(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
+        if (areDifferent(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
             builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getPrivacyProvisions())
                     .publishedValue(published.getPrivacyProvisions())
@@ -419,7 +419,7 @@ public class ConceptDeviationComparator {
         return false;
     }
 
-    private <T> boolean areEqual(T value1, T value2) {
+    private <T> boolean areDifferent(T value1, T value2) {
         if (value1 == null && value2 == null) return false;
         if (value1 == null || value2 == null) return true;
 

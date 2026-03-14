@@ -39,9 +39,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.StmtIterator;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.constants.VocabularyConstants.*;
@@ -78,9 +82,7 @@ public class OntologyServiceImpl implements OntologyService {
                 validationReportRepository.findByOntologyMetadataId(ontologyId);
         validationReport.ifPresent(validationReportRepository::delete);
 
-        Model model = jenaTDB2Repository.fetchGraph(graphName);
-
-        if (model.isEmpty()) {
+        if (!jenaTDB2Repository.graphHasData(graphName)) {
             log.error("Ontology model is empty.");
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
@@ -159,7 +161,7 @@ public class OntologyServiceImpl implements OntologyService {
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
 
-        enrichMetadataFromRDF(metadataModel, metadataEntity);
+        enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
 
         List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
@@ -289,15 +291,7 @@ public class OntologyServiceImpl implements OntologyService {
             ontologyMetadataEntities = ontologyMetadataRepository.findAll();
         }
 
-        return ontologyMetadataEntities.stream()
-                .map(entity -> {
-                    OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    enrichMetadataFromRDF(model, entity);
-                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
-                    model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
-                    return model;
-                })
-                .toList();
+        return enrichEntitiesWithBatchMetadata(ontologyMetadataEntities);
     }
 
     @Override
@@ -313,15 +307,46 @@ public class OntologyServiceImpl implements OntologyService {
 
         List<OntologyMetadataEntity> ontologyMetadataEntities = ontologyMetadataRepository.findBySlugIn(slugs);
 
-        return ontologyMetadataEntities.stream()
+        return enrichEntitiesWithBatchMetadata(ontologyMetadataEntities);
+    }
+
+    private List<OntologyMetadataModel> enrichEntitiesWithBatchMetadata(List<OntologyMetadataEntity> entities) {
+        if (entities.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> graphNames = entities.stream()
+                .map(OntologyMetadataEntity::getGraphName)
+                .filter(g -> g != null && !g.isEmpty())
+                .toList();
+
+        Model batchMetadata = jenaTDB2Repository.fetchMetadataProperties(graphNames);
+        Map<String, Model> perGraphModels = partitionModelBySubject(batchMetadata, graphNames);
+
+        return entities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
-                    enrichMetadataFromRDF(model, entity);
+                    Model graphModel = perGraphModels.get(entity.getGraphName());
+                    enrichMetadataFromModel(model, entity, graphModel);
                     List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
                 .toList();
+    }
+
+    private Map<String, Model> partitionModelBySubject(Model batchModel, List<String> graphNames) {
+        Map<String, Model> result = new HashMap<>();
+        for (String graphName : graphNames) {
+            Resource subject = batchModel.getResource(graphName);
+            Model subModel = ModelFactory.createDefaultModel();
+            StmtIterator stmts = batchModel.listStatements(subject, null, (org.apache.jena.rdf.model.RDFNode) null);
+            while (stmts.hasNext()) {
+                subModel.add(stmts.next());
+            }
+            result.put(graphName, subModel);
+        }
+        return result;
     }
 
     @Override
@@ -518,24 +543,38 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private void enrichMetadataFromRDF(OntologyMetadataModel model, OntologyMetadataEntity entity) {
-        try {
-            String graphName = entity.getGraphName();
-            if (graphName == null || graphName.isEmpty()) {
-                log.warn("Cannot enrich metadata: graphName is null or empty");
-                return;
-            }
+        String graphName = entity.getGraphName();
+        if (graphName == null || graphName.isEmpty()) {
+            log.warn("Cannot enrich metadata: graphName is null or empty");
+            return;
+        }
 
-            Model rdfModel = jenaTDB2Repository.fetchGraph(graphName);
+        try {
+            Model rdfModel = jenaTDB2Repository.fetchMetadataProperties(graphName);
+            enrichMetadataFromModel(model, entity, rdfModel);
+        } catch (Exception e) {
+            log.warn("Failed to enrich metadata from RDF for graph {}: {}", graphName, e.getMessage());
+            if ((model.getName() == null || model.getName().isEmpty())) {
+                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+            }
+        }
+    }
+
+    private void enrichMetadataFromModel(OntologyMetadataModel model, OntologyMetadataEntity entity, Model rdfModel) {
+        String graphName = entity.getGraphName();
+        String fallbackName = extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName));
+
+        try {
             if (rdfModel == null || rdfModel.isEmpty()) {
                 log.warn("Cannot enrich metadata: RDF model is empty for graph {}", graphName);
-                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                model.setName(fallbackName);
                 return;
             }
 
             Resource ontologyResource = rdfModel.getResource(graphName);
             if (ontologyResource == null) {
                 log.warn("Cannot find ontology resource for IRI: {}", graphName);
-                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                model.setName(fallbackName);
                 return;
             }
 
@@ -549,13 +588,13 @@ public class OntologyServiceImpl implements OntologyService {
                         model.setName(prefLabel);
                         log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
                     } else {
-                        model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                        model.setName(fallbackName);
                     }
                 } else {
-                    model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                    model.setName(fallbackName);
                 }
             } else {
-                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                model.setName(fallbackName);
             }
 
             Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
@@ -571,9 +610,9 @@ public class OntologyServiceImpl implements OntologyService {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to enrich metadata from RDF for graph {}: {}", entity.getGraphName(), e.getMessage());
-            if ((model.getName() == null || model.getName().isEmpty()) && entity.getGraphName() != null) {
-                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(entity.getGraphName())));
+            log.warn("Failed to enrich metadata from model for graph {}: {}", graphName, e.getMessage());
+            if (model.getName() == null || model.getName().isEmpty()) {
+                model.setName(fallbackName);
             }
         }
     }

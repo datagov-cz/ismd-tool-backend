@@ -1,0 +1,36 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-create-validation-reports
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: validation_reports
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: validation_reports
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: VARCHAR(255)
+              - column:
+                  name: ontology_metadata_id
+                  type: BIGINT
+              - column:
+                  name: timestamp
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: results_json
+                  type: VARCHAR
+              - column:
+                  name: ontology_iri
+                  type: VARCHAR

@@ -17,11 +17,15 @@ import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.rdfconnection.RDFConnection;
+import org.apache.jena.rdfconnection.RDFConnectionRemote;
 import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
 
 import java.io.StringWriter;
+import java.net.http.HttpClient;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 
@@ -31,8 +35,11 @@ import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 public class OntologyDownloadServiceImpl implements OntologyDownloadService {
 
     private final String fusekiEndpoint;
+    private final HttpClient fusekiHttpClient;
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final JsonExporter jsonExporter;
+    private final Semaphore fusekiSemaphore;
+    private final int fusekiSemaphoreTimeout;
 
     @Override
     public String downloadOntology(Long ontologyId, String format) {
@@ -43,29 +50,55 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
-        try (RDFConnection conn = RDFConnection.connect(fusekiEndpoint)) {
+
+        boolean acquired;
+        try {
+            acquired = fusekiSemaphore.tryAcquire(fusekiSemaphoreTimeout, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for Fuseki connection", e);
+        }
+        if (!acquired) {
+            throw new RuntimeException("Fuseki server is busy, try again later");
+        }
+
+        try (RDFConnection conn = RDFConnectionRemote.newBuilder()
+                .destination(fusekiEndpoint)
+                .httpClient(fusekiHttpClient)
+                .build()) {
             Model model = conn.fetch(graphName);
+            Model processedModel = null;
+            try {
+                if (model.isEmpty()) {
+                    log.error("Ontology model is empty.");
+                    throw new EmptyDataException("Slovník je prázdný, nebo nebyl nalezen.");
+                }
 
-            if (model.isEmpty()) {
-                log.error("Ontology model is empty.");
-                throw new EmptyDataException("Slovník je prázdný, nebo nebyl nalezen.");
+                processedModel = applyAllOFNTransformations(model);
+                model.close();
+                model = null;
+
+                validateNoDuplicateTransformations(processedModel);
+
+                String result;
+                if ("json-ld".equalsIgnoreCase(format)) {
+                    result = exportToOFNJson(processedModel);
+                } else if ("ttl".equalsIgnoreCase(format)) {
+                    StringWriter writer = new StringWriter();
+                    processedModel.write(writer, "TTL");
+                    result = writer.toString();
+                } else {
+                    log.error("Output format {} not supported.", format);
+                    throw new IllegalArgumentException("Nepodporovaný formát: " + format);
+                }
+
+                return result;
+            } finally {
+                if (model != null) model.close();
+                if (processedModel != null) processedModel.close();
             }
-
-            Model processedModel = applyAllOFNTransformations(model);
-
-            validateNoDuplicateTransformations(processedModel);
-
-            StringWriter writer = new StringWriter();
-            if ("json-ld".equalsIgnoreCase(format)) {
-                return exportToOFNJson(processedModel);
-            } else if ("ttl".equalsIgnoreCase(format)) {
-                processedModel.write(writer, "TTL");
-            } else {
-                log.error("Output format {} not supported.", format);
-                throw new IllegalArgumentException("Nepodporovaný formát: " + format);
-            }
-
-            return writer.toString();
+        } finally {
+            fusekiSemaphore.release();
         }
     }
 
@@ -73,13 +106,16 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
         log.debug("Applying consolidated OFN transformations");
 
         Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
+        try {
+            Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
 
-        Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
+            log.debug("OFN transformation complete: {} -> {} -> {} statements",
+                    rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
 
-        log.debug("OFN transformation complete: {} -> {} -> {} statements",
-                rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
-
-        return ofnFormattedModel;
+            return ofnFormattedModel;
+        } finally {
+            filteredModel.close();
+        }
     }
 
     private void validateNoDuplicateTransformations(Model model) {

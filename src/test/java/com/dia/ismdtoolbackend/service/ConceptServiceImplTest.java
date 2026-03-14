@@ -237,11 +237,11 @@ class ConceptServiceImplTest {
 
     @Test
     void deleteConcept_Success() throws OntologyException {
-        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
-
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
+        when(jenaTDB2Repository.conceptNotFoundInGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(false);
+        when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
 
         conceptService.deleteConcept(TEST_CONCEPT_ID);
         List<String> testConceptIris = new ArrayList<>();
@@ -268,7 +268,7 @@ class ConceptServiceImplTest {
     @Test
     void deleteConcept_EmptyGraph() {
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(false);
 
         OntologyException exception = assertThrows(OntologyException.class,
                 () -> conceptService.deleteConcept(TEST_CONCEPT_ID));

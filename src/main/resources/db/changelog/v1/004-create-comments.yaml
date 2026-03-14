@@ -1,0 +1,37 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-create-comments
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: comments
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: comments
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: comment
+                  type: VARCHAR(255)
+              - column:
+                  name: user_id
+                  type: VARCHAR(255)
+              - column:
+                  name: ontologyiri
+                  type: VARCHAR(255)
+              - column:
+                  name: conceptiri
+                  type: VARCHAR(255)
+              - column:
+                  name: posted_time
+                  type: TIMESTAMP

@@ -12,6 +12,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
 import java.io.IOException;
 
 @Slf4j
@@ -28,6 +30,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleAccessDenied(AccessDeniedException e) {
         log.error("Access denied: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    @ExceptionHandler(JenaTDB2Exception.class)
+    public ResponseEntity<ApiResponseDto> handleJenaTDB2Exception(JenaTDB2Exception e) {
+        log.error("Database operation failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @ExceptionHandler(Exception.class)
@@ -151,6 +159,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleOntologyAnalysisException(OntologyAnalysisException e) {
         log.error("Ontology analysis failed: {}", e.getMessage(), e);
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponseDto> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
+        log.warn("File upload size exceeded: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error("Nahraný soubor překračuje maximální povolenou velikost."), HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     @ExceptionHandler(IOException.class)

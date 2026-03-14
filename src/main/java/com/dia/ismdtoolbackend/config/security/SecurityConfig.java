@@ -62,10 +62,7 @@ public class SecurityConfig {
                     "Set KEYCLOAK_ISSUER_URI environment variable or application property.");
         }
 
-        log.info("Keycloak configuration validated successfully:");
-        log.info("  - Client ID: {}", clientId);
-        log.info("  - Issuer URI: {}", issuerUri);
-        log.info("  - Client secret: [REDACTED]");
+        log.info("Keycloak configuration validated successfully.");
     }
 
     /**
