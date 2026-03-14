@@ -233,7 +233,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areEqual(local.getExactMatches(), published.getExactMatches())) {
-            builder.exactMatches(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, String>>>builder()
+            builder.exactMatches(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getExactMatches())
                     .publishedValue(published.getExactMatches())
                     .isDifferent(true)

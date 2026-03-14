@@ -156,6 +156,7 @@ public class ConceptProcessor {
     private List<String> getConceptTypes(Resource concept, OntModel ontModel) {
         List<String> types = new ArrayList<>();
         types.add(POJEM_JSON_LD);
+        types.add("Koncept");
 
         String[][] typeMapping = {
                 {TRIDA, TRIDA_JSON_LD},
@@ -242,6 +243,18 @@ public class ConceptProcessor {
         }
     }
 
+    private void addValueToLanguageMapAsArray(Map<String, Object> languageMap, String lang, String value) {
+        if (languageMap.containsKey(lang)) {
+            @SuppressWarnings("unchecked")
+            List<Object> langArray = (List<Object>) languageMap.get(lang);
+            langArray.add(value);
+        } else {
+            List<Object> langArray = new ArrayList<>();
+            langArray.add(value);
+            languageMap.put(lang, langArray);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private List<Object> convertToList(Object existingValue) {
         if (existingValue instanceof List<?>) {
@@ -295,7 +308,7 @@ public class ConceptProcessor {
             }
 
             String lang = getLanguageOrDefault(stmt);
-            addValueToLanguageMap(altNamesObj, lang, value);
+            addValueToLanguageMapAsArray(altNamesObj, lang, value);
             hasNonEmptyValue = true;
         }
 
@@ -335,23 +348,18 @@ public class ConceptProcessor {
             return;
         }
 
-        List<Map<String, Object>> exactMatchArray = new ArrayList<>();
+        List<String> exactMatchArray = new ArrayList<>();
 
         while (exactMatchIter.hasNext()) {
             Statement exactMatchStmt = exactMatchIter.next();
-            Map<String, Object> exactMatchObj = new LinkedHashMap<>();
 
             if (exactMatchStmt.getObject().isResource()) {
-                exactMatchObj.put("id", exactMatchStmt.getObject().asResource().getURI());
+                exactMatchArray.add(exactMatchStmt.getObject().asResource().getURI());
             } else if (exactMatchStmt.getObject().isLiteral()) {
                 String literalValue = exactMatchStmt.getString();
                 if (literalValue != null && !literalValue.trim().isEmpty()) {
-                    exactMatchObj.put("id", literalValue);
+                    exactMatchArray.add(literalValue);
                 }
-            }
-
-            if (!exactMatchObj.isEmpty()) {
-                exactMatchArray.add(exactMatchObj);
             }
         }
 

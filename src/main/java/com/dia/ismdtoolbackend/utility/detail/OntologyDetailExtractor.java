@@ -257,7 +257,7 @@ public class OntologyDetailExtractor {
                 .definition((Map<String, String>) conceptMap.get(DEFINICE))
                 .description((Map<String, String>) conceptMap.get(POPIS))
                 .identifier((String) conceptMap.get(IDENTIFIKATOR))
-                .exactMatches((List<Map<String, String>>) conceptMap.get(EKVIVALENTNI_POJEM))
+                .exactMatches((List<String>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
                 .range((String) conceptMap.get(OBOR_HODNOT))
                 .broaderClasses((List<String>) conceptMap.get(NADRAZENA_TRIDA))
