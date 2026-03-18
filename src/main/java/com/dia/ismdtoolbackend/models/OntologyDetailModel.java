@@ -68,7 +68,7 @@ public class OntologyDetailModel {
         private String identifier;
 
         @JsonProperty("ekvivalentní-pojem")
-        private List<Map<String, String>> exactMatches;
+        private List<String> exactMatches;
 
         @JsonProperty("definiční-obor")
         private String domain;

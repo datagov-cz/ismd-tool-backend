@@ -50,7 +50,7 @@ public class PublishedConceptDeviationModel {
     private PropertyDeviation<String> range;
 
     @JsonProperty("ekvivalentní-pojem")
-    private PropertyDeviation<List<Map<String, String>>> exactMatches;
+    private PropertyDeviation<List<String>> exactMatches;
 
     @JsonProperty("definující-ustanovení-právního-předpisu")
     private PropertyDeviation<List<String>> definingLegalSources;
