@@ -86,20 +86,17 @@ public class ConceptServiceImpl implements ConceptService {
         String graphName = conceptMetadataOpt.get().getGraphName();
         String conceptUri = conceptMetadataOpt.get().getConceptIri();
 
-        Model model = jenaTDB2Repository.fetchGraph(graphName);
-
-        if (model.isEmpty()) {
+        if (!jenaTDB2Repository.graphHasData(graphName)) {
             log.error("Ontology model is empty.");
             throw new OntologyException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
         }
 
-        Resource conceptResource = model.getResource(conceptUri);
-        if (conceptResource == null || !model.containsResource(conceptResource)) {
+        if (jenaTDB2Repository.conceptNotFoundInGraph(conceptUri, graphName)) {
             log.error("Concept resource {} not found in graph {}", conceptUri, graphName);
             throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
         }
 
-        List<String> relatedConceptUris = findRelatedConcepts(model, conceptUri);
+        List<String> relatedConceptUris = jenaTDB2Repository.findRelatedConceptUris(conceptUri, graphName);
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 

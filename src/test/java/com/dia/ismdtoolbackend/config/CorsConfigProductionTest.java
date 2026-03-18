@@ -27,7 +27,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
         "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
-        "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8080/realms/ismd"
+        "spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:8080/realms/ismd",
+        "spring.datasource.url=jdbc:h2:mem:testdb-production;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=password",
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.jpa.database=h2",
+        "spring.liquibase.liquibase-schema=PUBLIC"
 })
 class CorsConfigProductionTest {
 

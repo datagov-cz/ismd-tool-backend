@@ -1,8 +1,10 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
+import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
 import lombok.Getter;
 import org.apache.jena.rdf.model.*;
@@ -266,6 +268,38 @@ class OntologyEditorTest {
                     descProperty,
                     model.createLiteral("Old description", "cs")
             ));
+        }
+    }
+
+    @Nested
+    class URIUniquenessTests {
+
+        // --- E5. error when renamed ontology IRI already exists in the model ---
+        @Test
+        void editOntology_ShouldThrowWhenRenamedIRIAlreadyExists() { // E5
+            // Arrange
+            String oldOntologyIRI = "https://example.com/vocab/old-ontology";
+            String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+
+            Resource ontology = model.createResource(oldOntologyIRI);
+            ontology.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
+
+            // Pre-compute the IRI that will be generated for "New ontology"
+            URIGenerator uriGen = new URIGenerator();
+            String baseNamespace = oldOntologyIRI.replaceFirst("^(https?://[^/]+/).*", "$1");
+            String conflictingIri = uriGen.generateVocabularyURIFromGivenNamespace("New ontology", baseNamespace);
+
+            // Create a pre-existing resource at that IRI to cause a collision
+            Resource conflicting = model.createResource(conflictingIri);
+            conflicting.addProperty(SKOS.prefLabel, model.createLiteral("Existing ontology", "cs"));
+
+            NameModel newName = createNameModel("cs", "New ontology");
+
+            when(editModel.getNameModel()).thenReturn(newName);
+
+            // Act & Assert
+            assertThrows(OntologyValidationException.class,
+                    () -> ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI));
         }
     }
 }

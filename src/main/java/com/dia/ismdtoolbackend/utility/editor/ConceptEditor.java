@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.*;
@@ -53,6 +54,14 @@ public class ConceptEditor {
             newConceptIRI = uriGenerator.generateConceptURI(newName, editModel.getIdentifier());
             log.info("Name changed from '{}' to '{}', updating IRI from {} to {}",
                     oldName, newName, conceptIri, newConceptIRI);
+
+            if (!newConceptIRI.equals(conceptIri)) {
+                Resource targetResource = model.getResource(newConceptIRI);
+                if (model.containsResource(targetResource)) {
+                    throw new ConceptValidationException(
+                            "Concept with IRI " + newConceptIRI + " already exists in the model");
+                }
+            }
         }
 
         EditContext context = new EditContext(model, conceptIri, newConceptIRI);
@@ -65,6 +74,7 @@ public class ConceptEditor {
             model.begin();
         }
 
+        boolean committed = false;
         try {
             if (nameChanged && !conceptIri.equals(newConceptIRI)) {
                 Set<Property> predicatesToExclude = buildPredicatesToExclude(editModel, model);
@@ -87,20 +97,25 @@ public class ConceptEditor {
 
             if (supportsTransactions) {
                 model.commit();
+                committed = true;
             }
 
             return new EditResult(newConceptIRI, nameChanged, statementsToRemove.size() + statementsToAdd.size());
 
         } catch (Exception e) {
-            if (supportsTransactions) {
+            log.error("Failed to edit concept: {}", conceptIri, e);
+            OntologyException ex = new OntologyException("Failed to edit concept: " + conceptIri + " - " + e.getMessage());
+            ex.initCause(e);
+            throw ex;
+        } finally {
+            if (supportsTransactions && !committed) {
                 try {
                     model.abort();
-                    log.error("Transaction rolled back due to error during concept edit", e);
-                } catch (Exception rollbackException) {
-                    log.error("Failed to rollback transaction", rollbackException);
+                    log.error("Transaction aborted during concept edit");
+                } catch (Exception abortException) {
+                    log.error("Failed to abort transaction", abortException);
                 }
             }
-            throw new OntologyException("Failed to edit concept: " + conceptIri);
         }
     }
 

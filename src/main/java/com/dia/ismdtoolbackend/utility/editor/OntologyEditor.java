@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -49,6 +50,14 @@ public class OntologyEditor {
 
             log.info("Ontology name changed from '{}' to '{}', updating IRI from {} to {}",
                     oldName, newName, iri, newOntologyIRI);
+
+            if (!newOntologyIRI.equals(iri)) {
+                Resource targetResource = model.getResource(newOntologyIRI);
+                if (model.containsResource(targetResource)) {
+                    throw new OntologyValidationException(
+                            "Ontology with IRI " + newOntologyIRI + " already exists in the model");
+                }
+            }
         }
 
         Set<Statement> statementsToRemove = new HashSet<>();
@@ -59,6 +68,7 @@ public class OntologyEditor {
             model.begin();
         }
 
+        boolean committed = false;
         try {
             if (editModel.getNameModel() != null) {
                 updateName(existingOntology, editModel.getNameModel(), model, statementsToRemove, statementsToAdd,
@@ -83,21 +93,23 @@ public class OntologyEditor {
 
             if (supportsTransactions) {
                 model.commit();
+                committed = true;
             }
 
             boolean iriActuallyChanged = nameChanged && !iri.equals(newOntologyIRI);
             return new EditResult(newOntologyIRI, iriActuallyChanged);
 
         } catch (Exception e) {
-            if (supportsTransactions) {
+            throw new OntologyException("Failed to edit ontology: " + iri);
+        } finally {
+            if (supportsTransactions && !committed) {
                 try {
                     model.abort();
-                    log.error("Transaction rolled back due to error during ontology edit", e);
-                } catch (Exception rollbackException) {
-                    log.error("Failed to rollback transaction", rollbackException);
+                    log.error("Transaction aborted during ontology edit");
+                } catch (Exception abortException) {
+                    log.error("Failed to abort transaction", abortException);
                 }
             }
-            throw new OntologyException("Failed to edit ontology: " + iri);
         }
     }
 

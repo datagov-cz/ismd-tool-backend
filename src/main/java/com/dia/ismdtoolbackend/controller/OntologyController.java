@@ -74,7 +74,7 @@ public class OntologyController {
         );
 
         OntologyMetadataModel savedOntology = ontologyUploadService.uploadFromFile(file, providedName, securityUser.getUserId());
-        log.info("Ontology upload successful: {}", savedOntology);
+        log.info("Ontology upload successful: {}", savedOntology.getGraphName());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
     }

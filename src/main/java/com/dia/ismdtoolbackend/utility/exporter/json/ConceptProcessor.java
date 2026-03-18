@@ -128,7 +128,7 @@ public class ConceptProcessor {
         conceptObj.put("typ", getConceptTypes(concept, ontModel));
 
         addMultilingualProperty(concept, SKOS.prefLabel, NAZEV, conceptObj);
-        addAlternativeNames(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
+        addAlternativeNames(concept, conceptObj);
 
         Property definitionProperty = ontModel.createProperty(SKOS_NS + "definition");
         addMultilingualProperty(concept, definitionProperty, DEFINICE, conceptObj);
@@ -146,7 +146,7 @@ public class ConceptProcessor {
 
         addHierarchicalRelationships(concept, conceptObj, ontModel);
 
-        addGovernanceProperties(concept, conceptObj, ontModel, structure.getEffectiveNamespace());
+        addGovernanceProperties(concept, conceptObj, ontModel);
 
         addMetadataProperties(concept, conceptObj, ontModel);
 
@@ -265,9 +265,8 @@ public class ConceptProcessor {
         return langArray;
     }
 
-    private void addAlternativeNames(Resource concept, Map<String, Object> conceptObj,
-                                     OntModel ontModel, String effectiveNamespace) {
-        StmtIterator stmtIter = getAlternativeNameIterator(concept, ontModel, effectiveNamespace);
+    private void addAlternativeNames(Resource concept, Map<String, Object> conceptObj) {
+        StmtIterator stmtIter = concept.listProperties(SKOS.altLabel);
 
         if (!stmtIter.hasNext()) {
             return;
@@ -279,22 +278,6 @@ public class ConceptProcessor {
         if (hasNonEmptyValue && !altNamesObj.isEmpty()) {
             conceptObj.put(ALTERNATIVNI_NAZEV, altNamesObj);
         }
-    }
-
-    private StmtIterator getAlternativeNameIterator(Resource concept, OntModel ontModel, String effectiveNamespace) {
-        StmtIterator stmtIter = concept.listProperties(SKOS.altLabel);
-
-        if (!stmtIter.hasNext()) {
-            Property anPropDefault = ontModel.getProperty(DEFAULT_NS + ALTERNATIVNI_NAZEV);
-            Property anPropCustom = ontModel.getProperty(effectiveNamespace + ALTERNATIVNI_NAZEV);
-
-            stmtIter = concept.listProperties(anPropDefault);
-            if (!stmtIter.hasNext()) {
-                stmtIter = concept.listProperties(anPropCustom);
-            }
-        }
-
-        return stmtIter;
     }
 
     private boolean processAlternativeNameStatements(StmtIterator stmtIter, Map<String, Object> altNamesObj) {
@@ -599,18 +582,17 @@ public class ConceptProcessor {
     }
 
     private void addGovernanceProperties(Resource concept, Map<String, Object> conceptObj,
-                                         OntModel ontModel, String namespace) {
-        addGovernancePropertyArray(concept, conceptObj, ontModel, namespace);
-        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI_ALT);
-        addSingleGovernanceProperty(concept, conceptObj, ontModel, namespace, TYP_OBSAHU, TYP_OBSAHU_ALT);
+                                         OntModel ontModel) {
+        addGovernancePropertyArray(concept, conceptObj, ontModel);
+        addSingleGovernanceProperty(concept, conceptObj, ontModel, ZPUSOB_ZISKANI, ZPUSOB_ZISKANI_ALT);
+        addSingleGovernanceProperty(concept, conceptObj, ontModel, TYP_OBSAHU, TYP_OBSAHU_ALT);
     }
 
     private void addGovernancePropertyArray(Resource concept, Map<String, Object> conceptObj,
-                                            OntModel ontModel, String namespace) {
-        Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
-                ZPUSOBY_SDILENI_UDAJE, ZPUSOB_SDILENI, ZPUSOBY_SDILENI_ALT);
+                                            OntModel ontModel) {
+        Property property = ontModel.getProperty(OFN_NAMESPACE + ZPUSOBY_SDILENI_UDAJE);
 
-        if (property != null) {
+        if (concept.hasProperty(property)) {
             StmtIterator propIter = concept.listProperties(property);
             List<String> allValues = extractGovernanceValues(propIter);
 
@@ -620,24 +602,12 @@ public class ConceptProcessor {
         }
     }
 
-    private Property findGovernancePropertyWithFallbacks(Resource concept, OntModel ontModel,
-                                                         String... propertyNames) {
-        for (String propertyName : propertyNames) {
-            Property ofnProperty = ontModel.getProperty(OFN_NAMESPACE + propertyName);
-            if (concept.hasProperty(ofnProperty)) {
-                return ofnProperty;
-            }
-        }
-        return null;
-    }
-
     private void addSingleGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
-                                             OntModel ontModel, String namespace,
+                                             OntModel ontModel,
                                              String propertyName, String jsonFieldName) {
-        Property property = findGovernancePropertyWithFallbacks(concept, ontModel, namespace,
-                propertyName + "-údaje", propertyName, jsonFieldName);
+        Property property = ontModel.getProperty(OFN_NAMESPACE + propertyName + "-údaje");
 
-        if (property != null) {
+        if (concept.hasProperty(property)) {
             Statement stmt = concept.getProperty(property);
             if (stmt != null) {
                 String value = extractStatementValue(stmt);

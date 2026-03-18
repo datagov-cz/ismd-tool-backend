@@ -21,8 +21,6 @@ import static com.dia.constants.VocabularyConstants.*;
 public class TurtleFormatterUtil {
 
     private static final String NADRAZENA_TRIDA = "https://slovník.gov.cz/nadřazená-třída";
-    private static final String POJEM_URI = "/pojem/";
-    private static final String CONCEPT = "Concept";
     private static final String AGENDOVY_POJEM = "https://slovník.gov.cz/agendový/104/pojem/";
     private static final String SCHEMA = "http://schema.org/";
     private static final String TYP_OBSAHU_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-typ-obsahu-údaje";
@@ -71,12 +69,9 @@ public class TurtleFormatterUtil {
                 ofnModel.add(stmt);
             }
 
-            transformToSKOSConcepts(ofnModel);
-            transformPropertiesToOFNFormat(ofnModel);
             transformDescriptionProperties(ofnModel);
             transformConformsToProperties(ofnModel);
             transformSubClassRelationships(ofnModel);
-            transformLabelsToSKOS(ofnModel);
             ensureConceptSchemeFormat(ofnModel);
 
             log.debug("OFN format transformation completed successfully");
@@ -91,76 +86,6 @@ public class TurtleFormatterUtil {
     private static void setupOFNPrefixes(OntModel model) {
         for (Map.Entry<String, String> prefix : OFN_PREFIXES.entrySet()) {
             model.setNsPrefix(prefix.getKey(), prefix.getValue());
-        }
-    }
-
-    private static void transformToSKOSConcepts(OntModel model) {
-        Property slovnikyPojem = model.getProperty(OFN_NAMESPACE + "pojem");
-        Property slovnikyTridaProperty = model.getProperty(OFN_NAMESPACE + "třída");
-        Property skosConceptProperty = model.getProperty(SKOS_NS + CONCEPT);
-        Property skosInScheme = model.getProperty(SKOS_NS + "inScheme");
-
-        List<Resource> classesToTransform = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDF.type, OWL2.Class);
-        while (iter.hasNext()) {
-            Resource subject = iter.next().getSubject();
-            if (isConceptResource(subject)) {
-                classesToTransform.add(subject);
-            }
-        }
-
-        for (Resource classResource : classesToTransform) {
-            if (!classResource.hasProperty(RDF.type, skosConceptProperty)) {
-                classResource.addProperty(RDF.type, skosConceptProperty);
-            }
-            if (!classResource.hasProperty(RDF.type, slovnikyPojem)) {
-                classResource.addProperty(RDF.type, slovnikyPojem);
-            }
-            if (!classResource.hasProperty(RDF.type, slovnikyTridaProperty)) {
-                classResource.addProperty(RDF.type, slovnikyTridaProperty);
-            }
-
-            String ontologyIRI = extractOntologyIRI(classResource.getURI());
-            if (ontologyIRI != null) {
-                Resource conceptScheme = model.getResource(ontologyIRI);
-                if (!classResource.hasProperty(skosInScheme)) {
-                    classResource.addProperty(skosInScheme, conceptScheme);
-                }
-            }
-        }
-    }
-
-    private static void transformPropertiesToOFNFormat(OntModel model) {
-        Property slovnikyVlastnost = model.getProperty(OFN_NAMESPACE + "vlastnost");
-        Property slovnikyVztah = model.getProperty(OFN_NAMESPACE + "vztah");
-
-        List<Resource> objectProperties = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDF.type, OWL2.ObjectProperty);
-        while (iter.hasNext()) {
-            objectProperties.add(iter.next().getSubject());
-        }
-
-        for (Resource property : objectProperties) {
-            if (property.getURI() != null && property.getURI().contains(POJEM_URI) && !property.hasProperty(RDF.type, slovnikyVztah)) {
-                property.addProperty(RDF.type, slovnikyVztah);
-            }
-        }
-
-        List<Resource> datatypeProperties = new ArrayList<>();
-        iter = model.listStatements(null, RDF.type, OWL2.DatatypeProperty);
-        while (iter.hasNext()) {
-            datatypeProperties.add(iter.next().getSubject());
-        }
-
-        for (Resource property : datatypeProperties) {
-            if (property.getURI() != null && property.getURI().contains(POJEM_URI)) {
-                if (property.hasProperty(RDF.type, OWL2.ObjectProperty)) {
-                    continue;
-                }
-                if (!property.hasProperty(RDF.type, slovnikyVlastnost)) {
-                    property.addProperty(RDF.type, slovnikyVlastnost);
-                }
-            }
         }
     }
 
@@ -216,26 +141,6 @@ public class TurtleFormatterUtil {
         }
     }
 
-    private static void transformLabelsToSKOS(OntModel model) {
-        Property skosPrefLabel = model.getProperty(SKOS_NS + "prefLabel");
-
-        List<Statement> labelStatements = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDFS.label, (RDFNode) null);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            Resource subject = stmt.getSubject();
-
-            if (subject.hasProperty(RDF.type, model.getProperty(SKOS_NS + CONCEPT))) {
-                labelStatements.add(stmt);
-            }
-        }
-
-        for (Statement stmt : labelStatements) {
-            model.remove(stmt);
-            model.add(stmt.getSubject(), skosPrefLabel, stmt.getObject());
-        }
-    }
-
     private static void ensureConceptSchemeFormat(OntModel model) {
         StmtIterator iter = model.listStatements(null, RDF.type, OWL2.Ontology);
         while (iter.hasNext()) {
@@ -251,26 +156,5 @@ public class TurtleFormatterUtil {
                 ontology.addProperty(RDF.type, slovnikType);
             }
         }
-    }
-
-    private static boolean isConceptResource(Resource resource) {
-        return resource.getURI() != null &&
-               resource.getURI().contains(POJEM_URI) &&
-               !isBaseVocabularyClass(resource.getURI());
-    }
-
-    private static boolean isBaseVocabularyClass(String uri) {
-        return uri.startsWith("http://www.w3.org/") ||
-                uri.startsWith("https://slovník.gov.cz/veřejný-sektor/pojem/typ-") ||
-                uri.contains("/generický/") ||
-                uri.contains("cz:třída") ||
-                uri.contains("cz:pojem");
-    }
-
-    private static String extractOntologyIRI(String resourceURI) {
-        if (resourceURI.contains(POJEM_URI)) {
-            return resourceURI.substring(0, resourceURI.lastIndexOf(POJEM_URI));
-        }
-        return null;
     }
 }
