@@ -54,3 +54,4 @@ fuseki-base/
 *.key
 docker/keycloak/secrets/
 docker/nginx-mtls/certs/
+/.planning/
