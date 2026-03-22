@@ -150,6 +150,8 @@ public class ConceptProcessor {
 
         addMetadataProperties(concept, conceptObj, ontModel);
 
+        addCodeListDatasetProperty(concept, conceptObj, ontModel);
+
         return conceptObj;
     }
 
@@ -706,6 +708,41 @@ public class ConceptProcessor {
 
         if (concept.hasProperty(suppLegal)) {
             addResourceArrayProperty(concept, suppLegal, USTANOVENI_NEVEREJNOST, conceptObj);
+        }
+    }
+
+    private void addCodeListDatasetProperty(Resource concept, Map<String, Object> conceptObj,
+                                              OntModel ontModel) {
+        Property instanceDefinedByCodeList = ontModel.getProperty(
+                OFN_NAMESPACE + "má-instance-definované-číselníkem");
+
+        if (!concept.hasProperty(instanceDefinedByCodeList)) {
+            return;
+        }
+
+        StmtIterator stmtIter = concept.listProperties(instanceDefinedByCodeList);
+        while (stmtIter.hasNext()) {
+            Statement stmt = stmtIter.next();
+            if (!stmt.getObject().isResource()) {
+                continue;
+            }
+
+            Resource codeListNode = stmt.getObject().asResource();
+
+            Resource codeListType = ontModel.getResource(L111_2009_NAMESPACE + CISELNIK);
+            if (!codeListNode.hasProperty(RDF.type, codeListType)) {
+                continue;
+            }
+
+            Property datasetProperty = ontModel.getProperty(
+                    L111_2009_NAMESPACE + "má-v-nkod-zastřešující-datovou-sadu");
+            Statement datasetStmt = codeListNode.getProperty(datasetProperty);
+            if (datasetStmt != null && datasetStmt.getObject().isResource()) {
+                Map<String, Object> codeListObj = new LinkedHashMap<>();
+                codeListObj.put("typ", "Číselník");
+                codeListObj.put("datová-sada-v-nkod", datasetStmt.getObject().asResource().getURI());
+                conceptObj.put("instance-definovány-číselníkem", codeListObj);
+            }
         }
     }
 
