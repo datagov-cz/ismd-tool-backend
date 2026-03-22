@@ -660,7 +660,7 @@ class ConceptCreatorTest {
 
             // assert
             Property instanceProp = result.getModel().createProperty(
-                    OFN_NAMESPACE + "má-instance-definované-číselníkem");
+                    OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
             assertTrue(result.hasProperty(instanceProp), "Should have instance-definovány-číselníkem property");
 
             Statement stmt = result.getProperty(instanceProp);
@@ -671,7 +671,7 @@ class ConceptCreatorTest {
             assertTrue(codeListNode.hasProperty(RDF.type, codeListType), "Blank node should be typed as číselník");
 
             Property datasetProp = result.getModel().createProperty(
-                    OFN_NAMESPACE_LEGAL + "má-v-nkod-zastřešující-datovou-sadu");
+                    OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
             assertTrue(codeListNode.hasProperty(datasetProp), "Blank node should have dataset property");
 
             String datasetUri = codeListNode.getProperty(datasetProp).getObject().asResource().getURI();
@@ -689,7 +689,7 @@ class ConceptCreatorTest {
 
             // assert
             Property instanceProp = result.getModel().createProperty(
-                    OFN_NAMESPACE + "má-instance-definované-číselníkem");
+                    OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
             assertFalse(result.hasProperty(instanceProp));
         }
     }

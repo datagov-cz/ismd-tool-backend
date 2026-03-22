@@ -1082,7 +1082,7 @@ public class ConceptEditor {
         if (newDatasetUrl == null) return;
 
         Property instanceDefinedByCodeList = model.createProperty(
-                OFN_NAMESPACE + "má-instance-definované-číselníkem");
+                OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
 
         // Remove existing code list dataset structure (blank node and its statements)
         if (oldConcept.hasProperty(instanceDefinedByCodeList)) {
@@ -1105,7 +1105,7 @@ public class ConceptEditor {
             Resource codeListType = model.createResource(
                     OFN_NAMESPACE_LEGAL + CISELNIK);
             Property datasetProperty = model.createProperty(
-                    OFN_NAMESPACE_LEGAL + "má-v-nkod-zastřešující-datovou-sadu");
+                    OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
             Resource codeListNode = model.createResource();
             toAdd.add(model.createStatement(codeListNode, RDF.type, codeListType));

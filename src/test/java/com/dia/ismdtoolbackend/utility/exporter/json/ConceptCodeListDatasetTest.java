@@ -28,11 +28,11 @@ class ConceptCodeListDatasetTest {
 
     private Resource addCodeListDataset(Resource concept, OntModel model, String datasetUrl) {
         Property instanceDefinedByCodeList = model.createProperty(
-                OFN_NAMESPACE + "má-instance-definované-číselníkem");
+                OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
         Resource codeListType = model.createResource(
                 OFN_NAMESPACE_LEGAL + CISELNIK);
         Property datasetProperty = model.createProperty(
-                OFN_NAMESPACE_LEGAL + "má-v-nkod-zastřešující-datovou-sadu");
+                OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
         Resource codeListNode = model.createResource();
         codeListNode.addProperty(RDF.type, codeListType);
@@ -52,11 +52,11 @@ class ConceptCodeListDatasetTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey("instance-definovány-číselníkem"));
+        assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
         @SuppressWarnings("unchecked")
-        Map<String, Object> codeListObj = (Map<String, Object>) result.get("instance-definovány-číselníkem");
-        assertEquals("Číselník", codeListObj.get("typ"));
-        assertEquals(NKOD_DATASET_URL, codeListObj.get("datová-sada-v-nkod"));
+        Map<String, Object> codeListObj = (Map<String, Object>) result.get(INSTANCE_DEFINOVANY_CISELNIKEM);
+        assertEquals(CISELNIK_JSON_LD, codeListObj.get("typ"));
+        assertEquals(NKOD_DATASET_URL, codeListObj.get(DATOVA_SADA_V_NKOD));
     }
 
     @Test
@@ -69,10 +69,10 @@ class ConceptCodeListDatasetTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey("instance-definovány-číselníkem"));
+        assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
         @SuppressWarnings("unchecked")
-        Map<String, Object> codeListObj = (Map<String, Object>) result.get("instance-definovány-číselníkem");
-        assertEquals(NKOD_DATASET_URL, codeListObj.get("datová-sada-v-nkod"));
+        Map<String, Object> codeListObj = (Map<String, Object>) result.get(INSTANCE_DEFINOVANY_CISELNIKEM);
+        assertEquals(NKOD_DATASET_URL, codeListObj.get(DATOVA_SADA_V_NKOD));
     }
 
     @Test
@@ -87,7 +87,7 @@ class ConceptCodeListDatasetTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey("instance-definovány-číselníkem"));
+        assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
     }
 
     @Test
@@ -99,7 +99,7 @@ class ConceptCodeListDatasetTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey("instance-definovány-číselníkem"));
+        assertFalse(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
     }
 
     @Test
@@ -109,9 +109,9 @@ class ConceptCodeListDatasetTest {
         Resource concept = addOwlClass(model, "typed-class", "Typed třída");
 
         Property instanceDefinedByCodeList = model.createProperty(
-                OFN_NAMESPACE + "má-instance-definované-číselníkem");
+                OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
         Property datasetProperty = model.createProperty(
-                OFN_NAMESPACE_LEGAL + "má-v-nkod-zastřešující-datovou-sadu");
+                OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
         // Create blank node WITHOUT the correct type
         Resource codeListNode = model.createResource();
@@ -121,6 +121,6 @@ class ConceptCodeListDatasetTest {
         ModelStructure structure = createModelStructure(model);
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey("instance-definovány-číselníkem"));
+        assertFalse(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
     }
 }

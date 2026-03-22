@@ -887,11 +887,11 @@ public class ConceptCreator {
         if (datasetUrl == null || datasetUrl.trim().isEmpty()) return;
 
         Property instanceDefinedByCodeList = ontModel.createProperty(
-                OFN_NAMESPACE + "má-instance-definované-číselníkem");
+                OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
         Resource codeListType = ontModel.createResource(
                 OFN_NAMESPACE_LEGAL + CISELNIK);
         Property datasetProperty = ontModel.createProperty(
-                OFN_NAMESPACE_LEGAL + "má-v-nkod-zastřešující-datovou-sadu");
+                OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
         Resource codeListNode = ontModel.createResource();
         codeListNode.addProperty(RDF.type, codeListType);
