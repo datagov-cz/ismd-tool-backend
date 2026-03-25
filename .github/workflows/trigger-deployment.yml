@@ -186,7 +186,7 @@ jobs:
           description: "Preparing to deploy"
       
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
@@ -252,7 +252,7 @@ jobs:
           description: "Preparing to deploy"
       
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
@@ -318,7 +318,7 @@ jobs:
           description: "Preparing to deploy"
       
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
