@@ -26,10 +26,10 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
                                                   │
                                                   ▼
                               ┌────────────────────────────────────────┐
-                              │          SecurityFilterChain            │
-                              │            @Order(0)                    │
+                              │          SecurityFilterChain           │
+                              │            @Order(0)                   │
                               │                                        │
-                              │  • Matches /api/search only            │
+                              │  • Matches /api/search/**              │
                               │  • permitAll() — no auth required      │
                               │  • JWT processed IF present            │
                               │  • Anonymous requests pass through     │
@@ -70,11 +70,11 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
                    │                                 │          │
                    ▼                                 ▼          ▼
        ┌───────────────────────┐       ┌──────────────┐  ┌──────────────┐
-       │   NKD Virtuoso        │       │  PostgreSQL   │  │ Apache Fuseki│
-       │   SPARQL Endpoint     │       │  (metadata)   │  │ TDB2 (RDF)  │
-       │                       │       │               │  │              │
-       │ oha02.dia.gov.cz/     │       │ ontologies    │  │ Named graphs │
-       │   vsparql | sparql    │       │ concepts      │  │ Labels, desc │
+       │   NKD Virtuoso        │       │  PostgreSQL  │  │ Apache Fuseki│
+       │   SPARQL Endpoint     │       │  (metadata)  │  │ TDB2 (RDF)   │
+       │                       │       │              │  │              │
+       │ oha02.dia.gov.cz/     │       │ ontologies   │  │ Named graphs │
+       │   vsparql | sparql    │       │ concepts     │  │ Labels, desc │
        └───────────────────────┘       └──────────────┘  └──────────────┘
 ```
 
@@ -95,6 +95,7 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
        │                                  │
        │                     SearchController
        │                   ─ isAuthenticated = false
+       │                   ─ if source=ISMD or ALL → 401
        │                                  │
        │                     SearchServiceImpl
        │                   ─ Source: NKD only (forced)
@@ -184,7 +185,7 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
 │  │  ┌─────────────────────┐                                                │ │
 │  │  │  SearchController   │  GET /api/search                               │ │
 │  │  │                     │  Params: q, type, source, limit, offset,       │ │
-│  │  │                     │          lang, ontologyIri, relationTypes       │ │
+│  │  │                     │          lang, ontologyIri, relationTypes      │ │
 │  │  │                     │  Auth: Optional (SecurityUser nullable)        │ │
 │  │  └────────┬────────────┘                                                │ │
 │  └───────────┼─────────────────────────────────────────────────────────────┘ │
@@ -200,18 +201,18 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
 │  │  │                     │  • Merges results into SearchResponseDto       │ │
 │  │  └──────┬─────┬────────┘                                                │ │
 │  │         │     │                                                         │ │
-│  │    ┌────┘     └────┐                                                    │ │
-│  │    ▼               ▼                                                    │ │
-│  │  ┌───────────────────┐  ┌──────────────────────┐                        │ │
-│  │  │ NkdSearchProvider │  │ IsmdSearchProvider    │                        │ │
-│  │  │                   │  │                       │                        │ │
-│  │  │ • Builds SPARQL   │  │ • Queries PG repos    │                        │ │
-│  │  │   with bif:cont.  │  │ • Enriches via Fuseki │                        │ │
-│  │  │ • Executes SELECT │  │ • Applies visibility  │                        │ │
-│  │  │ • Maps to DTOs    │  │ • Maps to DTOs        │                        │ │
-│  │  └────────┬──────────┘  └───┬──────────┬────────┘                        │ │
+│  │    ┌────┘     └─────────────────┐                                       │ │
+│  │    ▼                            ▼                                       │ │
+│  │  ┌───────────────────┐  ┌───────────────────────┐                       │ │
+│  │  │ NkdSearchProvider │  │ IsmdSearchProvider    │                       │ │
+│  │  │                   │  │                       │                       │ │
+│  │  │ • Builds SPARQL   │  │ • Queries PG repos    │                       │ │
+│  │  │   with bif:cont.  │  │ • Enriches via Fuseki │                       │ │
+│  │  │ • Executes SELECT │  │ • Applies visibility  │                       │ │
+│  │  │ • Maps to DTOs    │  │ • Maps to DTOs        │                       │ │
+│  │  └────────┬──────────┘  └───┬──────────┬────────┘                       │ │
 │  └───────────┼─────────────────┼──────────┼────────────────────────────────┘ │
-│              │                 │          │                                   │
+│              │                 │          │                                  │
 │  ┌───────────┼─────────────────┼──────────┼────────────────────────────────┐ │
 │  │           │          DATA ACCESS LAYER │                                │ │
 │  │           │                 │          │                                │ │
@@ -227,18 +228,18 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
 │  │           │  │  Repository  │  │   Properties()   │                     │ │
 │  │           │  │ + searchBy() │  │   (existing)     │                     │ │
 │  │           │  └──────┬───────┘  └────────┬─────────┘                     │ │
-│  └───────────┼─────────┼──────────────────┼────────────────────────────────┘ │
-│              │         │                  │                                   │
-└──────────────┼─────────┼──────────────────┼───────────────────────────────────┘
-               │         │                  │
-               ▼         ▼                  ▼
-      ┌──────────────┐ ┌──────────┐  ┌───────────────┐
+│  └───────────┼─────────┼───────────────────┼───────────────────────────────┘ │
+│              │         │                   │                                 │
+└──────────────┼─────────┼───────────────────┼─────────────────────────────────┘
+               │         │                   │
+               ▼         ▼                   ▼
+      ┌──────────────┐ ┌──────────┐  ┌────────────────┐
       │NKD Virtuoso  │ │PostgreSQL│  │ Apache Fuseki  │
       │SPARQL Endpt. │ │          │  │ TDB2           │
       │              │ │ontologies│  │                │
       │Full-text idx │ │concepts  │  │ Named graphs   │
       │bif:contains  │ │(metadata)│  │ (RDF triples)  │
-      └──────────────┘ └──────────┘  └───────────────┘
+      └──────────────┘ └──────────┘  └────────────────┘
        EXTERNAL          INTERNAL      INTERNAL
        (read-only)       (read)        (read)
 ```
@@ -253,17 +254,18 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
          ▼
   ┌──────────────────────────────────────────┐
   │  @Order(0) — Search Filter Chain  [NEW]  │
-  │  securityMatcher: /api/search            │
+  │  securityMatcher: /api/search/**         │
   │                                          │
   │  • permitAll()                           │
   │  • oauth2ResourceServer (optional JWT)   │
   │  • Custom entryPoint (no 401 on anon)    │
+  │  • Anonymous + source≠NKD → 401          │
   │                                          │
   │  Result: SecurityUser filled OR null     │
   ├──────────────────────────────────────────┤
-  │  Does request match /api/search?         │
-  │  YES → process here, STOP               │
-  │  NO  → pass to next chain ↓             │
+  │  Does request match /api/search/**?      │
+  │  YES → process here, STOP                │
+  │  NO  → pass to next chain ↓              │
   └──────────────┬───────────────────────────┘
                  │
                  ▼
@@ -279,8 +281,8 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
   │                                          │
   │  • permitAll(), no JWT processing        │
   ├──────────────────────────────────────────┤
-  │  Match? YES → process, STOP             │
-  │         NO  → pass to next chain ↓      │
+  │  Match? YES → process, STOP              │
+  │         NO  → pass to next chain ↓       │
   └──────────────┬───────────────────────────┘
                  │
                  ▼
@@ -348,67 +350,91 @@ The ISMD Tool currently has no search functionality. Users can only browse flat 
 
 ## 8. ISMD Local Search — Dual-Store Strategy
 
-### Two-phase search: PG-first, Fuseki-fallback
+### Parallel dual-store search: PG + Fuseki, merge in Java
 
-Phase 1 (PostgreSQL) handles the common case — name matches. Phase 2 (Fuseki SPARQL)
-only runs when PG finds nothing, catching matches on alt names, descriptions, and definitions.
-This avoids double-query overhead when name search is sufficient.
+Both stores are always queried in parallel. PostgreSQL searches by `concept_name` / `slug`;
+Fuseki searches across `skos:altLabel`, `dcterms:description`, and `skos:definition`.
+Results are merged and deduplicated in Java by IRI. This ensures full recall — matches on
+alt names or descriptions are never silently dropped.
+
+#### PostgreSQL text search — accent-insensitive
+
+PG queries use the `unaccent()` extension for accent-insensitive matching on Czech text:
+
+```sql
+WHERE unaccent(concept_name) ILIKE unaccent('%query%')
+  AND (is_published = true OR user_id = :uid)
+```
+
+Requires a one-time Liquibase migration to enable the extension:
+```sql
+CREATE EXTENSION IF NOT EXISTS unaccent;
+```
+
+**Why `unaccent()` over `pg_trgm`:**
+- `unaccent()` + `ILIKE` is simple, requires no index changes, and handles the primary
+  pain point (diacritics: "cestina" matches "čeština", "osoba" matches "Osoba").
+- `pg_trgm` adds fuzzy/similarity matching and GIN-indexed performance, but is overkill
+  for ISMD's low-thousands dataset. Upgrade path if ISMD grows: add `pg_trgm` GIN index
+  on `concept_name` and switch to `similarity()` or `%` operator.
 
 ```
   IsmdSearchProvider.search(query, userId, filters)
          │
-         │  PHASE 1: PostgreSQL text search (name match)
-         │  ────────────────────────────────────────────
-         ▼
-  ┌──────────────────────────────┐
-  │  OntologyMetadataRepository  │   WHERE slug LIKE '%query%'
-  │  .searchByText(q, userId)    │   AND (isPublished=true OR userId=:uid)
-  └──────────────┬───────────────┘
-                 │
-  ┌──────────────────────────────┐
-  │  ConceptMetadataRepository   │   WHERE conceptName LIKE '%query%'
-  │  .searchByText(q, userId,   │   AND (isPublished=true OR userId=:uid)
-  │                ontologyIris) │   AND ontology.graphName IN (:iris) [optional]
-  └──────────────┬───────────────┘
-                 │
-                 ▼
-         ┌──────────────┐
-         │ PG results?  │
-         └──────┬───────┘
-                │
-         ┌──────┴──────┐
-         │             │
-     HAS RESULTS    NO RESULTS
-         │             │
-         │             │  PHASE 2: Fuseki SPARQL fallback
-         │             │  ──────────────────────────────
-         │             ▼
-         │    ┌──────────────────────────────────────────┐
-         │    │  JenaTDB2Repository — SPARQL text search │
-         │    │                                          │
-         │    │  Search across all named graphs:         │
-         │    │  • skos:prefLabel (redundant but needed  │
-         │    │    to also return name in results)       │
-         │    │  • skos:altLabel                         │
-         │    │  • dcterms:description                   │
-         │    │  • skos:definition                       │
-         │    │                                          │
-         │    │  FILTER(CONTAINS(LCASE(?field), query))  │
-         │    │  + visibility via known graph names      │
-         │    └──────────────┬───────────────────────────┘
-         │                   │
-         │                   ▼
-         │    ┌──────────────────────────────────────────┐
-         │    │  Cross-reference with PG metadata        │
-         │    │  • Look up slug, isPublished, userId     │
-         │    │    by conceptIri / graphName              │
-         │    │  • Apply visibility filter               │
-         │    │    (published OR owned by userId)         │
-         │    └──────────────┬───────────────────────────┘
-         │                   │
-         ▼                   ▼
+         ├──────────────────────────────────────────────────┐
+         │                                                  │
+         ▼                                                  ▼
+  PG TEXT SEARCH (parallel)                    FUSEKI SPARQL TEXT SEARCH (parallel)
+  ─────────────────────────                    ────────────────────────────────────
+  ┌──────────────────────────────┐    ┌──────────────────────────────────────────┐
+  │  OntologyMetadataRepository  │    │  JenaTDB2Repository — SPARQL text search │
+  │  .searchByText(q, userId)    │    │                                          │
+  │                              │    │  Search across all named graphs:         │
+  │  WHERE unaccent(slug)        │    │  • skos:prefLabel                        │
+  │    ILIKE unaccent('%query%') │    │  • skos:altLabel                         │
+  │  AND (isPublished=true       │    │  • dcterms:description                   │
+  │       OR userId=:uid)        │    │  • skos:definition                       │
+  └──────────────┬───────────────┘    │                                          │
+                 │                    │  FILTER(CONTAINS(LCASE(?field), query))  │
+  ┌──────────────────────────────┐    │  + visibility via known graph names      │
+  │  ConceptMetadataRepository   │    └───────────────┬──────────────────────────┘
+  │  .searchByText(q, userId,    │                    │
+  │                ontologyIris) │                    ▼
+  │                              │    ┌──────────────────────────────────────────┐
+  │  WHERE unaccent(conceptName) │    │  Cross-reference with PG metadata        │
+  │    ILIKE unaccent('%query%') │    │  • Look up slug, isPublished, userId     │
+  │  AND (isPublished=true       │    │    by conceptIri / graphName             │
+  │       OR userId=:uid)        │    │  • Apply visibility filter               │
+  │  AND ontology.graphName      │    │    (published OR owned by userId)        │
+  │    IN (:iris) [optional]     │    └──────────────┬───────────────────────────┘
+  └──────────────┬───────────────┘                   │
+                 │                                   │
+                 └──────────────┬────────────────────┘
+                                │
+                                ▼
+                 MERGE + DEDUP (by IRI)
+                 ──────────────────────
   ┌──────────────────────────────────────────────────────┐
-  │  Fuseki RDF enrichment (for ALL results)             │
+  │  LinkedHashMap<String, SearchResultDto> (keyed by    │
+  │  IRI, preserves insertion order)                     │
+  │                                                      │
+  │  For each result from PG and Fuseki:                 │
+  │    if IRI already in map:                            │
+  │      overwrite non-null fields (last write wins)     │
+  │      log duplicate at DEBUG level                    │
+  │    else:                                             │
+  │      add new entry                                   │
+  │                                                      │
+  │  PG provides: slug, conceptType, isPublished, userId │
+  │  Fuseki provides: label, altName, description, def.  │
+  │  Merge priority: last write wins for conflicts       │
+  │  (in practice conflicts should not occur — PG name   │
+  │   matches RDF prefLabel via create/edit workflow)    │
+  └──────────────────────────────────────────────────────┘
+                                │
+                                ▼
+  ┌──────────────────────────────────────────────────────┐
+  │  Fuseki RDF enrichment (for ALL merged results)      │
   │                                                      │
   │  Ontology results → fetchMetadataProperties(graphs)  │  (existing)
   │    → skos:prefLabel, dcterms:description             │
@@ -421,74 +447,61 @@ This avoids double-query overhead when name search is sufficient.
          │  RELATION TYPE FILTER (if relationTypes param set)
          │  ─────────────────────────────────────────────
          ▼
-  ┌──────────────────────────────────────────────────────┐
-  │  JenaTDB2Repository — ASK queries per concept        │
-  │                                                      │
-  │  For each concept IRI, check in its named graph:     │
-  │                                                      │
-  │  SUBCLASS:        ASK { GRAPH ?g {                   │
-  │                     <iri> rdfs:subClassOf ?x } }     │
-  │  SUPERCLASS:      ASK { GRAPH ?g {                   │
-  │                     ?x rdfs:subClassOf <iri> } }     │
-  │  EXACT_MATCH:     ASK { GRAPH ?g {                   │
-  │                     <iri> skos:exactMatch ?x } }     │
-  │  PROPERTY_OF:     ASK { GRAPH ?g {                   │
-  │                     <iri> rdfs:domain ?x } }         │
-  │  RELATIONSHIP_OF: ASK { GRAPH ?g {                   │
-  │                     <iri> rdfs:range ?x } }          │
-  │                                                      │
-  │  Multiple types → OR logic (keep if ANY matches)     │
-  │  Remove concepts that don't match any filter         │
-  │                                                      │
-  │  Optimization: batch into single SELECT query:       │
-  │  SELECT ?concept WHERE {                             │
-  │    VALUES ?concept { <iri1> <iri2> ... }             │
-  │    GRAPH ?g {                                        │
-  │      { ?concept rdfs:subClassOf ?x }                 │
-  │      UNION { ?concept skos:exactMatch ?x } ...      │
-  │    }                                                 │
-  │  }                                                   │
-  └──────────────────────────────────────────────────────┘
-         │
-         │  MERGE + DEDUP
-         │  ─────────────
-         ▼
-  ┌──────────────────────────────────────────────────────┐
-  │  Deduplicate by IRI (Map<String, SearchResultDto>)   │
-  │  Merge PG metadata + Fuseki labels                   │
-  │  → List<SearchResultDto>                             │
-  │    source = ISMD                                     │
-  │    slug, isPublished from PG                         │
-  │    label, altName, description, definition from RDF  │
-  └──────────────────────────────────────────────────────┘
+  ┌────────────────────────────────────────────────────────────────┐
+  │  JenaTDB2Repository — batched SELECT query                     │
+  │                                                                │
+  │  Single round-trip for all concept IRIs:                       │
+  │                                                                │
+  │  SELECT ?concept WHERE {                                       │
+  │    VALUES ?concept { <iri1> <iri2> ... }                       │
+  │    GRAPH ?g {                                                  │
+  │      { ?concept rdfs:subClassOf ?x }      # SUBCLASS           │
+  │      UNION { ?x rdfs:subClassOf ?concept } # SUPERCLASS        │
+  │      UNION { ?concept skos:exactMatch ?x } # EXACT_MATCH       │
+  │      UNION { ?concept rdfs:domain ?x }    # PROPERTY_OF        │
+  │      UNION { ?concept rdfs:range ?x }     # RELATIONSHIP_OF    │
+  │    }                                                           │
+  │  }                                                             │
+  │                                                                │
+  │  Build UNION branches only for requested types.                │
+  │  Multiple types → OR logic (keep if ANY matches).              │
+  │  Remove concepts not in result set.                            │
+  │  Capped at LIMIT (max 100 concepts to check).                  │
+  └────────────────────────────────────────────────────────────────┘
 ```
 
-**Graceful degradation:** If Fuseki is unreachable, return PG results (Phase 1 only) with
-`conceptName` as label and no description. Phase 2 is skipped. The response `sourceStatuses`
-will include a warning.
+**Graceful degradation:** If Fuseki is unreachable, return PG-only results with
+`conceptName` as label and no description. The response `sourceStatuses`
+will report `ISMD` as `DEGRADED` (not `OK`).
 
 ### Deduplication strategy (applies to both NKD and ISMD)
 
-Both NKD SPARQL UNION queries and ISMD Fuseki fallback can produce multiple rows
-for the same resource (e.g., matched on both prefLabel and altLabel). Dedup happens
-in Java after result mapping:
+Both NKD SPARQL UNION queries and ISMD parallel PG+Fuseki searches can produce
+multiple rows for the same resource (e.g., matched on both prefLabel and altLabel,
+or found in both PG and Fuseki). Dedup happens in Java after result mapping:
 
 ```
   Raw results from SPARQL / PG+Fuseki
          │
          ▼
   ┌──────────────────────────────────────────────────────┐
-  │  Map<String, SearchResultDto> seen  (keyed by IRI)   │
+  │  LinkedHashMap<String, SearchResultDto>              │
+  │  (keyed by IRI, preserves insertion order)           │
   │                                                      │
   │  For each raw row:                                   │
   │    if IRI already in map:                            │
-  │      merge non-null fields into existing entry       │
-  │      (e.g., fill altName, definition if null)        │
+  │      overwrite non-null fields (last write wins)     │
+  │      log at DEBUG level                              │
   │    else:                                             │
   │      add new entry                                   │
   │                                                      │
+  │  Merge precedence: LAST WRITE WINS.                  │
+  │  In practice, PG conceptName and RDF prefLabel       │
+  │  should always match (enforced by create/edit flow). │
+  │  If they diverge, the last-processed value is kept   │
+  │  and the mismatch is logged for investigation.       │
+  │                                                      │
   │  Result: one SearchResultDto per unique IRI          │
-  │  Preserves insertion order (LinkedHashMap)            │
   └──────────────────────────────────────────────────────┘
 ```
 
@@ -500,7 +513,7 @@ in Java after result mapping:
   SearchServiceImpl
          │
          ├── CompletableFuture: NkdSearchProvider.search()
-         │     .orTimeout(5s)
+         │     .orTimeout(10s)  ← matches existing nkd.sparql.timeout config
          │     .exceptionally() → SearchSourceStatus(TIMEOUT)
          │
          ├── CompletableFuture: IsmdSearchProvider.search()
@@ -514,20 +527,24 @@ in Java after result mapping:
          ├── results: [items from successful sources]
          └── sourceStatuses:
                ├── NKD:  OK | TIMEOUT | ERROR | UNAVAILABLE | SKIPPED
-               └── ISMD: OK | TIMEOUT | ERROR | SKIPPED
+               └── ISMD: OK | DEGRADED | TIMEOUT | ERROR | SKIPPED
 
   Degradation scenarios:
-  ┌─────────────────────┬──────────────┬──────────┬───────────────────────┐
-  │ Scenario            │ HTTP Status  │ Results  │ sourceStatuses        │
-  ├─────────────────────┼──────────────┼──────────┼───────────────────────┤
-  │ Both OK             │ 200          │ NKD+ISMD │ NKD=OK, ISMD=OK      │
-  │ NKD timeout (anon)  │ 200          │ empty    │ NKD=TIMEOUT           │
-  │ NKD timeout (auth)  │ 200          │ ISMD     │ NKD=TIMEOUT, ISMD=OK │
-  │ Fuseki down (auth)  │ 200          │ NKD+PG   │ NKD=OK, ISMD=OK*     │
-  │ Both fail (auth)    │ 200          │ empty    │ NKD=ERROR, ISMD=ERROR │
-  │ Anon, NKD not conf. │ 200          │ empty    │ NKD=UNAVAILABLE      │
-  └─────────────────────┴──────────────┴──────────┴───────────────────────┘
-  * ISMD returns PG-only results with warning in status message
+  ┌─────────────────────┬──────────────┬──────────┬──────────────────────────┐
+  │ Scenario            │ HTTP Status  │ Results  │ sourceStatuses           │
+  ├─────────────────────┼──────────────┼──────────┼──────────────────────────┤
+  │ Both OK             │ 200          │ NKD+ISMD │ NKD=OK, ISMD=OK          │
+  │ NKD timeout (anon)  │ 200          │ empty    │ NKD=TIMEOUT              │
+  │ NKD timeout (auth)  │ 200          │ ISMD     │ NKD=TIMEOUT, ISMD=OK     │
+  │ Fuseki down (auth)  │ 200          │ NKD+PG   │ NKD=OK, ISMD=DEGRADED    │
+  │ Both fail (auth)    │ 200          │ empty    │ NKD=ERROR, ISMD=ERROR    │
+  │ Anon, NKD not conf. │ 200          │ empty    │ NKD=UNAVAILABLE          │
+  │ Anon, source=ISMD   │ 401          │ —        │ —                        │
+  └─────────────────────┴──────────────┴──────────┴──────────────────────────┘
+
+  DEGRADED: ISMD returns PG-only results (Fuseki unreachable).
+            Labels use conceptName from PG; no descriptions/definitions.
+            Status message explains partial results.
 ```
 
 ---
@@ -567,12 +584,12 @@ in Java after result mapping:
         "isPublished": false
       }
     ],
-    "totalResults": 2,
+    "returnedCount": 2,
     "limit": 20,
     "offset": 0,
     "sourceStatuses": {
-      "NKD": { "status": "OK", "resultCount": 1, "message": null },
-      "ISMD": { "status": "OK", "resultCount": 1, "message": null }
+      "NKD": { "status": "OK", "returnedCount": 1, "totalCount": 42, "message": null },
+      "ISMD": { "status": "OK", "returnedCount": 1, "totalCount": 3, "message": null }
     }
   },
   "message": "Vyhledavani probehlo uspesne.",
@@ -589,26 +606,30 @@ in Java after result mapping:
 
   Query Parameters:
   ┌────────────────┬──────────┬─────────┬──────────────────────────────────┐
-  │ Parameter       │ Required │ Default │ Description                      │
+  │ Parameter      │ Required │ Default │ Description                      │
   ├────────────────┼──────────┼─────────┼──────────────────────────────────┤
   │ q              │ yes      │ —       │ Search term (min 2 chars)        │
   │ type           │ no       │ both    │ ONTOLOGY | CONCEPT               │
   │ source         │ no       │ *       │ NKD | ISMD | ALL                 │
-  │ limit          │ no       │ 20      │ Max 100                          │
-  │ offset         │ no       │ 0       │ Pagination offset                │
-  │ lang           │ no       │ cs      │ Preferred label language         │
+  │                │          │         │ * Anon default: NKD              │
+  │                │          │         │ * Auth default: ALL              │
+  │                │          │         │ * Anon + ISMD/ALL → 401          │
+  │ limit          │ no       │ 20      │ Max 100 (per source)             │
+  │ offset         │ no       │ 0       │ Pagination offset (per source)   │
+  │ lang           │ no       │ cs      │ Preferred label language.        │
+  │                │          │         │ Fallback: return best available  │
+  │                │          │         │ language if preferred not found. │
   │ ontologyIri    │ no       │ —       │ Comma-separated ontology IRIs    │
   │ relationTypes  │ no       │ —       │ SUBCLASS,SUPERCLASS,EXACT_MATCH, │
   │                │          │         │ PROPERTY_OF,RELATIONSHIP_OF      │
   └────────────────┴──────────┴─────────┴──────────────────────────────────┘
-  * source default: NKD for anonymous, ALL for authenticated
-
   Responses:
-  ┌──────┬────────────────────────────────────────┐
-  │ 200  │ Search completed (may have partial)    │
-  │ 400  │ Invalid input (q too short, bad enum)  │
-  │ 500  │ Unexpected server error                │
-  └──────┴────────────────────────────────────────┘
+  ┌──────┬───────────────────────────────────────────────────┐
+  │ 200  │ Search completed (may have partial results)       │
+  │ 400  │ Invalid input (q too short, bad enum)             │
+  │ 401  │ Anonymous user requested source=ISMD or source=ALL│
+  │ 500  │ Unexpected server error                           │
+  └──────┴───────────────────────────────────────────────────┘
 ```
 
 ---
@@ -619,14 +640,21 @@ in Java after result mapping:
 |----------|--------|-----------|
 | Endpoint count | Single `/api/search` | Frontend doesn't need to know about NKD vs ISMD split |
 | NKD text search | Virtuoso `bif:contains` | Full-text indexed, prefix matching with `*` wildcard |
-| ISMD search strategy | PG-first, Fuseki-enrich | PG is fast for text matching; Fuseki adds RDF labels |
+| ISMD search strategy | Parallel PG + Fuseki, merge in Java | Always query both stores to ensure full recall; dedup by IRI |
+| ISMD text matching | `unaccent()` + `ILIKE` on PG | Handles Czech diacritics (č→c, ř→r) and case. `pg_trgm` deferred — overkill for low thousands |
 | ISMD visibility | Published + own unpublished | Consistent with existing list endpoints |
-| Security approach | Dedicated @Order(0) chain | Cleanly handles optional JWT without complicating existing chains |
+| Security approach | Dedicated @Order(0) chain, `/api/search/**` | Wildcard path matcher prevents future sub-paths falling to auth chain |
+| Anonymous source restriction | `source=ISMD` or `ALL` → 401 | ISMD data requires authentication; NKD is public |
 | Parallel execution | CompletableFuture per source | NKD and ISMD don't depend on each other |
-| Error isolation | Per-source status reporting | One source failing doesn't block the other |
-| Relation type filter | `FILTER EXISTS` in SPARQL | Checks ANY relationship of that type exists |
+| Error isolation | Per-source status with DEGRADED | `DEGRADED` when Fuseki down (PG-only results); distinct from `OK` |
+| Relation type filter (ISMD) | Batched SELECT with VALUES + UNION | Single round-trip; no N+1 ASK queries |
+| Relation type filter (NKD) | `FILTER EXISTS` in SPARQL | Checks ANY relationship of that type exists |
+| Dedup merge precedence | Last write wins, log conflicts | PG name = RDF prefLabel by design (create/edit flow); conflicts are bugs |
+| conceptType source | PostgreSQL `concept_type` column | Enum stored in PG; RDF has `rdf:type`/`skos` classes but PG is authoritative |
+| Language fallback | Return best available if preferred not found | Prevents empty labels when concept only has e.g. `en` label |
 | Diagram filter | Deferred | Feature doesn't exist yet |
-| Cross-source pagination | Per-source LIMIT/OFFSET | True cross-source pagination too complex for v1 |
+| Cross-source pagination | Per-source LIMIT/OFFSET | True cross-source pagination too complex for v1. `returnedCount` + per-source `totalCount` for frontend |
+| Rate limiting | Required on `/api/search/**` | Public `permitAll()` endpoint; must protect against abuse |
 
 ---
 
@@ -636,51 +664,52 @@ in Java after result mapping:
   ┌─────────────────────────────────────────────────────────────────────────┐
   │                     Performance-Critical Decisions                      │
   ├────────────────────────┬────────────────────────────────────────────────┤
-  │ Concern                │ Approach                                      │
+  │ Concern                │ Approach                                       │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ NKD text search        │ Virtuoso bif:contains uses full-text index.   │
-  │ at 100k records        │ Sub-second even at 100k — this is what the    │
-  │                        │ index is built for. FILTER(CONTAINS()) would  │
-  │                        │ be O(n) full scan — NOT acceptable at scale.  │
+  │ NKD text search        │ Virtuoso bif:contains uses full-text index.    │
+  │ at 100k records        │ Sub-second even at 100k — this is what the     │
+  │                        │ index is built for. FILTER(CONTAINS()) would   │
+  │                        │ be O(n) full scan — NOT acceptable at scale.   │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ NKD relation type      │ FILTER EXISTS with rdfs:subClassOf etc.       │
-  │ filters at scale       │ Virtuoso handles EXISTS efficiently via       │
-  │                        │ indexed triple patterns. Combine multiple     │
-  │                        │ types with UNION (not nested FILTERs) for     │
-  │                        │ optimizer-friendly execution.                 │
+  │ NKD relation type      │ FILTER EXISTS with rdfs:subClassOf etc.        │
+  │ filters at scale       │ Virtuoso handles EXISTS efficiently via        │
+  │                        │ indexed triple patterns. Combine multiple      │
+  │                        │ types with UNION (not nested FILTERs) for      │
+  │                        │ optimizer-friendly execution.                  │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ NKD query timeout      │ 5s hard timeout. At ~100k with bif:contains   │
-  │                        │ this should be well under 2s. Timeout is a    │
-  │                        │ safety net, not expected to trigger.          │
+  │ NKD query timeout      │ 10s hard timeout (matches nkd.sparql.timeout   │
+  │                        │ config). At ~100k with bif:contains this       │
+  │                        │ should be well under 2s. Timeout is a safety   │
+  │                        │ net, not expected to trigger.                  │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ SPARQL result size     │ Server-side LIMIT/OFFSET. Never fetch more    │
-  │                        │ than 100 results per source per request.      │
-  │                        │ Prevents memory issues on large result sets.  │
+  │ SPARQL result size     │ Server-side LIMIT/OFFSET. Never fetch more     │
+  │                        │ than 100 results per source per request.       │
+  │                        │ Prevents memory issues on large result sets.   │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ ISMD PG text search    │ LIKE '%term%' is fine for low thousands.      │
-  │                        │ If ISMD grows toward 100k, add pg_trgm       │
-  │                        │ GIN index for indexed trigram matching.       │
-  │                        │ No action needed now — note for future.       │
+  │ ISMD PG text search    │ unaccent() + ILIKE for accent-insensitive      │
+  │                        │ matching. Fine for low thousands. If ISMD      │
+  │                        │ grows toward 100k, add pg_trgm GIN index       │
+  │                        │ for indexed trigram matching.                  │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ ISMD Fuseki enrichment │ Batch CONSTRUCT with VALUES clause for IRIs.  │
-  │                        │ One round-trip regardless of result count.    │
-  │                        │ Capped by LIMIT so max ~100 IRIs per batch.  │
+  │ ISMD Fuseki enrichment │ Batch CONSTRUCT with VALUES clause for IRIs.   │
+  │                        │ One round-trip regardless of result count.     │
+  │                        │ Capped by LIMIT so max ~100 IRIs per batch.    │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ ISMD Fuseki fallback   │ FILTER(CONTAINS()) on Fuseki is fine —        │
-  │ (Phase 2)              │ ISMD is low thousands, not 100k. Only runs    │
-  │                        │ when PG Phase 1 returns no results.           │
+  │ ISMD Fuseki text search│ FILTER(CONTAINS()) on Fuseki is fine —         │
+  │                        │ ISMD is low thousands, not 100k. Always runs   │ 
+  │                        │ in parallel with PG to ensure full recall.     │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ ISMD relation filter   │ Batched SELECT with VALUES clause for         │
-  │                        │ concept IRIs. One round-trip. Capped at       │
-  │                        │ LIMIT (max 100 concepts to check).           │
+  │ ISMD relation filter   │ Batched SELECT with VALUES clause for          │
+  │                        │ concept IRIs. One round-trip. Capped at        │
+  │                        │ LIMIT (max 100 concepts to check).             │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ Parallel execution     │ NKD and ISMD run concurrently via             │
-  │                        │ CompletableFuture. Total latency =            │
-  │                        │ max(NKD, ISMD), not sum.                     │
+  │ Parallel execution     │ NKD and ISMD run concurrently via              │
+  │                        │ CompletableFuture. Total latency =             │
+  │                        │ max(NKD, ISMD), not sum.                       │
   ├────────────────────────┼────────────────────────────────────────────────┤
-  │ Min query length       │ 2 chars minimum. Prevents overly broad        │
-  │                        │ full-text queries that would scan too many    │
-  │                        │ index entries at 100k scale.                  │
+  │ Min query length       │ 2 chars minimum. Prevents overly broad         │
+  │                        │ full-text queries that would scan too many     │
+  │                        │ index entries at 100k scale.                   │
   └────────────────────────┴────────────────────────────────────────────────┘
 ```
 
@@ -691,9 +720,9 @@ matching MUST go through the index — never fall back to `FILTER(CONTAINS())` o
 side. The `*` wildcard suffix in `bif:contains '"term*"'` enables prefix matching while
 staying indexed.
 
-For ISMD, the dataset stays small enough that PG LIKE and Fuseki FILTER(CONTAINS()) are
-acceptable. If ISMD ever approaches NKD-scale, the upgrade path is:
-- PG: Add `pg_trgm` GIN index on `conceptName`
+For ISMD, the dataset stays small enough that PG `unaccent()` + `ILIKE` and Fuseki
+`FILTER(CONTAINS())` are acceptable. If ISMD ever approaches NKD-scale, the upgrade path is:
+- PG: Add `pg_trgm` GIN index on `concept_name` for indexed trigram matching + fuzzy search
 - Fuseki: Enable Jena text index and use `text:query`
 
 ### Future scaling note
@@ -715,12 +744,20 @@ All design decisions resolved. See section 15 for the full list.
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | ISMD alt name / definition search | PG-first for name match; if no results, fall back to Fuseki SPARQL text search across altLabel, description, definition |
-| 2 | Duplicate results (same IRI matched on multiple fields) | Java-side dedup via `Map<IRI, SearchResultDto>` with field merging. Applies to both NKD and ISMD providers. |
+| 1 | ISMD alt name / definition search | Always query both PG and Fuseki in parallel, merge + dedup in Java by IRI. Ensures full recall — matches on altLabel, description, definition are never dropped. |
+| 2 | Duplicate results (same IRI matched on multiple fields) | Java-side dedup via `LinkedHashMap<IRI, SearchResultDto>`. Last write wins for field conflicts (should not occur in practice — PG name matches RDF prefLabel via create/edit flow). Conflicts logged at DEBUG. |
 | 3 | ISMD visibility | Published + own unpublished (consistent with existing list endpoints) |
 | 4 | NKD production endpoint | Will be configured before deploy |
 | 5 | NKD full-text search | Virtuoso `bif:contains` with `*` wildcard prefix matching |
 | 6 | Diagram filter | Deferred — feature doesn't exist yet |
 | 7 | Relation type filter semantics | Checks concept has ANY relationship of the specified type(s), not a specific target |
-| 8 | ISMD relation type filter | Apply via Fuseki SPARQL (not NKD-only). Post-PG filter step using ASK queries against concept graphs. |
-| 9 | Pagination | Infinite scroll. Independent LIMIT/OFFSET per source. Frontend sorts NKD vs ISMD results. Not an issue — dataset is bounded, not millions of records. |
+| 8 | ISMD relation type filter | Batched SELECT with VALUES + UNION in Fuseki SPARQL. Single round-trip, no N+1 ASK queries. |
+| 9 | Pagination | Infinite scroll. Independent LIMIT/OFFSET per source. `returnedCount` + per-source `totalCount` for frontend. |
+| 10 | Anonymous source restriction | Anonymous users can only use `source=NKD` (default). Requesting `source=ISMD` or `source=ALL` returns 401. |
+| 11 | Czech diacritics / case matching | PG uses `unaccent()` + `ILIKE`. Requires `CREATE EXTENSION IF NOT EXISTS unaccent` migration. `pg_trgm` deferred as upgrade path. |
+| 12 | conceptType source | PostgreSQL `concept_type` column (enum). RDF has `rdf:type`/`skos` classes and OFN classes but PG is authoritative for search results. |
+| 13 | Language fallback | Return best available language if preferred `lang` not found. Prevents empty labels. |
+| 14 | Fuseki down status | Report `DEGRADED` (not `OK`) when Fuseki unreachable. PG-only results returned with `conceptName` as label. |
+| 15 | NKD timeout alignment | 10s (matches existing `nkd.sparql.timeout` config), not 5s. |
+| 16 | Security matcher path | `/api/search/**` wildcard to cover future sub-paths (e.g., `/api/search/suggestions`). |
+| 17 | Rate limiting | Required on `/api/search/**`. Public endpoint must be protected against abuse. Implementation TBD (Spring RateLimiter, reverse proxy, or Bucket4j). |
