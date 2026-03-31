@@ -1,0 +1,354 @@
+name: Trigger Deployment
+
+on:
+  # Triggered when a new image is published
+  workflow_run:
+    workflows: [Build Docker on Main, Build Dev Branch]
+    types: [completed]
+    branches: [main, dev]
+  
+  # Manual trigger with environment and version selection
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+      version:
+        description: 'Image version to deploy (leave empty for latest)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+  actions: read
+  packages: read
+
+env:
+  COMPONENT_NAME: tool-backend
+
+jobs:
+  determine-params:
+    name: Determine Deployment Parameters
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
+    outputs:
+      environment: ${{ steps.determine_params.outputs.environment }}
+      image_tag: ${{ steps.determine_params.outputs.image_tag }}
+      ref: ${{ steps.determine_params.outputs.ref }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+        with:
+          fetch-depth: 0
+      
+      - name: Determine environment and version
+        id: determine_params
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+            ENVIRONMENT="${ENVIRONMENT^^}"
+            
+            if [ -n "${{ github.event.inputs.version }}" ]; then
+              IMAGE_TAG="${{ github.event.inputs.version }}"
+            else
+              # Query GitHub Packages API for the latest available image tag
+              REPO_OWNER='${{ github.repository_owner }}'
+              
+              if [ "$ENVIRONMENT" = "DEV" ]; then
+                PACKAGE_NAME="ismd-tool-backend-dev"
+              else
+                PACKAGE_NAME="ismd-tool-backend"
+              fi
+              
+              echo "Querying GitHub Packages API for most recent image in ${PACKAGE_NAME}..."
+              
+              LATEST_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/orgs/${REPO_OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=1" 2>/dev/null | \
+                jq -r '.[0].metadata.container.tags[] | select(. != "latest")' | head -1)
+              
+              if [ -n "$LATEST_TAG" ]; then
+                IMAGE_TAG="$LATEST_TAG"
+              else
+                IMAGE_TAG="latest"
+              fi
+            fi
+          else
+            # For automated triggers, determine environment from branch
+            if [ "${{ github.event.workflow_run.head_branch }}" == "main" ]; then
+              ENVIRONMENT="TEST"
+            else
+              ENVIRONMENT="DEV"
+            fi
+            
+            REPO_OWNER='${{ github.repository_owner }}'
+            
+            if [ "$ENVIRONMENT" = "DEV" ]; then
+              PACKAGE_NAME="ismd-tool-backend-dev"
+            else
+              PACKAGE_NAME="ismd-tool-backend"
+            fi
+            
+            IMAGE_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/${REPO_OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=1" 2>/dev/null | \
+              jq -r '.[0].metadata.container.tags[] | select(. != "latest")' | head -1)
+            
+            if [ -z "$IMAGE_TAG" ]; then
+              IMAGE_TAG="latest"
+            fi
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            REF="${{ github.event.workflow_run.head_sha }}"
+          else
+            REF="${GITHUB_SHA}"
+          fi
+          
+          echo "Environment: ${ENVIRONMENT}"
+          echo "Image tag: ${IMAGE_TAG}"
+          echo "Ref: ${REF}"
+          
+          echo "environment=${ENVIRONMENT}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+
+  validate-image:
+    name: Validate Image Tag Exists
+    runs-on: ubuntu-latest
+    needs: determine-params
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check manifest exists
+        run: |
+          ENV_UPPER='${{ needs.determine-params.outputs.environment }}'
+          ENV_LOWER=$(echo "$ENV_UPPER" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG='${{ needs.determine-params.outputs.image_tag }}'
+          REPO_OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          
+          if [ "$ENV_UPPER" = "DEV" ]; then
+            IMAGE="ghcr.io/${REPO_OWNER}/ismd-tool-backend-${ENV_LOWER}:${IMAGE_TAG}"
+          else
+            IMAGE="ghcr.io/${REPO_OWNER}/ismd-tool-backend:${IMAGE_TAG}"
+          fi
+          
+          echo "Validating image: $IMAGE"
+          if ! docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "ERROR: Image manifest not found for $IMAGE" >&2
+            exit 1
+          fi
+          echo "Image exists: $IMAGE"
+      
+  deploy-to-dev:
+    name: Deploy to Dev
+    needs: [determine-params, validate-image]
+    if: needs.determine-params.outputs.environment == 'DEV'
+    runs-on: ubuntu-latest
+    environment:
+      name: DEV
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+      
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: DEV
+          ref: ${{ needs.determine-params.outputs.ref }}
+          description: 'Deployment of ${{ env.COMPONENT_NAME }} image ${{ needs.determine-params.outputs.image_tag }} to DEV'
+          auto-merge: false
+
+      - name: Update Deployment Status - Pending
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "pending"
+          description: "Preparing to deploy"
+      
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Deploy to Azure Container App
+        run: |
+          IMAGE="ghcr.io/datagov-cz/ismd-tool-backend-dev:${{ needs.determine-params.outputs.image_tag }}"
+          echo "Deploying $IMAGE to ismd-tool-backend-dev"
+          
+          az containerapp update \
+            --name ismd-tool-backend-dev \
+            --resource-group ismd-tool-dev \
+            --image "$IMAGE" \
+            --output table
+          
+          echo "✅ Deployment complete"
+      
+      - name: Update Deployment Status - Success
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "success"
+          description: "Deployed successfully"
+      
+      - name: Update Deployment Status - Failure
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "failure"
+          description: "Deployment failed"
+  
+  deploy-to-test:
+    name: Deploy to Test
+    needs: [determine-params, validate-image]
+    if: needs.determine-params.outputs.environment == 'TEST'
+    runs-on: ubuntu-latest
+    environment:
+      name: TEST
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+      
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: TEST
+          ref: ${{ needs.determine-params.outputs.ref }}
+          description: 'Deployment of ${{ env.COMPONENT_NAME }} image ${{ needs.determine-params.outputs.image_tag }} to TEST'
+          auto-merge: false
+
+      - name: Update Deployment Status - Pending
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "pending"
+          description: "Preparing to deploy"
+      
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Deploy to Azure Container App
+        run: |
+          IMAGE="ghcr.io/datagov-cz/ismd-tool-backend:${{ needs.determine-params.outputs.image_tag }}"
+          echo "Deploying $IMAGE to ismd-tool-backend-test"
+          
+          az containerapp update \
+            --name ismd-tool-backend-test \
+            --resource-group ismd-tool-test \
+            --image "$IMAGE" \
+            --output table
+          
+          echo "✅ Deployment complete"
+      
+      - name: Update Deployment Status - Success
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "success"
+          description: "Deployed successfully"
+      
+      - name: Update Deployment Status - Failure
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "failure"
+          description: "Deployment failed"
+  
+  deploy-to-prod:
+    name: Deploy to Production
+    needs: [determine-params, validate-image]
+    if: needs.determine-params.outputs.environment == 'PROD'
+    runs-on: ubuntu-latest
+    environment:
+      name: PROD
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+      
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: PROD
+          ref: ${{ needs.determine-params.outputs.ref }}
+          description: 'Deployment of ${{ env.COMPONENT_NAME }} image ${{ needs.determine-params.outputs.image_tag }} to PROD'
+          auto-merge: false
+
+      - name: Update Deployment Status - Pending
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "pending"
+          description: "Preparing to deploy"
+      
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Deploy to Azure Container App
+        run: |
+          IMAGE="ghcr.io/datagov-cz/ismd-tool-backend:${{ needs.determine-params.outputs.image_tag }}"
+          echo "Deploying $IMAGE to ismd-tool-backend-prod"
+          
+          az containerapp update \
+            --name ismd-tool-backend-prod \
+            --resource-group ismd-tool-prod \
+            --image "$IMAGE" \
+            --output table
+          
+          echo "✅ Deployment complete"
+      
+      - name: Update Deployment Status - Success
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "success"
+          description: "Deployed successfully"
+      
+      - name: Update Deployment Status - Failure
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "failure"
+          description: "Deployment failed"

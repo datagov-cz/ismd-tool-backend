@@ -1,0 +1,142 @@
+name: Build Docker on Main
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/README.md'
+      - '**/.gitignore'
+      - '**/*.md'
+      - '**/LICENSE'
+      - '**/target/**'
+      - '**/.idea/**'
+      - '**/*.iml'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Create Git tag for the release
+  create-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.determine-version.outputs.version }}
+      should_build: ${{ steps.determine-version.outputs.should_build }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+        with:
+          fetch-depth: 0
+      
+      - name: Determine version and create tag
+        id: determine-version
+        run: |
+          # Check if this is a release PR merge by looking at the PR title
+          PR_TITLE="${{ github.event.head_commit.message }}"
+          
+          if [[ "$PR_TITLE" =~ Release\ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            echo "Detected release version: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            
+            # Create and push the tag (idempotent)
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            TAG_NAME="v$VERSION"
+            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+              echo "Tag $TAG_NAME already exists locally, skipping creation"
+            elif git ls-remote --tags origin | grep -q "refs/tags/$TAG_NAME"; then
+              echo "Tag $TAG_NAME already exists remotely, fetching it"
+              git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+            else
+              echo "Creating new tag $TAG_NAME"
+              git tag "$TAG_NAME"
+              git push origin "$TAG_NAME"
+              echo "Created and pushed tag $TAG_NAME"
+            fi
+          else
+            echo "Not a release PR, skipping tag creation"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+  
+  # Build Docker image for main branch
+  build-docker:
+    needs: create-tag
+    if: needs.create-tag.outputs.should_build == 'true'
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      branch: main
+      version: ${{ needs.create-tag.outputs.version }}
+    secrets: inherit
+      
+  # Sync dev with main after Docker build
+  sync-dev:
+    needs: [create-tag, build-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.1
+        with:
+          fetch-depth: 0
+      
+      - name: Set up SSH agent
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin git@github.com:${{ github.repository }}.git
+      
+      - name: Create sync PR from main to dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch latest branches
+          git fetch origin main
+          git fetch origin dev
+          
+          # Get version that was just released
+          VERSION="${{ needs.create-tag.outputs.version }}"
+          SYNC_BRANCH="sync-main-to-dev-v${VERSION}"
+          
+          echo "Creating sync branch $SYNC_BRANCH from main..."
+          git checkout -b $SYNC_BRANCH origin/main
+          
+          git push origin $SYNC_BRANCH
+          
+          # Check if PR already exists
+          PR_EXISTS=$(gh pr list --head $SYNC_BRANCH --base dev --json number --jq 'length')
+          
+          if [ "$PR_EXISTS" = "0" ]; then
+            echo "Creating PR to sync main into dev..."
+            gh pr create \
+              --title "Sync main to dev after release v$VERSION" \
+              --body "# Sync Main → Dev after Release v$VERSION
+              
+              This PR syncs main back into dev after the v$VERSION release.
+              
+              ## Changes:
+              - Syncs code from main (released v$VERSION)
+              
+              ## Note:
+              - If there are no conflicts, this can be merged automatically
+              - If conflicts exist, they need to be resolved manually
+              
+              **This is an automated sync PR created by the release workflow.**" \
+              --base dev \
+              --head $SYNC_BRANCH
+            
+            echo "✅ Created sync PR from main to dev"
+          else
+            echo "Sync PR already exists, skipping creation"
+          fi
