@@ -1,0 +1,63 @@
+name: Code Quality Report
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  quality-report:
+    name: Static Analysis (Report Only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      GITHUB_ACTOR: ${{ github.actor }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Cache Maven packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-quality-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-quality-
+
+      - name: Run SpotBugs (report only)
+        continue-on-error: true
+        run: ./mvnw -DskipTests com.github.spotbugs:spotbugs-maven-plugin:4.8.6.6:spotbugs
+
+      - name: Run PMD (report only)
+        continue-on-error: true
+        run: ./mvnw -DskipTests org.apache.maven.plugins:maven-pmd-plugin:3.26.0:pmd
+
+      - name: Run Checkstyle (report only)
+        continue-on-error: true
+        run: ./mvnw -DskipTests org.apache.maven.plugins:maven-checkstyle-plugin:3.5.0:checkstyle
+
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tool-backend-quality-report-${{ github.run_id }}
+          path: |
+            target/spotbugsXml.xml
+            target/pmd.xml
+            target/checkstyle-result.xml
+          if-no-files-found: warn
