@@ -8,11 +8,6 @@ on:
         required: false
         type: boolean
         default: true
-      coverage_minimum:
-        description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
-        required: false
-        type: string
-        default: "0.00"
 
 permissions:
   contents: read
@@ -48,9 +43,9 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ "${{ inputs.enforce_coverage }}" = "true" ]; then
-            ./mvnw clean verify -Djacoco.line.minimum=${{ inputs.coverage_minimum }}
+            ./mvnw clean verify
           else
-            ./mvnw clean test jacoco:report -Djacoco.line.minimum=${{ inputs.coverage_minimum }}
+            ./mvnw clean test jacoco:report
           fi
 
       - name: Upload JaCoCo coverage report
