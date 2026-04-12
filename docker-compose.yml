@@ -33,33 +33,50 @@ services:
       KC_DB_PASSWORD: ismd_password
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      # CAAIS IdP configuration
+      # Optional CAAIS IdP configuration (used only with the caais profile)
       CAAIS_CLIENT_ID: ${CAAIS_CLIENT_ID:-your-client-id-here}
-      # Trust nginx-mtls internal certificate
-      KC_TRUSTSTORE_PATHS: /opt/keycloak/data/import/nginx-mtls-certs/internal.crt
     ports:
       - "8080:8080"
     volumes:
       - ./docker/keycloak/:/opt/keycloak/data/import/
-      # Mount nginx internal cert for Keycloak to trust
-      - ./docker/nginx-mtls/certs/internal.crt:/opt/keycloak/data/import/nginx-mtls-certs/internal.crt:ro
     networks:
       - ismd-network
     depends_on:
       - postgres
-      - nginx-mtls
 
   nginx-mtls:
     image: nginx:1.25-alpine
     container_name: ismd-nginx-mtls
+    profiles:
+      - caais
     volumes:
       - ./docker/nginx-mtls/nginx.conf:/etc/nginx/nginx.conf:ro
       # Internal TLS certificate (Keycloak -> nginx)
-      - ./docker/nginx-mtls/certs/internal.crt:/etc/nginx/certs/internal/internal.crt:ro
-      - ./docker/nginx-mtls/certs/internal.key:/etc/nginx/certs/internal/internal.key:ro
+      - type: bind
+        source: ./docker/nginx-mtls/certs/internal.crt
+        target: /etc/nginx/certs/internal/internal.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docker/nginx-mtls/certs/internal.key
+        target: /etc/nginx/certs/internal/internal.key
+        read_only: true
+        bind:
+          create_host_path: false
       # CAAIS client certificate (nginx -> CAAIS)
-      - ./docker/keycloak/secrets/certifikate.crt:/etc/nginx/certs/caais/certifikate.crt:ro
-      - ./docker/keycloak/secrets/private.key:/etc/nginx/certs/caais/private.key:ro
+      - type: bind
+        source: ./docker/keycloak/secrets/certifikate.crt
+        target: /etc/nginx/certs/caais/certifikate.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docker/keycloak/secrets/private.key
+        target: /etc/nginx/certs/caais/private.key
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       - ismd-network
     healthcheck:

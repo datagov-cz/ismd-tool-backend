@@ -24,7 +24,7 @@ jobs:
       new_version: ${{ steps.new-version.outputs.version }}
     steps:
       - name: Checkout dev branch
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
         with:
           ref: dev
           fetch-depth: 0

@@ -14,4 +14,6 @@ permissions:
 jobs:
   run-tests:
     uses: ./.github/workflows/reusable-test.yml
+    with:
+      coverage_minimum: ${{ vars.JACOCO_LINE_MINIMUM != '' && vars.JACOCO_LINE_MINIMUM || '0.00' }}
     secrets: inherit
