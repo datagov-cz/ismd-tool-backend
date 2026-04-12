@@ -6,16 +6,17 @@ import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.atlas.web.HttpException;
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.QuerySolution;
+import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
 import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -139,6 +140,48 @@ public class NkdSparqlClient {
         } finally {
             executor.shutdown();
         }
+    }
+
+    /**
+     * Executes a SPARQL SELECT query against the NKD endpoint.
+     * Returns results as a list of maps (variable name → string value).
+     */
+    public List<Map<String, String>> executeSelect(String sparqlQuery) {
+        if (nkdSparqlEndpoint == null || nkdSparqlEndpoint.trim().isEmpty()) {
+            log.warn("NKD SPARQL endpoint not configured");
+            return List.of();
+        }
+
+        log.debug("Executing NKD SELECT query");
+
+        List<Map<String, String>> results = new ArrayList<>();
+        try (QueryExecution qExec = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
+                .query(sparqlQuery)
+                .timeout(queryTimeout, TimeUnit.MILLISECONDS)
+                .build()) {
+
+            ResultSet rs = qExec.execSelect();
+            List<String> vars = rs.getResultVars();
+
+            while (rs.hasNext()) {
+                QuerySolution sol = rs.next();
+                Map<String, String> row = new LinkedHashMap<>();
+                for (String var : vars) {
+                    RDFNode node = sol.get(var);
+                    if (node != null) {
+                        row.put(var, node.isResource() ? node.asResource().getURI() : node.asLiteral().getString());
+                    }
+                }
+                results.add(row);
+            }
+        }
+
+        log.debug("NKD SELECT returned {} rows", results.size());
+        return results;
+    }
+
+    public boolean isEndpointConfigured() {
+        return nkdSparqlEndpoint != null && !nkdSparqlEndpoint.trim().isEmpty();
     }
 
     private boolean isConceptPublishedInNKD(String conceptIri) {

@@ -66,8 +66,8 @@ class SecurityFilterChainIntegrationTest {
     // ── Bean introspection tests ──────────────────────────────────────────
 
     @Test
-    void contextLoads_twoSecurityFilterChainBeans() {
-        assertThat(filterChains).hasSize(2);
+    void contextLoads_threeSecurityFilterChainBeans() {
+        assertThat(filterChains).hasSize(3);
     }
 
     @Test
