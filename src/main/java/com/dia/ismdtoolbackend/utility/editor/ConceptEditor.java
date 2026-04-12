@@ -133,6 +133,8 @@ public class ConceptEditor {
 
         updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvisions(),
                                 context.oldConcept, model, toRemove, toAdd);
+
+        updateCodeListDataset(context.newConcept, editModel.getCodeListDataset(), context.oldConcept, model, toRemove, toAdd);
     }
 
     private void editPropertyConcept(PropertyConceptEditModel editModel, EditContext context,
@@ -149,6 +151,8 @@ public class ConceptEditor {
 
         updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvisions(),
                                 context.oldConcept, model, toRemove, toAdd);
+
+        updateCodeListDataset(context.newConcept, editModel.getCodeListDataset(), context.oldConcept, model, toRemove, toAdd);
     }
 
     private void editRelationshipConcept(RelationshipConceptEditModel editModel, EditContext context,
@@ -165,6 +169,8 @@ public class ConceptEditor {
 
         updateDataClassification(context.newConcept, editModel.getIsPublic(), editModel.getPrivacyProvisions(),
                                 context.oldConcept, model, toRemove, toAdd);
+
+        updateCodeListDataset(context.newConcept, editModel.getCodeListDataset(), context.oldConcept, model, toRemove, toAdd);
     }
 
     private void editCommonFields(ConceptEditModel editModel, EditContext context,
@@ -1068,6 +1074,45 @@ public class ConceptEditor {
         updateGovernanceProperty(newConcept, contentType, TYP_OBSAHU, oldConcept, model, toRemove, toAdd);
         updateGovernanceProperty(newConcept, acquisitionMethod, ZPUSOB_ZISKANI, oldConcept, model, toRemove, toAdd);
         updateGovernancePropertyList(newConcept, sharingMethod, oldConcept, model, toRemove, toAdd);
+    }
+
+    private void updateCodeListDataset(Resource newConcept, String newDatasetUrl,
+                                         Resource oldConcept, Model model,
+                                         Set<Statement> toRemove, Set<Statement> toAdd) {
+        if (newDatasetUrl == null) return;
+
+        Property instanceDefinedByCodeList = model.createProperty(
+                OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+
+        // Remove existing code list dataset structure (blank node and its statements)
+        if (oldConcept.hasProperty(instanceDefinedByCodeList)) {
+            StmtIterator stmtIter = oldConcept.listProperties(instanceDefinedByCodeList);
+            while (stmtIter.hasNext()) {
+                Statement stmt = stmtIter.next();
+                toRemove.add(stmt);
+                if (stmt.getObject().isResource()) {
+                    Resource blankNode = stmt.getObject().asResource();
+                    StmtIterator bnIter = blankNode.listProperties();
+                    while (bnIter.hasNext()) {
+                        toRemove.add(bnIter.next());
+                    }
+                }
+            }
+        }
+
+        // Add new structure if value is non-empty
+        if (!newDatasetUrl.trim().isEmpty()) {
+            Resource codeListType = model.createResource(
+                    OFN_NAMESPACE_LEGAL + CISELNIK);
+            Property datasetProperty = model.createProperty(
+                    OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+
+            Resource codeListNode = model.createResource();
+            toAdd.add(model.createStatement(codeListNode, RDF.type, codeListType));
+            toAdd.add(model.createStatement(codeListNode, datasetProperty,
+                    model.createResource(newDatasetUrl.trim())));
+            toAdd.add(model.createStatement(newConcept, instanceDefinedByCodeList, codeListNode));
+        }
     }
 
     private static class EditContext {

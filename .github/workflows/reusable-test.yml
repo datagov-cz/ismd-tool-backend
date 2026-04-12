@@ -2,6 +2,17 @@ name: Reusable Test Workflow
 
 on:
   workflow_call:
+    inputs:
+      enforce_coverage:
+        description: "Fail workflow when JaCoCo check is not met"
+        required: false
+        type: boolean
+        default: true
+      coverage_minimum:
+        description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
+        required: false
+        type: string
+        default: "0.00"
 
 permissions:
   contents: read
@@ -15,7 +26,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -34,11 +45,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Build with Maven
-        run: ./mvnw clean package -DskipTests=true
+      - name: Run tests with coverage
+        run: |
+          if [ "${{ inputs.enforce_coverage }}" = "true" ]; then
+            ./mvnw clean verify -Djacoco.line.minimum=${{ inputs.coverage_minimum }}
+          else
+            ./mvnw clean test jacoco:report -Djacoco.line.minimum=${{ inputs.coverage_minimum }}
+          fi
 
-      # TODO: Re-enable tests after fixing failing tests
-      # See: ConceptCreatorTest, ConceptEditorTest, OntologyServiceImplTest, 
-      #      JsonExporterTest, CorsConfigLocalhostTest
-      # - name: Run tests
-      #   run: ./mvnw test
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tool-backend-jacoco-report-${{ github.run_id }}
+          path: target/site/jacoco
+          if-no-files-found: warn
