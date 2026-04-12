@@ -7,8 +7,11 @@ import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchType;
 import com.dia.ismdtoolbackend.service.SearchService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +20,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
+
+import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @Slf4j
 @RestController
@@ -26,34 +32,36 @@ public class SearchController {
 
     private final SearchService searchService;
 
+    @Operation(
+            summary = "Vyhledávání ontologií a pojmů",
+            description = "Vyhledává ontologie a pojmy napříč zdroji NKD a ISMD. " +
+                    "Anonymní uživatelé mohou prohledávat pouze NKD, přihlášení uživatelé oba zdroje."
+    )
     @GetMapping
     public ResponseEntity<ApiResponseDto<SearchResponseDto>> search(
+            @Parameter(description = "Vyhledávací dotaz (min. 2 znaky)", required = true)
             @RequestParam String q,
+            @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT")
             @RequestParam(required = false) String type,
+            @Parameter(description = "Zdroj dat: NKD, ISMD, ALL")
             @RequestParam(required = false) String source,
+            @Parameter(description = "Maximální počet výsledků (1-100)")
             @RequestParam(defaultValue = "20") int limit,
+            @Parameter(description = "Offset pro stránkování")
             @RequestParam(defaultValue = "0") int offset,
+            @Parameter(description = "Preferovaný jazyk")
             @RequestParam(defaultValue = "cs") String lang,
+            @Parameter(description = "Filtrování podle IRI ontologie")
             @RequestParam(required = false) List<String> ontologyIri,
+            @Parameter(description = "Filtrování podle typů vztahů: SUBCLASS, SUPERCLASS, EXACT_MATCH, PROPERTY_OF, RELATIONSHIP_OF")
             @RequestParam(required = false) List<String> relationTypes,
             @AuthenticationPrincipal SecurityUser securityUser) {
 
-        // Validate query
-        if (q == null || q.trim().length() < 2) {
-            throw new IllegalArgumentException("Search query must be at least 2 characters long");
-        }
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
 
-        // Validate limit
-        if (limit < 1 || limit > 100) {
-            throw new IllegalArgumentException("Limit must be between 1 and 100");
-        }
+        validateSearchParams(q, limit, offset);
 
-        // Validate offset
-        if (offset < 0) {
-            throw new IllegalArgumentException("Offset must be non-negative");
-        }
-
-        // Parse enums
         SearchType searchType = type != null ? SearchType.fromString(type) : null;
         SearchSource searchSource = source != null ? SearchSource.fromString(source) : null;
         List<RelationType> parsedRelationTypes = relationTypes != null
@@ -69,5 +77,17 @@ public class SearchController {
                 ontologyIri, parsedRelationTypes, securityUser);
 
         return ResponseEntity.ok(ApiResponseDto.success(response, "Search completed successfully"));
+    }
+
+    private void validateSearchParams(String q, int limit, int offset) {
+        if (q == null || q.trim().length() < 2) {
+            throw new IllegalArgumentException("Search query must be at least 2 characters long");
+        }
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("Limit must be between 1 and 100");
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("Offset must be non-negative");
+        }
     }
 }

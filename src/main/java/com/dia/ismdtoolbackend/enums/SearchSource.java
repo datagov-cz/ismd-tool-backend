@@ -24,8 +24,9 @@ public enum SearchSource {
         if (value == null || value.trim().isEmpty()) {
             return null;
         }
+        String trimmed = value.trim();
         for (SearchSource source : SearchSource.values()) {
-            if (source.value.equalsIgnoreCase(value)) {
+            if (source.value.equalsIgnoreCase(trimmed)) {
                 return source;
             }
         }

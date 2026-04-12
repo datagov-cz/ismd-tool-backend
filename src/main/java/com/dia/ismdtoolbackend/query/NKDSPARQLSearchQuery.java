@@ -1,8 +1,6 @@
 package com.dia.ismdtoolbackend.query;
 
 import com.dia.ismdtoolbackend.enums.RelationType;
-import org.apache.jena.query.ParameterizedSparqlString;
-
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,21 +21,22 @@ public class NKDSPARQLSearchQuery {
      */
     public static String buildOntologySearchQuery(String searchTerm, String lang, int limit, int offset) {
         String sanitizedTerm = sanitizeSearchTerm(searchTerm);
+        String bifContains = "'\"" + sanitizedTerm + "*\"'";
 
-        ParameterizedSparqlString pss = new ParameterizedSparqlString();
-        pss.setCommandText(PREFIXES + """
+        StringBuilder query = new StringBuilder(PREFIXES);
+        query.append("""
                 SELECT DISTINCT ?resource ?label ?labelLang ?title ?description ?ontologyIri WHERE {
                   ?resource a owl:Ontology .
 
                   {
                     ?resource skos:prefLabel ?matchField .
-                    ?matchField bif:contains '"%s*"' .
+                    ?matchField bif:contains %s .
                   } UNION {
                     ?resource dcterms:title ?matchField .
-                    ?matchField bif:contains '"%s*"' .
+                    ?matchField bif:contains %s .
                   } UNION {
                     ?resource dcterms:description ?matchField .
-                    ?matchField bif:contains '"%s*"' .
+                    ?matchField bif:contains %s .
                   }
 
                   OPTIONAL {
@@ -56,9 +55,9 @@ public class NKDSPARQLSearchQuery {
                   BIND(?resource AS ?ontologyIri)
                 }
                 LIMIT %d OFFSET %d
-                """.formatted(sanitizedTerm, sanitizedTerm, sanitizedTerm, lang, limit, offset));
+                """.formatted(bifContains, bifContains, bifContains, lang, limit, offset));
 
-        return pss.toString();
+        return query.toString();
     }
 
     /**
@@ -136,9 +135,7 @@ public class NKDSPARQLSearchQuery {
                 LIMIT %d OFFSET %d
                 """.formatted(lang, limit, offset));
 
-        ParameterizedSparqlString pss = new ParameterizedSparqlString();
-        pss.setCommandText(query.toString());
-        return pss.toString();
+        return query.toString();
     }
 
     private static String buildRelationFilter(RelationType type) {

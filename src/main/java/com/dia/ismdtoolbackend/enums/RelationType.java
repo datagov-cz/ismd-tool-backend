@@ -26,8 +26,9 @@ public enum RelationType {
         if (value == null || value.trim().isEmpty()) {
             return null;
         }
+        String trimmed = value.trim();
         for (RelationType type : RelationType.values()) {
-            if (type.value.equalsIgnoreCase(value)) {
+            if (type.value.equalsIgnoreCase(trimmed)) {
                 return type;
             }
         }

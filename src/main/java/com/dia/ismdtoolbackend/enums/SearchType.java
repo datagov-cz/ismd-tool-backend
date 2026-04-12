@@ -23,8 +23,9 @@ public enum SearchType {
         if (value == null || value.trim().isEmpty()) {
             return null;
         }
+        String trimmed = value.trim();
         for (SearchType type : SearchType.values()) {
-            if (type.value.equalsIgnoreCase(value)) {
+            if (type.value.equalsIgnoreCase(trimmed)) {
                 return type;
             }
         }

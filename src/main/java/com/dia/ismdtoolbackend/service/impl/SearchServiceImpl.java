@@ -6,10 +6,9 @@ import com.dia.ismdtoolbackend.controller.dto.SearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.SourceStatusDto;
 import com.dia.ismdtoolbackend.enums.*;
 import com.dia.ismdtoolbackend.service.SearchService;
-import com.dia.ismdtoolbackend.service.search.NkdSearchProvider;
 import com.dia.ismdtoolbackend.service.search.SearchProvider;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -19,12 +18,18 @@ import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
 
     private static final long SOURCE_TIMEOUT_MS = 10_000;
 
-    private final NkdSearchProvider nkdSearchProvider;
+    private final SearchProvider nkdSearchProvider;
+    private final SearchProvider ismdSearchProvider;
+
+    public SearchServiceImpl(@Qualifier("nkdSearchProvider") SearchProvider nkdSearchProvider,
+                             @Qualifier("ismdSearchProvider") SearchProvider ismdSearchProvider) {
+        this.nkdSearchProvider = nkdSearchProvider;
+        this.ismdSearchProvider = ismdSearchProvider;
+    }
 
     @Override
     public SearchResponseDto search(String query, SearchType type, SearchSource source,
@@ -35,83 +40,111 @@ public class SearchServiceImpl implements SearchService {
         SearchSource effectiveSource = resolveSource(source, isAuthenticated);
         String userId = isAuthenticated ? user.getUserId() : null;
 
+        boolean searchNkd = effectiveSource == SearchSource.NKD || effectiveSource == SearchSource.ALL;
+        boolean searchIsmd = effectiveSource == SearchSource.ISMD || effectiveSource == SearchSource.ALL;
+
+        // Dispatch provider calls in parallel, each with its own timeout
+        CompletableFuture<SourceSearchResult> nkdFuture = searchNkd
+                ? dispatchProviderSearch(nkdSearchProvider, "NKD",
+                        query, type, limit, offset, lang, ontologyIris, relationTypes, userId)
+                : null;
+
+        CompletableFuture<SourceSearchResult> ismdFuture = searchIsmd
+                ? dispatchProviderSearch(ismdSearchProvider, "ISMD",
+                        query, type, limit, offset, lang, ontologyIris, relationTypes, userId)
+                : null;
+
         Map<SearchSource, SourceStatusDto> sourceStatuses = new LinkedHashMap<>();
         List<SearchResultDto> allResults = new ArrayList<>();
 
-        // NKD search
-        if (effectiveSource == SearchSource.NKD || effectiveSource == SearchSource.ALL) {
-            SourceStatusDto nkdStatus = executeNkdSearch(query, type, limit, offset, lang,
-                    ontologyIris, relationTypes, userId, allResults);
-            sourceStatuses.put(SearchSource.NKD, nkdStatus);
+        if (nkdFuture != null) {
+            SourceSearchResult nkdResult = nkdFuture.join();
+            allResults.addAll(nkdResult.results());
+            sourceStatuses.put(SearchSource.NKD, nkdResult.status());
         }
 
-        // ISMD search (Phase 3+)
-        if (effectiveSource == SearchSource.ISMD || effectiveSource == SearchSource.ALL) {
-            sourceStatuses.put(SearchSource.ISMD, SourceStatusDto.builder()
-                    .status(SearchSourceStatus.SKIPPED)
-                    .returnedCount(0)
-                    .message("ISMD search not yet implemented")
-                    .build());
+        if (ismdFuture != null) {
+            SourceSearchResult ismdResult = ismdFuture.join();
+            allResults.addAll(ismdResult.results());
+            sourceStatuses.put(SearchSource.ISMD, ismdResult.status());
         }
+
+        // Dedup by IRI — first occurrence wins (NKD results first when both searched)
+        LinkedHashMap<String, SearchResultDto> deduped = new LinkedHashMap<>();
+        for (SearchResultDto result : allResults) {
+            if (result.getIri() != null) {
+                deduped.putIfAbsent(result.getIri(), result);
+            }
+        }
+        List<SearchResultDto> dedupedResults = new ArrayList<>(deduped.values());
 
         // Mark skipped sources
-        if (effectiveSource == SearchSource.NKD && !sourceStatuses.containsKey(SearchSource.ISMD)) {
-            sourceStatuses.put(SearchSource.ISMD, SourceStatusDto.builder()
+        if (!sourceStatuses.containsKey(SearchSource.NKD)) {
+            sourceStatuses.put(SearchSource.NKD, SourceStatusDto.builder()
                     .status(SearchSourceStatus.SKIPPED)
                     .returnedCount(0)
                     .build());
         }
-        if (effectiveSource == SearchSource.ISMD && !sourceStatuses.containsKey(SearchSource.NKD)) {
-            sourceStatuses.put(SearchSource.NKD, SourceStatusDto.builder()
+        if (!sourceStatuses.containsKey(SearchSource.ISMD)) {
+            sourceStatuses.put(SearchSource.ISMD, SourceStatusDto.builder()
                     .status(SearchSourceStatus.SKIPPED)
                     .returnedCount(0)
                     .build());
         }
 
         return SearchResponseDto.builder()
-                .results(allResults)
-                .returnedCount(allResults.size())
+                .results(dedupedResults)
+                .returnedCount(dedupedResults.size())
                 .limit(limit)
                 .offset(offset)
                 .sourceStatuses(sourceStatuses)
                 .build();
     }
 
-    private SourceStatusDto executeNkdSearch(String query, SearchType type, int limit, int offset,
-                                              String lang, List<String> ontologyIris,
-                                              List<RelationType> relationTypes, String userId,
-                                              List<SearchResultDto> allResults) {
-        try {
-            CompletableFuture<SearchProvider.SearchProviderResult> future =
-                    CompletableFuture.supplyAsync(() ->
-                            nkdSearchProvider.search(query, type, limit, offset, lang,
-                                    ontologyIris, relationTypes, userId));
+    private CompletableFuture<SourceSearchResult> dispatchProviderSearch(
+            SearchProvider provider, String providerName,
+            String query, SearchType type, int limit, int offset,
+            String lang, List<String> ontologyIris,
+            List<RelationType> relationTypes, String userId) {
 
-            SearchProvider.SearchProviderResult result = future.get(SOURCE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            allResults.addAll(result.results());
+        return CompletableFuture.supplyAsync(() ->
+                        provider.search(query, type, limit, offset, lang,
+                                ontologyIris, relationTypes, userId))
+                .orTimeout(SOURCE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .handle((result, ex) -> {
+                    if (ex == null) {
+                        return new SourceSearchResult(
+                                result.results(),
+                                SourceStatusDto.builder()
+                                        .status(SearchSourceStatus.OK)
+                                        .returnedCount(result.results().size())
+                                        .totalCount(result.totalCount())
+                                        .build());
+                    }
 
-            return SourceStatusDto.builder()
-                    .status(SearchSourceStatus.OK)
-                    .returnedCount(result.results().size())
-                    .totalCount(result.totalCount())
-                    .build();
+                    Throwable cause = ex instanceof java.util.concurrent.CompletionException
+                            ? ex.getCause() : ex;
 
-        } catch (TimeoutException e) {
-            log.warn("NKD search timed out after {}ms", SOURCE_TIMEOUT_MS);
-            return SourceStatusDto.builder()
-                    .status(SearchSourceStatus.TIMEOUT)
-                    .returnedCount(0)
-                    .message("NKD search timed out")
-                    .build();
+                    if (cause instanceof TimeoutException) {
+                        log.warn("{} search timed out after {}ms", providerName, SOURCE_TIMEOUT_MS);
+                        return new SourceSearchResult(
+                                List.of(),
+                                SourceStatusDto.builder()
+                                        .status(SearchSourceStatus.TIMEOUT)
+                                        .returnedCount(0)
+                                        .message(providerName + " search timed out")
+                                        .build());
+                    }
 
-        } catch (Exception e) {
-            log.error("NKD search failed: {}", e.getMessage(), e);
-            return SourceStatusDto.builder()
-                    .status(SearchSourceStatus.ERROR)
-                    .returnedCount(0)
-                    .message("NKD search failed: " + e.getMessage())
-                    .build();
-        }
+                    log.error("{} search failed: {}", providerName, cause.getMessage(), cause);
+                    return new SourceSearchResult(
+                            List.of(),
+                            SourceStatusDto.builder()
+                                    .status(SearchSourceStatus.ERROR)
+                                    .returnedCount(0)
+                                    .message(providerName + " search failed: " + cause.getMessage())
+                                    .build());
+                });
     }
 
     private SearchSource resolveSource(SearchSource requested, boolean isAuthenticated) {
@@ -122,5 +155,8 @@ public class SearchServiceImpl implements SearchService {
             return SearchSource.NKD;
         }
         return requested != null ? requested : SearchSource.ALL;
+    }
+
+    private record SourceSearchResult(List<SearchResultDto> results, SourceStatusDto status) {
     }
 }
