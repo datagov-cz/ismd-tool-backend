@@ -138,7 +138,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/ontology/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/ontology/*/delete").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/concept/create").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/concept/*/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/concept/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()

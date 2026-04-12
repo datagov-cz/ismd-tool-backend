@@ -20,6 +20,7 @@ public class ClassConceptModel extends ConceptCreateModel {
     private Boolean isPublic;
     private List<String> privacyProvisions;
     private List<String> broaderConcept;
+    private String codeListDataset;
 
     @Override
     public ConceptType getConceptTypeEnum() {
@@ -36,45 +37,8 @@ public class ClassConceptModel extends ConceptCreateModel {
             throw new OntologyException("ConceptType musí být 'TRIDA'");
         }
 
-        if (privacyProvisions != null && !privacyProvisions.isEmpty() && isPublic != null && isPublic) {
-                throw new OntologyException(
-                        "Třída nemůže být současně veřejná a mít ustanovení o neveřejnosti"
-                );
-            }
-
-
-        if (sharingMethod != null && !sharingMethod.isEmpty()) {
-            for (String s : sharingMethod) {
-                validateGovernanceValue(s, "způsob sdílení");
-            }
-        }
-        if (acquisitionMethod != null && !acquisitionMethod.trim().isEmpty()) {
-            validateGovernanceValue(acquisitionMethod, "způsob získání");
-        }
-        if (contentType != null && !contentType.trim().isEmpty()) {
-            validateGovernanceValue(contentType, "typ obsahu");
-        }
-    }
-
-    private void validateGovernanceValue(String value, String fieldName) {
-        String[] allowedValues = {
-                "veřejně přístupné", "poskytované na žádost", "nesdílené",
-                "základních registrů", "jiných agend", "vlastní",
-                "provozní", "identifikační", "evidenční", "statistické"
-        };
-
-        boolean valid = false;
-        for (String allowed : allowedValues) {
-            if (allowed.equalsIgnoreCase(value)) {
-                valid = true;
-                break;
-            }
-        }
-
-        if (!valid) {
-            throw new OntologyException(
-                    "Neplatná hodnota pro " + fieldName + ": " + value
-            );
-        }
+        ConceptValidationUtil.validatePrivacyPublicConflict(privacyProvisions, isPublic, "Třída", "á");
+        ConceptValidationUtil.validateCodeListDataset(codeListDataset);
+        ConceptValidationUtil.validateGovernanceFields(sharingMethod, acquisitionMethod, contentType);
     }
 }

@@ -645,6 +645,53 @@ class ConceptCreatorTest {
                     .nextStatement().getObject().asResource();
             assertEquals("http://example.org/exact-valid", matchRes.getURI());
         }
+
+        // --- A5. Code list dataset ---
+
+        @Test
+        void createSingleConcept_ShouldAddCodeListDatasetStructure() {
+            // arrange
+            setupBasicClassConcept("Code List Class", "subjekt");
+            when(classConceptModel.getCodeListDataset())
+                    .thenReturn("https://data.gov.cz/zdroj/datové-sady/test-dataset");
+
+            // act
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            // assert
+            Property instanceProp = result.getModel().createProperty(
+                    OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+            assertTrue(result.hasProperty(instanceProp), "Should have instance-definovány-číselníkem property");
+
+            Statement stmt = result.getProperty(instanceProp);
+            assertTrue(stmt.getObject().isResource(), "Object should be a resource (blank node)");
+
+            Resource codeListNode = stmt.getObject().asResource();
+            Resource codeListType = result.getModel().createResource(OFN_NAMESPACE_LEGAL + CISELNIK);
+            assertTrue(codeListNode.hasProperty(RDF.type, codeListType), "Blank node should be typed as číselník");
+
+            Property datasetProp = result.getModel().createProperty(
+                    OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+            assertTrue(codeListNode.hasProperty(datasetProp), "Blank node should have dataset property");
+
+            String datasetUri = codeListNode.getProperty(datasetProp).getObject().asResource().getURI();
+            assertEquals("https://data.gov.cz/zdroj/datové-sady/test-dataset", datasetUri);
+        }
+
+        @Test
+        void createSingleConcept_ShouldNotAddCodeListDataset_WhenNull() {
+            // arrange
+            setupBasicClassConcept("No Dataset Class", "objekt");
+            when(classConceptModel.getCodeListDataset()).thenReturn(null);
+
+            // act
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            // assert
+            Property instanceProp = result.getModel().createProperty(
+                    OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+            assertFalse(result.hasProperty(instanceProp));
+        }
     }
 
     // ========== B. PropertyConcept Tests ==========
