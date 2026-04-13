@@ -186,9 +186,9 @@ public class SecurityConfig {
                 )
                 // Disable CSRF for stateless JWT API
                 .csrf(AbstractHttpConfigurer::disable)
-                // Stateless session management (JWT only, no server-side sessions)
+                // Allow session creation for OAuth2 login flow (stores authentication after Keycloak redirect)
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
                 // OAuth2 Login for browser-based authentication (Keycloak)
                 .oauth2Login(oauth2 -> oauth2
