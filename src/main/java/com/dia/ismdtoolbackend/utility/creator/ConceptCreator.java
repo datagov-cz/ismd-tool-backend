@@ -56,7 +56,24 @@ public class ConceptCreator {
 
             RDFNode obj;
             if (stmt.getObject().isResource()) {
-                obj = cleanModel.createResource(stmt.getObject().asResource().getURI());
+                Resource objRes = stmt.getObject().asResource();
+                if (objRes.isAnon()) {
+                    // Copy blank node and all its statements
+                    Resource blankNode = cleanModel.createResource();
+                    objRes.listProperties().forEachRemaining(bnStmt -> {
+                        Property bnPred = cleanModel.createProperty(bnStmt.getPredicate().getURI());
+                        RDFNode bnObj;
+                        if (bnStmt.getObject().isResource()) {
+                            bnObj = cleanModel.createResource(bnStmt.getObject().asResource().getURI());
+                        } else {
+                            bnObj = bnStmt.getObject();
+                        }
+                        cleanModel.add(blankNode, bnPred, bnObj);
+                    });
+                    obj = blankNode;
+                } else {
+                    obj = cleanModel.createResource(objRes.getURI());
+                }
             } else {
                 obj = stmt.getObject();
             }
@@ -462,6 +479,7 @@ public class ConceptCreator {
                 classModel.getPrivacyProvisions());
         addDataClassification(classResource, classModel.getIsPublic(), classModel.getPrivacyProvisions());
         addBroaderConcept(classResource, classModel);
+        addCodeListDataset(classResource, classModel.getCodeListDataset());
     }
 
     private void addBroaderConcept(Resource classResource, ClassConceptModel classModel) {
@@ -492,6 +510,7 @@ public class ConceptCreator {
         addIsInPPDF(propertyResource, propModel.getIsInPPDF());
         addPropertyDataClassification(propertyResource, propModel);
         addPropertyGovernanceMetadata(propertyResource, propModel);
+        addCodeListDataset(propertyResource, propModel.getCodeListDataset());
     }
 
     private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
@@ -512,6 +531,7 @@ public class ConceptCreator {
        addIsInPPDF(relationshipResource, relModel.getIsInPPDF());
        addRelationshipDataClassification(relationshipResource, relModel);
        addRelationshipGovernanceMetadata(relationshipResource, relModel);
+       addCodeListDataset(relationshipResource, relModel.getCodeListDataset());
     }
 
     private void addDomain(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -861,5 +881,22 @@ public class ConceptCreator {
             return names.get(DEFAULT_LANG);
         }
         return names.values().iterator().next();
+    }
+
+    private void addCodeListDataset(Resource resource, String datasetUrl) {
+        if (datasetUrl == null || datasetUrl.trim().isEmpty()) return;
+
+        Property instanceDefinedByCodeList = ontModel.createProperty(
+                OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Resource codeListType = ontModel.createResource(
+                OFN_NAMESPACE_LEGAL + CISELNIK);
+        Property datasetProperty = ontModel.createProperty(
+                OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+
+        Resource codeListNode = ontModel.createResource();
+        codeListNode.addProperty(RDF.type, codeListType);
+        codeListNode.addProperty(datasetProperty, ontModel.createResource(datasetUrl.trim()));
+
+        resource.addProperty(instanceDefinedByCodeList, codeListNode);
     }
 }

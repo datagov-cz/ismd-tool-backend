@@ -138,7 +138,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/ontology/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/ontology/*/delete").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/concept/create").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/concept/*/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/concept/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
@@ -147,9 +147,9 @@ public class SecurityConfig {
                 )
                 // Disable CSRF for stateless JWT API
                 .csrf(AbstractHttpConfigurer::disable)
-                // Stateless session management (JWT only, no server-side sessions)
+                // Allow session creation for OAuth2 login flow (stores authentication after Keycloak redirect)
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
                 // OAuth2 Login for browser-based authentication (Keycloak)
                 .oauth2Login(oauth2 -> oauth2
