@@ -116,9 +116,10 @@ public class SearchServiceImpl implements SearchService {
                         return new SourceSearchResult(
                                 result.results(),
                                 SourceStatusDto.builder()
-                                        .status(SearchSourceStatus.OK)
+                                        .status(result.status())
                                         .returnedCount(result.results().size())
                                         .totalCount(result.totalCount())
+                                        .message(result.statusMessage())
                                         .build());
                     }
 

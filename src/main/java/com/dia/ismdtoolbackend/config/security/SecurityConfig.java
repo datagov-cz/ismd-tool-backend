@@ -96,7 +96,18 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint((request, response, authException) -> {
-                            // Do nothing — allow anonymous access to proceed
+                            // If an Authorization header was provided but the token is invalid,
+                            // return 401 instead of silently degrading to anonymous
+                            String authHeader = request.getHeader("Authorization");
+                            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                                log.warn("Invalid JWT token on search endpoint: {}", authException.getMessage());
+                                response.setStatus(401);
+                                response.setContentType("application/json");
+                                response.getWriter().write(
+                                        "{\"success\":false,\"message\":\"Invalid or expired authentication token\"}");
+                                return;
+                            }
+                            // No token — allow anonymous access to proceed
                         })
                 );
 

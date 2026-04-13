@@ -17,9 +17,10 @@ import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
+import com.dia.ismdtoolbackend.enums.RelationType;
+
 import java.net.http.HttpClient;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
@@ -45,7 +46,7 @@ public class JenaTDB2Repository {
         this.fusekiSemaphoreTimeout = fusekiSemaphoreTimeout;
     }
 
-    private RDFConnection createConnection() {
+    RDFConnection createConnection() {
         return RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
                 .httpClient(fusekiHttpClient)
@@ -502,5 +503,212 @@ public class JenaTDB2Repository {
         pss.setIri("g", graphName);
         pss.setIri("concept", conceptUri);
         return pss;
+    }
+
+    /**
+     * Full-text search across Fuseki graphs using Lucene text index.
+     * The index is configured with ASCIIFoldingFilter for diacritic-insensitive search
+     * (e.g., "ridic" matches "řidič").
+     *
+     * Searches across skos:prefLabel, skos:altLabel, dcterms:description, and skos:definition.
+     *
+     * @param query             the search term
+     * @param visibleGraphNames graphs the user has access to
+     * @return list of result maps with keys: conceptIri, graphName, prefLabel, prefLabelLang,
+     *         altLabel, description, definition
+     */
+    public List<Map<String, String>> searchByText(String query, List<String> visibleGraphNames) {
+        if (visibleGraphNames == null || visibleGraphNames.isEmpty()) {
+            return List.of();
+        }
+
+        try {
+            return executeWithSemaphore(conn -> {
+                StringBuilder valuesClause = new StringBuilder();
+                for (String graphName : visibleGraphNames) {
+                    valuesClause.append("<").append(graphName).append("> ");
+                }
+
+                // Sanitize and build Lucene query term with wildcard for prefix matching
+                String sanitizedQuery = sanitizeLuceneQuery(query);
+
+                String sparql = "PREFIX text: <http://jena.apache.org/text#> " +
+                        "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
+                        "PREFIX dcterms: <http://purl.org/dc/terms/> " +
+                        "SELECT ?concept ?g ?prefLabel ?prefLabelLang ?altLabel ?description ?definition WHERE { " +
+                        "  VALUES ?g { " + valuesClause + "} " +
+                        "  GRAPH ?g { " +
+                        "    ?concept text:query ('" + sanitizedQuery + "*') . " +
+                        "    OPTIONAL { ?concept skos:prefLabel ?prefLabel . BIND(LANG(?prefLabel) AS ?prefLabelLang) } " +
+                        "    OPTIONAL { ?concept skos:altLabel ?altLabel } " +
+                        "    OPTIONAL { ?concept dcterms:description ?description } " +
+                        "    OPTIONAL { ?concept skos:definition ?definition } " +
+                        "  } " +
+                        "}";
+
+                log.debug("Fuseki text search SPARQL: {}", sparql);
+
+                List<Map<String, String>> results = new ArrayList<>();
+                try (QueryExecution qExec = conn.query(sparql)) {
+                    ResultSet rs = qExec.execSelect();
+                    while (rs.hasNext()) {
+                        QuerySolution sol = rs.next();
+                        Map<String, String> row = new HashMap<>();
+                        row.put("conceptIri", sol.getResource("concept") != null ? sol.getResource("concept").getURI() : null);
+                        row.put("graphName", sol.getResource("g") != null ? sol.getResource("g").getURI() : null);
+                        if (sol.getLiteral("prefLabel") != null) row.put("prefLabel", sol.getLiteral("prefLabel").getString());
+                        if (sol.getLiteral("prefLabelLang") != null) row.put("prefLabelLang", sol.getLiteral("prefLabelLang").getString());
+                        if (sol.getLiteral("altLabel") != null) row.put("altLabel", sol.getLiteral("altLabel").getString());
+                        if (sol.getLiteral("description") != null) row.put("description", sol.getLiteral("description").getString());
+                        if (sol.getLiteral("definition") != null) row.put("definition", sol.getLiteral("definition").getString());
+                        results.add(row);
+                    }
+                }
+                log.debug("Fuseki text search for '{}' across {} graphs returned {} results",
+                        query, visibleGraphNames.size(), results.size());
+                return results;
+            });
+        } catch (JenaTDB2Exception e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error executing Fuseki text search for '{}': {}", query, e.getMessage(), e);
+            throw new JenaTDB2Exception("Failed to execute text search in Fuseki", e);
+        }
+    }
+
+    /**
+     * Sanitizes user input for use in a Lucene query string.
+     * Escapes Lucene special characters to prevent query injection.
+     */
+    private static String sanitizeLuceneQuery(String input) {
+        if (input == null) return "";
+        // Escape Lucene special characters: + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
+        // We keep * out since we append it ourselves for prefix matching
+        return input.replaceAll("([+\\-!(){}\\[\\]^\"~?:\\\\/]|&&|\\|\\|)", "\\\\$1")
+                .replace("'", "\\'")
+                .trim()
+                .toLowerCase();
+    }
+
+    /**
+     * Fetches labels and descriptions for a batch of concept IRIs from Fuseki.
+     * Returns a Model containing skos:prefLabel, skos:altLabel, dcterms:description,
+     * and skos:definition triples.
+     */
+    public Model fetchConceptLabels(List<String> conceptIris) {
+        if (conceptIris == null || conceptIris.isEmpty()) {
+            return org.apache.jena.rdf.model.ModelFactory.createDefaultModel();
+        }
+
+        try {
+            return executeWithSemaphore(conn -> {
+                StringBuilder valuesClause = new StringBuilder();
+                for (String iri : conceptIris) {
+                    valuesClause.append("<").append(iri).append("> ");
+                }
+
+                String sparql = "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
+                        "PREFIX dcterms: <http://purl.org/dc/terms/> " +
+                        "CONSTRUCT { " +
+                        "  ?concept skos:prefLabel ?prefLabel . " +
+                        "  ?concept skos:altLabel ?altLabel . " +
+                        "  ?concept dcterms:description ?desc . " +
+                        "  ?concept skos:definition ?def . " +
+                        "} WHERE { " +
+                        "  VALUES ?concept { " + valuesClause + "} " +
+                        "  GRAPH ?g { " +
+                        "    OPTIONAL { ?concept skos:prefLabel ?prefLabel } " +
+                        "    OPTIONAL { ?concept skos:altLabel ?altLabel } " +
+                        "    OPTIONAL { ?concept dcterms:description ?desc } " +
+                        "    OPTIONAL { ?concept skos:definition ?def } " +
+                        "  } " +
+                        "}";
+
+                try (QueryExecution qExec = conn.query(sparql)) {
+                    Model result = qExec.execConstruct();
+                    log.debug("Fetched concept labels for {} IRIs, result has {} statements",
+                            conceptIris.size(), result.size());
+                    return result;
+                }
+            });
+        } catch (JenaTDB2Exception e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error fetching concept labels: {}", e.getMessage(), e);
+            throw new JenaTDB2Exception("Failed to fetch concept labels from Fuseki", e);
+        }
+    }
+
+    /**
+     * Filters concept IRIs by relation types. Returns the subset of IRIs that participate
+     * in at least one of the specified relation types.
+     */
+    public Set<String> filterByRelationTypes(List<String> conceptIris, List<RelationType> relationTypes) {
+        if (conceptIris == null || conceptIris.isEmpty() || relationTypes == null || relationTypes.isEmpty()) {
+            return Set.of();
+        }
+
+        try {
+            return executeWithSemaphore(conn -> {
+                StringBuilder valuesClause = new StringBuilder();
+                for (String iri : conceptIris) {
+                    valuesClause.append("<").append(iri).append("> ");
+                }
+
+                StringBuilder unionClauses = new StringBuilder();
+                for (int i = 0; i < relationTypes.size(); i++) {
+                    if (i > 0) unionClauses.append(" UNION ");
+                    unionClauses.append("{ ").append(getRelationPattern(relationTypes.get(i))).append(" }");
+                }
+
+                String sparql = "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> " +
+                        "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
+                        "SELECT DISTINCT ?concept WHERE { " +
+                        "  VALUES ?concept { " + valuesClause + "} " +
+                        "  GRAPH ?g { " +
+                        "    " + unionClauses + " " +
+                        "  } " +
+                        "}";
+
+                Set<String> matchingIris = new HashSet<>();
+                try (QueryExecution qExec = conn.query(sparql)) {
+                    ResultSet rs = qExec.execSelect();
+                    while (rs.hasNext()) {
+                        QuerySolution sol = rs.next();
+                        Resource concept = sol.getResource("concept");
+                        if (concept != null && concept.isURIResource()) {
+                            matchingIris.add(concept.getURI());
+                        }
+                    }
+                }
+                log.debug("Relation type filter: {} of {} concepts matched relation types {}",
+                        matchingIris.size(), conceptIris.size(), relationTypes);
+                return matchingIris;
+            });
+        } catch (JenaTDB2Exception e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error filtering by relation types: {}", e.getMessage(), e);
+            throw new JenaTDB2Exception("Failed to filter concepts by relation types", e);
+        }
+    }
+
+    private String getRelationPattern(RelationType type) {
+        return switch (type) {
+            case SUBCLASS -> "?concept rdfs:subClassOf ?other";
+            case SUPERCLASS -> "?other rdfs:subClassOf ?concept";
+            case EXACT_MATCH -> "{ ?concept skos:exactMatch ?other } UNION { ?other skos:exactMatch ?concept }";
+            case PROPERTY_OF -> "?concept rdfs:domain ?other";
+            case RELATIONSHIP_OF -> "?concept rdfs:range ?other";
+        };
+    }
+
+    private static String escapeSparqlString(String input) {
+        if (input == null) return "";
+        return input.replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 }

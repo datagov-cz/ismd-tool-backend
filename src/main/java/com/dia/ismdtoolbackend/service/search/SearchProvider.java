@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.search;
 
 import com.dia.ismdtoolbackend.controller.dto.SearchResultDto;
 import com.dia.ismdtoolbackend.enums.RelationType;
+import com.dia.ismdtoolbackend.enums.SearchSourceStatus;
 import com.dia.ismdtoolbackend.enums.SearchType;
 
 import java.util.List;
@@ -12,6 +13,9 @@ public interface SearchProvider {
                                 String lang, List<String> ontologyIris,
                                 List<RelationType> relationTypes, String userId);
 
-    record SearchProviderResult(List<SearchResultDto> results, int totalCount) {
+    record SearchProviderResult(List<SearchResultDto> results, int totalCount, SearchSourceStatus status, String statusMessage) {
+        public SearchProviderResult(List<SearchResultDto> results, int totalCount) {
+            this(results, totalCount, SearchSourceStatus.OK, null);
+        }
     }
 }

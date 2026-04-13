@@ -92,7 +92,8 @@ services:
     ports:
       - "3030:3030"
     volumes:
-      - ./data/tdb2:/ismd-tool-dataset
+      - ./data/tdb2:/opt/fuseki/databases/tdb2/ismd-tool-dataset
+      - ./data/lucene:/opt/fuseki/databases/lucene/ismd-tool-dataset
       - ./fuseki-config.ttl:/fuseki-base/configuration/assembler.ttl
     environment:
       - ADMIN_PASSWORD=admin123
