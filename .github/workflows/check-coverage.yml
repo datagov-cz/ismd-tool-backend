@@ -1,0 +1,30 @@
+name: Check Coverage
+
+on:
+  workflow_dispatch:
+    inputs:
+      coverage_line:
+        description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
+        required: false
+        type: string
+        default: "0.55"
+      coverage_branch:
+        description: "JaCoCo branch coverage minimum ratio (0.00-1.00)"
+        required: false
+        type: string
+        default: "0.45"
+      coverage_complexity:
+        description: "JaCoCo complexity coverage minimum ratio (0.00-1.00)"
+        required: false
+        type: string
+        default: "0.45"
+
+jobs:
+  check-coverage:
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      enforce_coverage: true
+      coverage_line: ${{ inputs.coverage_line }}
+      coverage_branch: ${{ inputs.coverage_branch }}
+      coverage_complexity: ${{ inputs.coverage_complexity }}
+    secrets: inherit
