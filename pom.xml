@@ -31,7 +31,9 @@
         <ismd-validator-common.version>1.0.12</ismd-validator-common.version>
         <jena.version>5.3.0</jena.version>
         <jacoco.version>0.8.13</jacoco.version>
-        <jacoco.line.minimum>0.00</jacoco.line.minimum>
+        <jacoco.line.minimum>0.55</jacoco.line.minimum>
+        <jacoco.branch.minimum>0.45</jacoco.branch.minimum>
+        <jacoco.complexity.minimum>0.45</jacoco.complexity.minimum>
     </properties>
     <dependencies>
         <dependency>
@@ -226,6 +228,16 @@
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${jacoco.line.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.branch.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>COMPLEXITY</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.complexity.minimum}</minimum>
                                         </limit>
                                     </limits>
                                 </rule>

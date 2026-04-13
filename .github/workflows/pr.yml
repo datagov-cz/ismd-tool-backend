@@ -15,5 +15,7 @@ jobs:
   run-tests:
     uses: ./.github/workflows/reusable-test.yml
     with:
-      coverage_minimum: ${{ vars.JACOCO_LINE_MINIMUM != '' && vars.JACOCO_LINE_MINIMUM || '0.00' }}
+      coverage_line: ${{ vars.JACOCO_LINE_MINIMUM || '0.55' }}
+      coverage_branch: ${{ vars.JACOCO_BRANCH_MINIMUM || '0.45' }}
+      coverage_complexity: ${{ vars.JACOCO_COMPLEXITY_MINIMUM || '0.45' }}
     secrets: inherit
