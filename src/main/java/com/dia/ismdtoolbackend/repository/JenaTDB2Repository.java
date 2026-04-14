@@ -48,6 +48,8 @@ public class JenaTDB2Repository {
     private RDFConnection createConnection() {
         return RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
+                .gspEndpoint("data")
+                .updateEndpoint("update")
                 .httpClient(fusekiHttpClient)
                 .build();
     }
