@@ -26,7 +26,10 @@ Run everything in Docker — no JDK required.
    ```bash
    cp .env.example .env
    ```
-   Set `GITHUB_TOKEN` (GitHub PAT with `read:packages` scope — generate at https://github.com/settings/tokens) and `GITHUB_ACTOR` (your GitHub username).
+   Required values:
+   - `GITHUB_TOKEN` — GitHub PAT with `read:packages` scope (generate at https://github.com/settings/tokens)
+   - `GITHUB_ACTOR` — your GitHub username
+   - `KEYCLOAK_CLIENT_SECRET` — client secret from the local Keycloak admin UI (`http://localhost:8080`, realm `ismd`, client `ismd-backend`, Credentials tab)
 
 2. **First run builds the backend image from source** (~1-2 min).
 
@@ -60,8 +63,9 @@ Look for `Started IsmdToolBackendApplication` in the logs.
 
 In `tool-frontend/.env.local`:
 ```
-BE_URL=http://localhost:8081/popisujeme
+BE_URL=http://127.0.0.1:8081/popisujeme
 ```
+Use `127.0.0.1` rather than `localhost` — Node.js resolves `localhost` to `::1` (IPv6) on newer versions, which will fail if the backend only listens on IPv4.
 
 Then run the frontend:
 ```bash
