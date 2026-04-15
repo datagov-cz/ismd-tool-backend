@@ -116,7 +116,10 @@ services:
       POSTGRES_USER: ismd_user
       POSTGRES_PASSWORD: ismd_password
       FUSEKI_URL: http://fuseki:3030/ismd-tool-dataset
-      KEYCLOAK_ISSUER_URI: http://localhost:8080/realms/ismd
+      KEYCLOAK_ISSUER_URI: http://ismd-keycloak-dev:8080/realms/ismd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ismd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://ismd-keycloak-dev:8080/realms/ismd/protocol/openid-connect/certs
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
       CORS_ALLOWED_ORIGINS: http://localhost:3001
     extra_hosts:
       - "localhost:host-gateway"
