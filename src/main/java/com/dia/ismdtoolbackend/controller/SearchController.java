@@ -9,9 +9,9 @@ import com.dia.ismdtoolbackend.enums.SearchType;
 import com.dia.ismdtoolbackend.service.SearchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,10 +27,19 @@ import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 @Slf4j
 @RestController
 @RequestMapping("/api/search")
-@RequiredArgsConstructor
 public class SearchController {
 
     private final SearchService searchService;
+    private final int minQueryLength;
+    private final int maxLimit;
+
+    public SearchController(SearchService searchService,
+                            @Value("${search.min-query-length:2}") int minQueryLength,
+                            @Value("${search.max-limit:100}") int maxLimit) {
+        this.searchService = searchService;
+        this.minQueryLength = minQueryLength;
+        this.maxLimit = maxLimit;
+    }
 
     @Operation(
             summary = "Vyhledávání ontologií a pojmů",
@@ -80,11 +89,12 @@ public class SearchController {
     }
 
     private void validateSearchParams(String q, int limit, int offset) {
-        if (q == null || q.trim().length() < 2) {
-            throw new IllegalArgumentException("Search query must be at least 2 characters long");
+        if (q == null || q.trim().length() < minQueryLength) {
+            throw new IllegalArgumentException(
+                    "Search query must be at least " + minQueryLength + " characters long");
         }
-        if (limit < 1 || limit > 100) {
-            throw new IllegalArgumentException("Limit must be between 1 and 100");
+        if (limit < 1 || limit > maxLimit) {
+            throw new IllegalArgumentException("Limit must be between 1 and " + maxLimit);
         }
         if (offset < 0) {
             throw new IllegalArgumentException("Offset must be non-negative");

@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.service.SearchService;
 import com.dia.ismdtoolbackend.service.search.SearchProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -20,15 +21,16 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class SearchServiceImpl implements SearchService {
 
-    private static final long SOURCE_TIMEOUT_MS = 10_000;
-
+    private final long sourceTimeoutMs;
     private final SearchProvider nkdSearchProvider;
     private final SearchProvider ismdSearchProvider;
 
     public SearchServiceImpl(@Qualifier("nkdSearchProvider") SearchProvider nkdSearchProvider,
-                             @Qualifier("ismdSearchProvider") SearchProvider ismdSearchProvider) {
+                             @Qualifier("ismdSearchProvider") SearchProvider ismdSearchProvider,
+                             @Value("${search.source-timeout-ms:10000}") long sourceTimeoutMs) {
         this.nkdSearchProvider = nkdSearchProvider;
         this.ismdSearchProvider = ismdSearchProvider;
+        this.sourceTimeoutMs = sourceTimeoutMs;
     }
 
     @Override
@@ -110,7 +112,7 @@ public class SearchServiceImpl implements SearchService {
         return CompletableFuture.supplyAsync(() ->
                         provider.search(query, type, limit, offset, lang,
                                 ontologyIris, relationTypes, userId))
-                .orTimeout(SOURCE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                .orTimeout(sourceTimeoutMs, TimeUnit.MILLISECONDS)
                 .handle((result, ex) -> {
                     if (ex == null) {
                         return new SourceSearchResult(
@@ -127,7 +129,7 @@ public class SearchServiceImpl implements SearchService {
                             ? ex.getCause() : ex;
 
                     if (cause instanceof TimeoutException) {
-                        log.warn("{} search timed out after {}ms", providerName, SOURCE_TIMEOUT_MS);
+                        log.warn("{} search timed out after {}ms", providerName, sourceTimeoutMs);
                         return new SourceSearchResult(
                                 List.of(),
                                 SourceStatusDto.builder()

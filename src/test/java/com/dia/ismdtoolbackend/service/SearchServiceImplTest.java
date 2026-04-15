@@ -31,7 +31,7 @@ class SearchServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        searchService = new SearchServiceImpl(nkdSearchProvider, ismdSearchProvider);
+        searchService = new SearchServiceImpl(nkdSearchProvider, ismdSearchProvider, 10_000);
     }
 
     @Test

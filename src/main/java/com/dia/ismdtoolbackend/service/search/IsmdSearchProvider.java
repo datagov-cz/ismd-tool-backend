@@ -16,8 +16,6 @@ import org.apache.jena.rdf.model.*;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -29,8 +27,6 @@ public class IsmdSearchProvider implements SearchProvider {
     private static final String SKOS_ALT_LABEL = "http://www.w3.org/2004/02/skos/core#altLabel";
     private static final String DCTERMS_DESCRIPTION = "http://purl.org/dc/terms/description";
     private static final String SKOS_DEFINITION = "http://www.w3.org/2004/02/skos/core#definition";
-
-    private static final long FUSEKI_TIMEOUT_MS = 10_000;
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
@@ -99,60 +95,20 @@ public class IsmdSearchProvider implements SearchProvider {
         boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
         List<String> graphNames = hasGraphFilter ? ontologyIris : List.of();
 
-        // Get visible graph names for Fuseki search
-        List<String> visibleGraphNames = getVisibleGraphNames(userId);
+        // PG search only — Fuseki text search (text:query) is disabled until the
+        // Jena version is upgraded to fix the text property function registration.
+        // See docs/search-feature-plan.md for details.
+        fusekiDegraded.set(true);
 
-        // Run PG and Fuseki text search in parallel
-        CompletableFuture<List<SearchResultDto>> pgFuture = CompletableFuture.supplyAsync(() -> {
-            List<ConceptMetadataEntity> entities = conceptMetadataRepository.searchByText(
-                    query, userId, hasGraphFilter, graphNames);
-            return entities.stream()
-                    .map(this::mapConceptEntity)
-                    .toList();
-        });
+        List<ConceptMetadataEntity> entities = conceptMetadataRepository.searchByText(
+                query, userId, hasGraphFilter, graphNames);
+        List<SearchResultDto> mergedResults = new ArrayList<>(entities.stream()
+                .map(this::mapConceptEntity)
+                .toList());
+        log.debug("PG search returned {} results", mergedResults.size());
 
-        CompletableFuture<List<SearchResultDto>> fusekiFuture = CompletableFuture.supplyAsync(() -> {
-            List<String> searchGraphs = hasGraphFilter
-                    ? ontologyIris.stream().filter(visibleGraphNames::contains).toList()
-                    : visibleGraphNames;
-            return searchFuseki(query, searchGraphs);
-        }).orTimeout(FUSEKI_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-
-        List<SearchResultDto> pgResults = pgFuture.join();
-        log.debug("PG search returned {} results", pgResults.size());
-
-        List<SearchResultDto> fusekiResults;
-        try {
-            fusekiResults = fusekiFuture.join();
-            log.debug("Fuseki search returned {} results", fusekiResults.size());
-        } catch (Exception e) {
-            log.warn("Fuseki text search failed, degrading to PG-only results: {}", e.getMessage());
-            fusekiResults = List.of();
-            fusekiDegraded.set(true);
-        }
-
-        // Merge PG + Fuseki results: PG first, Fuseki enriches with non-null fields
-        LinkedHashMap<String, SearchResultDto> merged = new LinkedHashMap<>();
-        for (SearchResultDto dto : pgResults) {
-            if (dto.getIri() != null) {
-                merged.put(dto.getIri(), dto);
-            }
-        }
-        for (SearchResultDto dto : fusekiResults) {
-            if (dto.getIri() != null) {
-                merged.merge(dto.getIri(), dto, (existing, incoming) -> {
-                    mergeNonNullFields(existing, incoming);
-                    return existing;
-                });
-            }
-        }
-
-        List<SearchResultDto> mergedResults = new ArrayList<>(merged.values());
-        log.debug("After merge+dedup: {} results (PG={}, Fuseki={}, unique={})",
-                mergedResults.size(), pgResults.size(), fusekiResults.size(), merged.size());
-
-        // Enrich all results with labels from Fuseki (if not degraded)
-        if (!fusekiDegraded.get() && !mergedResults.isEmpty()) {
+        // Enrich results with labels from Fuseki (CONSTRUCT query, not text search — works fine)
+        if (!mergedResults.isEmpty()) {
             try {
                 log.debug("Enriching {} results with Fuseki labels (lang={})", mergedResults.size(), lang);
                 enrichWithLabels(mergedResults, lang);
@@ -180,42 +136,6 @@ public class IsmdSearchProvider implements SearchProvider {
         }
 
         return mergedResults;
-    }
-
-    private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames) {
-        if (visibleGraphNames.isEmpty()) {
-            log.debug("Fuseki search skipped: no visible graph names for user");
-            return List.of();
-        }
-
-        log.debug("Fuseki text search: query='{}', searching {} graphs: {}",
-                query, visibleGraphNames.size(), visibleGraphNames);
-
-        List<Map<String, String>> rows = jenaTDB2Repository.searchByText(query, visibleGraphNames);
-
-        log.debug("Fuseki text search returned {} raw rows", rows.size());
-
-        List<SearchResultDto> results = new ArrayList<>();
-        for (Map<String, String> row : rows) {
-            log.debug("Fuseki row: iri={}, prefLabel={}, lang={}, graph={}, altLabel={}, description={}, definition={}",
-                    row.get("conceptIri"), row.get("prefLabel"), row.get("prefLabelLang"),
-                    row.get("graphName"), row.get("altLabel"),
-                    row.get("description") != null ? row.get("description").substring(0, Math.min(80, row.get("description").length())) + "..." : null,
-                    row.get("definition") != null ? row.get("definition").substring(0, Math.min(80, row.get("definition").length())) + "..." : null);
-
-            results.add(SearchResultDto.builder()
-                    .iri(row.get("conceptIri"))
-                    .label(row.get("prefLabel"))
-                    .labelLang(row.get("prefLabelLang"))
-                    .altName(row.get("altLabel"))
-                    .description(row.get("description"))
-                    .definition(row.get("definition"))
-                    .ontologyIri(row.get("graphName"))
-                    .type(SearchType.CONCEPT)
-                    .source(SearchSource.ISMD)
-                    .build());
-        }
-        return results;
     }
 
     private void enrichWithLabels(List<SearchResultDto> results, String lang) {
@@ -285,20 +205,6 @@ public class IsmdSearchProvider implements SearchProvider {
             return stmt.getLiteral().getString();
         }
         return null;
-    }
-
-    private List<String> getVisibleGraphNames(String userId) {
-        List<OntologyMetadataEntity> ontologies = new ArrayList<>();
-        ontologies.addAll(ontologyMetadataRepository.findAllByIsPublished(true));
-        if (userId != null) {
-            List<OntologyMetadataEntity> userOntologies = ontologyMetadataRepository.findAllByUserIdAndIsPublished(userId, false);
-            ontologies.addAll(userOntologies);
-        }
-        return ontologies.stream()
-                .map(OntologyMetadataEntity::getGraphName)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
     }
 
     private SearchResultDto mapConceptEntity(ConceptMetadataEntity e) {

@@ -42,8 +42,7 @@
     text:directory   <file:/opt/fuseki/databases/lucene/ismd-tool-dataset> ;
     text:entityMap   <#entMap> ;
     text:storeValues true ;
-    text:analyzer    <#asciiFoldingAnalyzer> ;
-    text:queryParser text:AnalyzingQueryParser .
+    text:analyzer    <#asciiFoldingAnalyzer> .
 
 ## ---------------------------------------------------------------
 ## Custom analyzer: StandardTokenizer + LowerCaseFilter + ASCIIFoldingFilter

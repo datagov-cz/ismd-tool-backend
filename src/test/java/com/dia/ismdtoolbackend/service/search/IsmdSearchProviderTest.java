@@ -46,8 +46,6 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(concept));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
@@ -97,8 +95,6 @@ class IsmdSearchProviderTest {
                 .thenReturn(List.of(ontology));
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(concept));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
@@ -114,8 +110,7 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(true), eq(ontologyIris)))
                 .thenReturn(List.of());
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
 
         ismdSearchProvider.search("osoba", SearchType.CONCEPT, 20, 0, "cs", ontologyIris, null, "user1");
 
@@ -134,8 +129,6 @@ class IsmdSearchProviderTest {
                 .thenReturn(List.of(ontology));
         when(conceptMetadataRepository.searchByText(eq("shared"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(concept));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
@@ -150,8 +143,7 @@ class IsmdSearchProviderTest {
                 .thenReturn(List.of());
         when(conceptMetadataRepository.searchByText(eq("xyz"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of());
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
                 "xyz", null, 20, 0, "cs", null, null, "user1");
@@ -168,8 +160,6 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("concept"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(concept1, concept2, concept3));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
@@ -181,99 +171,24 @@ class IsmdSearchProviderTest {
         assertEquals(3, result.totalCount());
     }
 
-    // --- Phase 4 tests: Fuseki integration ---
+    // --- Phase 4 tests: Fuseki enrichment (text search disabled until Jena upgrade) ---
 
     @Test
-    void search_mergesPgAndFusekiResults() {
-        // PG returns concept with slug but no description
+    void search_conceptSearch_alwaysReportsDegraded() {
         ConceptMetadataEntity pgConcept = createConcept(
                 "https://example.org/concept/osoba", "osoba", "Osoba",
                 ConceptType.TRIDA, "https://example.org/ontology/1", true);
 
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(pgConcept));
-
-        // Fuseki returns same concept with description
-        Map<String, String> fusekiRow = new HashMap<>();
-        fusekiRow.put("conceptIri", "https://example.org/concept/osoba");
-        fusekiRow.put("prefLabel", "Osoba");
-        fusekiRow.put("prefLabelLang", "cs");
-        fusekiRow.put("description", "Fyzická osoba");
-        fusekiRow.put("graphName", "https://example.org/ontology/1");
-
-        OntologyMetadataEntity published = createOntology("https://example.org/ontology/1", "ont1", true);
-        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
-        when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
-
-        when(jenaTDB2Repository.searchByText(eq("osoba"), anyList()))
-                .thenReturn(List.of(fusekiRow));
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
                 "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
 
-        assertEquals(1, result.results().size());
-        SearchResultDto dto = result.results().get(0);
-        assertEquals("https://example.org/concept/osoba", dto.getIri());
-        assertEquals("osoba", dto.getSlug()); // from PG
-        assertEquals("Fyzická osoba", dto.getDescription()); // merged from Fuseki
-        assertEquals(ConceptType.TRIDA, dto.getConceptType()); // from PG
-        assertEquals(SearchSourceStatus.OK, result.status());
-    }
-
-    @Test
-    void search_fusekiAddsNewConceptsNotInPg() {
-        when(conceptMetadataRepository.searchByText(eq("test"), eq("user1"), eq(false), anyList()))
-                .thenReturn(List.of());
-
-        // Fuseki finds a concept that PG missed
-        Map<String, String> fusekiRow = new HashMap<>();
-        fusekiRow.put("conceptIri", "https://example.org/concept/fuseki-only");
-        fusekiRow.put("prefLabel", "Fuseki Only Concept");
-        fusekiRow.put("prefLabelLang", "en");
-        fusekiRow.put("graphName", "https://example.org/ontology/1");
-
-        OntologyMetadataEntity published = createOntology("https://example.org/ontology/1", "ont1", true);
-        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
-        when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
-
-        when(jenaTDB2Repository.searchByText(eq("test"), anyList()))
-                .thenReturn(List.of(fusekiRow));
-        stubEmptyFetchConceptLabels();
-
-        SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
-                "test", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
-
-        assertEquals(1, result.results().size());
-        assertEquals("https://example.org/concept/fuseki-only", result.results().get(0).getIri());
-        assertEquals("Fuseki Only Concept", result.results().get(0).getLabel());
-    }
-
-    @Test
-    void search_fusekiDown_degradesToPgOnly() {
-        ConceptMetadataEntity pgConcept = createConcept(
-                "https://example.org/concept/osoba", "osoba", "Osoba",
-                ConceptType.TRIDA, "https://example.org/ontology/1", true);
-
-        when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList()))
-                .thenReturn(List.of(pgConcept));
-
-        OntologyMetadataEntity published = createOntology("https://example.org/ontology/1", "ont1", true);
-        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
-        when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
-
-        // Fuseki throws exception
-        when(jenaTDB2Repository.searchByText(anyString(), anyList()))
-                .thenThrow(new RuntimeException("Connection refused"));
-
-        SearchProvider.SearchProviderResult result = ismdSearchProvider.search(
-                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
-
-        // PG results should still be returned, status should be DEGRADED
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/osoba", result.results().get(0).getIri());
         assertEquals(SearchSourceStatus.DEGRADED, result.status());
-        assertNotNull(result.statusMessage());
     }
 
     @Test
@@ -287,8 +202,6 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("concept"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(concept1, concept2));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
         // Only concept/1 has SUBCLASS relation
@@ -311,8 +224,6 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("concept"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(concept));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
         when(jenaTDB2Repository.filterByRelationTypes(anyList(), anyList()))
@@ -322,7 +233,6 @@ class IsmdSearchProviderTest {
                 "concept", SearchType.CONCEPT, 20, 0, "cs", null,
                 List.of(RelationType.SUBCLASS), "user1");
 
-        // Should still return results even though filter failed
         assertEquals(1, result.results().size());
     }
 
@@ -334,10 +244,7 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(pgConcept));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
 
-        // Return enriched model with labels
         Model labelsModel = ModelFactory.createDefaultModel();
         org.apache.jena.rdf.model.Resource concept = labelsModel.createResource("https://example.org/concept/osoba");
         concept.addProperty(
@@ -367,8 +274,6 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of(pgConcept));
-        stubVisibleGraphs("user1", List.of());
-        stubEmptyFusekiSearch();
 
         when(jenaTDB2Repository.fetchConceptLabels(anyList()))
                 .thenThrow(new RuntimeException("Fuseki down"));
@@ -377,32 +282,7 @@ class IsmdSearchProviderTest {
                 "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
 
         assertEquals(1, result.results().size());
-        assertEquals("Osoba", result.results().get(0).getLabel()); // Falls back to PG label
-    }
-
-    @Test
-    void search_visibleGraphsIncludeUserAndPublished() {
-        OntologyMetadataEntity published = createOntology("https://example.org/ontology/pub", "pub", true);
-        OntologyMetadataEntity userPrivate = createOntology("https://example.org/ontology/priv", "priv", false);
-
-        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
-        when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of(userPrivate));
-        when(conceptMetadataRepository.searchByText(eq("test"), eq("user1"), eq(false), anyList()))
-                .thenReturn(List.of());
-        stubEmptyFetchConceptLabels();
-
-        when(jenaTDB2Repository.searchByText(eq("test"), argThat(graphs ->
-                graphs.contains("https://example.org/ontology/pub") &&
-                graphs.contains("https://example.org/ontology/priv") &&
-                graphs.size() == 2
-        ))).thenReturn(List.of());
-
-        ismdSearchProvider.search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
-
-        verify(jenaTDB2Repository).searchByText(eq("test"), argThat(graphs ->
-                graphs.size() == 2 &&
-                graphs.contains("https://example.org/ontology/pub") &&
-                graphs.contains("https://example.org/ontology/priv")));
+        assertEquals("Osoba", result.results().get(0).getLabel());
     }
 
     // --- Helpers ---
@@ -425,17 +305,6 @@ class IsmdSearchProviderTest {
         entity.setSlug(slug);
         entity.setIsPublished(published);
         return entity;
-    }
-
-    private void stubVisibleGraphs(String userId, List<OntologyMetadataEntity> extra) {
-        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of());
-        if (userId != null) {
-            when(ontologyMetadataRepository.findAllByUserIdAndIsPublished(userId, false)).thenReturn(extra);
-        }
-    }
-
-    private void stubEmptyFusekiSearch() {
-        lenient().when(jenaTDB2Repository.searchByText(anyString(), anyList())).thenReturn(List.of());
     }
 
     private void stubEmptyFetchConceptLabels() {
