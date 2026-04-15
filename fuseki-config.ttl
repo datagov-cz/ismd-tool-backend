@@ -4,8 +4,17 @@
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix tdb2:    <http://jena.apache.org/2016/tdb#> .
 @prefix text:    <http://jena.apache.org/text#> .
+@prefix ja:      <http://jena.hpl.hp.com/2005/11/Assembler#> .
 @prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
+
+## ---------------------------------------------------------------
+## Explicit text module loading
+## ---------------------------------------------------------------
+
+[] ja:loadClass "org.apache.jena.query.text.TextQuery" .
+text:TextDataset  rdfs:subClassOf ja:RDFDataset .
+text:TextIndexLucene rdfs:subClassOf text:TextIndex .
 
 ## ---------------------------------------------------------------
 ## Fuseki Service
@@ -32,14 +41,14 @@
 ## ---------------------------------------------------------------
 
 :tdb_dataset rdf:type tdb2:DatasetTDB2 ;
-    tdb2:location "/opt/fuseki/databases/tdb2/ismd-tool-dataset" .
+    tdb2:location "/opt/fuseki/run/databases/tdb2/ismd-tool-dataset" .
 
 ## ---------------------------------------------------------------
 ## Lucene Text Index
 ## ---------------------------------------------------------------
 
 <#indexLucene> a text:TextIndexLucene ;
-    text:directory   <file:/opt/fuseki/databases/lucene/ismd-tool-dataset> ;
+    text:directory   <file:/opt/fuseki/run/databases/lucene/ismd-tool-dataset> ;
     text:entityMap   <#entMap> ;
     text:storeValues true ;
     text:analyzer    <#asciiFoldingAnalyzer> .
