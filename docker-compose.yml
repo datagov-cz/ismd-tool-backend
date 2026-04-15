@@ -99,6 +99,41 @@ services:
     networks:
       - ismd-network
 
+  backend:
+    build:
+      context: .
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+        GITHUB_ACTOR: ${GITHUB_ACTOR}
+    container_name: ismd-tool-backend
+    profiles:
+      - full-backend
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      POSTGRES_URL: jdbc:postgresql://ismd-postgres-dev:5432/ismd_tool_db
+      POSTGRES_USER: ismd_user
+      POSTGRES_PASSWORD: ismd_password
+      FUSEKI_URL: http://fuseki:3030/ismd-tool-dataset
+      KEYCLOAK_ISSUER_URI: http://ismd-keycloak-dev:8080/realms/ismd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ismd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://ismd-keycloak-dev:8080/realms/ismd/protocol/openid-connect/certs
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      CORS_ALLOWED_ORIGINS: http://localhost:3001
+    extra_hosts:
+      - "localhost:host-gateway"
+    networks:
+      - ismd-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      fuseki:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
