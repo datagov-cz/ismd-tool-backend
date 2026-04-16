@@ -49,6 +49,7 @@ public class JenaTDB2Repository {
     RDFConnection createConnection() {
         return RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
+                .queryEndpoint("sparql")
                 .gspEndpoint("data")
                 .updateEndpoint("update")
                 .httpClient(fusekiHttpClient)
@@ -516,10 +517,11 @@ public class JenaTDB2Repository {
      *
      * @param query             the search term
      * @param visibleGraphNames graphs the user has access to
+     * @param limit             maximum number of results to return
      * @return list of result maps with keys: conceptIri, graphName, prefLabel, prefLabelLang,
      *         altLabel, description, definition
      */
-    public List<Map<String, String>> searchByText(String query, List<String> visibleGraphNames) {
+    public List<Map<String, String>> searchByText(String query, List<String> visibleGraphNames, int limit) {
         if (visibleGraphNames == null || visibleGraphNames.isEmpty()) {
             return List.of();
         }
@@ -534,19 +536,21 @@ public class JenaTDB2Repository {
                 // Sanitize and build Lucene query term with wildcard for prefix matching
                 String sanitizedQuery = sanitizeLuceneQuery(query);
 
+                // text:query inside GRAPH — requires Jena 5.4+ where the property
+                // function is correctly wired through the TextDataset assembler.
                 String sparql = "PREFIX text: <http://jena.apache.org/text#> " +
                         "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
                         "PREFIX dcterms: <http://purl.org/dc/terms/> " +
                         "SELECT ?concept ?g ?prefLabel ?prefLabelLang ?altLabel ?description ?definition WHERE { " +
                         "  VALUES ?g { " + valuesClause + "} " +
                         "  GRAPH ?g { " +
-                        "    ?concept text:query ('" + sanitizedQuery + "*') . " +
+                        "    ?concept text:query (skos:prefLabel skos:altLabel dcterms:description skos:definition '" + sanitizedQuery + "*') . " +
                         "    OPTIONAL { ?concept skos:prefLabel ?prefLabel . BIND(LANG(?prefLabel) AS ?prefLabelLang) } " +
                         "    OPTIONAL { ?concept skos:altLabel ?altLabel } " +
                         "    OPTIONAL { ?concept dcterms:description ?description } " +
                         "    OPTIONAL { ?concept skos:definition ?definition } " +
                         "  } " +
-                        "}";
+                        "} LIMIT " + limit;
 
                 log.debug("Fuseki text search SPARQL: {}", sparql);
 

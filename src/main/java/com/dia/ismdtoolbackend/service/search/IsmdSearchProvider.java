@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.search;
 import com.dia.ismdtoolbackend.controller.dto.SearchResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.MatchedBy;
 import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchSourceStatus;
@@ -56,7 +57,7 @@ public class IsmdSearchProvider implements SearchProvider {
         }
 
         if (type == null || type == SearchType.CONCEPT) {
-            allResults.addAll(searchConcepts(query, userId, lang, ontologyIris, relationTypes, fusekiDegraded));
+            allResults.addAll(searchConcepts(query, userId, lang, ontologyIris, relationTypes, fusekiDegraded, limit));
         }
 
         // Dedup by IRI
@@ -103,7 +104,7 @@ public class IsmdSearchProvider implements SearchProvider {
     private List<SearchResultDto> searchConcepts(String query, String userId, String lang,
                                                   List<String> ontologyIris,
                                                   List<RelationType> relationTypes,
-                                                  AtomicBoolean fusekiDegraded) {
+                                                  AtomicBoolean fusekiDegraded, int limit) {
         boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
         List<String> graphNames = hasGraphFilter ? ontologyIris : List.of();
 
@@ -123,7 +124,7 @@ public class IsmdSearchProvider implements SearchProvider {
             List<String> searchGraphs = hasGraphFilter
                     ? ontologyIris.stream().filter(visibleGraphNames::contains).toList()
                     : visibleGraphNames;
-            return searchFuseki(query, searchGraphs);
+            return searchFuseki(query, searchGraphs, limit);
         }).orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS);
 
         List<SearchResultDto> pgResults = pgFuture.join();
@@ -139,10 +140,17 @@ public class IsmdSearchProvider implements SearchProvider {
             fusekiDegraded.set(true);
         }
 
+        // Track which IRIs were found by Fuseki (for matchedBy and enrichment skip)
+        Set<String> fusekiIris = new HashSet<>();
+        for (SearchResultDto dto : fusekiResults) {
+            if (dto.getIri() != null) fusekiIris.add(dto.getIri());
+        }
+
         // Merge PG + Fuseki results: PG first, Fuseki enriches with non-null fields
         LinkedHashMap<String, SearchResultDto> merged = new LinkedHashMap<>();
         for (SearchResultDto dto : pgResults) {
             if (dto.getIri() != null) {
+                dto.setMatchedBy(MatchedBy.PG);
                 merged.put(dto.getIri(), dto);
             }
         }
@@ -150,6 +158,7 @@ public class IsmdSearchProvider implements SearchProvider {
             if (dto.getIri() != null) {
                 merged.merge(dto.getIri(), dto, (existing, incoming) -> {
                     mergeNonNullFields(existing, incoming);
+                    existing.setMatchedBy(MatchedBy.BOTH);
                     return existing;
                 });
             }
@@ -159,13 +168,19 @@ public class IsmdSearchProvider implements SearchProvider {
         log.debug("After merge+dedup: {} results (PG={}, Fuseki={}, unique={})",
                 mergedResults.size(), pgResults.size(), fusekiResults.size(), merged.size());
 
-        // Enrich all results with labels from Fuseki
+        // Enrich PG-only results with labels from Fuseki (skip those already enriched by text search)
         if (!fusekiDegraded.get() && !mergedResults.isEmpty()) {
-            try {
-                log.debug("Enriching {} results with Fuseki labels (lang={})", mergedResults.size(), lang);
-                enrichWithLabels(mergedResults, lang);
-            } catch (Exception e) {
-                log.warn("Fuseki label enrichment failed, using existing labels: {}", e.getMessage());
+            List<SearchResultDto> needsEnrichment = mergedResults.stream()
+                    .filter(dto -> !fusekiIris.contains(dto.getIri()))
+                    .toList();
+            if (!needsEnrichment.isEmpty()) {
+                try {
+                    log.debug("Enriching {} PG-only results with Fuseki labels (lang={})",
+                            needsEnrichment.size(), lang);
+                    enrichWithLabels(needsEnrichment, lang);
+                } catch (Exception e) {
+                    log.warn("Fuseki label enrichment failed, using existing labels: {}", e.getMessage());
+                }
             }
         }
 
@@ -190,7 +205,7 @@ public class IsmdSearchProvider implements SearchProvider {
         return mergedResults;
     }
 
-    private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames) {
+    private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames, int limit) {
         if (visibleGraphNames.isEmpty()) {
             log.debug("Fuseki search skipped: no visible graph names for user");
             return List.of();
@@ -199,7 +214,7 @@ public class IsmdSearchProvider implements SearchProvider {
         log.debug("Fuseki text search: query='{}', searching {} graphs",
                 query, visibleGraphNames.size());
 
-        List<Map<String, String>> rows = jenaTDB2Repository.searchByText(query, visibleGraphNames);
+        List<Map<String, String>> rows = jenaTDB2Repository.searchByText(query, visibleGraphNames, limit);
 
         log.debug("Fuseki text search returned {} raw rows", rows.size());
 
@@ -215,6 +230,7 @@ public class IsmdSearchProvider implements SearchProvider {
                     .ontologyIri(row.get("graphName"))
                     .type(SearchType.CONCEPT)
                     .source(SearchSource.ISMD)
+                    .matchedBy(MatchedBy.SPARQL)
                     .build());
         }
         return results;

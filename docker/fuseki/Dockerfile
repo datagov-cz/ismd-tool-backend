@@ -1,6 +1,6 @@
 FROM eclipse-temurin:21-jre-alpine
 
-ARG JENA_VERSION=5.3.0
+ARG JENA_VERSION=5.4.0
 ARG FUSEKI_HOME=/opt/fuseki
 ARG JENA_HOME=/opt/jena
 
@@ -13,7 +13,8 @@ RUN apk add --no-cache curl bash && \
 
 # Create run directory structure
 RUN mkdir -p ${FUSEKI_HOME}/run/databases/tdb2/ismd-tool-dataset \
-             ${FUSEKI_HOME}/run/databases/lucene/ismd-tool-dataset
+             ${FUSEKI_HOME}/run/databases/lucene/ismd-tool-dataset \
+             ${FUSEKI_HOME}/run/configuration
 
 # Create non-root user
 RUN addgroup -S fuseki && adduser -S fuseki -G fuseki && \
@@ -27,10 +28,9 @@ EXPOSE 3030
 USER fuseki
 WORKDIR ${FUSEKI_HOME}
 
-# Use FusekiMainCmd (lightweight Fuseki) via java -cp, not the fuseki-server script.
-# The shell script launches the full webapp server (FusekiCmd) which auto-discovers
-# configs from run/configuration/ causing double-loading conflicts with --conf.
-# FusekiMainCmd loads config exactly once via --conf.
-ENTRYPOINT ["java", "-cp", "/opt/fuseki/fuseki-server.jar", \
-            "org.apache.jena.fuseki.main.cmds.FusekiMainCmd"]
-CMD ["--conf", "/opt/fuseki/config/assembler.ttl"]
+# Use the fuseki-server shell script which auto-discovers config from
+# run/configuration/. Do NOT pass --conf — it causes double-loading
+# (--conf + auto-discovery both open the Lucene index, the second
+# fails with LockObtainFailedException that silently breaks text search).
+ENTRYPOINT ["/opt/fuseki/fuseki-server"]
+CMD []

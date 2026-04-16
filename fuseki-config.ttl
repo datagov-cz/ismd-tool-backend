@@ -17,16 +17,20 @@ text:TextDataset  rdfs:subClassOf ja:RDFDataset .
 text:TextIndexLucene rdfs:subClassOf text:TextIndex .
 
 ## ---------------------------------------------------------------
-## Fuseki Service
+## Fuseki Server + Service (modern endpoint syntax)
 ## ---------------------------------------------------------------
 
+[] rdf:type fuseki:Server ;
+   fuseki:services ( :ismd-service ) .
+
 :ismd-service rdf:type fuseki:Service ;
-    fuseki:name              "ismd-tool-dataset" ;
-    fuseki:serviceQuery      "sparql", "query" ;
-    fuseki:serviceUpdate     "update" ;
-    fuseki:serviceUpload     "upload" ;
-    fuseki:serviceReadWriteGraphStore "data" ;
-    fuseki:dataset           :text_dataset .
+    fuseki:name "ismd-tool-dataset" ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "sparql" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "query" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:update ; fuseki:name "update" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:upload ; fuseki:name "upload" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ; fuseki:name "data" ] ;
+    fuseki:dataset :text_dataset .
 
 ## ---------------------------------------------------------------
 ## Text Dataset: wraps TDB2 dataset with a Lucene text index

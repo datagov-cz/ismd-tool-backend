@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller.dto;
 
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.MatchedBy;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchType;
 import lombok.AllArgsConstructor;
@@ -25,4 +26,5 @@ public class SearchResultDto {
     private ConceptType conceptType;
     private String ontologyIri;
     private Boolean isPublished;
+    private MatchedBy matchedBy;
 }

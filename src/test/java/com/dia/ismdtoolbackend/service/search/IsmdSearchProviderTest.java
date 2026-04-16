@@ -209,7 +209,7 @@ class IsmdSearchProviderTest {
         when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
         when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
 
-        when(jenaTDB2Repository.searchByText(eq("osoba"), anyList()))
+        when(jenaTDB2Repository.searchByText(eq("osoba"), anyList(), anyInt()))
                 .thenReturn(List.of(fusekiRow));
         stubEmptyFetchConceptLabels();
 
@@ -222,6 +222,7 @@ class IsmdSearchProviderTest {
         assertEquals("osoba", dto.getSlug()); // from PG
         assertEquals("Fyzická osoba", dto.getDescription()); // merged from Fuseki
         assertEquals(ConceptType.TRIDA, dto.getConceptType()); // from PG
+        assertEquals(MatchedBy.BOTH, dto.getMatchedBy()); // found by both PG and Fuseki
         assertEquals(SearchSourceStatus.OK, result.status());
     }
 
@@ -241,7 +242,7 @@ class IsmdSearchProviderTest {
         when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
         when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
 
-        when(jenaTDB2Repository.searchByText(eq("test"), anyList()))
+        when(jenaTDB2Repository.searchByText(eq("test"), anyList(), anyInt()))
                 .thenReturn(List.of(fusekiRow));
         stubEmptyFetchConceptLabels();
 
@@ -251,6 +252,7 @@ class IsmdSearchProviderTest {
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/fuseki-only", result.results().get(0).getIri());
         assertEquals("Fuseki Only Concept", result.results().get(0).getLabel());
+        assertEquals(MatchedBy.SPARQL, result.results().get(0).getMatchedBy());
     }
 
     @Test
@@ -267,7 +269,7 @@ class IsmdSearchProviderTest {
         when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
 
         // Fuseki throws exception
-        when(jenaTDB2Repository.searchByText(anyString(), anyList()))
+        when(jenaTDB2Repository.searchByText(anyString(), anyList(), anyInt()))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         SearchProvider.SearchProviderResult result = createProvider().search(
@@ -275,6 +277,7 @@ class IsmdSearchProviderTest {
 
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/osoba", result.results().get(0).getIri());
+        assertEquals(MatchedBy.PG, result.results().get(0).getMatchedBy()); // Fuseki failed, PG only
         assertEquals(SearchSourceStatus.DEGRADED, result.status());
         assertNotNull(result.statusMessage());
     }
@@ -289,7 +292,7 @@ class IsmdSearchProviderTest {
 
         when(conceptMetadataRepository.searchByText(eq("test"), eq("user1"), eq(false), anyList()))
                 .thenReturn(List.of());
-        when(jenaTDB2Repository.searchByText(eq("test"), anyList()))
+        when(jenaTDB2Repository.searchByText(eq("test"), anyList(), anyInt()))
                 .thenReturn(List.of());
         stubEmptyFetchConceptLabels();
 
@@ -299,7 +302,7 @@ class IsmdSearchProviderTest {
         verify(jenaTDB2Repository).searchByText(eq("test"), argThat(graphs ->
                 graphs.contains("https://example.org/ontology/public") &&
                 graphs.contains("https://example.org/ontology/private") &&
-                graphs.size() == 2));
+                graphs.size() == 2), anyInt());
     }
 
     // --- Phase 4 tests: Fuseki enrichment ---
@@ -434,7 +437,7 @@ class IsmdSearchProviderTest {
     }
 
     private void stubEmptyFusekiSearch() {
-        lenient().when(jenaTDB2Repository.searchByText(anyString(), anyList())).thenReturn(List.of());
+        lenient().when(jenaTDB2Repository.searchByText(anyString(), anyList(), anyInt())).thenReturn(List.of());
     }
 
     private void stubEmptyFetchConceptLabels() {
