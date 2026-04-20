@@ -48,6 +48,7 @@ public class JenaTDB2Repository {
     private RDFConnection createConnection() {
         return RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
+                .queryEndpoint("sparql")
                 .gspEndpoint("data")
                 .updateEndpoint("update")
                 .httpClient(fusekiHttpClient)
