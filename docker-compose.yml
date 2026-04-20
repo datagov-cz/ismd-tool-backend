@@ -87,16 +87,14 @@ services:
     restart: unless-stopped
 
   fuseki:
-    image: secoresearch/fuseki:latest
-    user: "0:0"
+    build:
+      context: ./docker/fuseki
     ports:
       - "3030:3030"
     volumes:
-      - ./data/tdb2:/opt/fuseki/databases/tdb2/ismd-tool-dataset
-      - ./data/lucene:/opt/fuseki/databases/lucene/ismd-tool-dataset
-      - ./fuseki-config.ttl:/fuseki-base/configuration/assembler.ttl
-    environment:
-      - ADMIN_PASSWORD=admin123
+      - fuseki_tdb2:/opt/fuseki/run/databases/tdb2/ismd-tool-dataset
+      - fuseki_lucene:/opt/fuseki/run/databases/lucene/ismd-tool-dataset
+      - ./fuseki-config.ttl:/opt/fuseki/run/configuration/ismd-tool-dataset.ttl
     networks:
       - ismd-network
 
@@ -140,7 +138,9 @@ volumes:
     driver: local
   postgres_keycloak_data:
     driver: local
-  fuseki_data:
+  fuseki_tdb2:
+    driver: local
+  fuseki_lucene:
     driver: local
 
 networks:

@@ -54,13 +54,13 @@ class JenaTDB2RepositorySearchTest {
 
     @Test
     void searchByText_emptyGraphNames_returnsEmptyList() {
-        List<Map<String, String>> results = repository.searchByText("test", List.of());
+        List<Map<String, String>> results = repository.searchByText("test", List.of(), 100);
         assertTrue(results.isEmpty());
     }
 
     @Test
     void searchByText_nullGraphNames_returnsEmptyList() {
-        List<Map<String, String>> results = repository.searchByText("test", null);
+        List<Map<String, String>> results = repository.searchByText("test", null, 100);
         assertTrue(results.isEmpty());
     }
 
@@ -96,7 +96,7 @@ class JenaTDB2RepositorySearchTest {
         when(mockQueryExecution.execSelect()).thenReturn(mockResultSet);
 
         List<Map<String, String>> results = repository.searchByText("osoba",
-                List.of("https://example.org/ontology/1"));
+                List.of("https://example.org/ontology/1"), 100);
 
         assertEquals(1, results.size());
         assertEquals("https://example.org/concept/osoba", results.get(0).get("conceptIri"));
@@ -114,7 +114,7 @@ class JenaTDB2RepositorySearchTest {
         when(mockConnection.query(sparqlCaptor.capture())).thenReturn(mockQueryExecution);
         when(mockQueryExecution.execSelect()).thenReturn(mockResultSet);
 
-        repository.searchByText("test'injection", List.of("https://example.org/ontology/1"));
+        repository.searchByText("test'injection", List.of("https://example.org/ontology/1"), 100);
 
         String executedSparql = sparqlCaptor.getValue();
         assertTrue(executedSparql.contains("test\\'injection"),
