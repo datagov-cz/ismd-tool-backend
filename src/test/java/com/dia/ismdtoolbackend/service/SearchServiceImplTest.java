@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -31,7 +32,9 @@ class SearchServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        searchService = new SearchServiceImpl(nkdSearchProvider, ismdSearchProvider, 10_000);
+        Executor directExecutor = Runnable::run;
+        searchService = new SearchServiceImpl(
+                nkdSearchProvider, ismdSearchProvider, directExecutor, 10_000);
     }
 
     @Test

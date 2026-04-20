@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -24,12 +25,15 @@ public class SearchServiceImpl implements SearchService {
     private final long sourceTimeoutMs;
     private final SearchProvider nkdSearchProvider;
     private final SearchProvider ismdSearchProvider;
+    private final Executor searchExecutor;
 
     public SearchServiceImpl(@Qualifier("nkdSearchProvider") SearchProvider nkdSearchProvider,
                              @Qualifier("ismdSearchProvider") SearchProvider ismdSearchProvider,
+                             @Qualifier("searchExecutor") Executor searchExecutor,
                              @Value("${search.source-timeout-ms:10000}") long sourceTimeoutMs) {
         this.nkdSearchProvider = nkdSearchProvider;
         this.ismdSearchProvider = ismdSearchProvider;
+        this.searchExecutor = searchExecutor;
         this.sourceTimeoutMs = sourceTimeoutMs;
     }
 
@@ -111,7 +115,7 @@ public class SearchServiceImpl implements SearchService {
 
         return CompletableFuture.supplyAsync(() ->
                         provider.search(query, type, limit, offset, lang,
-                                ontologyIris, relationTypes, userId))
+                                ontologyIris, relationTypes, userId), searchExecutor)
                 .orTimeout(sourceTimeoutMs, TimeUnit.MILLISECONDS)
                 .handle((result, ex) -> {
                     if (ex == null) {

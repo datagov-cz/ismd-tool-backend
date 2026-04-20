@@ -45,10 +45,12 @@ public class NkdSearchProvider implements SearchProvider {
         // Dedup by IRI
         LinkedHashMap<String, SearchResultDto> deduped = new LinkedHashMap<>();
         for (SearchResultDto result : allResults) {
-            deduped.merge(result.getIri(), result, (existing, incoming) -> {
-                mergeNonNullFields(existing, incoming);
-                return existing;
-            });
+            if (result.getIri() != null) {
+                deduped.merge(result.getIri(), result, (existing, incoming) -> {
+                    mergeNonNullFields(existing, incoming);
+                    return existing;
+                });
+            }
         }
 
         List<SearchResultDto> results = new ArrayList<>(deduped.values());

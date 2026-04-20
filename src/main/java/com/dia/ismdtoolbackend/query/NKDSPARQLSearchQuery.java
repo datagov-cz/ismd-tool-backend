@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.query;
 
 import com.dia.ismdtoolbackend.enums.RelationType;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -79,11 +80,16 @@ public class NKDSPARQLSearchQuery {
 
         // Ontology IRI filter using VALUES clause
         if (ontologyIris != null && !ontologyIris.isEmpty()) {
-            query.append("  VALUES ?ontology { ");
-            for (String iri : ontologyIris) {
-                query.append("<").append(escapeIri(iri)).append("> ");
+            List<String> validIris = ontologyIris.stream()
+                    .filter(SparqlIriValidator::isSafeHttpIri)
+                    .toList();
+            if (!validIris.isEmpty()) {
+                query.append("  VALUES ?ontology { ");
+                for (String iri : validIris) {
+                    query.append("<").append(iri).append("> ");
+                }
+                query.append("}\n\n");
             }
-            query.append("}\n\n");
         }
 
         // Text matching via bif:contains
@@ -162,16 +168,6 @@ public class NKDSPARQLSearchQuery {
         }
         // Remove quotes, backslashes, and other SPARQL-dangerous characters
         return term.replaceAll("[\"'\\\\<>{}|^`]", "").trim();
-    }
-
-    /**
-     * Escapes an IRI for safe inclusion in a SPARQL query.
-     */
-    private static String escapeIri(String iri) {
-        if (iri == null) {
-            return "";
-        }
-        return iri.replaceAll("[<>\"{}|^`\\\\]", "");
     }
 
     private NKDSPARQLSearchQuery() {

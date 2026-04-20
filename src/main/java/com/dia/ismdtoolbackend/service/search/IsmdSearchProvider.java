@@ -13,11 +13,13 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -33,16 +35,22 @@ public class IsmdSearchProvider implements SearchProvider {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final Executor searchExecutor;
     private final long fusekiTimeoutMs;
+    private final long pgTimeoutMs;
 
     public IsmdSearchProvider(OntologyMetadataRepository ontologyMetadataRepository,
                               ConceptMetadataRepository conceptMetadataRepository,
                               JenaTDB2Repository jenaTDB2Repository,
-                              @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs) {
+                              @Qualifier("searchExecutor") Executor searchExecutor,
+                              @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
+                              @Value("${search.pg-timeout-ms:10000}") long pgTimeoutMs) {
         this.ontologyMetadataRepository = ontologyMetadataRepository;
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
+        this.searchExecutor = searchExecutor;
         this.fusekiTimeoutMs = fusekiTimeoutMs;
+        this.pgTimeoutMs = pgTimeoutMs;
     }
 
     @Override
@@ -111,24 +119,32 @@ public class IsmdSearchProvider implements SearchProvider {
         // Get visible graph names for Fuseki search
         List<String> visibleGraphNames = getVisibleGraphNames(userId);
 
-        // Run PG and Fuseki text search in parallel
+        // Run PG and Fuseki text search in parallel on the dedicated search
+        // executor (both are blocking I/O: JDBC + HTTP). Each future has its
+        // own timeout so a slow PG query cannot extend a fast Fuseki timeout.
         CompletableFuture<List<SearchResultDto>> pgFuture = CompletableFuture.supplyAsync(() -> {
             List<ConceptMetadataEntity> entities = conceptMetadataRepository.searchByText(
                     query, userId, hasGraphFilter, graphNames);
             return entities.stream()
                     .map(this::mapConceptEntity)
                     .toList();
-        });
+        }, searchExecutor).orTimeout(pgTimeoutMs, TimeUnit.MILLISECONDS);
 
         CompletableFuture<List<SearchResultDto>> fusekiFuture = CompletableFuture.supplyAsync(() -> {
             List<String> searchGraphs = hasGraphFilter
                     ? ontologyIris.stream().filter(visibleGraphNames::contains).toList()
                     : visibleGraphNames;
             return searchFuseki(query, searchGraphs, limit);
-        }).orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS);
+        }, searchExecutor).orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS);
 
-        List<SearchResultDto> pgResults = pgFuture.join();
-        log.debug("PG search returned {} results", pgResults.size());
+        List<SearchResultDto> pgResults;
+        try {
+            pgResults = pgFuture.join();
+            log.debug("PG search returned {} results", pgResults.size());
+        } catch (Exception e) {
+            log.warn("PG text search failed, returning Fuseki-only results: {}", e.getMessage());
+            pgResults = List.of();
+        }
 
         List<SearchResultDto> fusekiResults;
         try {
