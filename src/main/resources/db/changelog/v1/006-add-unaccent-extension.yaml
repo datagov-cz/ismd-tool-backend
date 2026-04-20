@@ -2,13 +2,8 @@ databaseChangeLog:
   - changeSet:
       id: 006-add-unaccent-extension
       author: richard.koubek
-      # onFail: WARN so that if the dbms precondition fails (non-postgres DB)
-      # it is visible in deployment output rather than being silently marked
-      # as run. ISMD concept search depends on the unaccent() function — if
-      # this changeset does not execute, concept searches will fail at
-      # runtime with a function-not-found error.
       preConditions:
-        - onFail: WARN
+        - onFail: MARK_RAN
         - dbms:
             type: postgresql
       changes:

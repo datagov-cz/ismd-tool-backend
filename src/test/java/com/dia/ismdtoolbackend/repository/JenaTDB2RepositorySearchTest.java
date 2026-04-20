@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.enums.RelationType;
+import org.apache.jena.query.Query;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
@@ -143,7 +144,7 @@ class JenaTDB2RepositorySearchTest {
                 expectedModel.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
                 expectedModel.createLiteral("Osoba", "cs"));
 
-        when(mockConnection.query(anyString())).thenReturn(mockQueryExecution);
+        when(mockConnection.query(any(Query.class))).thenReturn(mockQueryExecution);
         when(mockQueryExecution.execConstruct()).thenReturn(expectedModel);
 
         Model result = repository.fetchConceptLabels(
@@ -157,7 +158,7 @@ class JenaTDB2RepositorySearchTest {
     void fetchConceptLabels_queryContainsAllIris() {
         Model emptyModel = ModelFactory.createDefaultModel();
 
-        ArgumentCaptor<String> sparqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Query> sparqlCaptor = ArgumentCaptor.forClass(Query.class);
         when(mockConnection.query(sparqlCaptor.capture())).thenReturn(mockQueryExecution);
         when(mockQueryExecution.execConstruct()).thenReturn(emptyModel);
 
@@ -165,7 +166,7 @@ class JenaTDB2RepositorySearchTest {
                 "https://example.org/concept/1",
                 "https://example.org/concept/2"));
 
-        String executedSparql = sparqlCaptor.getValue();
+        String executedSparql = sparqlCaptor.getValue().toString();
         assertTrue(executedSparql.contains("<https://example.org/concept/1>"));
         assertTrue(executedSparql.contains("<https://example.org/concept/2>"));
     }
