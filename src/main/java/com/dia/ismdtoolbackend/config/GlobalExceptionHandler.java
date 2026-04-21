@@ -197,4 +197,11 @@ public class GlobalExceptionHandler {
         log.warn("NKD endpoint error: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.SERVICE_UNAVAILABLE);
     }
+
+    @ExceptionHandler(RppUnavailableException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleRppUnavailable(RppUnavailableException e) {
+        log.error("RPP unavailable: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponseDto.error("RPP data nejsou momentálně dostupná."));
+    }
 }
