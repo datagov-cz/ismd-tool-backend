@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
+import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -33,9 +34,10 @@ class IsmdSearchProviderTest {
     private JenaTDB2Repository jenaTDB2Repository;
 
     private IsmdSearchProvider createProvider() {
+        Executor directExecutor = Runnable::run;
         return new IsmdSearchProvider(
                 ontologyMetadataRepository, conceptMetadataRepository,
-                jenaTDB2Repository, 10_000L);
+                jenaTDB2Repository, directExecutor, 10_000L, 10_000L);
     }
 
     // --- Phase 3 tests ---

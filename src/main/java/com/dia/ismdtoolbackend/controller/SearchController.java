@@ -68,24 +68,27 @@ public class SearchController {
 
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
+        try {
+            validateSearchParams(q, limit, offset);
 
-        validateSearchParams(q, limit, offset);
+            SearchType searchType = type != null ? SearchType.fromString(type) : null;
+            SearchSource searchSource = source != null ? SearchSource.fromString(source) : null;
+            List<RelationType> parsedRelationTypes = relationTypes != null
+                    ? relationTypes.stream().map(RelationType::fromString).toList()
+                    : null;
 
-        SearchType searchType = type != null ? SearchType.fromString(type) : null;
-        SearchSource searchSource = source != null ? SearchSource.fromString(source) : null;
-        List<RelationType> parsedRelationTypes = relationTypes != null
-                ? relationTypes.stream().map(RelationType::fromString).toList()
-                : null;
+            log.info("Search request: q='{}', type={}, source={}, limit={}, offset={}, lang={}, user={}",
+                    q.trim(), searchType, searchSource, limit, offset, lang,
+                    securityUser != null ? securityUser.getUserId() : "anonymous");
 
-        log.info("Search request: q='{}', type={}, source={}, limit={}, offset={}, lang={}, user={}",
-                q.trim(), searchType, searchSource, limit, offset, lang,
-                securityUser != null ? securityUser.getUserId() : "anonymous");
+            SearchResponseDto response = searchService.search(
+                    q.trim(), searchType, searchSource, limit, offset, lang,
+                    ontologyIri, parsedRelationTypes, securityUser);
 
-        SearchResponseDto response = searchService.search(
-                q.trim(), searchType, searchSource, limit, offset, lang,
-                ontologyIri, parsedRelationTypes, securityUser);
-
-        return ResponseEntity.ok(ApiResponseDto.success(response, "Search completed successfully"));
+            return ResponseEntity.ok(ApiResponseDto.success(response, "Search completed successfully"));
+        } finally {
+            MDC.remove(LOG_REQUEST_ID);
+        }
     }
 
     private void validateSearchParams(String q, int limit, int offset) {

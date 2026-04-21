@@ -1,11 +1,13 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.query.ParameterizedSparqlString;
 import org.apache.jena.query.QueryExecution;
@@ -411,32 +413,45 @@ public class JenaTDB2Repository {
 
     public Model fetchMetadataProperties(List<String> graphNames) {
         if (graphNames == null || graphNames.isEmpty()) {
-            return org.apache.jena.rdf.model.ModelFactory.createDefaultModel();
+            return ModelFactory.createDefaultModel();
+        }
+
+        // Validate IRIs before interpolating into the VALUES clause. Raw
+        // concatenation would allow a crafted stored IRI to escape <...>
+        // and inject SPARQL. Invalid entries are dropped rather than
+        // sanitized so malformed data cannot silently change query semantics.
+        List<String> safeGraphNames = graphNames.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .toList();
+        if (safeGraphNames.size() != graphNames.size()) {
+            log.warn("Dropped {} invalid graph IRI(s) from fetchMetadataProperties",
+                    graphNames.size() - safeGraphNames.size());
+        }
+        if (safeGraphNames.isEmpty()) {
+            return ModelFactory.createDefaultModel();
         }
 
         try {
             return executeWithSemaphore(conn -> {
-                StringBuilder valuesClause = new StringBuilder();
-                for (String graphName : graphNames) {
-                    valuesClause.append("<").append(graphName).append("> ");
+                ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                pss.append("CONSTRUCT { ");
+                pss.append("  ?ontology <http://www.w3.org/2004/02/skos/core#prefLabel> ?label . ");
+                pss.append("  ?ontology <http://purl.org/dc/terms/description> ?desc . ");
+                pss.append("} WHERE { VALUES ?g { ");
+                for (String graphName : safeGraphNames) {
+                    pss.appendIri(graphName);
+                    pss.append(" ");
                 }
+                pss.append("} GRAPH ?g { ");
+                pss.append("  BIND(?g AS ?ontology) ");
+                pss.append("  OPTIONAL { ?ontology <http://www.w3.org/2004/02/skos/core#prefLabel> ?label } ");
+                pss.append("  OPTIONAL { ?ontology <http://purl.org/dc/terms/description> ?desc } ");
+                pss.append("} }");
 
-                String query = "CONSTRUCT { " +
-                        "  ?ontology <http://www.w3.org/2004/02/skos/core#prefLabel> ?label . " +
-                        "  ?ontology <http://purl.org/dc/terms/description> ?desc . " +
-                        "} WHERE { " +
-                        "  VALUES ?g { " + valuesClause + "} " +
-                        "  GRAPH ?g { " +
-                        "    BIND(?g AS ?ontology) " +
-                        "    OPTIONAL { ?ontology <http://www.w3.org/2004/02/skos/core#prefLabel> ?label } " +
-                        "    OPTIONAL { ?ontology <http://purl.org/dc/terms/description> ?desc } " +
-                        "  } " +
-                        "}";
-
-                try (QueryExecution qExec = conn.query(query)) {
+                try (QueryExecution qExec = conn.query(pss.asQuery())) {
                     Model result = qExec.execConstruct();
                     log.debug("Fetched metadata properties for {} graphs, result has {} statements",
-                            graphNames.size(), result.size());
+                            safeGraphNames.size(), result.size());
                     return result;
                 }
             });
@@ -603,37 +618,46 @@ public class JenaTDB2Repository {
      */
     public Model fetchConceptLabels(List<String> conceptIris) {
         if (conceptIris == null || conceptIris.isEmpty()) {
-            return org.apache.jena.rdf.model.ModelFactory.createDefaultModel();
+            return ModelFactory.createDefaultModel();
+        }
+
+        List<String> safeConceptIris = conceptIris.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .toList();
+        if (safeConceptIris.size() != conceptIris.size()) {
+            log.warn("Dropped {} invalid concept IRI(s) from fetchConceptLabels",
+                    conceptIris.size() - safeConceptIris.size());
+        }
+        if (safeConceptIris.isEmpty()) {
+            return ModelFactory.createDefaultModel();
         }
 
         try {
             return executeWithSemaphore(conn -> {
-                StringBuilder valuesClause = new StringBuilder();
-                for (String iri : conceptIris) {
-                    valuesClause.append("<").append(iri).append("> ");
+                ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                pss.append("PREFIX dcterms: <http://purl.org/dc/terms/> ");
+                pss.append("CONSTRUCT { ");
+                pss.append("  ?concept skos:prefLabel ?prefLabel . ");
+                pss.append("  ?concept skos:altLabel ?altLabel . ");
+                pss.append("  ?concept dcterms:description ?desc . ");
+                pss.append("  ?concept skos:definition ?def . ");
+                pss.append("} WHERE { VALUES ?concept { ");
+                for (String iri : safeConceptIris) {
+                    pss.appendIri(iri);
+                    pss.append(" ");
                 }
+                pss.append("} GRAPH ?g { ");
+                pss.append("  OPTIONAL { ?concept skos:prefLabel ?prefLabel } ");
+                pss.append("  OPTIONAL { ?concept skos:altLabel ?altLabel } ");
+                pss.append("  OPTIONAL { ?concept dcterms:description ?desc } ");
+                pss.append("  OPTIONAL { ?concept skos:definition ?def } ");
+                pss.append("} }");
 
-                String sparql = "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
-                        "PREFIX dcterms: <http://purl.org/dc/terms/> " +
-                        "CONSTRUCT { " +
-                        "  ?concept skos:prefLabel ?prefLabel . " +
-                        "  ?concept skos:altLabel ?altLabel . " +
-                        "  ?concept dcterms:description ?desc . " +
-                        "  ?concept skos:definition ?def . " +
-                        "} WHERE { " +
-                        "  VALUES ?concept { " + valuesClause + "} " +
-                        "  GRAPH ?g { " +
-                        "    OPTIONAL { ?concept skos:prefLabel ?prefLabel } " +
-                        "    OPTIONAL { ?concept skos:altLabel ?altLabel } " +
-                        "    OPTIONAL { ?concept dcterms:description ?desc } " +
-                        "    OPTIONAL { ?concept skos:definition ?def } " +
-                        "  } " +
-                        "}";
-
-                try (QueryExecution qExec = conn.query(sparql)) {
+                try (QueryExecution qExec = conn.query(pss.asQuery())) {
                     Model result = qExec.execConstruct();
                     log.debug("Fetched concept labels for {} IRIs, result has {} statements",
-                            conceptIris.size(), result.size());
+                            safeConceptIris.size(), result.size());
                     return result;
                 }
             });

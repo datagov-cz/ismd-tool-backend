@@ -89,8 +89,15 @@ services:
   fuseki:
     build:
       context: ./docker/fuseki
+    # Bind to loopback only: Fuseki ships without authentication in this
+    # compose setup (no shiro.ini), so its management API and SPARQL
+    # endpoints would be fully open. 0.0.0.0 would expose the unauth
+    # endpoints to every host on the LAN. 127.0.0.1 keeps host-side dev
+    # tooling (browser UI, IDE-run backend) working while preventing
+    # remote access. Production is not affected — ACA uses
+    # external_enabled = false with .internal domain routing.
     ports:
-      - "3030:3030"
+      - "127.0.0.1:3030:3030"
     volumes:
       - fuseki_tdb2:/opt/fuseki/run/databases/tdb2/ismd-tool-dataset
       - fuseki_lucene:/opt/fuseki/run/databases/lucene/ismd-tool-dataset

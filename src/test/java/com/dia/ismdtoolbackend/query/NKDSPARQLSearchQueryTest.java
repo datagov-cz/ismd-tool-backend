@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.query;
 
 import com.dia.ismdtoolbackend.enums.RelationType;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -197,5 +198,60 @@ class NKDSPARQLSearchQueryTest {
 
         assertTrue(query.contains("?ontology"));
         assertTrue(query.contains("skos:inScheme ?ontology"));
+    }
+
+    @Test
+    void isSafeHttpIri_acceptsHttpAndHttps() {
+        assertTrue(SparqlIriValidator.isSafeHttpIri("https://slovnik.gov.cz/datovy/osoby"));
+        assertTrue(SparqlIriValidator.isSafeHttpIri("http://example.org/ontology#Thing"));
+    }
+
+    @Test
+    void isSafeHttpIri_rejectsInjectionAttempts() {
+        // Space + SPARQL fragment that would break out of <...>
+        assertFalse(SparqlIriValidator.isSafeHttpIri(
+                "http://example.org/ont } SELECT * WHERE { ?s ?p ?o"));
+        assertFalse(SparqlIriValidator.isSafeHttpIri("http://example.org/>malicious"));
+        assertFalse(SparqlIriValidator.isSafeHttpIri("http://example.org/a\nb"));
+    }
+
+    @Test
+    void isSafeHttpIri_rejectsNonHttpSchemes() {
+        assertFalse(SparqlIriValidator.isSafeHttpIri("file:///etc/passwd"));
+        assertFalse(SparqlIriValidator.isSafeHttpIri("javascript:alert(1)"));
+        assertFalse(SparqlIriValidator.isSafeHttpIri("urn:isbn:0451450523"));
+    }
+
+    @Test
+    void isSafeHttpIri_rejectsNullAndBlank() {
+        assertFalse(SparqlIriValidator.isSafeHttpIri(null));
+        assertFalse(SparqlIriValidator.isSafeHttpIri(""));
+        assertFalse(SparqlIriValidator.isSafeHttpIri("   "));
+    }
+
+    @Test
+    void buildConceptSearchQuery_dropsMaliciousOntologyIri() {
+        List<String> iris = List.of(
+                "https://slovnik.gov.cz/datovy/osoby",
+                "http://example.org/ont } SELECT * WHERE { ?s ?p ?o"
+        );
+
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null);
+
+        assertTrue(query.contains("<https://slovnik.gov.cz/datovy/osoby>"));
+        assertFalse(query.contains("SELECT * WHERE { ?s ?p ?o"));
+        assertFalse(query.contains("} SELECT"));
+    }
+
+    @Test
+    void buildConceptSearchQuery_allInvalidOntologyIris_noValuesClause() {
+        List<String> iris = List.of(
+                "javascript:alert(1)",
+                "http://example.org/bad }"
+        );
+
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null);
+
+        assertFalse(query.contains("VALUES ?ontology"));
     }
 }

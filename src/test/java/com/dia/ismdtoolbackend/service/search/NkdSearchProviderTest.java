@@ -154,4 +154,26 @@ class NkdSearchProviderTest {
         assertTrue(result.results().isEmpty());
         assertEquals(0, result.totalCount());
     }
+
+    @Test
+    void search_rowWithMissingResourceBinding_skippedAndOthersReturned() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        // Row missing "resource" binding — getIri() will be null
+        Map<String, String> badRow = new LinkedHashMap<>();
+        badRow.put("label", "No IRI");
+
+        Map<String, String> goodRow = new LinkedHashMap<>();
+        goodRow.put("resource", "https://example.org/concept/1");
+        goodRow.put("label", "Good");
+        goodRow.put("ontology", "https://example.org/ontology/1");
+
+        when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of(badRow, goodRow));
+
+        SearchProvider.SearchProviderResult result =
+                nkdSearchProvider.search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, null);
+
+        assertEquals(1, result.results().size());
+        assertEquals("https://example.org/concept/1", result.results().get(0).getIri());
+    }
 }
