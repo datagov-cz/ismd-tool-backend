@@ -4,12 +4,14 @@ import org.apache.jena.query.ParameterizedSparqlString;
 
 public class RppSPARQLQuery {
 
-    // Locked by spec — do NOT adjust without updating .planning/rpp-integration-analysis.md:
-    //   Agenda type: https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/agenda
-    //   ISVS type:   https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy
-    // TODO (Phase 2 smoke test): verify the four predicate IRIs (má-kód-agendy, má-název-agendy,
-    // má-kód-isvs, má-název-isvs) and the OPTIONAL predicate (poskytuje-služby-pro-agendu) against
-    // live RPP. They follow the RPP naming pattern but are not referenced elsewhere in this repo.
+    // Predicate IRIs verified 2026-04-21 against https://rpp-opendata.egon.gov.cz/odrpp/sparql:
+    //   Agenda  type: legislativní/sbírka/111/2009/pojem/agenda
+    //   Agenda  code: legislativní/sbírka/111/2009/pojem/má-kód-agendy        (returns A-prefixed codes)
+    //   Agenda  name: legislativní/sbírka/111/2009/pojem/má-název-agendy
+    //   ISVS    type: legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy
+    //   ISVS    code: agendový/104/pojem/má-identifikátor-isvs                (numeric string id)
+    //   ISVS    name: legislativní/sbírka/329/2020/pojem/název-isvs           (note: no "má-" prefix)
+    //   ISVS→Agenda:  legislativní/sbírka/329/2020/pojem/poskytuje-služby-pro-výkon-agendy
 
     public static String buildAgendaListQuery() {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
@@ -34,10 +36,10 @@ public class RppSPARQLQuery {
                 SELECT ?isvs ?code ?nazev ?agenda
                 WHERE {
                   ?isvs a <https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy> ;
-                        <https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/má-kód-isvs> ?code ;
-                        <https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/má-název-isvs> ?nazev .
+                        <https://slovník.gov.cz/agendový/104/pojem/má-identifikátor-isvs> ?code ;
+                        <https://slovník.gov.cz/legislativní/sbírka/329/2020/pojem/název-isvs> ?nazev .
                   OPTIONAL {
-                    ?isvs <https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/poskytuje-služby-pro-agendu> ?agenda .
+                    ?isvs <https://slovník.gov.cz/legislativní/sbírka/329/2020/pojem/poskytuje-služby-pro-výkon-agendy> ?agenda .
                   }
                 }
                 """);
