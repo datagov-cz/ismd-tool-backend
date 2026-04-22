@@ -2,7 +2,9 @@ package com.dia.ismdtoolbackend.enums;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(type = "string", allowableValues = {"SUBCLASS", "SUPERCLASS", "EXACT_MATCH", "PROPERTY_OF", "RELATIONSHIP_OF"})
 public enum RelationType {
     SUBCLASS("SUBCLASS"),
     SUPERCLASS("SUPERCLASS"),

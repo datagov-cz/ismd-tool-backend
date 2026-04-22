@@ -51,9 +51,9 @@ public class SearchController {
             @Parameter(description = "Vyhledávací dotaz (min. 2 znaky)", required = true)
             @RequestParam String q,
             @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT")
-            @RequestParam(required = false) String type,
+            @RequestParam(required = false) SearchType type,
             @Parameter(description = "Zdroj dat: NKD, ISMD, ALL")
-            @RequestParam(required = false) String source,
+            @RequestParam(required = false) SearchSource source,
             @Parameter(description = "Maximální počet výsledků (1-100)")
             @RequestParam(defaultValue = "20") int limit,
             @Parameter(description = "Offset pro stránkování")
@@ -63,7 +63,7 @@ public class SearchController {
             @Parameter(description = "Filtrování podle IRI ontologie")
             @RequestParam(required = false) List<String> ontologyIri,
             @Parameter(description = "Filtrování podle typů vztahů: SUBCLASS, SUPERCLASS, EXACT_MATCH, PROPERTY_OF, RELATIONSHIP_OF")
-            @RequestParam(required = false) List<String> relationTypes,
+            @RequestParam(required = false) List<RelationType> relationTypes,
             @AuthenticationPrincipal SecurityUser securityUser) {
 
         String requestId = UUID.randomUUID().toString();
@@ -71,19 +71,13 @@ public class SearchController {
         try {
             validateSearchParams(q, limit, offset);
 
-            SearchType searchType = type != null ? SearchType.fromString(type) : null;
-            SearchSource searchSource = source != null ? SearchSource.fromString(source) : null;
-            List<RelationType> parsedRelationTypes = relationTypes != null
-                    ? relationTypes.stream().map(RelationType::fromString).toList()
-                    : null;
-
             log.info("Search request: q='{}', type={}, source={}, limit={}, offset={}, lang={}, user={}",
-                    q.trim(), searchType, searchSource, limit, offset, lang,
+                    q.trim(), type, source, limit, offset, lang,
                     securityUser != null ? securityUser.getUserId() : "anonymous");
 
             SearchResponseDto response = searchService.search(
-                    q.trim(), searchType, searchSource, limit, offset, lang,
-                    ontologyIri, parsedRelationTypes, securityUser);
+                    q.trim(), type, source, limit, offset, lang,
+                    ontologyIri, relationTypes, securityUser);
 
             return ResponseEntity.ok(ApiResponseDto.success(response, "Search completed successfully"));
         } finally {
