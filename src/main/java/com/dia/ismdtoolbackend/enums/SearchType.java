@@ -2,7 +2,9 @@ package com.dia.ismdtoolbackend.enums;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(type = "string", allowableValues = {"ONTOLOGY", "CONCEPT"})
 public enum SearchType {
     ONTOLOGY("ONTOLOGY"),
     CONCEPT("CONCEPT");
