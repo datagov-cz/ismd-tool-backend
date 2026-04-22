@@ -190,14 +190,14 @@ public class OntologyController {
             description = "Vrací kompletní detail slovníku včetně všech pojmů, jejich vztahů a metadat. Obsahuje také informace o odchylkách od publikované verze, pokud existuje. Veřejný endpoint."
     )
     @GetMapping("/{slug}/detail")
-    public ResponseEntity<GetOntologyDto> getOntologyDetail(@PathVariable String slug) {
+    public ResponseEntity<ApiResponseDto<GetOntologyDto>> getOntologyDetail(@PathVariable String slug) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology detail requested, ontologyId: {}", slug);
 
         GetOntologyDto ontologyDto = ontologyService.getOntologyDetailModel(slug);
 
-        return ResponseEntity.ok().body(ontologyDto);
+        return ResponseEntity.ok().body(ApiResponseDto.success(ontologyDto, "Detail slovníku byl úspěšně načten."));
     }
 
     @Operation(

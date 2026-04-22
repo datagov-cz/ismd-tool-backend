@@ -41,11 +41,6 @@ public class NkdSparqlClient {
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
         log.debug("Fetching published concept from NKD: {}", conceptIri);
 
-        if (nkdSparqlEndpoint == null || nkdSparqlEndpoint.trim().isEmpty()) {
-            log.warn("NKD SPARQL endpoint not configured");
-            return Optional.empty();
-        }
-
         String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
 
         Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
@@ -54,7 +49,7 @@ public class NkdSparqlClient {
                 .construct();
 
         if (resultModel == null || resultModel.isEmpty()) {
-            log.warn("No data found for concept in NKD: {}", conceptIri);
+            log.info("No data found for concept in NKD: {}", conceptIri);
             return Optional.empty();
         }
 
@@ -62,12 +57,8 @@ public class NkdSparqlClient {
 
         Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
         OntologyDetailModel.ConceptDetailModel conceptDetail =
-                detailExtractor.extractConceptDetail(processedModel, conceptIri);
-
-        if (conceptDetail == null) {
-            log.warn("Failed to extract concept detail from NKD data for: {}", conceptIri);
-            return Optional.empty();
-        }
+                detailExtractor.extractConceptDetail(processedModel, conceptIri,
+                        OntologyDetailExtractor.iriResolver());
 
         log.debug("Successfully extracted published concept detail from NKD: {}", conceptIri);
         return Optional.of(conceptDetail);
@@ -75,11 +66,6 @@ public class NkdSparqlClient {
 
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         log.debug("Fetching published ontology from NKD: {}", ontologyIri);
-
-        if (nkdSparqlEndpoint == null || nkdSparqlEndpoint.trim().isEmpty()) {
-            log.warn("NKD SPARQL endpoint not configured");
-            return Optional.empty();
-        }
 
         String query = NKDSPARQLConstructQuery.buildOntologyConstructQuery(ontologyIri);
 
@@ -89,19 +75,15 @@ public class NkdSparqlClient {
                 .construct();
 
         if (resultModel == null || resultModel.isEmpty()) {
-            log.warn("No data found for ontology in NKD: {}", ontologyIri);
+            log.info("No data found for ontology in NKD: {}", ontologyIri);
             return Optional.empty();
         }
 
         log.debug("Fetched {} triples from NKD for ontology: {}", resultModel.size(), ontologyIri);
 
         Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
-        OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel);
-
-        if (ontologyDetail == null) {
-            log.warn("Failed to extract ontology detail from NKD data for: {}", ontologyIri);
-            return Optional.empty();
-        }
+        OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel,
+                OntologyDetailExtractor.iriResolver());
 
         log.debug("Successfully extracted published ontology detail from NKD: {}", ontologyIri);
         return Optional.of(ontologyDetail);

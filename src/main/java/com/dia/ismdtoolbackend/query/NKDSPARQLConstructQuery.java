@@ -44,22 +44,34 @@ public class NKDSPARQLConstructQuery {
                 PREFIX dcterms: <http://purl.org/dc/terms/>
 
                 CONSTRUCT {
-                  ?ontology ?p ?o .
-                  ?o ?nestedP ?nestedO .
+                  ?ontology ?op ?oo .
+                  ?oo ?oNestedP ?oNestedO .
+                  ?concept ?cp ?co .
+                  ?co ?cNestedP ?cNestedO .
                 }
                 WHERE {
                   BIND(?inputOntology as ?ontology)
 
                   {
-                    ?ontology ?p ?o .
-                    FILTER(?p IN (rdf:type, skos:prefLabel, dcterms:title, dcterms:description, rdfs:label))
+                    ?ontology ?op ?oo .
                   }
                   UNION
                   {
-                    ?ontology ?p ?o .
-                    FILTER(?p IN (rdf:type, skos:prefLabel, dcterms:title, dcterms:description, rdfs:label))
-                    FILTER(isBlank(?o))
-                    ?o ?nestedP ?nestedO .
+                    ?ontology ?op ?oo .
+                    FILTER(isBlank(?oo))
+                    ?oo ?oNestedP ?oNestedO .
+                  }
+                  UNION
+                  {
+                    ?concept skos:inScheme ?ontology .
+                    ?concept ?cp ?co .
+                  }
+                  UNION
+                  {
+                    ?concept skos:inScheme ?ontology .
+                    ?concept ?cp ?co .
+                    FILTER(isBlank(?co))
+                    ?co ?cNestedP ?cNestedO .
                   }
                 }
                 """);

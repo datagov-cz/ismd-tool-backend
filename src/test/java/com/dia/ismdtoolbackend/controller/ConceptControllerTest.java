@@ -621,12 +621,13 @@ class ConceptControllerTest {
         mockMvc.perform(get("/api/concept/{slug}/detail", slug))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.conceptMetadata.id").value(1))
-                .andExpect(jsonPath("$.conceptMetadata.slug").value(slug))
-                .andExpect(jsonPath("$.conceptMetadata.conceptIri").value("http://example.org/TestConcept"))
-                .andExpect(jsonPath("$.conceptMetadata.conceptName").value("TestConcept"))
-                .andExpect(jsonPath("$.conceptDetail.iri").value("http://example.org/TestConcept"))
-                .andExpect(jsonPath("$.conceptDetail['název'].cs").value("TestConcept"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.conceptMetadata.id").value(1))
+                .andExpect(jsonPath("$.data.conceptMetadata.slug").value(slug))
+                .andExpect(jsonPath("$.data.conceptMetadata.conceptIri").value("http://example.org/TestConcept"))
+                .andExpect(jsonPath("$.data.conceptMetadata.conceptName").value("TestConcept"))
+                .andExpect(jsonPath("$.data.conceptDetail.iri").value("http://example.org/TestConcept"))
+                .andExpect(jsonPath("$.data.conceptDetail['název'].cs").value("TestConcept"));
     }
 
     @Test
@@ -672,7 +673,8 @@ class ConceptControllerTest {
         mockMvc.perform(get("/api/concept/{slug}/detail", slug))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.conceptMetadata.conceptType").value("VLASTNOST"))
-                .andExpect(jsonPath("$.conceptDetail.iri").value("http://example.org/PropertyConcept"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.conceptMetadata.conceptType").value("VLASTNOST"))
+                .andExpect(jsonPath("$.data.conceptDetail.iri").value("http://example.org/PropertyConcept"));
     }
 }

@@ -143,6 +143,8 @@ public class SecurityConfig {
                         "/api/ontology/list",
                         "/api/concept/list",
                         "/api/concept/*/detail",
+                        "/api/nkd/ontology/detail",
+                        "/api/nkd/concept/detail",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"

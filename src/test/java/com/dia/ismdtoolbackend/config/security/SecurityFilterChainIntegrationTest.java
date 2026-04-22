@@ -104,6 +104,8 @@ class SecurityFilterChainIntegrationTest {
             "/api/ontology/test-slug/detail",
             "/api/ontology/list",
             "/api/concept/list",
+            "/api/nkd/ontology/detail",
+            "/api/nkd/concept/detail",
             "/v3/api-docs",
             "/swagger-ui.html"
     })

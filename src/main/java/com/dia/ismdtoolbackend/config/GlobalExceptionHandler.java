@@ -185,4 +185,16 @@ public class GlobalExceptionHandler {
         log.error("IO exception: {}", e.getMessage(), e);
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    @ExceptionHandler(NkdResourceNotFoundException.class)
+    public ResponseEntity<ApiResponseDto> handleNkdResourceNotFoundException(NkdResourceNotFoundException e) {
+        log.info("NKD resource not found: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(NkdEndpointException.class)
+    public ResponseEntity<ApiResponseDto> handleNkdEndpointException(NkdEndpointException e) {
+        log.warn("NKD endpoint error: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.SERVICE_UNAVAILABLE);
+    }
 }

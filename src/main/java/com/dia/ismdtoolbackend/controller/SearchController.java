@@ -42,9 +42,9 @@ public class SearchController {
     }
 
     @Operation(
-            summary = "Vyhledávání ontologií a pojmů",
-            description = "Vyhledává ontologie a pojmy napříč zdroji NKD a ISMD. " +
-                    "Anonymní uživatelé mohou prohledávat pouze NKD, přihlášení uživatelé oba zdroje."
+            summary = "Vyhledávání slovníků a pojmů",
+            description = "Vyhledává slovníky a pojmy napříč zdroji NKD a ISMD. " +
+                    "Anonymní uživatelé mohou vyhledávat pouze v NKD, přihlášení uživatelé oba zdroje."
     )
     @GetMapping
     public ResponseEntity<ApiResponseDto<SearchResponseDto>> search(
@@ -60,7 +60,7 @@ public class SearchController {
             @RequestParam(defaultValue = "0") int offset,
             @Parameter(description = "Preferovaný jazyk")
             @RequestParam(defaultValue = "cs") String lang,
-            @Parameter(description = "Filtrování podle IRI ontologie")
+            @Parameter(description = "Filtrování podle IRI slovníku")
             @RequestParam(required = false) List<String> ontologyIri,
             @Parameter(description = "Filtrování podle typů vztahů: SUBCLASS, SUPERCLASS, EXACT_MATCH, PROPERTY_OF, RELATIONSHIP_OF")
             @RequestParam(required = false) List<RelationType> relationTypes,
