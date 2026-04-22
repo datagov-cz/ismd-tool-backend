@@ -89,10 +89,9 @@ class SearchControllerTest {
     }
 
     @Test
-    void search_withMissingQuery_returnsError() throws Exception {
-        // Spring's MissingServletRequestParameterException is caught by global handler
+    void search_withMissingQuery_returns400() throws Exception {
         mockMvc.perform(get("/api/search"))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().isBadRequest());
     }
 
     @Test

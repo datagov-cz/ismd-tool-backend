@@ -8,9 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
@@ -83,6 +86,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponseDto> handleIllegalArgumentException(IllegalArgumentException e) {
         log.warn("Illegal argument: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler({
+            MethodArgumentTypeMismatchException.class,
+            TypeMismatchException.class,
+            MissingServletRequestParameterException.class
+    })
+    public ResponseEntity<ApiResponseDto> handleRequestBindingException(Exception e) {
+        log.warn("Bad request: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
     }
 
