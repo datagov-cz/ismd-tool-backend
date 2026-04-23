@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
@@ -46,6 +48,29 @@ public class NkdDetailController {
 
         return ResponseEntity.ok()
                 .body(ApiResponseDto.success(dto, "Detail slovníku z NKD byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Seznam slovníků z NKD podle IRI",
+            description = "Vrací zkrácené metadata slovníků publikovaných v Národním katalogu dat (NKD) " +
+                    "pro zadaný seznam IRI. Slouží například k zobrazení naposledy navštívených slovníků, " +
+                    "kde frontend uchovává seznam IRI v localStorage. IRI, které se nepodaří načíst nebo " +
+                    "v NKD neexistují, jsou v odpovědi vynechány. Maximálně 50 IRI v jedné žádosti. " +
+                    "Veřejný endpoint."
+    )
+    @GetMapping("/ontology/list")
+    public ResponseEntity<ApiResponseDto<GetNkdOntologyListDto>> getNkdOntologyList(
+            @Parameter(description = "Seznam IRI slovníků v NKD (max 50)", required = true)
+            @RequestParam List<String> iris
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        log.info("NKD ontology list requested, count: {}", iris == null ? 0 : iris.size());
+
+        GetNkdOntologyListDto dto = nkdDetailService.getOntologyList(iris);
+
+        return ResponseEntity.ok()
+                .body(ApiResponseDto.success(dto, "Seznam slovníků z NKD byl úspěšně načten."));
     }
 
     @Operation(

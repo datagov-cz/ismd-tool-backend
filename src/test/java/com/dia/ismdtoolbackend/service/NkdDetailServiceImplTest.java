@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -14,12 +15,17 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -192,5 +198,147 @@ class NkdDetailServiceImplTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.getConceptDetail(CONCEPT_IRI, "not an iri"));
         verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConcept(anyString());
+    }
+
+    // ── Ontology list ──────────────────────────────────────────────────
+
+    @Test
+    void getOntologyList_nullInput_returnsEmpty() {
+        // Empty/null input is a no-op — don't even check endpoint config so tests
+        // and FE empty-cart calls don't fail when NKD is offline.
+        GetNkdOntologyListDto result = service.getOntologyList(null);
+        assertTrue(result.getOntologies().isEmpty());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+    }
+
+    @Test
+    void getOntologyList_emptyInput_returnsEmpty() {
+        GetNkdOntologyListDto result = service.getOntologyList(List.of());
+        assertTrue(result.getOntologies().isEmpty());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+    }
+
+    @Test
+    void getOntologyList_singleValidIri_mapsAllFields() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        OntologyDetailModel model = OntologyDetailModel.builder()
+                .iri(ONTOLOGY_IRI)
+                .name(Map.of("cs", "Test slovník"))
+                .description(Map.of("cs", "Popis"))
+                .creationDate("2024-01-02")
+                .modificationDate("2024-03-04")
+                .build();
+        when(nkdSparqlClient.fetchPublishedOntology(ONTOLOGY_IRI)).thenReturn(Optional.of(model));
+
+        GetNkdOntologyListDto result = service.getOntologyList(List.of(ONTOLOGY_IRI));
+
+        assertEquals(1, result.getOntologies().size());
+        var item = result.getOntologies().get(0);
+        assertEquals(ONTOLOGY_IRI, item.getIri());
+        assertEquals(Map.of("cs", "Test slovník"), item.getName());
+        assertEquals(Map.of("cs", "Popis"), item.getDescription());
+        assertEquals("2024-01-02", item.getCreationDate());
+        assertEquals("2024-03-04", item.getModificationDate());
+    }
+
+    @Test
+    void getOntologyList_multipleValid_returnsInInputOrder() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        String iri1 = "https://example.org/ontology/a";
+        String iri2 = "https://example.org/ontology/b";
+        String iri3 = "https://example.org/ontology/c";
+        when(nkdSparqlClient.fetchPublishedOntology(iri1))
+                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(iri1).build()));
+        when(nkdSparqlClient.fetchPublishedOntology(iri2))
+                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(iri2).build()));
+        when(nkdSparqlClient.fetchPublishedOntology(iri3))
+                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(iri3).build()));
+
+        GetNkdOntologyListDto result = service.getOntologyList(List.of(iri1, iri2, iri3));
+
+        assertEquals(List.of(iri1, iri2, iri3),
+                result.getOntologies().stream().map(i -> i.getIri()).toList());
+    }
+
+    @Test
+    void getOntologyList_oneIriNotFound_skippedOthersReturned() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        String missingIri = "https://example.org/ontology/missing";
+        String foundIri = "https://example.org/ontology/found";
+        when(nkdSparqlClient.fetchPublishedOntology(missingIri)).thenReturn(Optional.empty());
+        when(nkdSparqlClient.fetchPublishedOntology(foundIri))
+                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(foundIri).build()));
+
+        GetNkdOntologyListDto result = service.getOntologyList(List.of(missingIri, foundIri));
+
+        assertEquals(1, result.getOntologies().size());
+        assertEquals(foundIri, result.getOntologies().get(0).getIri());
+    }
+
+    @Test
+    void getOntologyList_oneIriSparqlErrors_skippedOthersReturned() {
+        // A single stale FE bookmark mustn't blank the whole "last accessed" tile row.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        String erroringIri = "https://example.org/ontology/err";
+        String okIri = "https://example.org/ontology/ok";
+        when(nkdSparqlClient.fetchPublishedOntology(erroringIri))
+                .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
+        when(nkdSparqlClient.fetchPublishedOntology(okIri))
+                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(okIri).build()));
+
+        GetNkdOntologyListDto result = service.getOntologyList(List.of(erroringIri, okIri));
+
+        assertEquals(1, result.getOntologies().size());
+        assertEquals(okIri, result.getOntologies().get(0).getIri());
+    }
+
+    @Test
+    void getOntologyList_invalidIri_failsBatchBeforeAnyFetch() {
+        // Validate up front so a single bad IRI doesn't waste N-1 round-trips.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.getOntologyList(List.of(ONTOLOGY_IRI, "not an iri")));
+
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+    }
+
+    @Test
+    void getOntologyList_endpointNotConfigured_throwsNkdEndpointException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
+
+        assertThrows(NkdEndpointException.class,
+                () -> service.getOntologyList(List.of(ONTOLOGY_IRI)));
+
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+    }
+
+    @Test
+    void getOntologyList_overLimit_throwsIllegalArgumentException() {
+        // Cap is 50; 51 must be rejected before we ever check endpoint config or fetch.
+        List<String> tooMany = IntStream.range(0, 51)
+                .mapToObj(i -> "https://example.org/ontology/" + i)
+                .collect(Collectors.toList());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.getOntologyList(tooMany));
+
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+    }
+
+    @Test
+    void getOntologyList_atLimit_isAccepted() {
+        // 50 must work — exactly at the boundary.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.fetchPublishedOntology(anyString())).thenReturn(Optional.empty());
+
+        List<String> exactly50 = IntStream.range(0, 50)
+                .mapToObj(i -> "https://example.org/ontology/" + i)
+                .collect(Collectors.toList());
+
+        GetNkdOntologyListDto result = service.getOntologyList(exactly50);
+
+        assertTrue(result.getOntologies().isEmpty());
+        verify(nkdSparqlClient, org.mockito.Mockito.times(50)).fetchPublishedOntology(anyString());
     }
 }
