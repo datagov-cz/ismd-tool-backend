@@ -44,6 +44,10 @@ public class RppSnapshotHolder {
         return refreshUnderLock();
     }
 
+    public RppSnapshot peek() {
+        return current.get();
+    }
+
     private RppSnapshot refreshUnderLock() {
         synchronized (refreshLock) {
             RppSnapshot snap = current.get();
