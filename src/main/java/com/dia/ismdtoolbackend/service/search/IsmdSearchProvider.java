@@ -61,6 +61,17 @@ public class IsmdSearchProvider implements SearchProvider {
                                        String lang, List<String> ontologyIris,
                                        List<RelationType> relationTypes, String userId,
                                        boolean isAdmin, Boolean publishedFilter) {
+        // Defense in depth: SearchServiceImpl.resolveSource is the primary chokepoint
+        // that rejects anonymous UNPUBLISHED requests, but a future refactor of that
+        // method must not be allowed to leak unpublished content from other users.
+        // An anonymous, non-admin caller has no rows they're allowed to see under
+        // the unpublished filter, so reject before any repo/Fuseki work runs.
+        if (Boolean.FALSE.equals(publishedFilter) && userId == null && !isAdmin) {
+            log.warn("Refusing UNPUBLISHED search for unauthenticated caller — " +
+                    "should have been blocked at SearchServiceImpl.resolveSource");
+            return new SearchProviderResult(List.of(), 0);
+        }
+
         List<SearchResultDto> allResults = new ArrayList<>();
         AtomicBoolean fusekiDegraded = new AtomicBoolean(false);
 
@@ -70,11 +81,19 @@ public class IsmdSearchProvider implements SearchProvider {
             allResults.addAll(searchOntologies(query, userId, isAdmin, publishedFilter));
         }
 
-        // Concept/scheme search against PG concept table + Fuseki text index. Fuseki
-        // rows self-classify (ONTOLOGY vs CONCEPT) via rdf:type, and we filter by
-        // the caller's requested type afterwards.
-        allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
-                ontologyIris, relationTypes, fusekiDegraded, limit));
+        // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
+        // AND ontology labels — Fuseki rows self-classify by rdf:type). For an
+        // ONTOLOGY-only request we skip the PG half (it returns nothing of interest),
+        // skip the relation-type filter (concept-only), and let Fuseki contribute
+        // ontology label matches that PG slug-search would miss. For CONCEPT-only or
+        // unfiltered (type == null) we run the full path.
+        if (type != SearchType.ONTOLOGY) {
+            allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
+                    ontologyIris, relationTypes, fusekiDegraded, limit));
+        } else {
+            allResults.addAll(searchOntologyLabelsViaFuseki(query, userId, isAdmin,
+                    publishedFilter, ontologyIris, fusekiDegraded, limit));
+        }
 
         // Dedup by IRI
         LinkedHashMap<String, SearchResultDto> deduped = new LinkedHashMap<>();
@@ -251,6 +270,41 @@ public class IsmdSearchProvider implements SearchProvider {
         return mergedResults;
     }
 
+    /**
+     * Fuseki-only path used when {@code type=ONTOLOGY}. Skips the PG concept query
+     * (concepts can never satisfy an ontology-only request), skips relation-type
+     * filtering (concept-only concept), and skips label enrichment (Fuseki already
+     * returned labels). Caller's outer type filter then drops any concept-typed
+     * Fuseki rows that snuck in alongside the ontology hits.
+     */
+    private List<SearchResultDto> searchOntologyLabelsViaFuseki(String query, String userId,
+                                                                  boolean isAdmin,
+                                                                  Boolean publishedFilter,
+                                                                  List<String> ontologyIris,
+                                                                  AtomicBoolean fusekiDegraded,
+                                                                  int limit) {
+        boolean unpublishedOnly = Boolean.FALSE.equals(publishedFilter);
+        List<String> visibleGraphNames = unpublishedOnly
+                ? getUnpublishedVisibleGraphNames(userId, isAdmin)
+                : getVisibleGraphNames(userId);
+
+        boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
+        List<String> searchGraphs = hasGraphFilter
+                ? ontologyIris.stream().filter(visibleGraphNames::contains).toList()
+                : visibleGraphNames;
+
+        try {
+            return CompletableFuture.supplyAsync(
+                            () -> searchFuseki(query, searchGraphs, limit), searchExecutor)
+                    .orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS)
+                    .join();
+        } catch (Exception e) {
+            log.warn("Fuseki ontology label search failed: {}", e.getMessage());
+            fusekiDegraded.set(true);
+            return List.of();
+        }
+    }
+
     private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames, int limit) {
         if (visibleGraphNames.isEmpty()) {
             log.debug("Fuseki search skipped: no visible graph names for user");
@@ -267,6 +321,13 @@ public class IsmdSearchProvider implements SearchProvider {
         List<SearchResultDto> results = new ArrayList<>();
         for (Map<String, String> row : rows) {
             SearchType resolvedType = classifyByRdfTypes(row.get("types"));
+            // For ontology resources, the resource IRI IS the graph name — don't
+            // populate ontologyIri with a self-reference (which would also overwrite
+            // the PG ontology hit's null ontologyIri during merge). Concepts get the
+            // graph they live in, as before.
+            String ontologyIri = resolvedType == SearchType.ONTOLOGY
+                    ? null
+                    : row.get("graphName");
             results.add(SearchResultDto.builder()
                     .iri(row.get("resourceIri"))
                     .label(row.get("prefLabel"))
@@ -274,7 +335,7 @@ public class IsmdSearchProvider implements SearchProvider {
                     .altName(row.get("altLabel"))
                     .description(row.get("description"))
                     .definition(row.get("definition"))
-                    .ontologyIri(row.get("graphName"))
+                    .ontologyIri(ontologyIri)
                     .type(resolvedType)
                     .source(SearchSource.ISMD)
                     .matchedBy(MatchedBy.SPARQL)

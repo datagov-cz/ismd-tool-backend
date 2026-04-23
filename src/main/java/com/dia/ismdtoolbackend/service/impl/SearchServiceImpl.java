@@ -67,8 +67,11 @@ public class SearchServiceImpl implements SearchService {
                         userId, isAdmin, null)
                 : null;
 
+        // providerName is for logs/telemetry — always "ISMD" because the same
+        // provider answers both ISMD and UNPUBLISHED requests. The response slot
+        // (ismdReportedAs) is a separate concept used only for sourceStatuses keying.
         CompletableFuture<SourceSearchResult> ismdFuture = searchIsmd
-                ? dispatchProviderSearch(ismdSearchProvider, ismdReportedAs.name(),
+                ? dispatchProviderSearch(ismdSearchProvider, "ISMD",
                         query, type, limit, offset, lang, ontologyIris, relationTypes,
                         userId, isAdmin, publishedFilter)
                 : null;

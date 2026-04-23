@@ -132,20 +132,22 @@ public class JenaTDB2Repository {
 
     @PostConstruct
     public void init() {
-        try {
-            log.info("Initializing Fuseki connection to: {}", fusekiEndpoint);
+        log.info("Initializing Fuseki connection to: {}", fusekiEndpoint);
 
-            try (RDFConnection conn = createConnection()) {
-                boolean connected = conn.queryAsk("ASK { ?s ?p ?o }");
-                log.info("Fuseki connection successful. Dataset has data: {}", connected);
-            }
-
-            probeTextIndex();
-
+        // The connection ASK is allowed to fail silently — Fuseki may legitimately be
+        // unreachable in test environments and we don't want that to block startup.
+        // The text-index probe, on the other hand, MUST be allowed to throw in
+        // non-test profiles so a misconfigured deployment fails fast at boot rather
+        // than silently corrupting search results. Keep its call OUTSIDE this catch.
+        try (RDFConnection conn = createConnection()) {
+            boolean connected = conn.queryAsk("ASK { ?s ?p ?o }");
+            log.info("Fuseki connection successful. Dataset has data: {}", connected);
         } catch (Exception e) {
             log.warn("Failed to connect to Fuseki at: {}. This is expected in test environments. Error: {}",
                     fusekiEndpoint, e.getMessage());
         }
+
+        probeTextIndex();
     }
 
     /**
@@ -173,24 +175,43 @@ public class JenaTDB2Repository {
         String probeQuery =
                 "PREFIX text: <http://jena.apache.org/text#> " +
                 "SELECT ?probeSubject WHERE { ?probeSubject text:query \"__ismd_text_index_probe__\" } LIMIT 1";
+
+        // Distinguish three outcomes so we can fail fast on definite misconfiguration
+        // without crashing on a transient Fuseki outage at boot:
+        //   - probe ran, module wired   → textIndexAvailable = true
+        //   - probe ran, module missing → throw in non-test profiles (definite misconfig)
+        //   - probe couldn't run        → log warn, leave textIndexAvailable = false
+        //                                 and let searchByText short-circuit until a
+        //                                 future call succeeds (no boot crash on a
+        //                                 transient network blip).
+        boolean moduleDefinitelyMissing = false;
+        boolean probeRan = false;
         try (RDFConnection conn = createConnection();
              QueryExecution qExec = conn.query(probeQuery)) {
             ResultSet rs = qExec.execSelect();
-            boolean moduleMissing = false;
+            probeRan = true;
             if (rs.hasNext()) {
                 QuerySolution sol = rs.next();
                 if (sol.get("probeSubject") == null) {
-                    moduleMissing = true;
+                    moduleDefinitelyMissing = true;
                 }
             }
-            textIndexAvailable = !moduleMissing;
+            textIndexAvailable = !moduleDefinitelyMissing;
         } catch (Exception e) {
             textIndexAvailable = false;
-            log.warn("Text index probe failed against Fuseki at {}: {}", fusekiEndpoint, e.getMessage());
+            log.warn("Text index probe could not run against Fuseki at {}: {}. " +
+                    "Text search will be unavailable until Fuseki is reachable.",
+                    fusekiEndpoint, e.getMessage());
         }
 
         if (textIndexAvailable) {
             log.info("Fuseki text index probe successful — text search is available.");
+            return;
+        }
+
+        if (!probeRan) {
+            // Couldn't reach Fuseki at all — already warned above. Don't escalate to a
+            // boot-blocking exception, because a transient outage shouldn't kill the app.
             return;
         }
 

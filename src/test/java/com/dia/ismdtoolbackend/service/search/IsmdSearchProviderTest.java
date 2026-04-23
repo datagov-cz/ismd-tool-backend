@@ -413,6 +413,97 @@ class IsmdSearchProviderTest {
         assertEquals("Osoba", result.results().get(0).getLabel());
     }
 
+    // --- Defense-in-depth: anonymous + UNPUBLISHED ---
+
+    @Test
+    void search_anonymousWithUnpublishedFilter_returnsEmptyAndHitsNothing() {
+        // Service layer should reject this at resolveSource, but the provider must
+        // also refuse — a future refactor of resolveSource must not be allowed to
+        // leak unpublished content from other users. publishedFilter=FALSE +
+        // userId=null + isAdmin=false has no rows the caller can see, so we should
+        // bail before any DB or Fuseki call.
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "osoba", null, 20, 0, "cs", null, null,
+                /* userId */ null, /* isAdmin */ false,
+                /* publishedFilter */ Boolean.FALSE);
+
+        assertTrue(result.results().isEmpty(),
+                "Anonymous UNPUBLISHED request must return no results");
+        assertEquals(0, result.totalCount());
+        verifyNoInteractions(conceptMetadataRepository);
+        verifyNoInteractions(ontologyMetadataRepository);
+        verifyNoInteractions(jenaTDB2Repository);
+    }
+
+    // --- type=ONTOLOGY skips PG concept query and relation filter ---
+
+    @Test
+    void search_typeOntology_skipsPgConceptQueryAndRelationFilter() {
+        // PG concept query can never satisfy an ONTOLOGY-only request — running it
+        // is pure waste. Same for the relation-type filter (concept-only concept).
+        // Fuseki MUST still run because it's how we find ontologies by their labels
+        // (PG searchOntologies matches on slug only).
+        OntologyMetadataEntity ontology = createOntology(
+                "https://example.org/ontology/1", "test-ontology", false);
+        when(ontologyMetadataRepository.searchByText("test", "user1"))
+                .thenReturn(List.of(ontology));
+        // Give the user at least one visible graph so searchOntologyLabelsViaFuseki
+        // doesn't short-circuit before reaching the Fuseki call.
+        stubVisibleGraphs("user1", List.of(ontology));
+        stubEmptyFusekiSearch();
+
+        createProvider().search(
+                "test", SearchType.ONTOLOGY, 20, 0, "cs", null,
+                List.of(RelationType.SUBCLASS), "user1", false, null);
+
+        verify(conceptMetadataRepository, never()).searchByText(
+                anyString(), anyString(), anyBoolean(), anyList());
+        verify(conceptMetadataRepository, never()).searchByTextUnpublished(
+                anyString(), anyString(), anyBoolean(), anyBoolean(), anyList());
+        verify(jenaTDB2Repository, never()).filterByRelationTypes(anyList(), anyList());
+        // Fuseki text search SHOULD still be invoked so labels can match.
+        verify(jenaTDB2Repository, atLeastOnce()).searchByText(
+                anyString(), anyList(), anyInt());
+    }
+
+    // --- Fuseki ontology hits don't self-reference via ontologyIri ---
+
+    @Test
+    void search_ontologyHitFromFuseki_leavesOntologyIriNull() {
+        // When a Fuseki text-index row classifies as ONTOLOGY (rdf:type
+        // skos:ConceptScheme / owl:Ontology), ontologyIri must NOT be populated
+        // with graphName — the resource IRI IS the graph name for ontology nodes,
+        // so doing so would (a) create a meaningless self-reference and
+        // (b) overwrite a PG ontology hit's null ontologyIri during merge.
+        Map<String, String> fusekiOntologyRow = new HashMap<>();
+        fusekiOntologyRow.put("resourceIri", "https://example.org/ontology/1");
+        fusekiOntologyRow.put("prefLabel", "Test Ontology");
+        fusekiOntologyRow.put("prefLabelLang", "cs");
+        fusekiOntologyRow.put("graphName", "https://example.org/ontology/1");
+        fusekiOntologyRow.put("types",
+                "http://www.w3.org/2004/02/skos/core#ConceptScheme|http://www.w3.org/2002/07/owl#Ontology");
+
+        OntologyMetadataEntity visibleOntology = createOntology(
+                "https://example.org/ontology/1", "test-ontology", true);
+        when(ontologyMetadataRepository.findAllByIsPublished(true))
+                .thenReturn(List.of(visibleOntology));
+        when(ontologyMetadataRepository.searchByText(anyString(), anyString()))
+                .thenReturn(List.of());
+        when(jenaTDB2Repository.searchByText(anyString(), anyList(), anyInt()))
+                .thenReturn(List.of(fusekiOntologyRow));
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "Test", SearchType.ONTOLOGY, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("https://example.org/ontology/1", dto.getIri());
+        assertEquals(SearchType.ONTOLOGY, dto.getType());
+        assertNull(dto.getOntologyIri(),
+                "Ontology Fuseki hits must not carry a self-referential ontologyIri");
+    }
+
     // --- Helpers ---
 
     private ConceptMetadataEntity createConcept(String iri, String slug, String name,

@@ -31,14 +31,24 @@ class JenaTDB2RepositorySearchTest {
      */
     static class TestableJenaTDB2Repository extends JenaTDB2Repository {
         private final RDFConnection mockConn;
+        private final RuntimeException createConnectionError;
 
         TestableJenaTDB2Repository(HttpClient httpClient, Semaphore semaphore, int timeout, RDFConnection mockConn) {
-            super(httpClient, semaphore, timeout, new MockEnvironment());
+            this(httpClient, semaphore, timeout, mockConn, new MockEnvironment(), null);
+        }
+
+        TestableJenaTDB2Repository(HttpClient httpClient, Semaphore semaphore, int timeout,
+                                    RDFConnection mockConn,
+                                    org.springframework.core.env.Environment environment,
+                                    RuntimeException createConnectionError) {
+            super(httpClient, semaphore, timeout, environment);
             this.mockConn = mockConn;
+            this.createConnectionError = createConnectionError;
         }
 
         @Override
         RDFConnection createConnection() {
+            if (createConnectionError != null) throw createConnectionError;
             return mockConn;
         }
     }
@@ -75,6 +85,86 @@ class JenaTDB2RepositorySearchTest {
         // The short-circuit must happen BEFORE any SPARQL is issued so the missing-index
         // case can't silently return garbage via OPTIONAL joins on an unbound variable.
         verify(mockConnection, never()).query(anyString());
+    }
+
+    // --- probeTextIndex (via init()) ---
+
+    @Test
+    void init_fusekiUnreachableInProdProfile_doesNotCrashBoot() {
+        // Transient outage: createConnection throws (network down, Fuseki not yet up).
+        // The probe must NOT escalate this to a boot-blocking IllegalStateException —
+        // we can't tell "module missing" from "couldn't reach Fuseki at all" without
+        // a successful round-trip, and crashing on a transient blip would be worse
+        // than degrading to text-search-unavailable until the next call succeeds.
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("production");
+        TestableJenaTDB2Repository repo = new TestableJenaTDB2Repository(
+                HttpClient.newHttpClient(), new Semaphore(4), 5000,
+                mockConnection, prodEnv, new RuntimeException("Connection refused"));
+
+        assertDoesNotThrow(repo::init,
+                "Boot must not crash when Fuseki is unreachable, even in production");
+        assertFalse(repo.isTextIndexAvailable(),
+                "Probe couldn't run, so text search should be marked unavailable");
+    }
+
+    @Test
+    void init_textModuleMissingInProdProfile_throwsToFailFast() {
+        // Definite misconfiguration: probe ran cleanly and got the unbound-row shape
+        // that means jena-text isn't wired. In a non-test profile we MUST fail fast
+        // so the deployment doesn't silently corrupt search results.
+        MockEnvironment prodEnv = new MockEnvironment();
+        prodEnv.setActiveProfiles("production");
+
+        // First createConnection() call is for the ASK, second is for the probe.
+        // Both use the same mockConnection. ASK returns true; probe SELECT returns
+        // one row whose ?probeSubject is null (the smoking gun).
+        when(mockConnection.queryAsk(anyString())).thenReturn(true);
+
+        ResultSet probeResultSet = mock(ResultSet.class);
+        QuerySolution unboundSolution = mock(QuerySolution.class);
+        when(unboundSolution.get("probeSubject")).thenReturn(null);
+        when(probeResultSet.hasNext()).thenReturn(true);
+        when(probeResultSet.next()).thenReturn(unboundSolution);
+
+        when(mockConnection.query(anyString())).thenReturn(mockQueryExecution);
+        when(mockQueryExecution.execSelect()).thenReturn(probeResultSet);
+
+        TestableJenaTDB2Repository repo = new TestableJenaTDB2Repository(
+                HttpClient.newHttpClient(), new Semaphore(4), 5000,
+                mockConnection, prodEnv, null);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, repo::init,
+                "Definite misconfiguration must fail fast in non-test profiles");
+        assertTrue(ex.getMessage().contains("text index"),
+                "Error message should point operators at the text index config");
+    }
+
+    @Test
+    void init_textModuleMissingInTestProfile_logsAndContinues() {
+        // Same misconfig signal as above, but in the test profile we must NOT throw —
+        // tests legitimately run without a TextDataset wired and shouldn't all fail
+        // at @PostConstruct.
+        MockEnvironment testEnv = new MockEnvironment();
+        testEnv.setActiveProfiles("test");
+
+        when(mockConnection.queryAsk(anyString())).thenReturn(true);
+
+        ResultSet probeResultSet = mock(ResultSet.class);
+        QuerySolution unboundSolution = mock(QuerySolution.class);
+        when(unboundSolution.get("probeSubject")).thenReturn(null);
+        when(probeResultSet.hasNext()).thenReturn(true);
+        when(probeResultSet.next()).thenReturn(unboundSolution);
+
+        when(mockConnection.query(anyString())).thenReturn(mockQueryExecution);
+        when(mockQueryExecution.execSelect()).thenReturn(probeResultSet);
+
+        TestableJenaTDB2Repository repo = new TestableJenaTDB2Repository(
+                HttpClient.newHttpClient(), new Semaphore(4), 5000,
+                mockConnection, testEnv, null);
+
+        assertDoesNotThrow(repo::init);
+        assertFalse(repo.isTextIndexAvailable());
     }
 
     @Test
