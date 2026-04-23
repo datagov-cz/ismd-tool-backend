@@ -32,7 +32,7 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("osoba", null, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("osoba", null, 20, 0, "cs", null, null, null, false, null);
 
         assertTrue(result.results().isEmpty());
         assertEquals(0, result.totalCount());
@@ -54,7 +54,7 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of(row));
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
         assertEquals(1, result.results().size());
         SearchResultDto dto = result.results().get(0);
@@ -83,7 +83,7 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of(row));
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("osoby", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("osoby", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null, false, null);
 
         assertEquals(1, result.results().size());
         SearchResultDto dto = result.results().get(0);
@@ -112,7 +112,7 @@ class NkdSearchProviderTest {
                 .thenReturn(List.of(conceptRow));
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
 
         assertEquals(2, result.results().size());
     }
@@ -137,7 +137,7 @@ class NkdSearchProviderTest {
                 .thenReturn(List.of(row2));
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
 
         // Should be deduped to 1 result
         assertEquals(1, result.results().size());
@@ -149,7 +149,7 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of());
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("xyz", SearchType.CONCEPT, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("xyz", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
         assertTrue(result.results().isEmpty());
         assertEquals(0, result.totalCount());
@@ -171,7 +171,7 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of(badRow, goodRow));
 
         SearchProvider.SearchProviderResult result =
-                nkdSearchProvider.search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, null);
+                nkdSearchProvider.search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/1", result.results().get(0).getIri());

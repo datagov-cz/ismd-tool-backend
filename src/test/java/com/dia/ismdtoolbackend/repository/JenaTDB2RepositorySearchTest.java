@@ -10,6 +10,7 @@ import org.apache.jena.rdfconnection.RDFConnection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.net.http.HttpClient;
 import java.util.*;
@@ -32,7 +33,7 @@ class JenaTDB2RepositorySearchTest {
         private final RDFConnection mockConn;
 
         TestableJenaTDB2Repository(HttpClient httpClient, Semaphore semaphore, int timeout, RDFConnection mockConn) {
-            super(httpClient, semaphore, timeout);
+            super(httpClient, semaphore, timeout, new MockEnvironment());
             this.mockConn = mockConn;
         }
 
@@ -49,6 +50,9 @@ class JenaTDB2RepositorySearchTest {
         mockConnection = mock(RDFConnection.class);
         mockQueryExecution = mock(QueryExecution.class);
         repository = new TestableJenaTDB2Repository(httpClient, semaphore, 5000, mockConnection);
+        // searchByText short-circuits when the text index is not available; tests exercise
+        // the real query path so we declare the index available explicitly.
+        repository.setTextIndexAvailableForTest(true);
     }
 
     // --- searchByText ---
@@ -60,18 +64,32 @@ class JenaTDB2RepositorySearchTest {
     }
 
     @Test
+    void searchByText_textIndexUnavailable_shortCircuitsToEmptyWithoutQuerying() {
+        repository.setTextIndexAvailableForTest(false);
+
+        List<Map<String, String>> results = repository.searchByText(
+                "test", List.of("https://example.org/ontology/1"), 100);
+
+        assertTrue(results.isEmpty(),
+                "Should return empty list when text index is unavailable");
+        // The short-circuit must happen BEFORE any SPARQL is issued so the missing-index
+        // case can't silently return garbage via OPTIONAL joins on an unbound variable.
+        verify(mockConnection, never()).query(anyString());
+    }
+
+    @Test
     void searchByText_nullGraphNames_returnsEmptyList() {
         List<Map<String, String>> results = repository.searchByText("test", null, 100);
         assertTrue(results.isEmpty());
     }
 
     @Test
-    void searchByText_returnsMatchedConcepts() {
+    void searchByText_returnsMatchedResources() {
         ResultSet mockResultSet = mock(ResultSet.class);
         QuerySolution mockSolution = mock(QuerySolution.class);
 
-        Resource conceptResource = mock(Resource.class);
-        when(conceptResource.getURI()).thenReturn("https://example.org/concept/osoba");
+        Resource resource = mock(Resource.class);
+        when(resource.getURI()).thenReturn("https://example.org/concept/osoba");
 
         Resource graphResource = mock(Resource.class);
         when(graphResource.getURI()).thenReturn("https://example.org/ontology/1");
@@ -82,13 +100,17 @@ class JenaTDB2RepositorySearchTest {
         Literal prefLabelLang = mock(Literal.class);
         when(prefLabelLang.getString()).thenReturn("cs");
 
-        when(mockSolution.getResource("concept")).thenReturn(conceptResource);
+        Literal types = mock(Literal.class);
+        when(types.getString()).thenReturn("http://www.w3.org/2004/02/skos/core#Concept");
+
+        when(mockSolution.getResource("resource")).thenReturn(resource);
         when(mockSolution.getResource("g")).thenReturn(graphResource);
         when(mockSolution.getLiteral("prefLabel")).thenReturn(prefLabel);
         when(mockSolution.getLiteral("prefLabelLang")).thenReturn(prefLabelLang);
         when(mockSolution.getLiteral("altLabel")).thenReturn(null);
         when(mockSolution.getLiteral("description")).thenReturn(null);
         when(mockSolution.getLiteral("definition")).thenReturn(null);
+        when(mockSolution.getLiteral("types")).thenReturn(types);
 
         when(mockResultSet.hasNext()).thenReturn(true, false);
         when(mockResultSet.next()).thenReturn(mockSolution);
@@ -100,10 +122,12 @@ class JenaTDB2RepositorySearchTest {
                 List.of("https://example.org/ontology/1"), 100);
 
         assertEquals(1, results.size());
-        assertEquals("https://example.org/concept/osoba", results.get(0).get("conceptIri"));
+        assertEquals("https://example.org/concept/osoba", results.get(0).get("resourceIri"));
         assertEquals("https://example.org/ontology/1", results.get(0).get("graphName"));
         assertEquals("Osoba", results.get(0).get("prefLabel"));
         assertEquals("cs", results.get(0).get("prefLabelLang"));
+        assertEquals("http://www.w3.org/2004/02/skos/core#Concept",
+                results.get(0).get("types"));
     }
 
     @Test
@@ -120,6 +144,31 @@ class JenaTDB2RepositorySearchTest {
         String executedSparql = sparqlCaptor.getValue();
         assertTrue(executedSparql.contains("test\\'injection"),
                 "Single quotes should be escaped in SPARQL query");
+    }
+
+    @Test
+    void searchByText_queryContainsHyphen_stripsToTokens() {
+        ResultSet mockResultSet = mock(ResultSet.class);
+        when(mockResultSet.hasNext()).thenReturn(false);
+
+        ArgumentCaptor<String> sparqlCaptor = ArgumentCaptor.forClass(String.class);
+        when(mockConnection.query(sparqlCaptor.capture())).thenReturn(mockQueryExecution);
+        when(mockQueryExecution.execSelect()).thenReturn(mockResultSet);
+
+        repository.searchByText("A124 - Datový slovník ISKN",
+                List.of("https://example.org/ontology/1"), 100);
+
+        String executedSparql = sparqlCaptor.getValue();
+        // The hyphen is a Lucene meta-char; we replace it with a space so the Lucene
+        // analyzer (StandardTokenizer) treats the input as whitespace-separated tokens.
+        // Collapsed whitespace means no double spaces survive.
+        assertTrue(executedSparql.contains("a124 datový slovník iskn"),
+                "Hyphen must be replaced with whitespace and collapsed; was: " + executedSparql);
+        assertFalse(executedSparql.contains("\\-"),
+                "No literal Lucene-escaped hyphen should remain; was: " + executedSparql);
+        // Sanity check: the produced SPARQL must parse.
+        assertDoesNotThrow(() -> org.apache.jena.query.QueryFactory.create(executedSparql),
+                "Generated SPARQL must be syntactically valid");
     }
 
     // --- fetchConceptLabels ---

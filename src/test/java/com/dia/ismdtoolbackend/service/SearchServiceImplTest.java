@@ -39,7 +39,7 @@ class SearchServiceImplTest {
 
     @Test
     void search_anonymousUser_defaultsToNKD() {
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(List.of(), 0));
 
         SearchResponseDto response = searchService.search(
@@ -65,7 +65,7 @@ class SearchServiceImplTest {
     void search_authenticatedWithSourceALL_searchesBothSources() {
         SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
 
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(
                         List.of(SearchResultDto.builder()
                                 .iri("https://example.org/concept/1")
@@ -75,7 +75,7 @@ class SearchServiceImplTest {
                                 .build()),
                         1));
 
-        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(
                         List.of(SearchResultDto.builder()
                                 .iri("https://example.org/concept/2")
@@ -97,7 +97,7 @@ class SearchServiceImplTest {
     void search_authenticatedWithSourceNKD_onlySearchesNKD() {
         SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
 
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(List.of(), 0));
 
         SearchResponseDto response = searchService.search(
@@ -116,7 +116,7 @@ class SearchServiceImplTest {
                 .source(SearchSource.NKD)
                 .build();
 
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(List.of(nkdResult), 1));
 
         SearchResponseDto response = searchService.search(
@@ -128,7 +128,7 @@ class SearchServiceImplTest {
 
     @Test
     void search_nkdThrowsException_returnsErrorStatus() {
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new RuntimeException("Connection refused"));
 
         SearchResponseDto response = searchService.search(
@@ -140,7 +140,7 @@ class SearchServiceImplTest {
 
     @Test
     void search_preservesLimitAndOffset() {
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(List.of(), 0));
 
         SearchResponseDto response = searchService.search(
@@ -154,7 +154,7 @@ class SearchServiceImplTest {
     void search_authenticatedWithSourceISMD_onlySearchesISMD() {
         SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
 
-        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(List.of(), 0));
 
         SearchResponseDto response = searchService.search(
@@ -170,7 +170,7 @@ class SearchServiceImplTest {
         SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
         String sharedIri = "https://example.org/concept/shared";
 
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(
                         List.of(SearchResultDto.builder()
                                 .iri(sharedIri)
@@ -179,7 +179,7 @@ class SearchServiceImplTest {
                                 .build()),
                         1));
 
-        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(
                         List.of(SearchResultDto.builder()
                                 .iri(sharedIri)
@@ -199,7 +199,7 @@ class SearchServiceImplTest {
     void search_ismdThrowsException_returnsErrorStatusWithNkdResults() {
         SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
 
-        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenReturn(new SearchProvider.SearchProviderResult(
                         List.of(SearchResultDto.builder()
                                 .iri("https://example.org/concept/1")
@@ -208,7 +208,7 @@ class SearchServiceImplTest {
                                 .build()),
                         1));
 
-        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any()))
+        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new RuntimeException("Database connection failed"));
 
         SearchResponseDto response = searchService.search(

@@ -31,6 +31,9 @@ public class IsmdSearchProvider implements SearchProvider {
     private static final String SKOS_ALT_LABEL = "http://www.w3.org/2004/02/skos/core#altLabel";
     private static final String DCTERMS_DESCRIPTION = "http://purl.org/dc/terms/description";
     private static final String SKOS_DEFINITION = "http://www.w3.org/2004/02/skos/core#definition";
+    private static final String SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept";
+    private static final String SKOS_CONCEPT_SCHEME = "http://www.w3.org/2004/02/skos/core#ConceptScheme";
+    private static final String OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
@@ -56,17 +59,22 @@ public class IsmdSearchProvider implements SearchProvider {
     @Override
     public SearchProviderResult search(String query, SearchType type, int limit, int offset,
                                        String lang, List<String> ontologyIris,
-                                       List<RelationType> relationTypes, String userId) {
+                                       List<RelationType> relationTypes, String userId,
+                                       boolean isAdmin, Boolean publishedFilter) {
         List<SearchResultDto> allResults = new ArrayList<>();
         AtomicBoolean fusekiDegraded = new AtomicBoolean(false);
 
+        // PG ontology list — matches on slug even for empty ontologies where Fuseki
+        // has no indexable labels.
         if (type == null || type == SearchType.ONTOLOGY) {
-            allResults.addAll(searchOntologies(query, userId));
+            allResults.addAll(searchOntologies(query, userId, isAdmin, publishedFilter));
         }
 
-        if (type == null || type == SearchType.CONCEPT) {
-            allResults.addAll(searchConcepts(query, userId, lang, ontologyIris, relationTypes, fusekiDegraded, limit));
-        }
+        // Concept/scheme search against PG concept table + Fuseki text index. Fuseki
+        // rows self-classify (ONTOLOGY vs CONCEPT) via rdf:type, and we filter by
+        // the caller's requested type afterwards.
+        allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
+                ontologyIris, relationTypes, fusekiDegraded, limit));
 
         // Dedup by IRI
         LinkedHashMap<String, SearchResultDto> deduped = new LinkedHashMap<>();
@@ -79,7 +87,12 @@ public class IsmdSearchProvider implements SearchProvider {
             }
         }
 
-        List<SearchResultDto> results = new ArrayList<>(deduped.values());
+        // Type filter: apply AFTER dedup so Fuseki-classified ontologies merge with
+        // PG ontology hits (and PG concepts merge with Fuseki concepts) before we
+        // decide what to drop.
+        List<SearchResultDto> results = deduped.values().stream()
+                .filter(r -> type == null || r.getType() == type)
+                .toList();
 
         // Apply offset and limit in-memory
         int fromIndex = Math.min(offset, results.size());
@@ -94,8 +107,14 @@ public class IsmdSearchProvider implements SearchProvider {
         return new SearchProviderResult(paged, results.size());
     }
 
-    private List<SearchResultDto> searchOntologies(String query, String userId) {
-        List<OntologyMetadataEntity> entities = ontologyMetadataRepository.searchByText(query, userId);
+    private List<SearchResultDto> searchOntologies(String query, String userId,
+                                                    boolean isAdmin, Boolean publishedFilter) {
+        List<OntologyMetadataEntity> entities;
+        if (Boolean.FALSE.equals(publishedFilter)) {
+            entities = ontologyMetadataRepository.searchByTextUnpublished(query, userId, isAdmin);
+        } else {
+            entities = ontologyMetadataRepository.searchByText(query, userId);
+        }
 
         return entities.stream()
                 .map(e -> SearchResultDto.builder()
@@ -109,22 +128,33 @@ public class IsmdSearchProvider implements SearchProvider {
                 .toList();
     }
 
-    private List<SearchResultDto> searchConcepts(String query, String userId, String lang,
+    private List<SearchResultDto> searchConcepts(String query, String userId,
+                                                  boolean isAdmin, Boolean publishedFilter,
+                                                  String lang,
                                                   List<String> ontologyIris,
                                                   List<RelationType> relationTypes,
                                                   AtomicBoolean fusekiDegraded, int limit) {
         boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
         List<String> graphNames = hasGraphFilter ? ontologyIris : List.of();
+        boolean unpublishedOnly = Boolean.FALSE.equals(publishedFilter);
 
-        // Get visible graph names for Fuseki search
-        List<String> visibleGraphNames = getVisibleGraphNames(userId);
+        // Visible graph set for Fuseki. When restricted to UNPUBLISHED we narrow this
+        // to the set of unpublished ontologies the user is allowed to see so every
+        // Fuseki hit is implicitly inside an unpublished ontology — no per-hit
+        // publish-state lookup needed.
+        List<String> visibleGraphNames = unpublishedOnly
+                ? getUnpublishedVisibleGraphNames(userId, isAdmin)
+                : getVisibleGraphNames(userId);
 
         // Run PG and Fuseki text search in parallel on the dedicated search
         // executor (both are blocking I/O: JDBC + HTTP). Each future has its
         // own timeout so a slow PG query cannot extend a fast Fuseki timeout.
         CompletableFuture<List<SearchResultDto>> pgFuture = CompletableFuture.supplyAsync(() -> {
-            List<ConceptMetadataEntity> entities = conceptMetadataRepository.searchByText(
-                    query, userId, hasGraphFilter, graphNames);
+            List<ConceptMetadataEntity> entities = unpublishedOnly
+                    ? conceptMetadataRepository.searchByTextUnpublished(
+                            query, userId, isAdmin, hasGraphFilter, graphNames)
+                    : conceptMetadataRepository.searchByText(
+                            query, userId, hasGraphFilter, graphNames);
             return entities.stream()
                     .map(this::mapConceptEntity)
                     .toList();
@@ -236,20 +266,48 @@ public class IsmdSearchProvider implements SearchProvider {
 
         List<SearchResultDto> results = new ArrayList<>();
         for (Map<String, String> row : rows) {
+            SearchType resolvedType = classifyByRdfTypes(row.get("types"));
             results.add(SearchResultDto.builder()
-                    .iri(row.get("conceptIri"))
+                    .iri(row.get("resourceIri"))
                     .label(row.get("prefLabel"))
                     .labelLang(row.get("prefLabelLang"))
                     .altName(row.get("altLabel"))
                     .description(row.get("description"))
                     .definition(row.get("definition"))
                     .ontologyIri(row.get("graphName"))
-                    .type(SearchType.CONCEPT)
+                    .type(resolvedType)
                     .source(SearchSource.ISMD)
                     .matchedBy(MatchedBy.SPARQL)
                     .build());
         }
         return results;
+    }
+
+    /**
+     * Classifies a Fuseki search hit by its rdf:type set (pipe-separated).
+     * An ontology / concept scheme always carries skos:ConceptScheme or owl:Ontology;
+     * a concept carries skos:Concept. Ambiguous or missing types fall back to CONCEPT,
+     * which matches how the text index was historically consumed.
+     */
+    private static SearchType classifyByRdfTypes(String types) {
+        if (types == null || types.isEmpty()) {
+            return SearchType.CONCEPT;
+        }
+        boolean isOntology = false;
+        boolean isConcept = false;
+        for (String t : types.split("\\|")) {
+            if (SKOS_CONCEPT_SCHEME.equals(t) || OWL_ONTOLOGY.equals(t)) {
+                isOntology = true;
+            } else if (SKOS_CONCEPT.equals(t)) {
+                isConcept = true;
+            }
+        }
+        // skos:Concept wins over skos:ConceptScheme only if the resource is not also
+        // an ontology — the ontology node in our data is both ConceptScheme and Ontology
+        // but never skos:Concept, so this ordering is safe.
+        if (isOntology) return SearchType.ONTOLOGY;
+        if (isConcept) return SearchType.CONCEPT;
+        return SearchType.CONCEPT;
     }
 
     private void enrichWithLabels(List<SearchResultDto> results, String lang) {
@@ -329,6 +387,23 @@ public class IsmdSearchProvider implements SearchProvider {
             ontologies.addAll(userOntologies);
         }
         return ontologies.stream()
+                .map(OntologyMetadataEntity::getGraphName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * Graph names visible to the caller when the search is restricted to
+     * {@code is_published = false}. An admin sees every unpublished graph; a
+     * regular user sees only their own. Used to scope Fuseki text queries so
+     * every hit is transitively inside an unpublished ontology.
+     */
+    private List<String> getUnpublishedVisibleGraphNames(String userId, boolean isAdmin) {
+        if (!isAdmin && userId == null) {
+            return List.of();
+        }
+        return ontologyMetadataRepository.findVisibleUnpublished(userId, isAdmin).stream()
                 .map(OntologyMetadataEntity::getGraphName)
                 .filter(Objects::nonNull)
                 .distinct()

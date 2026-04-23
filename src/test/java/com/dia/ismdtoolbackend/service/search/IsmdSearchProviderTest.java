@@ -55,7 +55,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         SearchResultDto dto = result.results().get(0);
@@ -78,7 +78,7 @@ class IsmdSearchProviderTest {
                 .thenReturn(List.of(ontology));
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "test", SearchType.ONTOLOGY, 20, 0, "cs", null, null, "user1");
+                "test", SearchType.ONTOLOGY, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         SearchResultDto dto = result.results().get(0);
@@ -106,7 +106,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "osoba", null, 20, 0, "cs", null, null, "user1");
+                "osoba", null, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(2, result.results().size());
         assertEquals(2, result.totalCount());
@@ -122,7 +122,7 @@ class IsmdSearchProviderTest {
         stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
-        createProvider().search("osoba", SearchType.CONCEPT, 20, 0, "cs", ontologyIris, null, "user1");
+        createProvider().search("osoba", SearchType.CONCEPT, 20, 0, "cs", ontologyIris, null, "user1", false, null);
 
         verify(conceptMetadataRepository).searchByText("osoba", "user1", true, ontologyIris);
     }
@@ -144,7 +144,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "shared", null, 20, 0, "cs", null, null, "user1");
+                "shared", null, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
     }
@@ -160,7 +160,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "xyz", null, 20, 0, "cs", null, null, "user1");
+                "xyz", null, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(0, result.results().size());
         assertEquals(0, result.totalCount());
@@ -179,7 +179,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "concept", SearchType.CONCEPT, 2, 1, "cs", null, null, "user1");
+                "concept", SearchType.CONCEPT, 2, 1, "cs", null, null, "user1", false, null);
 
         assertEquals(2, result.results().size());
         assertEquals("https://example.org/concept/2", result.results().get(0).getIri());
@@ -201,11 +201,12 @@ class IsmdSearchProviderTest {
 
         // Fuseki returns same concept with description
         Map<String, String> fusekiRow = new HashMap<>();
-        fusekiRow.put("conceptIri", "https://example.org/concept/osoba");
+        fusekiRow.put("resourceIri", "https://example.org/concept/osoba");
         fusekiRow.put("prefLabel", "Osoba");
         fusekiRow.put("prefLabelLang", "cs");
         fusekiRow.put("description", "Fyzická osoba");
         fusekiRow.put("graphName", "https://example.org/ontology/1");
+        fusekiRow.put("types", "http://www.w3.org/2004/02/skos/core#Concept");
 
         OntologyMetadataEntity published = createOntology("https://example.org/ontology/1", "ont1", true);
         when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
@@ -216,7 +217,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         SearchResultDto dto = result.results().get(0);
@@ -235,10 +236,11 @@ class IsmdSearchProviderTest {
 
         // Fuseki finds a concept that PG missed
         Map<String, String> fusekiRow = new HashMap<>();
-        fusekiRow.put("conceptIri", "https://example.org/concept/fuseki-only");
+        fusekiRow.put("resourceIri", "https://example.org/concept/fuseki-only");
         fusekiRow.put("prefLabel", "Fuseki Only Concept");
         fusekiRow.put("prefLabelLang", "en");
         fusekiRow.put("graphName", "https://example.org/ontology/1");
+        fusekiRow.put("types", "http://www.w3.org/2004/02/skos/core#Concept");
 
         OntologyMetadataEntity published = createOntology("https://example.org/ontology/1", "ont1", true);
         when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
@@ -249,7 +251,7 @@ class IsmdSearchProviderTest {
         stubEmptyFetchConceptLabels();
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "test", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+                "test", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/fuseki-only", result.results().get(0).getIri());
@@ -275,7 +277,7 @@ class IsmdSearchProviderTest {
                 .thenThrow(new RuntimeException("Connection refused"));
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/osoba", result.results().get(0).getIri());
@@ -298,7 +300,7 @@ class IsmdSearchProviderTest {
                 .thenReturn(List.of());
         stubEmptyFetchConceptLabels();
 
-        createProvider().search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+        createProvider().search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         // Fuseki should be called with both published and user-owned graphs
         verify(jenaTDB2Repository).searchByText(eq("test"), argThat(graphs ->
@@ -330,7 +332,7 @@ class IsmdSearchProviderTest {
 
         SearchProvider.SearchProviderResult result = createProvider().search(
                 "concept", SearchType.CONCEPT, 20, 0, "cs", null,
-                List.of(RelationType.SUBCLASS), "user1");
+                List.of(RelationType.SUBCLASS), "user1", false, null);
 
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/1", result.results().get(0).getIri());
@@ -353,7 +355,7 @@ class IsmdSearchProviderTest {
 
         SearchProvider.SearchProviderResult result = createProvider().search(
                 "concept", SearchType.CONCEPT, 20, 0, "cs", null,
-                List.of(RelationType.SUBCLASS), "user1");
+                List.of(RelationType.SUBCLASS), "user1", false, null);
 
         assertEquals(1, result.results().size());
     }
@@ -381,7 +383,7 @@ class IsmdSearchProviderTest {
         when(jenaTDB2Repository.fetchConceptLabels(anyList())).thenReturn(labelsModel);
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         SearchResultDto dto = result.results().get(0);
@@ -405,7 +407,7 @@ class IsmdSearchProviderTest {
                 .thenThrow(new RuntimeException("Fuseki down"));
 
         SearchProvider.SearchProviderResult result = createProvider().search(
-                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1");
+                "osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, "user1", false, null);
 
         assertEquals(1, result.results().size());
         assertEquals("Osoba", result.results().get(0).getLabel());

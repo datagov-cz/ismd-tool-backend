@@ -26,7 +26,10 @@ public class NkdSearchProvider implements SearchProvider {
     @Override
     public SearchProviderResult search(String query, SearchType type, int limit, int offset,
                                        String lang, List<String> ontologyIris,
-                                       List<RelationType> relationTypes, String userId) {
+                                       List<RelationType> relationTypes, String userId,
+                                       boolean isAdmin, Boolean publishedFilter) {
+        // isAdmin / publishedFilter are ISMD-local concerns (they filter against a
+        // Postgres is_published column that doesn't exist for NKD). Ignored here.
         if (!nkdSparqlClient.isEndpointConfigured()) {
             log.warn("NKD endpoint not configured, returning empty results");
             return new SearchProviderResult(List.of(), 0);

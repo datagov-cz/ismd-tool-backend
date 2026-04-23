@@ -45,19 +45,32 @@ public class SearchServiceImpl implements SearchService {
         boolean isAuthenticated = user != null;
         SearchSource effectiveSource = resolveSource(source, isAuthenticated);
         String userId = isAuthenticated ? user.getUserId() : null;
+        boolean isAdmin = isAuthenticated && user.isAdmin();
 
         boolean searchNkd = effectiveSource == SearchSource.NKD || effectiveSource == SearchSource.ALL;
-        boolean searchIsmd = effectiveSource == SearchSource.ISMD || effectiveSource == SearchSource.ALL;
+        // UNPUBLISHED is an ISMD dispatch with the is_published=false filter applied.
+        boolean searchIsmd = effectiveSource == SearchSource.ISMD
+                || effectiveSource == SearchSource.ALL
+                || effectiveSource == SearchSource.UNPUBLISHED;
+        Boolean publishedFilter = effectiveSource == SearchSource.UNPUBLISHED ? Boolean.FALSE : null;
+        // The logical "source slot" this ISMD call fills in the response — UNPUBLISHED
+        // is reported under its own key so a caller can tell whether results came from
+        // a published or unpublished search pass.
+        SearchSource ismdReportedAs = effectiveSource == SearchSource.UNPUBLISHED
+                ? SearchSource.UNPUBLISHED
+                : SearchSource.ISMD;
 
         // Dispatch provider calls in parallel, each with its own timeout
         CompletableFuture<SourceSearchResult> nkdFuture = searchNkd
                 ? dispatchProviderSearch(nkdSearchProvider, "NKD",
-                        query, type, limit, offset, lang, ontologyIris, relationTypes, userId)
+                        query, type, limit, offset, lang, ontologyIris, relationTypes,
+                        userId, isAdmin, null)
                 : null;
 
         CompletableFuture<SourceSearchResult> ismdFuture = searchIsmd
-                ? dispatchProviderSearch(ismdSearchProvider, "ISMD",
-                        query, type, limit, offset, lang, ontologyIris, relationTypes, userId)
+                ? dispatchProviderSearch(ismdSearchProvider, ismdReportedAs.name(),
+                        query, type, limit, offset, lang, ontologyIris, relationTypes,
+                        userId, isAdmin, publishedFilter)
                 : null;
 
         Map<SearchSource, SourceStatusDto> sourceStatuses = new LinkedHashMap<>();
@@ -72,7 +85,7 @@ public class SearchServiceImpl implements SearchService {
         if (ismdFuture != null) {
             SourceSearchResult ismdResult = ismdFuture.join();
             allResults.addAll(ismdResult.results());
-            sourceStatuses.put(SearchSource.ISMD, ismdResult.status());
+            sourceStatuses.put(ismdReportedAs, ismdResult.status());
         }
 
         // Dedup by IRI — first occurrence wins (NKD results first when both searched)
@@ -91,8 +104,8 @@ public class SearchServiceImpl implements SearchService {
                     .returnedCount(0)
                     .build());
         }
-        if (!sourceStatuses.containsKey(SearchSource.ISMD)) {
-            sourceStatuses.put(SearchSource.ISMD, SourceStatusDto.builder()
+        if (!sourceStatuses.containsKey(ismdReportedAs)) {
+            sourceStatuses.put(ismdReportedAs, SourceStatusDto.builder()
                     .status(SearchSourceStatus.SKIPPED)
                     .returnedCount(0)
                     .build());
@@ -111,11 +124,12 @@ public class SearchServiceImpl implements SearchService {
             SearchProvider provider, String providerName,
             String query, SearchType type, int limit, int offset,
             String lang, List<String> ontologyIris,
-            List<RelationType> relationTypes, String userId) {
+            List<RelationType> relationTypes, String userId,
+            boolean isAdmin, Boolean publishedFilter) {
 
         return CompletableFuture.supplyAsync(() ->
                         provider.search(query, type, limit, offset, lang,
-                                ontologyIris, relationTypes, userId), searchExecutor)
+                                ontologyIris, relationTypes, userId, isAdmin, publishedFilter), searchExecutor)
                 .orTimeout(sourceTimeoutMs, TimeUnit.MILLISECONDS)
                 .handle((result, ex) -> {
                     if (ex == null) {
@@ -156,7 +170,9 @@ public class SearchServiceImpl implements SearchService {
 
     private SearchSource resolveSource(SearchSource requested, boolean isAuthenticated) {
         if (!isAuthenticated) {
-            if (requested == SearchSource.ISMD || requested == SearchSource.ALL) {
+            if (requested == SearchSource.ISMD
+                    || requested == SearchSource.ALL
+                    || requested == SearchSource.UNPUBLISHED) {
                 throw new SecurityException("Authentication required to search ISMD resources");
             }
             return SearchSource.NKD;

@@ -22,6 +22,27 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                                               @Param("hasGraphFilter") boolean hasGraphFilter,
                                               @Param("graphNames") List<String> graphNames);
 
+    /**
+     * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
+     * <p>
+     * Visibility: when {@code isAdmin = true} every unpublished concept is visible;
+     * otherwise only concepts owned by {@code userId}. Anonymous callers have no
+     * rows they can see and should never reach this method.
+     */
+    @Query(value = """
+            SELECT * FROM ismd_schema.concepts c
+            WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+                   OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
+              AND c.is_published = false
+              AND (:isAdmin = true OR c.user_id = :userId)
+              AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+            """, nativeQuery = true)
+    List<ConceptMetadataEntity> searchByTextUnpublished(@Param("query") String query,
+                                                         @Param("userId") String userId,
+                                                         @Param("isAdmin") boolean isAdmin,
+                                                         @Param("hasGraphFilter") boolean hasGraphFilter,
+                                                         @Param("graphNames") List<String> graphNames);
+
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 
     Optional<ConceptMetadataEntity> findBySlug(String slug);
