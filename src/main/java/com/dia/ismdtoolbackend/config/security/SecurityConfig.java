@@ -137,6 +137,7 @@ public class SecurityConfig {
                 // Only apply this chain to public endpoints
                 .securityMatcher(
                         "/actuator/health",
+                        "/actuator/health/*",
                         "/actuator/info",
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
