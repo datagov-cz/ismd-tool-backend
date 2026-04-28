@@ -1,7 +1,6 @@
 {
   "realm": "ismd",
   "enabled": true,
-  "sslRequired": "none",
   "clients": [
     {
       "clientId": "ismd-app",
