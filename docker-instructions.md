@@ -37,23 +37,23 @@ Run everything in Docker — no JDK required.
 
 **Windows (PowerShell):**
 ```powershell
-.\start-full-backend.ps1
+.\full-backend.ps1 up
 # Force rebuild after code changes:
-.\start-full-backend.ps1 --build
+.\full-backend.ps1 up --build
 ```
 
 **Linux/macOS:**
 ```bash
-chmod +x start-full-backend.sh
-./start-full-backend.sh
+chmod +x full-backend.sh
+./full-backend.sh up
 # Force rebuild after code changes:
-./start-full-backend.sh --build
+./full-backend.sh up --build
 ```
 
 #### Check it's running
 
 ```bash
-docker-compose --profile full-backend ps
+docker compose --profile full-backend ps
 docker logs ismd-tool-backend -f
 ```
 
@@ -63,9 +63,9 @@ Look for `Started IsmdToolBackendApplication` in the logs.
 
 In `tool-frontend/.env.local`:
 ```
-BE_URL=http://127.0.0.1:8081/popisujeme
+BE_URL=http://host.docker.internal:8081/popisujeme
 ```
-Use `127.0.0.1` rather than `localhost` — Node.js resolves `localhost` to `::1` (IPv6) on newer versions, which will fail if the backend only listens on IPv4.
+Prefer `host.docker.internal` over `localhost` / `127.0.0.1` — it works whether `npm run dev` runs in WSL, PowerShell, or Git Bash, and whether the backend is in Docker or IDEA. (`localhost` resolves to `::1` on newer Node and breaks against IPv4-only backends.)
 
 Then run the frontend:
 ```bash
@@ -76,5 +76,10 @@ npm run dev
 #### Stop
 
 ```bash
-docker-compose --profile full-backend down
+# PowerShell
+.\full-backend.ps1 down
+# Bash
+./full-backend.sh down
+# Or directly:
+docker compose --profile full-backend down
 ```
