@@ -45,7 +45,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       
@@ -165,7 +165,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6
       
       - name: Create GitHub Deployment
         id: create_deployment
@@ -231,7 +231,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6
       
       - name: Create GitHub Deployment
         id: create_deployment
@@ -297,7 +297,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6
       
       - name: Create GitHub Deployment
         id: create_deployment
