@@ -176,4 +176,83 @@ class NkdSearchProviderTest {
         assertEquals(1, result.results().size());
         assertEquals("https://example.org/concept/1", result.results().get(0).getIri());
     }
+
+    @Test
+    void search_ontologyResults_lastModifiedAndConceptCountPopulated() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        Map<String, String> ontologyRow = new LinkedHashMap<>();
+        ontologyRow.put("resource", "https://example.org/ontology/1");
+        ontologyRow.put("label", "Slovník");
+        ontologyRow.put("ontologyIri", "https://example.org/ontology/1");
+        ontologyRow.put("modified", "2024-03-04");
+
+        // Page query → ontologyRow; concept-counts batch → cnt=42; both COUNT
+        // queries → total=1. Match by query content so each stub hits its query.
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("LIMIT")))
+                .thenReturn(List.of(ontologyRow));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
+                .thenReturn(List.of(Map.of("ontology", "https://example.org/ontology/1", "cnt", "42")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?resource)")))
+                .thenReturn(List.of(Map.of("total", "1")));
+
+        SearchProvider.SearchProviderResult result =
+                nkdSearchProvider.search("slovník", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null, false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("2024-03-04", dto.getLastModified());
+        assertEquals(42, dto.getConceptCount());
+        assertEquals(1, result.totalOntologies());
+        assertEquals(0, result.totalConcepts());
+    }
+
+    @Test
+    void search_conceptResults_lastModifiedPopulatedNoConceptCount() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        Map<String, String> conceptRow = new LinkedHashMap<>();
+        conceptRow.put("resource", "https://example.org/concept/1");
+        conceptRow.put("label", "Pojem");
+        conceptRow.put("ontology", "https://example.org/ontology/1");
+        conceptRow.put("modified", "2025-06-15T10:30:00");
+
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("LIMIT")))
+                .thenReturn(List.of(conceptRow));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?resource)")))
+                .thenReturn(List.of(Map.of("total", "1")));
+
+        SearchProvider.SearchProviderResult result =
+                nkdSearchProvider.search("pojem", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("2025-06-15T10:30:00", dto.getLastModified());
+        // Concept results don't carry conceptCount (it's an ontology-only field).
+        assertNull(dto.getConceptCount());
+        assertEquals(0, result.totalOntologies());
+        assertEquals(1, result.totalConcepts());
+    }
+
+    @Test
+    void search_countQueryFails_totalsNullButResultsReturn() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        Map<String, String> conceptRow = new LinkedHashMap<>();
+        conceptRow.put("resource", "https://example.org/concept/1");
+        conceptRow.put("label", "Pojem");
+        conceptRow.put("ontology", "https://example.org/ontology/1");
+
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("LIMIT")))
+                .thenReturn(List.of(conceptRow));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?resource)")))
+                .thenThrow(new org.apache.jena.sparql.engine.http.QueryExceptionHTTP(503, "Service unavailable"));
+
+        SearchProvider.SearchProviderResult result =
+                nkdSearchProvider.search("pojem", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
+
+        assertEquals(1, result.results().size());
+        // Total-count failure must not blank the page — just leave totals null.
+        assertNull(result.totalConcepts());
+    }
 }

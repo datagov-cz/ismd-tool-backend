@@ -41,6 +41,9 @@ public class OntologyDetailModel {
     @JsonProperty("pojmy")
     private List<ConceptDetailModel> concepts;
 
+    @JsonProperty("počet-pojmů")
+    private Integer conceptCount;
+
     @Data
     @Builder
     @JsonInclude(JsonInclude.Include.NON_NULL)

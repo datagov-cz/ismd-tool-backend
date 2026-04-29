@@ -174,6 +174,58 @@ class NKDSPARQLSearchQueryTest {
         assertEquals("příliš žluťoučký", NKDSPARQLSearchQuery.sanitizeSearchTerm("příliš žluťoučký"));
     }
 
+    // ── lang sanitization (defence-in-depth: lang lands inside a SPARQL string literal) ──
+
+    @Test
+    void sanitizeLang_passesThroughValidTags() {
+        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang("cs"));
+        assertEquals("en-US", NKDSPARQLSearchQuery.sanitizeLang("en-US"));
+    }
+
+    @Test
+    void sanitizeLang_stripsInjectionAttempt() {
+        // The sanitizer's contract is "no chars that could break out of the
+        // FILTER(LANG(?x) = "…") string literal" — it strips quotes/parens/hash
+        // but keeps letters. The result is a useless lang tag (won't match any
+        // labels) but is structurally safe — that's the goal.
+        String result = NKDSPARQLSearchQuery.sanitizeLang("cs\" ) FILTER(false) #");
+        assertFalse(result.contains("\""), "quote must be stripped");
+        assertFalse(result.contains(")"), "paren must be stripped");
+        assertFalse(result.contains("("), "paren must be stripped");
+        assertFalse(result.contains("#"), "hash must be stripped");
+        assertFalse(result.contains(" "), "space must be stripped");
+    }
+
+    @Test
+    void sanitizeLang_stripsDotsAndSpaces() {
+        assertEquals("csbogustag", NKDSPARQLSearchQuery.sanitizeLang("cs.bogus.tag"));
+        assertEquals("encs", NKDSPARQLSearchQuery.sanitizeLang("en cs"));
+    }
+
+    @Test
+    void sanitizeLang_nullOrEmpty_defaultsToCs() {
+        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang(null));
+        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang(""));
+        assertEquals("cs", NKDSPARQLSearchQuery.sanitizeLang("\""));
+    }
+
+    @Test
+    void buildOntologySearchQuery_maliciousLang_isSanitized() {
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "test", "cs\" ) FILTER(false) #", 10, 0);
+        // The injected payload must not appear unescaped inside the string literal.
+        assertFalse(query.contains("\" ) FILTER(false)"),
+                "Lang injection leaked into query: " + query);
+    }
+
+    @Test
+    void buildConceptSearchQuery_maliciousLang_isSanitized() {
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
+                "test", "cs\" ) FILTER(false) #", 10, 0, null, null);
+        assertFalse(query.contains("\" ) FILTER(false)"),
+                "Lang injection leaked into query: " + query);
+    }
+
     @Test
     void buildConceptSearchQuery_withBothFilters_includesBothClauses() {
         List<String> iris = List.of("https://example.org/ontology/1");

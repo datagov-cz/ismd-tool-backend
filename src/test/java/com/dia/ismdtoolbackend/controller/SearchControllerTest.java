@@ -59,7 +59,8 @@ class SearchControllerTest {
                         SearchSource.NKD, SourceStatusDto.builder()
                                 .status(SearchSourceStatus.OK)
                                 .returnedCount(1)
-                                .totalCount(1)
+                                .totalOntologies(0)
+                                .totalConcepts(1)
                                 .build()
                 ))
                 .build();

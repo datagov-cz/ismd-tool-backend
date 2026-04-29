@@ -65,7 +65,22 @@ public class NkdSparqlClient {
     }
 
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
-        log.debug("Fetching published ontology from NKD: {}", ontologyIri);
+        return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
+            Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
+            OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel,
+                    OntologyDetailExtractor.iriResolver());
+            log.debug("Successfully extracted published ontology detail from NKD: {}", ontologyIri);
+            return ontologyDetail;
+        });
+    }
+
+    /**
+     * Raw NKD ontology model — same CONSTRUCT as {@link #fetchPublishedOntology}
+     * but returned before OFN extraction, for callers that need to serialize
+     * the source RDF (e.g. download endpoint).
+     */
+    public Optional<Model> fetchPublishedOntologyRaw(String ontologyIri) {
+        log.debug("Fetching raw NKD ontology model: {}", ontologyIri);
 
         String query = NKDSPARQLConstructQuery.buildOntologyConstructQuery(ontologyIri);
 
@@ -80,13 +95,7 @@ public class NkdSparqlClient {
         }
 
         log.debug("Fetched {} triples from NKD for ontology: {}", resultModel.size(), ontologyIri);
-
-        Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
-        OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel,
-                OntologyDetailExtractor.iriResolver());
-
-        log.debug("Successfully extracted published ontology detail from NKD: {}", ontologyIri);
-        return Optional.of(ontologyDetail);
+        return Optional.of(resultModel);
     }
 
     public List<String> getPublishedResourcesList(List<String> resourceIris) {

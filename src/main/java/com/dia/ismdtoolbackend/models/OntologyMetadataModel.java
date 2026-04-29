@@ -23,4 +23,5 @@ public class OntologyMetadataModel {
     private List<ConceptMetadataModel> concepts;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Integer conceptCount;
 }

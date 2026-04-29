@@ -8,6 +8,9 @@ import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.service.impl.NkdDetailServiceImpl;
+import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,6 +41,9 @@ class NkdDetailServiceImplTest {
 
     @Mock
     private NkdSparqlClient nkdSparqlClient;
+
+    @Mock
+    private JsonExporter jsonExporter;
 
     @InjectMocks
     private NkdDetailServiceImpl service;
@@ -492,5 +498,131 @@ class NkdDetailServiceImplTest {
                 .executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total"));
         verify(nkdSparqlClient, org.mockito.Mockito.times(1))
                 .executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total"));
+    }
+
+    // ── Detail with concept count ─────────────────────────────────────
+
+    @Test
+    void getOntologyDetail_populatesConceptCountFromConceptsList() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        OntologyDetailModel.ConceptDetailModel c1 = OntologyDetailModel.ConceptDetailModel.builder().iri("c1").build();
+        OntologyDetailModel.ConceptDetailModel c2 = OntologyDetailModel.ConceptDetailModel.builder().iri("c2").build();
+        OntologyDetailModel.ConceptDetailModel c3 = OntologyDetailModel.ConceptDetailModel.builder().iri("c3").build();
+        OntologyDetailModel model = OntologyDetailModel.builder()
+                .iri(ONTOLOGY_IRI)
+                .concepts(List.of(c1, c2, c3))
+                .build();
+        when(nkdSparqlClient.fetchPublishedOntology(ONTOLOGY_IRI)).thenReturn(Optional.of(model));
+
+        GetNkdOntologyDto dto = service.getOntologyDetail(ONTOLOGY_IRI);
+
+        assertEquals(3, dto.getOntologyDetail().getConceptCount());
+    }
+
+    @Test
+    void getOntologyDetail_nullConceptsList_leavesConceptCountNull() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        OntologyDetailModel model = OntologyDetailModel.builder().iri(ONTOLOGY_IRI).build();
+        when(nkdSparqlClient.fetchPublishedOntology(ONTOLOGY_IRI)).thenReturn(Optional.of(model));
+
+        GetNkdOntologyDto dto = service.getOntologyDetail(ONTOLOGY_IRI);
+
+        assertNull(dto.getOntologyDetail().getConceptCount());
+    }
+
+    // ── Download ──────────────────────────────────────────────────────
+
+    @Test
+    void downloadOntology_endpointNotConfigured_throwsNkdEndpointException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
+
+        assertThrows(NkdEndpointException.class,
+                () -> service.downloadOntology(ONTOLOGY_IRI, "ttl"));
+    }
+
+    @Test
+    void downloadOntology_invalidIri_throwsIllegalArgumentException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.downloadOntology("not an iri", "ttl"));
+    }
+
+    @Test
+    void downloadOntology_blankFormat_throwsIllegalArgumentException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.downloadOntology(ONTOLOGY_IRI, ""));
+    }
+
+    @Test
+    void downloadOntology_nullFormat_throwsIllegalArgumentException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.downloadOntology(ONTOLOGY_IRI, null));
+    }
+
+    @Test
+    void downloadOntology_unsupportedFormat_throwsIllegalArgumentException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.downloadOntology(ONTOLOGY_IRI, "rdf-xml"));
+    }
+
+    @Test
+    void downloadOntology_notFoundInNkd_throwsNkdResourceNotFound() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI)).thenReturn(Optional.empty());
+
+        assertThrows(NkdResourceNotFoundException.class,
+                () -> service.downloadOntology(ONTOLOGY_IRI, "ttl"));
+    }
+
+    @Test
+    void downloadOntology_sparqlError_throwsNkdEndpointException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI))
+                .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
+
+        assertThrows(NkdEndpointException.class,
+                () -> service.downloadOntology(ONTOLOGY_IRI, "ttl"));
+    }
+
+    @Test
+    void downloadOntology_ttl_serializesViaModelWrite() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI))
+                .thenAnswer(inv -> Optional.of(buildSimpleModel(ONTOLOGY_IRI, "Test")));
+
+        byte[] result = service.downloadOntology(ONTOLOGY_IRI, "ttl");
+
+        String body = new String(result, java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(body.contains(ONTOLOGY_IRI), "Turtle should include the ontology IRI: " + body);
+        assertTrue(body.contains("Test"), "Turtle should include the label: " + body);
+
+        // Format string is case-insensitive — second call gets a fresh model
+        // because the service closes whatever model was passed in.
+        byte[] result2 = service.downloadOntology(ONTOLOGY_IRI, "TTL");
+        assertTrue(new String(result2, java.nio.charset.StandardCharsets.UTF_8).contains(ONTOLOGY_IRI));
+    }
+
+    private static Model buildSimpleModel(String iri, String label) {
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource(iri),
+                m.createProperty("http://www.w3.org/2000/01/rdf-schema#label"),
+                m.createLiteral(label, "cs"));
+        return m;
+    }
+
+    @Test
+    void downloadOntology_jsonLd_delegatesToJsonExporter() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        Model model = ModelFactory.createDefaultModel();
+        when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI)).thenReturn(Optional.of(model));
+        when(jsonExporter.exportToJson(model)).thenReturn("{\"ok\":true}");
+
+        byte[] result = service.downloadOntology(ONTOLOGY_IRI, "json-ld");
+
+        assertEquals("{\"ok\":true}", new String(result, java.nio.charset.StandardCharsets.UTF_8));
+        verify(jsonExporter).exportToJson(model);
     }
 }

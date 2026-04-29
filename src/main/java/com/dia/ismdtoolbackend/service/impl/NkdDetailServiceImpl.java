@@ -10,11 +10,15 @@ import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLBrowseQuery;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.rdf.model.Model;
 import org.springframework.stereotype.Service;
 
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -48,6 +52,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
     private static final Duration COUNT_TTL = Duration.ofHours(1);
 
     private final NkdSparqlClient nkdSparqlClient;
+    private final JsonExporter jsonExporter;
 
     private volatile CachedValue<Integer> cachedTotalOntologies;
     private volatile CachedValue<Integer> cachedTotalConcepts;
@@ -70,7 +75,57 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             return new NkdResourceNotFoundException("Slovník s IRI " + iri + " nebyl v NKD nalezen.");
         });
 
+        // Concepts are loaded eagerly by the CONSTRUCT path (skos:inScheme), so
+        // size is the authoritative count for this ontology. No extra round-trip.
+        if (detail.getConcepts() != null) {
+            detail.setConceptCount(detail.getConcepts().size());
+        }
+
         return new GetNkdOntologyDto(detail);
+    }
+
+    @Override
+    public byte[] downloadOntology(String iri, String format) {
+        ensureEndpointConfigured();
+        validateIri(iri);
+        if (format == null || format.isBlank()) {
+            throw new IllegalArgumentException("Formát stahování musí být zadán (ttl nebo json-ld).");
+        }
+        String normalized = format.trim().toLowerCase();
+        if (!normalized.equals("ttl") && !normalized.equals("json-ld")) {
+            throw new IllegalArgumentException("Nepodporovaný formát: " + format + " (povolené: ttl, json-ld).");
+        }
+
+        Optional<Model> rawModel;
+        try {
+            rawModel = nkdSparqlClient.fetchPublishedOntologyRaw(iri);
+        } catch (RuntimeException e) {
+            log.warn("NKD SPARQL error while fetching ontology for download {}: {}", iri, e.getMessage());
+            throw new NkdEndpointException("NKD SPARQL endpoint je nedostupný.", e);
+        }
+
+        Model model = rawModel.orElseThrow(() -> {
+            log.info("Ontology not found in NKD for download: {}", iri);
+            return new NkdResourceNotFoundException("Slovník s IRI " + iri + " nebyl v NKD nalezen.");
+        });
+
+        try {
+            String body;
+            if (normalized.equals("ttl")) {
+                StringWriter writer = new StringWriter();
+                model.write(writer, "TTL");
+                body = writer.toString();
+            } else {
+                // NKD already publishes OFN-aligned RDF. We bypass the local-store
+                // OFN re-formatting pipeline (TurtleFilterUtil/TurtleFormatterUtil)
+                // because applying it to an already-OFN payload is a noop at best
+                // and lossy at worst. JsonExporter is enough.
+                body = jsonExporter.exportToJson(model);
+            }
+            return body.getBytes(StandardCharsets.UTF_8);
+        } finally {
+            model.close();
+        }
     }
 
     @Override
@@ -125,7 +180,9 @@ public class NkdDetailServiceImpl implements NkdDetailService {
                     log.info("NKD ontology not found, skipping in list response: {}", iri);
                     continue;
                 }
-                items.add(toListItem(detail.get()));
+                // null conceptCount → omitted from JSON (NON_NULL on the item DTO).
+                // Lookup-by-IRI doesn't run the count batch, so we can't supply it here.
+                items.add(toListItem(detail.get(), null));
             } catch (RuntimeException e) {
                 // Skip-and-continue: a single stale bookmark in the FE's localStorage
                 // shouldn't blank the whole "last accessed" tile row.
@@ -136,16 +193,6 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         GetNkdOntologyListDto response = new GetNkdOntologyListDto();
         response.setOntologies(items);
         return response;
-    }
-
-    private static NkdOntologyListItemDto toListItem(OntologyDetailModel detail) {
-        return NkdOntologyListItemDto.builder()
-                .iri(detail.getIri())
-                .name(detail.getName())
-                .description(detail.getDescription())
-                .creationDate(detail.getCreationDate())
-                .modificationDate(detail.getModificationDate())
-                .build();
     }
 
     private void ensureEndpointConfigured() {
@@ -253,7 +300,13 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         }
     }
 
-    private static NkdOntologyListItemDto toListItem(OntologyDetailModel detail, int conceptCount) {
+    /**
+     * Single source of truth for list-item construction. Pass {@code null} for
+     * {@code conceptCount} when no count is available (e.g. lookup-by-IRI path
+     * which doesn't run the batched count query) — NON_NULL serialization keeps
+     * those payloads backward-compatible.
+     */
+    private static NkdOntologyListItemDto toListItem(OntologyDetailModel detail, Integer conceptCount) {
         return NkdOntologyListItemDto.builder()
                 .iri(detail.getIri())
                 .name(detail.getName())

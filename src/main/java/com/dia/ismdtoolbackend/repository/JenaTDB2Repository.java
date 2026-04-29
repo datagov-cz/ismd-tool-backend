@@ -630,7 +630,7 @@ public class JenaTDB2Repository {
      * Full-text search across Fuseki graphs using Lucene text index.
      * The index is configured with ASCIIFoldingFilter for diacritic-insensitive search
      * (e.g., "ridic" matches "řidič").
-     *
+     * <p>
      * Searches across skos:prefLabel, skos:altLabel, dcterms:description, and skos:definition.
      * Also emits the resource's rdf:type URIs (pipe-separated) so callers can distinguish
      * concepts (skos:Concept) from ontologies / concept schemes (skos:ConceptScheme,
@@ -739,7 +739,7 @@ public class JenaTDB2Repository {
      * the tokenizer handle the rest. Runs of whitespace are then collapsed, and
      * leading/trailing whitespace trimmed, so the caller can safely append a
      * prefix wildcard to the last token.
-     *
+     * <p>
      * Lucene meta-characters handled: + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
      * We keep * out of the replacement since the caller appends it for prefix
      * matching — but any * embedded in the user's input is still stripped.

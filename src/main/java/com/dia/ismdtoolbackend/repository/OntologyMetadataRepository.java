@@ -48,6 +48,24 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
     List<OntologyMetadataEntity> findVisibleUnpublished(@Param("userId") String userId,
                                                          @Param("isAdmin") boolean isAdmin);
 
+    @Query(value = """
+            SELECT COUNT(*) FROM ismd_schema.ontologies o
+            WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+              AND (o.is_published = true OR o.user_id = :userId)
+            """, nativeQuery = true)
+    long countSearchByText(@Param("query") String query,
+                           @Param("userId") String userId);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM ismd_schema.ontologies o
+            WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+              AND o.is_published = false
+              AND (:isAdmin = true OR o.user_id = :userId)
+            """, nativeQuery = true)
+    long countSearchByTextUnpublished(@Param("query") String query,
+                                      @Param("userId") String userId,
+                                      @Param("isAdmin") boolean isAdmin);
+
     Optional<OntologyMetadataEntity> findByGraphName(String graphName);
 
     Optional<OntologyMetadataEntity> findByGraphNameAndUserId(String graphName, String userId);

@@ -171,6 +171,11 @@ public class OntologyServiceImpl implements OntologyService {
 
         GetOntologyDto result = new GetOntologyDto();
         result.setConceptMetadataModelList(conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList());
+        // Single source of truth: conceptCount on both projections of the
+        // ontology comes from the same authoritative PG list we just loaded.
+        int conceptCount = conceptMetadataEntities.size();
+        metadataModel.setConceptCount(conceptCount);
+        detailModel.setConceptCount(conceptCount);
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 

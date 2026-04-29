@@ -19,4 +19,8 @@ public class SearchResponseDto {
     private int limit;
     private int offset;
     private Map<SearchSource, SourceStatusDto> sourceStatuses;
+    /** Sum of {@link SourceStatusDto#getTotalOntologies()} across non-skipped sources. */
+    private Integer totalOntologies;
+    /** Sum of {@link SourceStatusDto#getTotalConcepts()} across non-skipped sources. */
+    private Integer totalConcepts;
 }
