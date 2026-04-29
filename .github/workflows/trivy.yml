@@ -1,0 +1,65 @@
+name: Trivy Image Scan
+
+# Calls the reusable Trivy scanner owned by infrastructure repo.
+# Findings appear in this repo's Security -> Code scanning tab.
+#
+# Image taxonomy (see reusable-docker-build.yml):
+#   dev branch  -> ghcr.io/datagov-cz/ismd-tool-backend-dev:latest    (deployed to dev env)
+#   main branch -> ghcr.io/datagov-cz/ismd-tool-backend:latest        (deployed to test + prod)
+#
+# Triggers:
+#   * After "Build Docker on Dev"  completes -> scan dev image
+#   * After "Build Docker on Main" completes -> scan main image
+#   * Weekly Monday 07:00 UTC               -> scan BOTH (CVE-feed drift)
+#   * Manual dispatch                        -> pick dev/main/both
+
+on:
+  workflow_run:
+    workflows: ["Build Docker on Dev", "Build Docker on Main"]
+    types: [completed]
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      image_variant:
+        description: 'Which image(s) to scan'
+        required: true
+        type: choice
+        options: [dev, main, both]
+        default: both
+      soft_fail:
+        description: 'Non-blocking: workflow stays green even if findings exist (default). Uncheck to make scan blocking for this run.'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  scan-dev:
+    name: Scan dev image
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build Docker on Dev' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.image_variant == 'dev' || inputs.image_variant == 'both'))
+    uses: datagov-cz/ismd-infrastructure/.github/workflows/trivy-reusable.yml@dev
+    with:
+      image_ref: ghcr.io/datagov-cz/ismd-tool-backend-dev:latest
+      # Default non-blocking. Only a manual dispatch with soft_fail=false flips it.
+      soft_fail: ${{ !(github.event_name == 'workflow_dispatch' && inputs.soft_fail == false) }}
+    secrets: inherit
+
+  scan-main:
+    name: Scan main image
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build Docker on Main' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.image_variant == 'main' || inputs.image_variant == 'both'))
+    uses: datagov-cz/ismd-infrastructure/.github/workflows/trivy-reusable.yml@dev
+    with:
+      image_ref: ghcr.io/datagov-cz/ismd-tool-backend:latest
+      soft_fail: ${{ !(github.event_name == 'workflow_dispatch' && inputs.soft_fail == false) }}
+    secrets: inherit
