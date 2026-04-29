@@ -341,4 +341,156 @@ class NkdDetailServiceImplTest {
         assertTrue(result.getOntologies().isEmpty());
         verify(nkdSparqlClient, org.mockito.Mockito.times(50)).fetchPublishedOntology(anyString());
     }
+
+    // ── List-all (catalog browse) ──────────────────────────────────────
+
+    @Test
+    void listAllOntologies_endpointNotConfigured_throwsNkdEndpointException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(false);
+
+        assertThrows(NkdEndpointException.class,
+                () -> service.listAllOntologies(20, 0, "cs"));
+
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
+    }
+
+    @Test
+    void listAllOntologies_invalidLimit_throwsIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listAllOntologies(0, 0, "cs"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listAllOntologies(101, 0, "cs"));
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).isEndpointConfigured();
+    }
+
+    @Test
+    void listAllOntologies_negativeOffset_throwsIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.listAllOntologies(20, -1, "cs"));
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).isEndpointConfigured();
+    }
+
+    @Test
+    void listAllOntologies_emptyPage_returnsZeroItemsButPopulatesGlobalCounts() {
+        // Even if the page is empty (e.g. offset past the end), the global
+        // totals should still be populated so the FE can render pagination.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
+                .thenReturn(List.of());
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "42")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "9001")));
+
+        GetNkdOntologyListDto result = service.listAllOntologies(20, 100, "cs");
+
+        assertTrue(result.getOntologies().isEmpty());
+        assertEquals(42, result.getOntologyCount());
+        assertEquals(42, result.getTotalCount());
+        assertEquals(9001, result.getConceptCount());
+        // Empty page must NOT trigger per-IRI fetches or concept-count batch query.
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+    }
+
+    @Test
+    void listAllOntologies_happyPath_mergesIrisDetailAndConceptCounts() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        String iri1 = "https://example.org/ontology/a";
+        String iri2 = "https://example.org/ontology/b";
+
+        // 1. Page query
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
+                .thenReturn(List.of(
+                        Map.of("ontology", iri1),
+                        Map.of("ontology", iri2)));
+        // 2. Concept-counts batched query — ontology b has zero concepts (not returned)
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
+                .thenReturn(List.of(Map.of("ontology", iri1, "cnt", "7")));
+        // 3. Global counts
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "2")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "7")));
+
+        when(nkdSparqlClient.fetchPublishedOntology(iri1)).thenReturn(Optional.of(
+                OntologyDetailModel.builder().iri(iri1).name(Map.of("cs", "A slovník")).build()));
+        when(nkdSparqlClient.fetchPublishedOntology(iri2)).thenReturn(Optional.of(
+                OntologyDetailModel.builder().iri(iri2).name(Map.of("cs", "B slovník")).build()));
+
+        GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
+
+        assertEquals(2, result.getOntologies().size());
+        assertEquals(iri1, result.getOntologies().get(0).getIri());
+        assertEquals(7, result.getOntologies().get(0).getConceptCount());
+        assertEquals(iri2, result.getOntologies().get(1).getIri());
+        // Missing from concept-count batch result → defaulted to 0 (not null).
+        assertEquals(0, result.getOntologies().get(1).getConceptCount());
+
+        assertEquals(2, result.getOntologyCount());
+        assertEquals(2, result.getTotalCount());
+        assertEquals(7, result.getConceptCount());
+    }
+
+    @Test
+    void listAllOntologies_pageQueryFails_throwsNkdEndpointException() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.executeSelect(anyString()))
+                .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
+
+        assertThrows(NkdEndpointException.class,
+                () -> service.listAllOntologies(20, 0, "cs"));
+    }
+
+    @Test
+    void listAllOntologies_perOntologyFetchFails_skippedNotFatal() {
+        // A single bad ontology must not blank the whole catalog page.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        String iriOk = "https://example.org/ontology/ok";
+        String iriErr = "https://example.org/ontology/err";
+
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
+                .thenReturn(List.of(Map.of("ontology", iriOk), Map.of("ontology", iriErr)));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
+                .thenReturn(List.of());
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "2")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "0")));
+
+        when(nkdSparqlClient.fetchPublishedOntology(iriOk)).thenReturn(Optional.of(
+                OntologyDetailModel.builder().iri(iriOk).build()));
+        when(nkdSparqlClient.fetchPublishedOntology(iriErr))
+                .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
+
+        GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
+
+        assertEquals(1, result.getOntologies().size());
+        assertEquals(iriOk, result.getOntologies().get(0).getIri());
+    }
+
+    @Test
+    void listAllOntologies_secondCallWithinTtl_servesCachedCounts() {
+        // The two global COUNT queries should run exactly once across two
+        // back-to-back calls — second call must hit the in-heap cache.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
+                .thenReturn(List.of());
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "5")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "50")));
+
+        service.listAllOntologies(20, 0, "cs");
+        service.listAllOntologies(20, 0, "cs");
+
+        // Page query runs each call; each COUNT runs only once.
+        verify(nkdSparqlClient, org.mockito.Mockito.times(2))
+                .executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey"));
+        verify(nkdSparqlClient, org.mockito.Mockito.times(1))
+                .executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total"));
+        verify(nkdSparqlClient, org.mockito.Mockito.times(1))
+                .executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total"));
+    }
 }

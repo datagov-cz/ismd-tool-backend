@@ -74,6 +74,36 @@ public class NkdDetailController {
     }
 
     @Operation(
+            summary = "Seznam všech slovníků z NKD (stránkovaně)",
+            description = "Vrací stránkovaný seznam všech slovníků publikovaných v Národním katalogu dat (NKD), " +
+                    "seřazený abecedně podle názvu v zadaném jazyce (výchozí cs). Každá položka obsahuje " +
+                    "základní metadata slovníku a počet jeho pojmů. Odpověď dále obsahuje agregované hodnoty: " +
+                    "celkový počet slovníků a celkový počet pojmů napříč NKD. Veřejný endpoint."
+    )
+    @GetMapping("/ontology/all")
+    public ResponseEntity<ApiResponseDto<GetNkdOntologyListDto>> listAllNkdOntologies(
+            @Parameter(description = "Maximální počet výsledků na stránku (1-100)")
+            @RequestParam(defaultValue = "20") int limit,
+            @Parameter(description = "Offset pro stránkování")
+            @RequestParam(defaultValue = "0") int offset,
+            @Parameter(description = "Jazyk pro řazení podle názvu (výchozí cs)")
+            @RequestParam(defaultValue = "cs") String lang
+    ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        try {
+            log.info("NKD ontology list-all requested, limit={}, offset={}, lang={}", limit, offset, lang);
+
+            GetNkdOntologyListDto dto = nkdDetailService.listAllOntologies(limit, offset, lang);
+
+            return ResponseEntity.ok()
+                    .body(ApiResponseDto.success(dto, "Seznam slovníků z NKD byl úspěšně načten."));
+        } finally {
+            MDC.remove(LOG_REQUEST_ID);
+        }
+    }
+
+    @Operation(
             summary = "Detail pojmu z NKD",
             description = "Vrací kompletní detail pojmu publikovaného v Národním katalogu dat (NKD) podle IRI zdroje. Detail je sestaven ze SPARQL CONSTRUCT dotazu na NKD endpoint. Parametr ontologyIri je volitelný a slouží jako kontext pro frontend (např. drobečková navigace). Veřejný endpoint."
     )

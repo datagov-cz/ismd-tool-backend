@@ -64,7 +64,8 @@ public class SearchController {
             @RequestParam(required = false) List<String> ontologyIri,
             @Parameter(description = "Filtrování podle typů vztahů: SUBCLASS, SUPERCLASS, EXACT_MATCH, PROPERTY_OF, RELATIONSHIP_OF")
             @RequestParam(required = false) List<RelationType> relationTypes,
-            @AuthenticationPrincipal SecurityUser securityUser) {
+            @AuthenticationPrincipal SecurityUser securityUser)
+    {
 
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);

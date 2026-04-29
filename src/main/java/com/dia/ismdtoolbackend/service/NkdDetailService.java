@@ -13,4 +13,6 @@ public interface NkdDetailService {
     GetNkdConceptDto getConceptDetail(String iri, String ontologyIri);
 
     GetNkdOntologyListDto getOntologyList(List<String> iris);
+
+    GetNkdOntologyListDto listAllOntologies(int limit, int offset, String lang);
 }
