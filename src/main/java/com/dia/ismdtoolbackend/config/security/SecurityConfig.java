@@ -66,10 +66,60 @@ public class SecurityConfig {
     }
 
     /**
+     * Search security filter chain for /api/search/** endpoints.
+     * Allows anonymous access but processes JWT if present (to populate SecurityUser).
+     * <p>
+     * Order(0) ensures this chain is evaluated before all others.
+     * Anonymous requests pass through without 401; authenticated requests get SecurityUser populated.
+     *
+     * @param http HttpSecurity configuration
+     * @return configured SecurityFilterChain for search endpoints
+     * @throws Exception if configuration fails
+     */
+    @Bean
+    @Order(0)
+    public SecurityFilterChain searchSecurityFilterChain(HttpSecurity http) throws Exception {
+        log.info("Configuring search security filter chain (Order 0)...");
+
+        http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .securityMatcher("/api/search/**")
+                .authorizeHttpRequests(auth -> auth
+                        .anyRequest().permitAll()
+                )
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                // Process JWT if present — populates SecurityUser for authenticated users
+                // Anonymous requests (no Authorization header) pass through without error
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            // If an Authorization header was provided but the token is invalid,
+                            // return 401 instead of silently degrading to anonymous
+                            String authHeader = request.getHeader("Authorization");
+                            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                                log.warn("Invalid JWT token on search endpoint: {}", authException.getMessage());
+                                response.setStatus(401);
+                                response.setContentType("application/json");
+                                response.getWriter().write(
+                                        "{\"success\":false,\"message\":\"Invalid or expired authentication token\"}");
+                                return;
+                            }
+                            // No token — allow anonymous access to proceed
+                        })
+                );
+
+        log.info("Search security filter chain configured successfully");
+        return http.build();
+    }
+
+    /**
      * Public security filter chain for unauthenticated endpoints.
      * Handles public download endpoint and actuator health/info endpoints.
      * <p>
-     * Order(1) ensures this chain is evaluated first.
+     * Order(1) ensures this chain is evaluated after the search chain.
      * Requests matching these patterns bypass OAuth2 JWT validation entirely.
      *
      * @param http HttpSecurity configuration
@@ -93,6 +143,11 @@ public class SecurityConfig {
                         "/api/ontology/list",
                         "/api/concept/list",
                         "/api/concept/*/detail",
+                        "/api/nkd/ontology/list",
+                        "/api/nkd/ontology/detail",
+                        "/api/nkd/ontology/all",
+                        "/api/nkd/ontology/download",
+                        "/api/nkd/concept/detail",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"

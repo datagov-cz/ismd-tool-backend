@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.http.HttpClient;
@@ -24,7 +25,7 @@ class JenaTDB2RepositorySemaphoreTest {
     @BeforeEach
     void setUp() {
         semaphore = new Semaphore(10);
-        repository = new JenaTDB2Repository(HttpClient.newHttpClient(), semaphore, 50);
+        repository = new JenaTDB2Repository(HttpClient.newHttpClient(), semaphore, 50, new MockEnvironment());
         ReflectionTestUtils.setField(repository, "fusekiEndpoint", "http://localhost:9999/nonexistent");
     }
 
@@ -84,7 +85,7 @@ class JenaTDB2RepositorySemaphoreTest {
     void semaphoreInterrupted_shouldThrowAndPreserveInterruptFlag() {
         // Use a long timeout and drain permits so tryAcquire blocks
         JenaTDB2Repository longTimeoutRepo = new JenaTDB2Repository(
-                HttpClient.newHttpClient(), new Semaphore(0), 10000);
+                HttpClient.newHttpClient(), new Semaphore(0), 10000, new MockEnvironment());
         ReflectionTestUtils.setField(longTimeoutRepo, "fusekiEndpoint", "http://localhost:9999/nonexistent");
 
         Thread.currentThread().interrupt();

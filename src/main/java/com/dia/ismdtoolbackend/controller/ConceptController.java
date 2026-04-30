@@ -114,12 +114,12 @@ public class ConceptController {
             description = "Vrací kompletní detail pojmu včetně všech vlastností, vztahů, definic a dalších metadat. Obsahuje také informace o odchylkách od publikované verze. Veřejný endpoint."
     )
     @GetMapping("/{slug}/detail")
-    public ResponseEntity<GetConceptDto> getConceptDetail(@PathVariable String slug) {
+    public ResponseEntity<ApiResponseDto<GetConceptDto>> getConceptDetail(@PathVariable String slug) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept detail requested, conceptSlug: {}", slug);
 
         GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
-        return ResponseEntity.ok().body(conceptDto);
+        return ResponseEntity.ok().body(ApiResponseDto.success(conceptDto, "Detail pojmu byl úspěšně načten."));
     }
 }

@@ -2,8 +2,10 @@ package com.dia.ismdtoolbackend.enums;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.apache.jena.ontology.OntologyException;
 
+@Schema(type = "string", allowableValues = {"TRIDA", "VLASTNOST", "VZTAH"})
 public enum ConceptType {
     TRIDA("TRIDA"),
     VLASTNOST("VLASTNOST"),

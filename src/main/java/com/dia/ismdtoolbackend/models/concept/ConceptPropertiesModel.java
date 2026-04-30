@@ -9,5 +9,9 @@ import lombok.Setter;
 @Setter
 public class ConceptPropertiesModel {
     private String name;
-    private String slug;
+    /**
+     * Navigation reference. Slug for local resources (used with /api/concept/{slug}/detail);
+     * full IRI for NKD resources (used with /api/nkd/concept/detail?iri=...).
+     */
+    private String ref;
 }
