@@ -450,24 +450,14 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private static String sanitizeForLog(String value) {
-        if (value == null) {
-            return null;
-        }
-        return value
-                .replace('\n', '_')
-                .replace('\r', '_');
-    }
-
     private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames, int limit) {
         if (visibleGraphNames.isEmpty()) {
             log.debug("Fuseki search skipped: no visible graph names for user");
             return List.of();
         }
 
-        String sanitizedQueryForLog = sanitizeForLog(query);
         log.debug("Fuseki text search: query='{}', searching {} graphs",
-                sanitizedQueryForLog, visibleGraphNames.size());
+                query, visibleGraphNames.size());
 
         List<Map<String, String>> rows = jenaTDB2Repository.searchByText(query, visibleGraphNames, limit);
 
