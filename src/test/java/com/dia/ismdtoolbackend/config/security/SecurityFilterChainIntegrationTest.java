@@ -66,8 +66,8 @@ class SecurityFilterChainIntegrationTest {
     // ── Bean introspection tests ──────────────────────────────────────────
 
     @Test
-    void contextLoads_twoSecurityFilterChainBeans() {
-        assertThat(filterChains).hasSize(2);
+    void contextLoads_threeSecurityFilterChainBeans() {
+        assertThat(filterChains).hasSize(3);
     }
 
     @Test
@@ -104,6 +104,8 @@ class SecurityFilterChainIntegrationTest {
             "/api/ontology/test-slug/detail",
             "/api/ontology/list",
             "/api/concept/list",
+            "/api/nkd/ontology/detail",
+            "/api/nkd/concept/detail",
             "/v3/api-docs",
             "/swagger-ui.html"
     })

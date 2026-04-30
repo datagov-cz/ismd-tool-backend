@@ -1,17 +1,88 @@
-@prefix :      <#> .
-@prefix tdb2:  <http://jena.apache.org/2016/tdb#> .
-@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix fuseki: <http://jena.apache.org/fuseki#> .
+@prefix :        <#> .
+@prefix fuseki:  <http://jena.apache.org/fuseki#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix tdb2:    <http://jena.apache.org/2016/tdb#> .
+@prefix text:    <http://jena.apache.org/text#> .
+@prefix ja:      <http://jena.hpl.hp.com/2005/11/Assembler#> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
 
-## ISMD Dataset with TDB2 storage
+## ---------------------------------------------------------------
+## Explicit text module loading
+## ---------------------------------------------------------------
+
+[] ja:loadClass "org.apache.jena.query.text.TextQuery" .
+text:TextDataset  rdfs:subClassOf ja:RDFDataset .
+text:TextIndexLucene rdfs:subClassOf text:TextIndex .
+
+## ---------------------------------------------------------------
+## Fuseki Server + Service (modern endpoint syntax)
+## ---------------------------------------------------------------
+
+[] rdf:type fuseki:Server ;
+   fuseki:services ( :ismd-service ) .
 
 :ismd-service rdf:type fuseki:Service ;
     fuseki:name "ismd-tool-dataset" ;
-    fuseki:serviceQuery "sparql", "query" ;
-    fuseki:serviceUpdate "update" ;
-    fuseki:serviceUpload "upload" ;
-    fuseki:serviceReadWriteGraphStore "data" ;
-    fuseki:dataset :ismd-dataset .
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "sparql" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "query" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:update ; fuseki:name "update" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:upload ; fuseki:name "upload" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ; fuseki:name "data" ] ;
+    fuseki:dataset :text_dataset .
 
-:ismd-dataset rdf:type tdb2:DatasetTDB2 ;
-    tdb2:location "/opt/fuseki/databases/tdb2/ismd-tool-dataset" .
+## ---------------------------------------------------------------
+## Text Dataset: wraps TDB2 dataset with a Lucene text index
+## ---------------------------------------------------------------
+
+:text_dataset rdf:type text:TextDataset ;
+    text:dataset   :tdb_dataset ;
+    text:index     <#indexLucene> .
+
+## ---------------------------------------------------------------
+## TDB2 Dataset
+## ---------------------------------------------------------------
+
+:tdb_dataset rdf:type tdb2:DatasetTDB2 ;
+    tdb2:location "/opt/fuseki/run/databases/tdb2/ismd-tool-dataset" .
+
+## ---------------------------------------------------------------
+## Lucene Text Index
+## ---------------------------------------------------------------
+
+<#indexLucene> a text:TextIndexLucene ;
+    text:directory   <file:/opt/fuseki/run/databases/lucene/ismd-tool-dataset> ;
+    text:entityMap   <#entMap> ;
+    text:storeValues true ;
+    text:analyzer    <#asciiFoldingAnalyzer> .
+
+## ---------------------------------------------------------------
+## Custom analyzer: StandardTokenizer + LowerCaseFilter + ASCIIFoldingFilter
+## This enables diacritic-insensitive search (e.g., "ridic" matches "řidič")
+## ---------------------------------------------------------------
+
+<#asciiFoldingAnalyzer> a text:ConfigurableAnalyzer ;
+    text:tokenizer text:StandardTokenizer ;
+    text:filters   (text:LowerCaseFilter text:ASCIIFoldingFilter) .
+
+## ---------------------------------------------------------------
+## Entity Map: defines which RDF properties are indexed
+## ---------------------------------------------------------------
+
+<#entMap> a text:EntityMap ;
+    text:defaultField "prefLabel" ;
+    text:entityField  "uri" ;
+    text:uidField     "uid" ;
+    text:langField    "lang" ;
+    text:graphField   "graph" ;
+    text:map (
+        [ text:field "prefLabel" ;
+          text:predicate skos:prefLabel ]
+        [ text:field "altLabel" ;
+          text:predicate skos:altLabel ]
+        [ text:field "description" ;
+          text:predicate dcterms:description ]
+        [ text:field "definition" ;
+          text:predicate skos:definition ]
+    ) .

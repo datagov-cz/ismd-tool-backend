@@ -65,7 +65,7 @@ In `tool-frontend/.env.local`:
 ```
 BE_URL=http://host.docker.internal:8081/popisujeme
 ```
-Prefer `host.docker.internal` over `localhost` / `127.0.0.1` — it works whether `npm run dev` runs in WSL, PowerShell, or Git Bash, and whether the backend is in Docker or IDEA. (`localhost` resolves to `::1` on newer Node and breaks against IPv4-only backends.)
+Prefer `host.docker.internal` over `localhost` / `127.0.0.1` — it works whether `npm run dev` runs in WSL, PowerShell, or Git Bash, and whether the backend is in Docker or IDEA. (`localhost` resolves to `::1` on newer Node and breaks against IPv4-only backends.) Linux + Docker Engine only (no Docker Desktop)? Use `127.0.0.1` instead — `host.docker.internal` is provided by Docker Desktop and won't resolve on native Docker Engine without extra config.
 
 Then run the frontend:
 ```bash

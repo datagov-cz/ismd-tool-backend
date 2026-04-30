@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.function.Function;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.constants.VocabularyConstants.*;
@@ -31,6 +32,24 @@ import static com.dia.constants.VocabularyConstants.*;
 public class OntologyDetailExtractor {
 
     private final ConceptMetadataRepository conceptMetadataRepository;
+
+    /**
+     * Resolver that maps a concept IRI to its local DB slug, or {@code null} when the concept
+     * has no local metadata row. Intended for the local detail pipeline.
+     */
+    public Function<String, String> dbSlugResolver() {
+        return iri -> conceptMetadataRepository.findByConceptIri(iri)
+                .map(ConceptMetadataEntity::getSlug)
+                .orElse(null);
+    }
+
+    /**
+     * Resolver that returns the IRI unchanged. Intended for the NKD detail pipeline,
+     * where the navigation reference is the full IRI used by /api/nkd/.../detail endpoints.
+     */
+    public static Function<String, String> iriResolver() {
+        return iri -> iri;
+    }
 
     public Model applyOFNTransformations(Model rawModel) {
         log.debug("Applying OFN transformations");
@@ -43,6 +62,10 @@ public class OntologyDetailExtractor {
 
    @Transactional(readOnly = true)
     public OntologyDetailModel extractOntologyDetail(Model processedModel) {
+        return extractOntologyDetail(processedModel, dbSlugResolver());
+    }
+
+    public OntologyDetailModel extractOntologyDetail(Model processedModel, Function<String, String> refResolver) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
 
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
@@ -51,10 +74,15 @@ public class OntologyDetailExtractor {
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
         ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
 
-        return mapToOntologyDetailModel(structure, conceptData);
+        return mapToOntologyDetailModel(structure, conceptData, refResolver);
     }
 
     public OntologyDetailModel.ConceptDetailModel extractConceptDetail(Model processedModel, String conceptIri) {
+        return extractConceptDetail(processedModel, conceptIri, dbSlugResolver());
+    }
+
+    public OntologyDetailModel.ConceptDetailModel extractConceptDetail(Model processedModel, String conceptIri,
+                                                                      Function<String, String> refResolver) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
 
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
@@ -63,12 +91,13 @@ public class OntologyDetailExtractor {
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
         Map<String, Object> conceptMap = conceptProcessor.processConceptByIri(ontModel, structure, conceptIri);
 
-        return mapToConceptDetailModel(conceptMap, null, ontModel);
+        return mapToConceptDetailModel(conceptMap, null, ontModel, refResolver);
     }
 
-    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData) {
+    private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData,
+                                                         Function<String, String> refResolver) {
         List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
-                .map(conceptMap -> mapToConceptDetailModel(conceptMap, conceptData))
+                .map(conceptMap -> mapToConceptDetailModel(conceptMap, conceptData, null, refResolver))
                 .toList();
 
         Map<String, String> descriptionMap = extractMultilingualDescription(structure.getVocabularyResource());
@@ -85,7 +114,8 @@ public class OntologyDetailExtractor {
                 .build();
     }
 
-    public List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, ConceptData conceptData) {
+    public List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, ConceptData conceptData,
+                                                                 Function<String, String> refResolver) {
         List<ConceptPropertiesModel> properties = new ArrayList<>();
 
         for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
@@ -105,8 +135,7 @@ public class OntologyDetailExtractor {
                     String name = extractFirstAvailableName(nameMap);
 
                     propertyModel.setName(name);
-                    Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(propertyIri);
-                    propertyModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+                    propertyModel.setRef(refResolver.apply(propertyIri));
 
                     properties.add(propertyModel);
                 }
@@ -116,7 +145,8 @@ public class OntologyDetailExtractor {
         return properties;
     }
 
-    public List<ConceptPropertiesModel> extractConceptPropertiesFromModel(OntModel ontModel, String conceptIri) {
+    public List<ConceptPropertiesModel> extractConceptPropertiesFromModel(OntModel ontModel, String conceptIri,
+                                                                         Function<String, String> refResolver) {
         List<ConceptPropertiesModel> properties = new ArrayList<>();
 
         Resource conceptResource = ontModel.getResource(conceptIri);
@@ -140,8 +170,7 @@ public class OntologyDetailExtractor {
                 String name = nameStmt != null ? nameStmt.getString() : null;
 
                 propertyModel.setName(name);
-                Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(propertyIri);
-                propertyModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+                propertyModel.setRef(refResolver.apply(propertyIri));
 
                 properties.add(propertyModel);
             }
@@ -150,7 +179,8 @@ public class OntologyDetailExtractor {
         return properties;
     }
 
-    public List<ConceptRelationshipsModel> extractConceptRelationships(String conceptIri, ConceptData conceptData) {
+    public List<ConceptRelationshipsModel> extractConceptRelationships(String conceptIri, ConceptData conceptData,
+                                                                      Function<String, String> refResolver) {
         List<ConceptRelationshipsModel> relationships = new ArrayList<>();
 
         for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
@@ -170,8 +200,7 @@ public class OntologyDetailExtractor {
                     String name = extractFirstAvailableName(nameMap);
 
                     relationshipModel.setName(name);
-                    Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(relationshipIri);
-                    relationshipModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+                    relationshipModel.setRef(refResolver.apply(relationshipIri));
 
                     relationships.add(relationshipModel);
                 }
@@ -181,7 +210,8 @@ public class OntologyDetailExtractor {
         return relationships;
     }
 
-    public List<ConceptRelationshipsModel> extractConceptRelationshipsFromModel(OntModel ontModel, String conceptIri) {
+    public List<ConceptRelationshipsModel> extractConceptRelationshipsFromModel(OntModel ontModel, String conceptIri,
+                                                                               Function<String, String> refResolver) {
         List<ConceptRelationshipsModel> relationships = new ArrayList<>();
 
         Resource conceptResource = ontModel.getResource(conceptIri);
@@ -205,8 +235,7 @@ public class OntologyDetailExtractor {
                 String name = nameStmt != null ? nameStmt.getString() : null;
 
                 relationshipModel.setName(name);
-                Optional<ConceptMetadataEntity> concept = conceptMetadataRepository.findByConceptIri(relationshipIri);
-                relationshipModel.setSlug(concept.map(ConceptMetadataEntity::getSlug).orElse(null));
+                relationshipModel.setRef(refResolver.apply(relationshipIri));
 
                 relationships.add(relationshipModel);
             }
@@ -227,23 +256,22 @@ public class OntologyDetailExtractor {
         return nameMap.values().iterator().next();
     }
 
-    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap, ConceptData conceptData) {
-        return mapToConceptDetailModel(conceptMap, conceptData, null);
-    }
-
     @SuppressWarnings("unchecked")
-    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap, ConceptData conceptData, OntModel ontModel) {
+    private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap,
+                                                                          ConceptData conceptData,
+                                                                          OntModel ontModel,
+                                                                          Function<String, String> refResolver) {
         String conceptIri = (String) conceptMap.get("iri");
 
         List<ConceptPropertiesModel> properties;
         List<ConceptRelationshipsModel> relationships;
 
         if (conceptData != null) {
-            properties = extractConceptProperties(conceptIri, conceptData);
-            relationships = extractConceptRelationships(conceptIri, conceptData);
+            properties = extractConceptProperties(conceptIri, conceptData, refResolver);
+            relationships = extractConceptRelationships(conceptIri, conceptData, refResolver);
         } else if (ontModel != null) {
-            properties = extractConceptPropertiesFromModel(ontModel, conceptIri);
-            relationships = extractConceptRelationshipsFromModel(ontModel, conceptIri);
+            properties = extractConceptPropertiesFromModel(ontModel, conceptIri, refResolver);
+            relationships = extractConceptRelationshipsFromModel(ontModel, conceptIri, refResolver);
         } else {
             properties = Collections.emptyList();
             relationships = Collections.emptyList();
