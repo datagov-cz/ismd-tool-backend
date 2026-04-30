@@ -167,10 +167,11 @@ public class OntologyServiceImpl implements OntologyService {
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
         List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
-
+        List<com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel> conceptModels =
+                conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList();
+        metadataModel.setConcepts(conceptModels);
 
         GetOntologyDto result = new GetOntologyDto();
-        result.setConceptMetadataModelList(conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList());
         // Single source of truth: conceptCount on both projections of the
         // ontology comes from the same authoritative PG list we just loaded.
         int conceptCount = conceptMetadataEntities.size();
