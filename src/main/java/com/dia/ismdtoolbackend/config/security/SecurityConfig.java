@@ -137,6 +137,7 @@ public class SecurityConfig {
                 // Only apply this chain to public endpoints
                 .securityMatcher(
                         "/actuator/health",
+                        "/actuator/health/*",
                         "/actuator/info",
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
@@ -201,6 +202,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/rpp/agenda/search").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/rpp/ais/search").authenticated()
                         .anyRequest().denyAll()
                 )
                 // Disable CSRF for stateless JWT API

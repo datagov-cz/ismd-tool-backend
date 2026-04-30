@@ -272,8 +272,8 @@ class OntologyServiceImplTest {
         assertNotNull(result);
         assertNotNull(result.getOntologyMetadata());
         assertNotNull(result.getOntologyDetail());
-        assertNotNull(result.getConceptMetadataModelList());
-        assertEquals(1, result.getConceptMetadataModelList().size());
+        assertNotNull(result.getOntologyMetadata().getConcepts());
+        assertEquals(1, result.getOntologyMetadata().getConcepts().size());
         assertEquals(TEST_ONTOLOGY_SLUG, result.getOntologyMetadata().getSlug());
         assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
         // fetchGraph is called once: enrichMetadataFromModel reuses the already-fetched rawModel
