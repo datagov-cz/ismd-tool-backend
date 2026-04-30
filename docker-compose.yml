@@ -106,11 +106,10 @@ services:
       - ismd-network
 
   backend:
-    build:
-      context: .
-      args:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}
-        GITHUB_ACTOR: ${GITHUB_ACTOR}
+    # Default: pull pre-built dev image from GHCR.
+    # To build from local source, use docker-compose.build.yml override.
+    image: ${TOOL_BACKEND_IMAGE:-ghcr.io/datagov-cz/ismd-tool-backend-dev:latest}
+    pull_policy: ${TOOL_BACKEND_PULL_POLICY:-missing}
     container_name: ismd-tool-backend
     profiles:
       - full-backend
@@ -152,4 +151,5 @@ volumes:
 
 networks:
   ismd-network:
+    name: ismd-network
     driver: bridge
