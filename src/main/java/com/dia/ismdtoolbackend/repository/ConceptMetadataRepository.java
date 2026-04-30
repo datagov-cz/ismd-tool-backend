@@ -43,6 +43,50 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                                                          @Param("hasGraphFilter") boolean hasGraphFilter,
                                                          @Param("graphNames") List<String> graphNames);
 
+    @Query(value = """
+            SELECT COUNT(*) FROM ismd_schema.concepts c
+            WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+                   OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
+              AND (c.is_published = true OR c.user_id = :userId)
+              AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+            """, nativeQuery = true)
+    long countSearchByText(@Param("query") String query,
+                           @Param("userId") String userId,
+                           @Param("hasGraphFilter") boolean hasGraphFilter,
+                           @Param("graphNames") List<String> graphNames);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM ismd_schema.concepts c
+            WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+                   OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
+              AND c.is_published = false
+              AND (:isAdmin = true OR c.user_id = :userId)
+              AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+            """, nativeQuery = true)
+    long countSearchByTextUnpublished(@Param("query") String query,
+                                      @Param("userId") String userId,
+                                      @Param("isAdmin") boolean isAdmin,
+                                      @Param("hasGraphFilter") boolean hasGraphFilter,
+                                      @Param("graphNames") List<String> graphNames);
+
+    /**
+     * Concept counts grouped by graph_name, restricted to a fixed set of graphs.
+     * Used by search to populate {@code conceptCount} on ontology results — one
+     * batched query per page instead of N round-trips.
+     * <p>
+     * Returns {@code Object[]} pairs {@code [graphName, count]} so callers can
+     * fold into a map. Graphs with zero matching concepts are simply absent
+     * from the result.
+     */
+    @Query(value = """
+            SELECT c.graph_name, COUNT(*) FROM ismd_schema.concepts c
+            WHERE c.graph_name IN (:graphNames)
+              AND (c.is_published = true OR c.user_id = :userId)
+            GROUP BY c.graph_name
+            """, nativeQuery = true)
+    List<Object[]> countByGraphNameIn(@Param("graphNames") List<String> graphNames,
+                                       @Param("userId") String userId);
+
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 
     Optional<ConceptMetadataEntity> findBySlug(String slug);

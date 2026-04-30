@@ -36,4 +36,7 @@ public class NkdOntologyListItemDto {
 
     @JsonProperty("časový-okamžik-poslední-změny")
     private String modificationDate;
+
+    @JsonProperty("počet-pojmů")
+    private Integer conceptCount;
 }

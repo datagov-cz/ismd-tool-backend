@@ -114,13 +114,37 @@ public class SearchServiceImpl implements SearchService {
                     .build());
         }
 
+        // Roll up per-source totals into top-level fields. A source that returned
+        // null (couldn't compute a count — partial degradation) is not summed,
+        // but a source that returned 0 is. If every contributing source is null,
+        // the rollup itself stays null so the FE can distinguish "no data" from
+        // "actually zero".
+        Integer totalOntologies = sumNullable(sourceStatuses.values(), SourceStatusDto::getTotalOntologies);
+        Integer totalConcepts = sumNullable(sourceStatuses.values(), SourceStatusDto::getTotalConcepts);
+
         return SearchResponseDto.builder()
                 .results(dedupedResults)
                 .returnedCount(dedupedResults.size())
                 .limit(limit)
                 .offset(offset)
                 .sourceStatuses(sourceStatuses)
+                .totalOntologies(totalOntologies)
+                .totalConcepts(totalConcepts)
                 .build();
+    }
+
+    private static Integer sumNullable(java.util.Collection<SourceStatusDto> statuses,
+                                        java.util.function.Function<SourceStatusDto, Integer> extractor) {
+        int sum = 0;
+        boolean anyPresent = false;
+        for (SourceStatusDto status : statuses) {
+            Integer v = extractor.apply(status);
+            if (v != null) {
+                sum += v;
+                anyPresent = true;
+            }
+        }
+        return anyPresent ? sum : null;
     }
 
     private CompletableFuture<SourceSearchResult> dispatchProviderSearch(
@@ -141,7 +165,8 @@ public class SearchServiceImpl implements SearchService {
                                 SourceStatusDto.builder()
                                         .status(result.status())
                                         .returnedCount(result.results().size())
-                                        .totalCount(result.totalCount())
+                                        .totalOntologies(result.totalOntologies())
+                                        .totalConcepts(result.totalConcepts())
                                         .message(result.statusMessage())
                                         .build());
                     }

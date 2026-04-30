@@ -6,8 +6,23 @@ import com.dia.ismdtoolbackend.enums.SearchSourceStatus;
 import com.dia.ismdtoolbackend.enums.SearchType;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 public interface SearchProvider {
+
+    /**
+     * Conditionally invoke a count loader. If {@code matches} is false, returns
+     * {@code 0} (the type-correct sentinel meaning "we deliberately didn't count").
+     * If true, returns whatever the loader returns — including {@code null} when
+     * the loader couldn't produce a count (e.g. remote failure).
+     * <p>
+     * Exists to avoid the "ternary auto-unbox" footgun: writing
+     * {@code matches ? loader.get() : 0} compiles to {@code int} and NPEs when
+     * the loader returns {@code null}.
+     */
+    static Integer countIfMatches(boolean matches, Supplier<Integer> loader) {
+        return matches ? loader.get() : Integer.valueOf(0);
+    }
 
     /**
      * @param publishedFilter  {@code null} = don't filter; {@code TRUE} = only
@@ -24,9 +39,28 @@ public interface SearchProvider {
                                 List<RelationType> relationTypes, String userId,
                                 boolean isAdmin, Boolean publishedFilter);
 
-    record SearchProviderResult(List<SearchResultDto> results, int totalCount, SearchSourceStatus status, String statusMessage) {
+    /**
+     * @param totalCount       total matches (ontologies + concepts) for this query
+     *                         in this source, across all pages
+     * @param totalOntologies  ontology-only subtotal; {@code null} when the source
+     *                         couldn't produce a count (e.g. partial degradation)
+     * @param totalConcepts    concept-only subtotal; {@code null} when unknown
+     */
+    record SearchProviderResult(List<SearchResultDto> results, int totalCount,
+                                Integer totalOntologies, Integer totalConcepts,
+                                SearchSourceStatus status, String statusMessage) {
         public SearchProviderResult(List<SearchResultDto> results, int totalCount) {
-            this(results, totalCount, SearchSourceStatus.OK, null);
+            this(results, totalCount, null, null, SearchSourceStatus.OK, null);
+        }
+
+        public SearchProviderResult(List<SearchResultDto> results, int totalCount,
+                                     SearchSourceStatus status, String statusMessage) {
+            this(results, totalCount, null, null, status, statusMessage);
+        }
+
+        public SearchProviderResult(List<SearchResultDto> results, int totalCount,
+                                     Integer totalOntologies, Integer totalConcepts) {
+            this(results, totalCount, totalOntologies, totalConcepts, SearchSourceStatus.OK, null);
         }
     }
 }

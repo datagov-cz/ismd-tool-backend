@@ -13,6 +13,15 @@ import lombok.NoArgsConstructor;
 public class SourceStatusDto {
     private SearchSourceStatus status;
     private int returnedCount;
-    private Integer totalCount;
+    /**
+     * Total ontology matches in this source for the current query (across all
+     * pages). Nullable when the source could not produce a count (timeout / error).
+     */
+    private Integer totalOntologies;
+    /**
+     * Total concept matches in this source for the current query (across all
+     * pages). Nullable when the source could not produce a count (timeout / error).
+     */
+    private Integer totalConcepts;
     private String message;
 }
