@@ -394,7 +394,11 @@ public class IsmdSearchProvider implements SearchProvider {
             List<String> conceptIris = mergedResults.stream()
                     .map(SearchResultDto::getIri)
                     .toList();
-            log.debug("Filtering {} concepts by relation types: {}", conceptIris.size(), relationTypes);
+            String safeRelationTypes = relationTypes.stream()
+                    .filter(Objects::nonNull)
+                    .map(RelationType::name)
+                    .collect(java.util.stream.Collectors.joining(","));
+            log.debug("Filtering {} concepts by relation types: {}", conceptIris.size(), safeRelationTypes);
             Set<String> matchingIris = jenaTDB2Repository.filterByRelationTypes(conceptIris, relationTypes);
             int beforeFilter = mergedResults.size();
             List<SearchResultDto> filtered = mergedResults.stream()
