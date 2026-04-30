@@ -383,4 +383,25 @@ class JenaTDB2RepositorySearchTest {
         assertEquals(1, result.size());
         assertTrue(result.contains("https://example.org/concept/1"));
     }
+
+    /**
+     * Regression: saveOntologyModel must replace the graph (PUT), not append (LOAD).
+     *
+     * The edit flow mutates an in-memory copy of the graph — including removing
+     * triples — and then calls saveOntologyModel to persist. If this method appends
+     * instead of replacing, deletions are silently dropped: the removed triples
+     * survive in TDB, the edit appears to succeed, and the next read returns the
+     * pre-edit state. We hit exactly that bug with dcterms:description on ontology
+     * edits; this test pins the contract so it cannot regress.
+     */
+    @Test
+    void saveOntologyModel_replacesGraph_doesNotAppend() {
+        Model model = ModelFactory.createDefaultModel();
+        String graphName = "https://example.org/graph/test";
+
+        repository.saveOntologyModel(graphName, model);
+
+        verify(mockConnection).put(graphName, model);
+        verify(mockConnection, never()).load(eq(graphName), any(Model.class));
+    }
 }

@@ -406,7 +406,9 @@ public class JenaTDB2Repository {
                 log.info("Graph name: {}", graphName);
                 log.info("Model size: {} statements", model.size());
 
-                conn.load(graphName, model);
+                // PUT replaces the graph; LOAD only appends, which silently
+                // drops deletions made in-memory by the editor.
+                conn.put(graphName, model);
                 log.info("Successfully saved ontology model to TDB2 with graph name: {}", graphName);
             });
         } catch (QueryExceptionHTTP e) {
