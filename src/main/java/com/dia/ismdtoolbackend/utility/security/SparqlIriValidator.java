@@ -5,7 +5,18 @@ import org.apache.jena.irix.IRIx;
 
 public final class SparqlIriValidator {
 
+    private static final String ESBIRKA_ELI_PREFIX = "https://opendata.eselpoint.gov.cz/esel-esb/eli/";
+
     private SparqlIriValidator() {
+    }
+
+    /**
+     * Validates that an IRI is a safe e-Sbírka ELI reference: it must pass
+     * {@link #isSafeHttpIri(String)} and start with the canonical e-Sbírka host
+     * + {@code /esel-esb/eli/} prefix.
+     */
+    public static boolean isEsbirkaEliIri(String iri) {
+        return isSafeHttpIri(iri) && iri.startsWith(ESBIRKA_ELI_PREFIX);
     }
 
     /**

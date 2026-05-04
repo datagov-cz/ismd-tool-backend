@@ -202,6 +202,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponseDto.error("RPP data nejsou momentálně dostupná."));
     }
 
+    @ExceptionHandler(EsbirkaUnavailableException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleEsbirkaUnavailable(EsbirkaUnavailableException e) {
+        log.error("e-Sbírka unavailable: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponseDto.error("e-Sbírka data nejsou momentálně dostupná."));
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.warn("Type mismatch for parameter '{}': value='{}'", e.getName(), e.getValue());
