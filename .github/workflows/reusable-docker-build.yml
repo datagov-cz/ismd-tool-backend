@@ -81,7 +81,7 @@ jobs:
           
           docker build \
             -f Dockerfile \
-            --build-arg GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            --build-arg GITHUB_TOKEN="${{ secrets.PACKAGES_READ_TOKEN }}" \
             --build-arg GITHUB_ACTOR="${{ github.actor }}" \
             -t $IMAGE_TAG \
             -t $LATEST_TAG \

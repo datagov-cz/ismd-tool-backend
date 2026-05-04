@@ -1,0 +1,15 @@
+version: 2
+registries:
+  validator-packages:
+    type: maven-repository
+    url: https://maven.pkg.github.com/datagov-cz/ismd-validator-backend
+    username: x-access-token
+    password: ${{ secrets.PACKAGES_READ_TOKEN }}
+
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+    registries:
+      - validator-packages

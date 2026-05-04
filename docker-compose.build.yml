@@ -1,0 +1,20 @@
+# ==============================================
+# ISMD Tool Backend - Build Override
+# ==============================================
+# Use with the base file to build the backend image from local source:
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.build.yml \
+#                  --profile full-backend up --build
+#
+# Requires GITHUB_TOKEN + GITHUB_ACTOR for Maven access to GitHub Packages.
+# ==============================================
+
+services:
+  backend:
+    image: ismd-tool-backend:local
+    pull_policy: never
+    build:
+      context: .
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+        GITHUB_ACTOR: ${GITHUB_ACTOR}
