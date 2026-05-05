@@ -19,6 +19,7 @@ import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -256,6 +257,8 @@ public class OntologyController {
             summary = "Žádost o katalogizační záznam",
             description = "Vyžádá katalogizační záznam slovníku z validační služby na základě RDF dat a výsledků validace. Vyžaduje oprávnění vlastníka nebo administrátora."
     )
+    @Hidden
+    @Deprecated(forRemoval = true)
     @PostMapping("{slug}/catalog-record")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
