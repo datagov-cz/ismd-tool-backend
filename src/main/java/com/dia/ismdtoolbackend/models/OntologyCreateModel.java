@@ -1,15 +1,18 @@
 package com.dia.ismdtoolbackend.models;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.Getter;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.NotBlank;
 
 @Getter
 @Data
 public class OntologyCreateModel {
     private String namespace;
-    @NotBlank
+    @NotNull
+    @Valid
     private NameModel nameModel;
-    @NotBlank
+    @NotNull
+    @Valid
     private DescriptionModel descriptionModel;
 }

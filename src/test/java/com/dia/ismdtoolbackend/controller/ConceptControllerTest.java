@@ -23,6 +23,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
@@ -141,7 +142,6 @@ class ConceptControllerTest {
     @CsvSource(delimiter = '|', textBlock = """
             invalid-namespace           | TestConcept    | entity | IRI není platné
             http://example.org/         | TestConcept    | null   | Typ třídy je povinný.
-            null                        | null           | null   | Data pro vytvoření pojmu jsou prázdná
             http://example.org/         | Test123Concept | entity | Název může obsahovat pouze písmena
             """)
     void testCreateConcept_ValidationErrors(String namespace, String conceptName, String type, String expectedError) throws Exception {
@@ -181,6 +181,25 @@ class ConceptControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value(expectedError));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testCreateConcept_MissingRequiredFields_RejectedByBeanValidation() throws Exception {
+        String slug = "test-ontology";
+        String jsonRequest = "{\n    \"conceptType\": \"TRIDA\"\n}";
+
+        TestOntologySecurityService.setAllowModify(true);
+
+        mockMvc.perform(post("/api/concept/{slug}/create", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value(containsString("Neplatná data v požadavku")))
+                .andExpect(jsonPath("$.message").value(containsString("ontologyGraphName")))
+                .andExpect(jsonPath("$.message").value(containsString("nameModel")));
     }
 
     @Test

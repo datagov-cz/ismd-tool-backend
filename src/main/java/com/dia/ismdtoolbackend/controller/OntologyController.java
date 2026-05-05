@@ -21,6 +21,7 @@ import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
@@ -37,12 +38,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/ontology")
 @RequiredArgsConstructor
 @Slf4j
 public class OntologyController {
+
+    private static final Set<String> SUPPORTED_DOWNLOAD_FORMATS = Set.of("ttl", "json-ld");
 
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
@@ -101,7 +105,7 @@ public class OntologyController {
     )
     @PostMapping("/create")
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
-            @RequestBody OntologyCreateModel ontologyCreateModel,
+            @Valid @RequestBody OntologyCreateModel ontologyCreateModel,
             @AuthenticationPrincipal SecurityUser securityUser) {
 
 
@@ -155,12 +159,11 @@ public class OntologyController {
     ) {
         log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
 
-        String content = ontologyDownloadService.downloadOntology(ontologyId, format);
-
-        String filename = "ontology_" + ontologyId + "." + getFileExtension(format);
-        String contentType = getContentType(format);
-
-        ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
+        String normalizedFormat = format == null ? "" : format.toLowerCase();
+        if (!SUPPORTED_DOWNLOAD_FORMATS.contains(normalizedFormat)) {
+            throw new IllegalArgumentException("Nepodporovaný formát: " + format
+                    + ". Podporované formáty: " + String.join(", ", SUPPORTED_DOWNLOAD_FORMATS) + ".");
+        }
 
         if (!validationConfig.isEnableOntologyViolationDownload()) {
             ValidationReportDto validationReport = validationService.getValidationReport(ontologyService.getOntologyMetadata(ontologyId));
@@ -168,6 +171,13 @@ public class OntologyController {
                 return ResponseEntity.badRequest().build();
             }
         }
+
+        String content = ontologyDownloadService.downloadOntology(ontologyId, normalizedFormat);
+
+        String filename = "ontology_" + ontologyId + "." + getFileExtension(normalizedFormat);
+        String contentType = getContentType(normalizedFormat);
+
+        ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
 
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"").contentType(MediaType.parseMediaType(contentType)).contentLength(resource.contentLength()).body(resource);
     }
@@ -265,18 +275,18 @@ public class OntologyController {
     }
 
     private String getFileExtension(String format) {
-        return switch (format.toLowerCase()) {
+        return switch (format) {
             case "json-ld" -> "jsonld";
             case "ttl" -> "ttl";
-            default -> "txt";
+            default -> throw new IllegalStateException("Unreachable: format validated by SUPPORTED_DOWNLOAD_FORMATS");
         };
     }
 
     private String getContentType(String format) {
-        return switch (format.toLowerCase()) {
+        return switch (format) {
             case "json-ld" -> "application/ld+json";
             case "ttl" -> "text/turtle";
-            default -> "text/plain";
+            default -> throw new IllegalStateException("Unreachable: format validated by SUPPORTED_DOWNLOAD_FORMATS");
         };
     }
 }

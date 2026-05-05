@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +34,7 @@ public class ConceptController {
     @PostMapping("/{slug}/create")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
-            @RequestBody ConceptCreateModel conceptCreateModel,
+            @Valid @RequestBody ConceptCreateModel conceptCreateModel,
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
@@ -70,7 +71,7 @@ public class ConceptController {
     @PatchMapping("/{conceptId}/edit")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
-            @RequestBody ConceptEditModel conceptEditModel,
+            @Valid @RequestBody ConceptEditModel conceptEditModel,
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long conceptId
     ) {

@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -88,6 +89,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto> handleIllegalArgumentException(IllegalArgumentException e) {
         log.warn("Illegal argument: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponseDto> handleMethodArgumentNotValid(MethodArgumentNotValidException e) {
+        String details = e.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + (fe.getDefaultMessage() == null ? "neplatná hodnota" : fe.getDefaultMessage()))
+                .reduce((a, b) -> a + "; " + b)
+                .orElse("Neplatná data v požadavku.");
+        log.warn("Validation failed: {}", details);
+        return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku: " + details), HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(TypeMismatchException.class)
