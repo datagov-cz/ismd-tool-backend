@@ -23,7 +23,6 @@ import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -38,9 +37,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @RestController
 @RequestMapping("/api/ontology")
@@ -64,8 +60,6 @@ public class OntologyController {
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(name = "providedName", required = false) String providedName,
             @AuthenticationPrincipal SecurityUser securityUser) throws IOException {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         log.info(
                 "Ontology upload requested, fileName: {}, providedName: {}, userId: {}",
@@ -89,8 +83,6 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<Void>> deleteOntology(
             @PathVariable Long ontologyId,
             @AuthenticationPrincipal SecurityUser securityUser) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         log.info(
                 "Ontology delete requested, ontologyId: {}, userId: {}, isAdmin: {}",
@@ -112,8 +104,6 @@ public class OntologyController {
             @RequestBody OntologyCreateModel ontologyCreateModel,
             @AuthenticationPrincipal SecurityUser securityUser) {
 
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         log.info(
                 "Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}",
@@ -140,8 +130,6 @@ public class OntologyController {
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long ontologyId
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info(
                 "Ontology edit requested, ontologyId: {}, userId: {}, isAdmin: {}",
                 ontologyId,
@@ -165,8 +153,6 @@ public class OntologyController {
             @PathVariable Long ontologyId,
             @RequestParam String format
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
 
         String content = ontologyDownloadService.downloadOntology(ontologyId, format);
@@ -192,8 +178,6 @@ public class OntologyController {
     )
     @GetMapping("/{slug}/detail")
     public ResponseEntity<ApiResponseDto<GetOntologyDto>> getOntologyDetail(@PathVariable String slug) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology detail requested, ontologyId: {}", slug);
 
         GetOntologyDto ontologyDto = ontologyService.getOntologyDetailModel(slug);
@@ -211,8 +195,6 @@ public class OntologyController {
             @RequestParam(required = false) Boolean isPublished,
             @RequestParam(required = false) List<String> slugs
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         if (slugs != null && !slugs.isEmpty()) {
             log.info("Ontology list by slugs requested, slugs: {}", slugs);
@@ -236,9 +218,7 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology validation requested, ontologyIRI: {}", ontologyMetadata.getGraphName());
+        log.info("Ontology validation requested, slug: {}, ontologyIRI: {}", slug, ontologyMetadata.getGraphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
         Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
@@ -266,8 +246,6 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());

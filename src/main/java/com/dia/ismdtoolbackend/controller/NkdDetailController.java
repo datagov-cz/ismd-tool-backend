@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -23,9 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @RestController
 @RequestMapping("/api/nkd")
@@ -44,8 +40,6 @@ public class NkdDetailController {
             @Parameter(description = "IRI slovníku v NKD", required = true)
             @RequestParam String iri
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("NKD ontology detail requested, iri: {}", iri);
 
         GetNkdOntologyDto dto = nkdDetailService.getOntologyDetail(iri);
@@ -67,8 +61,6 @@ public class NkdDetailController {
             @Parameter(description = "Seznam IRI slovníků v NKD (max 50)", required = true)
             @RequestParam List<String> iris
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("NKD ontology list requested, count: {}", iris == null ? 0 : iris.size());
 
         GetNkdOntologyListDto dto = nkdDetailService.getOntologyList(iris);
@@ -93,18 +85,12 @@ public class NkdDetailController {
             @Parameter(description = "Jazyk pro řazení podle názvu (výchozí cs)")
             @RequestParam(defaultValue = "cs") String lang
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            log.info("NKD ontology list-all requested, limit={}, offset={}, lang={}", limit, offset, lang);
+        log.info("NKD ontology list-all requested, limit={}, offset={}, lang={}", limit, offset, lang);
 
-            GetNkdOntologyListDto dto = nkdDetailService.listAllOntologies(limit, offset, lang);
+        GetNkdOntologyListDto dto = nkdDetailService.listAllOntologies(limit, offset, lang);
 
-            return ResponseEntity.ok()
-                    .body(ApiResponseDto.success(dto, "Seznam slovníků z NKD byl úspěšně načten."));
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
+        return ResponseEntity.ok()
+                .body(ApiResponseDto.success(dto, "Seznam slovníků z NKD byl úspěšně načten."));
     }
 
     @Operation(
@@ -119,27 +105,21 @@ public class NkdDetailController {
             @Parameter(description = "Formát: ttl nebo json-ld (výchozí ttl)")
             @RequestParam(defaultValue = "ttl") String format
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            log.info("NKD ontology download requested, iri: {}, format: {}", iri, format);
+        log.info("NKD ontology download requested, iri: {}, format: {}", iri, format);
 
-            byte[] content = nkdDetailService.downloadOntology(iri, format);
-            ByteArrayResource resource = new ByteArrayResource(content);
+        byte[] content = nkdDetailService.downloadOntology(iri, format);
+        ByteArrayResource resource = new ByteArrayResource(content);
 
-            String filename = buildDownloadFilename(iri, format);
-            String contentType = "json-ld".equalsIgnoreCase(format)
-                    ? "application/ld+json"
-                    : "text/turtle";
+        String filename = buildDownloadFilename(iri, format);
+        String contentType = "json-ld".equalsIgnoreCase(format)
+                ? "application/ld+json"
+                : "text/turtle";
 
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .contentLength(resource.contentLength())
-                    .body(resource);
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .contentLength(resource.contentLength())
+                .body(resource);
     }
 
     /**
@@ -176,8 +156,6 @@ public class NkdDetailController {
             @Parameter(description = "IRI slovníku, do kterého pojem patří (volitelné)")
             @RequestParam(required = false) String ontologyIri
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("NKD concept detail requested, iri: {}, ontologyIri: {}", iri, ontologyIri);
 
         GetNkdConceptDto dto = nkdDetailService.getConceptDetail(iri, ontologyIri);
