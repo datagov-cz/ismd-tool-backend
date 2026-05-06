@@ -5,7 +5,8 @@ import org.apache.jena.irix.IRIx;
 
 public final class SparqlIriValidator {
 
-    private static final String ESBIRKA_ELI_PREFIX = "https://opendata.eselpoint.gov.cz/esel-esb/eli/";
+    private static final String ESBIRKA_HOST_BASE = "https://opendata.eselpoint.gov.cz/esel-esb";
+    private static final String ESBIRKA_ELI_PREFIX = ESBIRKA_HOST_BASE + "/eli/";
 
     private SparqlIriValidator() {
     }
@@ -17,6 +18,27 @@ public final class SparqlIriValidator {
      */
     public static boolean isEsbirkaEliIri(String iri) {
         return isSafeHttpIri(iri) && iri.startsWith(ESBIRKA_ELI_PREFIX);
+    }
+
+    /**
+     * Returns the {@code /eli/...} slice of a canonical e-Sbírka IRI (the
+     * portion that survives a future split into {@code (domain, eliPath)}
+     * storage). Returns {@code null} for IRIs that don't match the canonical
+     * prefix.
+     */
+    public static String extractEsbirkaEliPath(String iri) {
+        if (!isEsbirkaEliIri(iri)) {
+            return null;
+        }
+        return iri.substring(ESBIRKA_HOST_BASE.length());
+    }
+
+    /**
+     * Returns the canonical e-Sbírka domain (scheme + host) — suitable for
+     * the {@code domain} field of {@code LawDto}.
+     */
+    public static String esbirkaDomain() {
+        return "https://opendata.eselpoint.gov.cz";
     }
 
     /**
