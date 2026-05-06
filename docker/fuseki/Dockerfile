@@ -37,6 +37,11 @@ RUN mkdir -p ${FUSEKI_HOME}/run/databases/tdb2/ismd-tool-dataset \
 RUN addgroup -S fuseki && adduser -S fuseki -G fuseki && \
     chown -R fuseki:fuseki ${FUSEKI_HOME}/run
 
+# Bake in the Fuseki assembler config so auto-discovery loads it on startup.
+# Without this, fuseki-server starts with no datasets configured and the
+# default /ds endpoint behaves read-only.
+COPY --chown=fuseki:fuseki fuseki-config.ttl ${FUSEKI_HOME}/run/configuration/config.ttl
+
 ENV FUSEKI_HOME=${FUSEKI_HOME}
 ENV JENA_HOME=${JENA_HOME}
 
