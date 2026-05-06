@@ -1,5 +1,9 @@
 name: Trigger Deployment
 
+concurrency:
+  group: deploy-tool-backend-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  cancel-in-progress: false
+
 on:
   # Triggered when a new image is published
   workflow_run:
