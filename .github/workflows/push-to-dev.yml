@@ -1,5 +1,9 @@
 name: Build Dev Branch
 
+concurrency:
+  group: build-dev
+  cancel-in-progress: false
+
 on:
   push:
     branches:
