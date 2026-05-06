@@ -83,7 +83,7 @@ jobs:
             -f docker/fuseki/Dockerfile \
             -t "${IMAGE_NAME}:${VERSION}" \
             -t "${IMAGE_NAME}:latest" \
-            docker/fuseki
+            .
 
           docker push "${IMAGE_NAME}:${VERSION}"
           docker push "${IMAGE_NAME}:latest"
