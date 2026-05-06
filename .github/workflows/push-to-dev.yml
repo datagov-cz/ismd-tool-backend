@@ -11,11 +11,6 @@ on:
         required: false
         type: boolean
         default: false
-      coverage_minimum:
-        description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
-        required: false
-        type: string
-        default: "0.00"
 
 permissions:
   contents: write
@@ -27,7 +22,6 @@ jobs:
     uses: ./.github/workflows/reusable-test.yml
     with:
       enforce_coverage: ${{ github.event_name == 'workflow_dispatch' && inputs.enforce_coverage || false }}
-      coverage_minimum: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_minimum || (vars.JACOCO_LINE_MINIMUM != '' && vars.JACOCO_LINE_MINIMUM || '0.00') }}
     secrets: inherit
 
   build-docker:

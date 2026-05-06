@@ -8,11 +8,21 @@ on:
         required: false
         type: boolean
         default: true
-      coverage_minimum:
+      coverage_line:
         description: "JaCoCo line coverage minimum ratio (0.00-1.00)"
         required: false
         type: string
-        default: "0.00"
+        default: "0.55"
+      coverage_branch:
+        description: "JaCoCo branch coverage minimum ratio (0.00-1.00)"
+        required: false
+        type: string
+        default: "0.45"
+      coverage_complexity:
+        description: "JaCoCo complexity coverage minimum ratio (0.00-1.00)"
+        required: false
+        type: string
+        default: "0.45"
 
 permissions:
   contents: read
@@ -23,10 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_ACTOR: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -48,14 +58,20 @@ jobs:
       - name: Run tests with coverage
         run: |
           if [ "${{ inputs.enforce_coverage }}" = "true" ]; then
-            ./mvnw clean verify -Djacoco.line.minimum=${{ inputs.coverage_minimum }}
+            ./mvnw clean verify \
+              -Djacoco.line.minimum=${{ inputs.coverage_line }} \
+              -Djacoco.branch.minimum=${{ inputs.coverage_branch }} \
+              -Djacoco.complexity.minimum=${{ inputs.coverage_complexity }}
           else
-            ./mvnw clean test jacoco:report -Djacoco.line.minimum=${{ inputs.coverage_minimum }}
+            ./mvnw clean test jacoco:report \
+              -Djacoco.line.minimum=${{ inputs.coverage_line }} \
+              -Djacoco.branch.minimum=${{ inputs.coverage_branch }} \
+              -Djacoco.complexity.minimum=${{ inputs.coverage_complexity }}
           fi
 
       - name: Upload JaCoCo coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tool-backend-jacoco-report-${{ github.run_id }}
           path: target/site/jacoco
