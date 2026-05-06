@@ -157,6 +157,9 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
+        // OFN transform is expensive (filter + reformat over the full graph);
+        // run once and share with the deviation checker instead of re-running
+        // it three times across detail extraction and deviation checks.
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
@@ -180,10 +183,10 @@ public class OntologyServiceImpl implements OntologyService {
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 
-        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(rawModel, metadataModel);
+        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(processedModel, metadataModel);
         result.setPublishedOntologyDeviationModel(ontologyDeviations);
 
-        Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(rawModel, conceptMetadataEntities);
+        Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);
         result.setPublishedConceptDeviations(conceptDeviations);
 
         return result;
