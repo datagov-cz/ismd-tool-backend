@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
+import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,15 @@ public class OntologyDetailExtractor {
 
     public Model applyOFNTransformations(Model rawModel) {
         log.debug("Applying OFN transformations");
+        // Normalize before filtering: NKD-published concepts often carry only
+        // generic types (slovníky:pojem + owl:Class/ObjectProperty/DatatypeProperty),
+        // all of which TurtleFilterUtil treats as "vocabulary noise" and would
+        // strip. Inferring the role tags (skos:Concept, slovníky:třída/vztah/
+        // vlastnost) here keeps real concepts past the filter.
+        int normalized = OFNTypeNormalizer.normalize(rawModel);
+        if (normalized > 0) {
+            log.debug("Inferred OFN role tags on {} resources before filtering", normalized);
+        }
         Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
         Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
         log.debug("OFN transformation complete: {} -> {} -> {} statements",

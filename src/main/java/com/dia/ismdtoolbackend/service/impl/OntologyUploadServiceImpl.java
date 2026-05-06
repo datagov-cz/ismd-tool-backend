@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.exceptions.ConversionException;
+import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
@@ -31,7 +32,6 @@ import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.vocabulary.OWL2;
@@ -136,7 +136,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             checkSlugUniqueness(graphName);
 
             // 2. Normalize OFN types and labels at import time
-            int normalizedCount = normalizeOFNTypes(finalModel);
+            int normalizedCount = OFNTypeNormalizer.normalize(finalModel);
             if (normalizedCount > 0) {
                 log.info("Normalized OFN types on {} resources", normalizedCount);
             }
@@ -312,153 +312,6 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             log.error("Failed to convert OntModel to TTL", e);
             throw new ConversionException("Failed to convert OntModel to TTL: " + e.getMessage(), e);
         }
-    }
-
-    private int normalizeOFNTypes(OntModel model) {
-        int count = 0;
-        count += ensureConceptsHaveSkosType(model);
-        count += normalizeOwlClassConcepts(model);
-        count += normalizePropertyConcepts(model);
-        count += convertLabelsToSkosPrefLabel(model);
-        return count;
-    }
-
-    private int ensureConceptsHaveSkosType(OntModel model) {
-        Resource pojemResource = model.createResource(POJEM_GENERIC);
-        ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
-        int addedSkosConceptCount = 0;
-
-        while (conceptIterator.hasNext()) {
-            Resource conceptResource = conceptIterator.next();
-
-            if (!conceptResource.isURIResource()) {
-                continue;
-            }
-
-            if (!conceptResource.hasProperty(RDF.type, SKOS.Concept)) {
-                log.info("Adding missing skos:Concept to concept: {}", conceptResource.getURI());
-                conceptResource.addProperty(RDF.type, SKOS.Concept);
-                addedSkosConceptCount++;
-            }
-        }
-
-        return addedSkosConceptCount;
-    }
-
-    private int normalizeOwlClassConcepts(OntModel model) {
-        Resource slovnikyPojem = model.createResource(OFN_NAMESPACE + POJEM);
-        Resource slovnikyTrida = model.createResource(OFN_NAMESPACE + TRIDA);
-        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
-        int count = 0;
-
-        List<Resource> classesToNormalize = new ArrayList<>();
-        ResIterator iter = model.listResourcesWithProperty(RDF.type, OWL2.Class);
-        while (iter.hasNext()) {
-            Resource r = iter.next();
-            if (r.isURIResource() && isConceptResource(r.getURI())) {
-                classesToNormalize.add(r);
-            }
-        }
-
-        for (Resource cls : classesToNormalize) {
-            boolean modified = false;
-            if (!cls.hasProperty(RDF.type, SKOS.Concept)) {
-                cls.addProperty(RDF.type, SKOS.Concept);
-                modified = true;
-            }
-            if (!cls.hasProperty(RDF.type, slovnikyPojem)) {
-                cls.addProperty(RDF.type, slovnikyPojem);
-                modified = true;
-            }
-            if (!cls.hasProperty(RDF.type, slovnikyTrida)) {
-                cls.addProperty(RDF.type, slovnikyTrida);
-                modified = true;
-            }
-            String ontologyIRI = extractOntologyIRIFromConcept(cls.getURI());
-            if (ontologyIRI != null && !cls.hasProperty(skosInScheme)) {
-                cls.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                modified = true;
-            }
-            if (modified) count++;
-        }
-
-        return count;
-    }
-
-    private int normalizePropertyConcepts(OntModel model) {
-        Resource slovnikyVztah = model.createResource(OFN_NAMESPACE + VZTAH);
-        Resource slovnikyVlastnost = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        int count = 0;
-
-        List<Resource> objectProperties = new ArrayList<>();
-        ResIterator iter = model.listResourcesWithProperty(RDF.type, OWL2.ObjectProperty);
-        while (iter.hasNext()) {
-            objectProperties.add(iter.next());
-        }
-        for (Resource prop : objectProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, slovnikyVztah)) {
-                prop.addProperty(RDF.type, slovnikyVztah);
-                count++;
-            }
-        }
-
-        List<Resource> datatypeProperties = new ArrayList<>();
-        iter = model.listResourcesWithProperty(RDF.type, OWL2.DatatypeProperty);
-        while (iter.hasNext()) {
-            datatypeProperties.add(iter.next());
-        }
-        for (Resource prop : datatypeProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)
-                    && !prop.hasProperty(RDF.type, slovnikyVlastnost)) {
-                prop.addProperty(RDF.type, slovnikyVlastnost);
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    private int convertLabelsToSkosPrefLabel(OntModel model) {
-        Property skosPrefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        int count = 0;
-
-        List<Statement> toConvert = new ArrayList<>();
-        StmtIterator iter = model.listStatements(null, RDFS.label, (RDFNode) null);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getSubject().hasProperty(RDF.type, SKOS.Concept)) {
-                toConvert.add(stmt);
-            }
-        }
-
-        for (Statement stmt : toConvert) {
-            model.remove(stmt);
-            model.add(stmt.getSubject(), skosPrefLabel, stmt.getObject());
-            count++;
-        }
-
-        return count;
-    }
-
-    private static boolean isConceptResource(String uri) {
-        return uri.contains("/pojem/") && !isBaseVocabularyClass(uri);
-    }
-
-    private static boolean isBaseVocabularyClass(String uri) {
-        return uri.startsWith("http://www.w3.org/")
-                || uri.startsWith("https://slovník.gov.cz/veřejný-sektor/pojem/typ-")
-                || uri.contains("/generický/")
-                || uri.contains("cz:třída")
-                || uri.contains("cz:pojem");
-    }
-
-    private static String extractOntologyIRIFromConcept(String resourceURI) {
-        if (resourceURI.contains("/pojem/")) {
-            return resourceURI.substring(0, resourceURI.lastIndexOf("/pojem/"));
-        }
-        return null;
     }
 
     private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {
