@@ -4,21 +4,18 @@ import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.query.RppSPARQLQuery;
-import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
+import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 @Component
@@ -53,19 +50,12 @@ public class RppSparqlClient {
     }
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
-        requireEndpoint();
-        return SparqlExceptionMapper.strict(
-                "RPP " + label,
-                SparqlEndpointUnavailableException.class,
-                () -> {
-                    try (QueryExecution qe = QueryExecutionHTTPBuilder.service(rppEndpoint)
-                            .query(query)
-                            .timeout(rppSparqlTimeout, TimeUnit.MILLISECONDS)
-                            .build()) {
-                        return mapper.apply(qe.execSelect());
-                    }
-                },
-                (msg, cause) -> new SparqlEndpointUnavailableException(RPP_LABEL, msg, cause));
+        return executor().select("RPP " + label, query, mapper);
+    }
+
+    private HttpSparqlExecutor executor() {
+        // See EsbirkaSparqlClient.executor() for why this is per-call rather than a field.
+        return new HttpSparqlExecutor(RPP_LABEL, rppEndpoint, rppSparqlTimeout);
     }
 
     private List<RppAgenda> mapAgendaRows(ResultSet rs) {
@@ -115,9 +105,4 @@ public class RppSparqlClient {
         }
     }
 
-    private void requireEndpoint() {
-        if (rppEndpoint == null || rppEndpoint.trim().isEmpty()) {
-            throw new SparqlEndpointUnavailableException(RPP_LABEL, "RPP endpoint not configured");
-        }
-    }
 }

@@ -1,25 +1,21 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
-import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
+import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 @Component
@@ -27,7 +23,7 @@ import java.util.function.Function;
 public class EsbirkaSparqlClient {
 
     /**
-     * Endpoint label used for {@link SparqlEndpointUnavailableException} so the
+     * Endpoint label used for {@link com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException} so the
      * global handler can render a per-endpoint Czech message.
      */
     public static final String ESBIRKA_LABEL = "e-Sbírka";
@@ -64,19 +60,14 @@ public class EsbirkaSparqlClient {
     }
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
-        requireEndpoint();
-        return SparqlExceptionMapper.strict(
-                "e-Sbírka " + label,
-                SparqlEndpointUnavailableException.class,
-                () -> {
-                    try (QueryExecution qe = QueryExecutionHTTPBuilder.service(endpoint)
-                            .query(query)
-                            .timeout(sparqlTimeout, TimeUnit.MILLISECONDS)
-                            .build()) {
-                        return mapper.apply(qe.execSelect());
-                    }
-                },
-                (msg, cause) -> new SparqlEndpointUnavailableException(ESBIRKA_LABEL, msg, cause));
+        return executor().select("e-Sbírka " + label, query, mapper);
+    }
+
+    private HttpSparqlExecutor executor() {
+        // Built per call so test reflection (`setField(client, "endpoint", ...)`)
+        // continues to flow through. The executor is a ~24-byte wrapper around two
+        // strings and an int — allocation cost is negligible compared to the SPARQL roundtrip.
+        return new HttpSparqlExecutor(ESBIRKA_LABEL, endpoint, sparqlTimeout);
     }
 
     private List<LawModel> mapLawRows(ResultSet rs) {
@@ -143,11 +134,5 @@ public class EsbirkaSparqlClient {
         String last = iri.substring(slash + 1);
         int underscore = last.indexOf('_');
         return underscore > 0 ? last.substring(0, underscore) : last;
-    }
-
-    private void requireEndpoint() {
-        if (endpoint == null || endpoint.trim().isEmpty()) {
-            throw new SparqlEndpointUnavailableException(ESBIRKA_LABEL, "e-Sbírka endpoint not configured");
-        }
     }
 }

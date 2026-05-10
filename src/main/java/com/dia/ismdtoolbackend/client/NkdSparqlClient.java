@@ -4,60 +4,54 @@ import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
+import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
-import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
-import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 @Component
 @Slf4j
 public class NkdSparqlClient {
 
-    private final String nkdSparqlEndpoint;
-    private final int queryTimeout;
+    /**
+     * Endpoint label used for {@link com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException}
+     * — surfaces in the global handler's Czech response when NKD is unreachable.
+     */
+    public static final String NKD_LABEL = "NKD";
+
     private final int maxConcurrentRequests;
+    private final HttpSparqlExecutor executor;
     private final OntologyDetailExtractor detailExtractor;
 
     public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor) {
-        this.nkdSparqlEndpoint = config.getSparql().getEndpoint();
-        this.queryTimeout = config.getSparql().getTimeout();
         this.maxConcurrentRequests = config.getSparql().getMaxConcurrentRequests();
+        this.executor = new HttpSparqlExecutor(
+                NKD_LABEL,
+                config.getSparql().getEndpoint(),
+                config.getSparql().getTimeout());
         this.detailExtractor = detailExtractor;
     }
 
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
         log.debug("Fetching published concept from NKD: {}", conceptIri);
-
         String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
-
-        Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
-                .query(query)
-                .timeout(queryTimeout, TimeUnit.MILLISECONDS)
-                .construct();
-
-        if (resultModel == null || resultModel.isEmpty()) {
+        Optional<Model> resultModel = executor.construct("NKD concept fetch for " + conceptIri, query);
+        if (resultModel.isEmpty()) {
             log.info("No data found for concept in NKD: {}", conceptIri);
             return Optional.empty();
         }
-
-        log.debug("Fetched {} triples from NKD for concept: {}", resultModel.size(), conceptIri);
-
-        Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
+        log.debug("Fetched {} triples from NKD for concept: {}", resultModel.get().size(), conceptIri);
+        Model processedModel = detailExtractor.applyOFNTransformations(resultModel.get());
         OntologyDetailModel.ConceptDetailModel conceptDetail =
                 detailExtractor.extractConceptDetail(processedModel, conceptIri,
                         OntologyDetailExtractor.iriResolver());
-
         log.debug("Successfully extracted published concept detail from NKD: {}", conceptIri);
         return Optional.of(conceptDetail);
     }
@@ -79,21 +73,14 @@ public class NkdSparqlClient {
      */
     public Optional<Model> fetchPublishedOntologyRaw(String ontologyIri) {
         log.debug("Fetching raw NKD ontology model: {}", ontologyIri);
-
         String query = NKDSPARQLConstructQuery.buildOntologyConstructQuery(ontologyIri);
-
-        Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
-                .query(query)
-                .timeout(queryTimeout, TimeUnit.MILLISECONDS)
-                .construct();
-
-        if (resultModel == null || resultModel.isEmpty()) {
+        Optional<Model> resultModel = executor.construct("NKD ontology fetch for " + ontologyIri, query);
+        if (resultModel.isEmpty()) {
             log.info("No data found for ontology in NKD: {}", ontologyIri);
             return Optional.empty();
         }
-
-        log.debug("Fetched {} triples from NKD for ontology: {}", resultModel.size(), ontologyIri);
-        return Optional.of(resultModel);
+        log.debug("Fetched {} triples from NKD for ontology: {}", resultModel.get().size(), ontologyIri);
+        return resultModel;
     }
 
     public List<String> getPublishedResourcesList(List<String> resourceIris) {
@@ -102,20 +89,20 @@ public class NkdSparqlClient {
             return new ArrayList<>();
         }
 
-        if (nkdSparqlEndpoint == null || nkdSparqlEndpoint.trim().isEmpty()) {
+        if (!executor.isConfigured()) {
             log.warn("NKD SPARQL endpoint not configured, skipping verification");
             return new ArrayList<>();
         }
 
         log.debug("Verifying {} resources against NKD", resourceIris.size());
 
-        ExecutorService executor = Executors.newFixedThreadPool(
+        ExecutorService threadPool = Executors.newFixedThreadPool(
                 Math.min(maxConcurrentRequests, resourceIris.size())
         );
         try {
             List<CompletableFuture<String>> futures = resourceIris.stream()
                     .map(iri -> CompletableFuture.supplyAsync(() ->
-                            isConceptPublishedInNKD(iri) ? iri : null, executor))
+                            isConceptPublishedInNKD(iri) ? iri : null, threadPool))
                     .toList();
 
             List<String> publishedResources = futures.stream()
@@ -127,7 +114,7 @@ public class NkdSparqlClient {
                     publishedResources.size(), resourceIris.size());
             return publishedResources;
         } finally {
-            executor.shutdown();
+            threadPool.shutdown();
         }
     }
 
@@ -136,22 +123,14 @@ public class NkdSparqlClient {
      * Returns results as a list of maps (variable name → string value).
      */
     public List<Map<String, String>> executeSelect(String sparqlQuery) {
-        if (nkdSparqlEndpoint == null || nkdSparqlEndpoint.trim().isEmpty()) {
+        if (!executor.isConfigured()) {
             log.warn("NKD SPARQL endpoint not configured");
             return List.of();
         }
-
         log.debug("Executing NKD SELECT query");
-
-        List<Map<String, String>> results = new ArrayList<>();
-        try (QueryExecution qExec = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
-                .query(sparqlQuery)
-                .timeout(queryTimeout, TimeUnit.MILLISECONDS)
-                .build()) {
-
-            ResultSet rs = qExec.execSelect();
+        List<Map<String, String>> results = executor.select("NKD generic SELECT", sparqlQuery, rs -> {
+            List<Map<String, String>> rows = new ArrayList<>();
             List<String> vars = rs.getResultVars();
-
             while (rs.hasNext()) {
                 QuerySolution sol = rs.next();
                 Map<String, String> row = new LinkedHashMap<>();
@@ -161,33 +140,26 @@ public class NkdSparqlClient {
                         row.put(var, node.isResource() ? node.asResource().getURI() : node.asLiteral().getString());
                     }
                 }
-                results.add(row);
+                rows.add(row);
             }
-        }
-
+            return rows;
+        });
         log.debug("NKD SELECT returned {} rows", results.size());
         return results;
     }
 
     public boolean isEndpointConfigured() {
-        return nkdSparqlEndpoint != null && !nkdSparqlEndpoint.trim().isEmpty();
+        return executor.isConfigured();
     }
 
     private boolean isConceptPublishedInNKD(String conceptIri) {
-        return SparqlExceptionMapper.lenient(
-                "NKD publication check for " + conceptIri,
-                () -> {
-                    String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
-                    Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
-                            .query(query)
-                            .timeout(queryTimeout, TimeUnit.MILLISECONDS)
-                            .construct();
-                    boolean isPublished = resultModel != null && !resultModel.isEmpty();
-                    if (isPublished) {
-                        log.debug("Concept is published in NKD: {}", conceptIri);
-                    }
-                    return isPublished;
-                },
-                false);
+        String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
+        boolean isPublished = executor
+                .constructLenient("NKD publication check for " + conceptIri, query)
+                .isPresent();
+        if (isPublished) {
+            log.debug("Concept is published in NKD: {}", conceptIri);
+        }
+        return isPublished;
     }
 }
