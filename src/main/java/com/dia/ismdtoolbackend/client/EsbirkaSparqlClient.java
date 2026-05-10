@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.atlas.web.HttpException;
@@ -17,7 +18,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -76,11 +76,11 @@ public class EsbirkaSparqlClient {
         List<LawModel> out = new ArrayList<>();
         while (rs.hasNext()) {
             QuerySolution sol = rs.next();
-            String iri = resourceUri(sol, "akt");
-            String citace = literalString(sol, "citace");
-            String cislo = literalString(sol, "cislo");
-            Integer rok = literalInt(sol, "rok");
-            String sbirka = literalString(sol, "sbirka");
+            String iri = SparqlSolutions.resourceUri(sol, "akt");
+            String citace = SparqlSolutions.literalString(sol, "citace");
+            String cislo = SparqlSolutions.literalString(sol, "cislo");
+            Integer rok = SparqlSolutions.literalInt(sol, "rok");
+            String sbirka = SparqlSolutions.literalString(sol, "sbirka");
             if (iri == null || citace == null) {
                 log.warn("Law row missing iri/citace; iri={}", iri);
                 continue;
@@ -94,11 +94,11 @@ public class EsbirkaSparqlClient {
         List<LawVersionModel> out = new ArrayList<>();
         while (rs.hasNext()) {
             QuerySolution sol = rs.next();
-            String iri = resourceUri(sol, "zneni");
-            LocalDate from = literalDate(sol, "ucinnostOd");
-            LocalDate to = literalDate(sol, "ucinnostDo");
-            String typ = resourceUri(sol, "typ");
-            boolean isLatest = literalBool(sol, "isLatest");
+            String iri = SparqlSolutions.resourceUri(sol, "zneni");
+            LocalDate from = SparqlSolutions.literalDate(sol, "ucinnostOd");
+            LocalDate to = SparqlSolutions.literalDate(sol, "ucinnostDo");
+            String typ = SparqlSolutions.resourceUri(sol, "typ");
+            boolean isLatest = SparqlSolutions.literalBool(sol, "isLatest");
             if (iri == null) {
                 log.warn("Version row missing iri");
                 continue;
@@ -112,10 +112,10 @@ public class EsbirkaSparqlClient {
         List<FragmentModel> out = new ArrayList<>();
         while (rs.hasNext()) {
             QuerySolution sol = rs.next();
-            String iri = resourceUri(sol, "fragment");
-            String parent = resourceUri(sol, "parent");
-            String citation = literalString(sol, "citace");
-            String order = literalString(sol, "order");
+            String iri = SparqlSolutions.resourceUri(sol, "fragment");
+            String parent = SparqlSolutions.resourceUri(sol, "parent");
+            String citation = SparqlSolutions.literalString(sol, "citace");
+            String order = SparqlSolutions.literalString(sol, "order");
             if (iri == null || parent == null) {
                 log.warn("Fragment row missing iri/parent; iri={}", iri);
                 continue;
@@ -141,42 +141,6 @@ public class EsbirkaSparqlClient {
     private void requireEndpoint() {
         if (endpoint == null || endpoint.trim().isEmpty()) {
             throw new EsbirkaUnavailableException("e-Sbírka endpoint not configured");
-        }
-    }
-
-    private static String resourceUri(QuerySolution sol, String var) {
-        return (sol.contains(var) && sol.get(var).isResource()) ? sol.getResource(var).getURI() : null;
-    }
-
-    private static String literalString(QuerySolution sol, String var) {
-        return (sol.contains(var) && sol.get(var).isLiteral()) ? sol.getLiteral(var).getString() : null;
-    }
-
-    private static Integer literalInt(QuerySolution sol, String var) {
-        if (!sol.contains(var) || !sol.get(var).isLiteral()) return null;
-        try {
-            return Integer.parseInt(sol.getLiteral(var).getString());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static LocalDate literalDate(QuerySolution sol, String var) {
-        String s = literalString(sol, var);
-        if (s == null) return null;
-        try {
-            return LocalDate.parse(s);
-        } catch (DateTimeParseException e) {
-            return null;
-        }
-    }
-
-    private static boolean literalBool(QuerySolution sol, String var) {
-        if (!sol.contains(var) || !sol.get(var).isLiteral()) return false;
-        try {
-            return sol.getLiteral(var).getBoolean();
-        } catch (Exception e) {
-            return false;
         }
     }
 }

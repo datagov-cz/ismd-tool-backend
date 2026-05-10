@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.exception.RppUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.query.RppSPARQLQuery;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.query.QueryExecution;
@@ -56,9 +57,9 @@ public class RppSparqlClient {
         List<RppAgenda> out = new ArrayList<>();
         while (rs.hasNext()) {
             QuerySolution sol = rs.next();
-            String iri = resourceUri(sol, "agenda");
-            String code = literalString(sol, "code");
-            String nazev = literalString(sol, "nazev");
+            String iri = SparqlSolutions.resourceUri(sol, "agenda");
+            String code = SparqlSolutions.literalString(sol, "code");
+            String nazev = SparqlSolutions.literalString(sol, "nazev");
             if (code == null || nazev == null) {
                 log.warn("RPP agenda row missing code/nazev; iri={}", iri);
                 continue;
@@ -72,10 +73,10 @@ public class RppSparqlClient {
         LinkedHashMap<String, RppIsvs> byIri = new LinkedHashMap<>();
         while (rs.hasNext()) {
             QuerySolution sol = rs.next();
-            String iri = resourceUri(sol, "isvs");
-            String code = literalString(sol, "code");
-            String nazev = literalString(sol, "nazev");
-            String agendaIri = resourceUri(sol, "agenda");
+            String iri = SparqlSolutions.resourceUri(sol, "isvs");
+            String code = SparqlSolutions.literalString(sol, "code");
+            String nazev = SparqlSolutions.literalString(sol, "nazev");
+            String agendaIri = SparqlSolutions.resourceUri(sol, "agenda");
             if (iri == null || code == null || nazev == null) {
                 log.warn("RPP isvs row missing iri/code/nazev; iri={}", iri);
                 continue;
@@ -103,13 +104,5 @@ public class RppSparqlClient {
         if (rppEndpoint == null || rppEndpoint.trim().isEmpty()) {
             throw new RppUnavailableException("RPP endpoint not configured");
         }
-    }
-
-    private static String resourceUri(QuerySolution sol, String var) {
-        return (sol.contains(var) && sol.get(var).isResource()) ? sol.getResource(var).getURI() : null;
-    }
-
-    private static String literalString(QuerySolution sol, String var) {
-        return (sol.contains(var) && sol.get(var).isLiteral()) ? sol.getLiteral(var).getString() : null;
     }
 }
