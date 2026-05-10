@@ -1,10 +1,10 @@
 package com.dia.ismdtoolbackend.client;
 
+import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
@@ -12,7 +12,6 @@ import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -22,20 +21,20 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class NkdSparqlClient {
 
-    @Value("${nkd.sparql.endpoint}")
-    private String nkdSparqlEndpoint;
-
-    @Value("${nkd.sparql.timeout:10000}")
-    private int queryTimeout;
-
-    @Value("${nkd.sparql.max-concurrent-requests:4}")
-    private int maxConcurrentRequests;
-
+    private final String nkdSparqlEndpoint;
+    private final int queryTimeout;
+    private final int maxConcurrentRequests;
     private final OntologyDetailExtractor detailExtractor;
+
+    public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor) {
+        this.nkdSparqlEndpoint = config.getSparql().getEndpoint();
+        this.queryTimeout = config.getSparql().getTimeout();
+        this.maxConcurrentRequests = config.getSparql().getMaxConcurrentRequests();
+        this.detailExtractor = detailExtractor;
+    }
 
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
         log.debug("Fetching published concept from NKD: {}", conceptIri);
