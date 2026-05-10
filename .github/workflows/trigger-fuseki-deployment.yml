@@ -1,5 +1,9 @@
 name: Trigger Fuseki Deployment
 
+concurrency:
+  group: deploy-fuseki-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  cancel-in-progress: false
+
 on:
   workflow_run:
     workflows: [Build Fuseki Image]
