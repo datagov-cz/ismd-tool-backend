@@ -8,15 +8,10 @@ import com.dia.ismdtoolbackend.service.CommentService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @RestController
 @RequestMapping("/api/comment")
@@ -35,8 +30,6 @@ public class CommentController {
             @RequestBody CommentCreateModel commentCreateModel,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Comment post request created, ontologyIri: {}, conceptIri: {}, userId: {}, comment: {}", commentCreateModel.getOntologyIRI(), commentCreateModel.getConceptIRI(), securityUser.getUserId(), commentCreateModel.getComment());
 
         CommentModel postedComment = commentService.postComment(commentCreateModel, securityUser.getUserId());
@@ -55,8 +48,6 @@ public class CommentController {
             @PathVariable Long commentId,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Comment delete requested, commentId: {}, userId: {}", commentId, securityUser.getUserId());
 
         commentService.deleteComment(commentId);

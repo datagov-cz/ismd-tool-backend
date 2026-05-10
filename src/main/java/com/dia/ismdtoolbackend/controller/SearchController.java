@@ -10,7 +10,6 @@ import com.dia.ismdtoolbackend.service.SearchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,9 +19,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @Slf4j
 @RestController
@@ -67,23 +63,17 @@ public class SearchController {
             @AuthenticationPrincipal SecurityUser securityUser)
     {
 
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            validateSearchParams(q, limit, offset);
+        validateSearchParams(q, limit, offset);
 
-            log.info("Search request: q='{}', type={}, source={}, limit={}, offset={}, lang={}, user={}",
-                    q.trim(), type, source, limit, offset, lang,
-                    securityUser != null ? securityUser.getUserId() : "anonymous");
+        log.info("Search request: q='{}', type={}, source={}, limit={}, offset={}, lang={}, user={}",
+                q.trim(), type, source, limit, offset, lang,
+                securityUser != null ? securityUser.getUserId() : "anonymous");
 
-            SearchResponseDto response = searchService.search(
-                    q.trim(), type, source, limit, offset, lang,
-                    ontologyIri, relationTypes, securityUser);
+        SearchResponseDto response = searchService.search(
+                q.trim(), type, source, limit, offset, lang,
+                ontologyIri, relationTypes, securityUser);
 
-            return ResponseEntity.ok(ApiResponseDto.success(response, "Search completed successfully"));
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
+        return ResponseEntity.ok(ApiResponseDto.success(response, "Search completed successfully"));
     }
 
     private void validateSearchParams(String q, int limit, int offset) {

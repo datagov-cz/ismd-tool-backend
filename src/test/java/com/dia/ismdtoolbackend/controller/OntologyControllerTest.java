@@ -17,6 +17,7 @@ import com.dia.ismdtoolbackend.service.ValidationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -831,6 +832,7 @@ class OntologyControllerTest {
     // ========== Request Catalog Record Tests ==========
 
     @Test
+    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
     @WithMockSecurityUser(userId = "user123")
     void testRequestCatalogRecord_Success() throws Exception {
         String slug = "test-ontology";
@@ -865,6 +867,7 @@ class OntologyControllerTest {
     }
 
     @Test
+    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
     @WithMockSecurityUser(userId = "user123")
     void testRequestCatalogRecord_ServiceUnavailable() throws Exception {
         String slug = "test-ontology";
@@ -896,6 +899,7 @@ class OntologyControllerTest {
     }
 
     @Test
+    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
     @WithMockSecurityUser(userId = "user123")
     void testRequestCatalogRecord_AccessDenied() throws Exception {
         String slug = "test-ontology";
@@ -923,6 +927,7 @@ class OntologyControllerTest {
     }
 
     @Test
+    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
     @WithMockSecurityUser(userId = "user123")
     void testRequestCatalogRecord_InvalidValidationReport() throws Exception {
         String slug = "test-ontology";

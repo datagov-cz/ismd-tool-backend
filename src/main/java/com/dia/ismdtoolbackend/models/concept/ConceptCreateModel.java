@@ -5,8 +5,10 @@ import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.NotBlank;
 
 import java.util.List;
 
@@ -28,7 +30,8 @@ public abstract class ConceptCreateModel {
     @NotBlank
     protected String conceptType;
     protected String namespace;
-    @NotBlank
+    @NotNull
+    @Valid
     protected NameModel nameModel;
     protected String identifier;
     protected AltNameModel altNameModel;

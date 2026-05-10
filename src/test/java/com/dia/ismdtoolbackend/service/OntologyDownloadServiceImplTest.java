@@ -81,6 +81,7 @@ class OntologyDownloadServiceImplTest {
     private MockedStatic<RDFConnectionRemote> mockRDFConnectionRemote() {
         RDFConnectionRemoteBuilder builder = mock(RDFConnectionRemoteBuilder.class);
         when(builder.destination(anyString())).thenReturn(builder);
+        when(builder.gspEndpoint(anyString())).thenReturn(builder);
         when(builder.httpClient(any(HttpClient.class))).thenReturn(builder);
         when(builder.build()).thenReturn(rdfConnection);
 
@@ -683,6 +684,7 @@ class OntologyDownloadServiceImplTest {
 
         RDFConnectionRemoteBuilder builder = mock(RDFConnectionRemoteBuilder.class);
         when(builder.destination(anyString())).thenReturn(builder);
+        when(builder.gspEndpoint(anyString())).thenReturn(builder);
         when(builder.httpClient(any(HttpClient.class))).thenReturn(builder);
         when(builder.build()).thenThrow(runEx);
 

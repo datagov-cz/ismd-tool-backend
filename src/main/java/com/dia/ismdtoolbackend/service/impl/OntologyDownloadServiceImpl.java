@@ -64,6 +64,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
 
         try (RDFConnection conn = RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
+                .gspEndpoint("data")
                 .httpClient(fusekiHttpClient)
                 .build()) {
             Model model = conn.fetch(graphName);

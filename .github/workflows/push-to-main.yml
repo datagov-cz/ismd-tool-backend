@@ -1,5 +1,9 @@
 name: Build Docker on Main
 
+concurrency:
+  group: build-main
+  cancel-in-progress: false
+
 on:
   push:
     branches:

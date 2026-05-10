@@ -9,18 +9,15 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @RestController
 @RequestMapping("/api/concept")
@@ -37,12 +34,10 @@ public class ConceptController {
     @PostMapping("/{slug}/create")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> createConcept(
-            @RequestBody ConceptCreateModel conceptCreateModel,
+            @Valid @RequestBody ConceptCreateModel conceptCreateModel,
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
 
         ConceptMetadataModel createdConcept = conceptService.createConcept(conceptCreateModel, securityUser.getUserId());
@@ -61,8 +56,6 @@ public class ConceptController {
             @PathVariable Long conceptId,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept delete requested, conceptId: {}, userId: {}", conceptId, securityUser.getUserId());
 
         conceptService.deleteConcept(conceptId);
@@ -78,12 +71,10 @@ public class ConceptController {
     @PatchMapping("/{conceptId}/edit")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<ConceptMetadataModel>> editConcept(
-            @RequestBody ConceptEditModel conceptEditModel,
+            @Valid @RequestBody ConceptEditModel conceptEditModel,
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long conceptId
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept edit requested, conceptId: {}, userId: {}", conceptId, securityUser.getUserId());
 
         ConceptMetadataModel editedConceptModel = conceptService.editConcept(conceptId, conceptEditModel);
@@ -101,8 +92,6 @@ public class ConceptController {
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) Boolean isPublished
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept list requested, userId: {}, isPublished: {}", userId, isPublished);
 
         List<ConceptMetadataModel> concepts = conceptService.getAll(userId, isPublished);
@@ -115,8 +104,6 @@ public class ConceptController {
     )
     @GetMapping("/{slug}/detail")
     public ResponseEntity<ApiResponseDto<GetConceptDto>> getConceptDetail(@PathVariable String slug) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Concept detail requested, conceptSlug: {}", slug);
 
         GetConceptDto conceptDto = conceptService.getConceptDetail(slug);

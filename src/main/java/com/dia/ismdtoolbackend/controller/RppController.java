@@ -7,7 +7,6 @@ import com.dia.ismdtoolbackend.service.RppService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,9 +15,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @RestController
 @RequestMapping("/api/rpp")
@@ -39,17 +35,11 @@ public class RppController {
     public ResponseEntity<ApiResponseDto<List<RppSearchResultDto>>> searchAgendas(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer limit) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            int resolved = resolveLimit(limit);
-            log.info("RPP agenda search, q: {}, limit: {}", q, resolved);
-            List<RppSearchResultDto> results = rppService.searchAgendas(q, resolved);
-            return ResponseEntity.ok(ApiResponseDto.success(results,
-                    "Vyhledávání agend úspěšně provedeno."));
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
+        int resolved = resolveLimit(limit);
+        log.info("RPP agenda search, q: {}, limit: {}", q, resolved);
+        List<RppSearchResultDto> results = rppService.searchAgendas(q, resolved);
+        return ResponseEntity.ok(ApiResponseDto.success(results,
+                "Vyhledávání agend úspěšně provedeno."));
     }
 
     @Operation(
@@ -62,18 +52,12 @@ public class RppController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String preferredAgendaCode) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        try {
-            int resolved = resolveLimit(limit);
-            log.info("RPP ISVS search, q: {}, limit: {}, preferredAgendaCode: {}",
-                    q, resolved, preferredAgendaCode);
-            List<RppSearchResultDto> results = rppService.searchIsvs(q, resolved, preferredAgendaCode);
-            return ResponseEntity.ok(ApiResponseDto.success(results,
-                    "Vyhledávání informačních systémů úspěšně provedeno."));
-        } finally {
-            MDC.remove(LOG_REQUEST_ID);
-        }
+        int resolved = resolveLimit(limit);
+        log.info("RPP ISVS search, q: {}, limit: {}, preferredAgendaCode: {}",
+                q, resolved, preferredAgendaCode);
+        List<RppSearchResultDto> results = rppService.searchIsvs(q, resolved, preferredAgendaCode);
+        return ResponseEntity.ok(ApiResponseDto.success(results,
+                "Vyhledávání informačních systémů úspěšně provedeno."));
     }
 
     private int resolveLimit(Integer limit) {

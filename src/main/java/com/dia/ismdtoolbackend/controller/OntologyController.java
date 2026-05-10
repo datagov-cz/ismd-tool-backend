@@ -19,10 +19,11 @@ import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -37,15 +38,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/ontology")
 @RequiredArgsConstructor
 @Slf4j
 public class OntologyController {
+
+    private static final Set<String> SUPPORTED_DOWNLOAD_FORMATS = Set.of("ttl", "json-ld");
 
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
@@ -63,8 +64,6 @@ public class OntologyController {
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(name = "providedName", required = false) String providedName,
             @AuthenticationPrincipal SecurityUser securityUser) throws IOException {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         log.info(
                 "Ontology upload requested, fileName: {}, providedName: {}, userId: {}",
@@ -88,8 +87,6 @@ public class OntologyController {
     public ResponseEntity<ApiResponseDto<Void>> deleteOntology(
             @PathVariable Long ontologyId,
             @AuthenticationPrincipal SecurityUser securityUser) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         log.info(
                 "Ontology delete requested, ontologyId: {}, userId: {}, isAdmin: {}",
@@ -108,11 +105,9 @@ public class OntologyController {
     )
     @PostMapping("/create")
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> createOntology(
-            @RequestBody OntologyCreateModel ontologyCreateModel,
+            @Valid @RequestBody OntologyCreateModel ontologyCreateModel,
             @AuthenticationPrincipal SecurityUser securityUser) {
 
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         log.info(
                 "Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}",
@@ -139,8 +134,6 @@ public class OntologyController {
             @AuthenticationPrincipal SecurityUser securityUser,
             @PathVariable Long ontologyId
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info(
                 "Ontology edit requested, ontologyId: {}, userId: {}, isAdmin: {}",
                 ontologyId,
@@ -164,16 +157,13 @@ public class OntologyController {
             @PathVariable Long ontologyId,
             @RequestParam String format
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology download requested, ontologyId: {}, format: {}", ontologyId, format);
 
-        String content = ontologyDownloadService.downloadOntology(ontologyId, format);
-
-        String filename = "ontology_" + ontologyId + "." + getFileExtension(format);
-        String contentType = getContentType(format);
-
-        ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
+        String normalizedFormat = format == null ? "" : format.toLowerCase();
+        if (!SUPPORTED_DOWNLOAD_FORMATS.contains(normalizedFormat)) {
+            throw new IllegalArgumentException("Nepodporovaný formát: " + format
+                    + ". Podporované formáty: " + String.join(", ", SUPPORTED_DOWNLOAD_FORMATS) + ".");
+        }
 
         if (!validationConfig.isEnableOntologyViolationDownload()) {
             ValidationReportDto validationReport = validationService.getValidationReport(ontologyService.getOntologyMetadata(ontologyId));
@@ -181,6 +171,13 @@ public class OntologyController {
                 return ResponseEntity.badRequest().build();
             }
         }
+
+        String content = ontologyDownloadService.downloadOntology(ontologyId, normalizedFormat);
+
+        String filename = "ontology_" + ontologyId + "." + getFileExtension(normalizedFormat);
+        String contentType = getContentType(normalizedFormat);
+
+        ByteArrayResource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
 
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"").contentType(MediaType.parseMediaType(contentType)).contentLength(resource.contentLength()).body(resource);
     }
@@ -191,8 +188,6 @@ public class OntologyController {
     )
     @GetMapping("/{slug}/detail")
     public ResponseEntity<ApiResponseDto<GetOntologyDto>> getOntologyDetail(@PathVariable String slug) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology detail requested, ontologyId: {}", slug);
 
         GetOntologyDto ontologyDto = ontologyService.getOntologyDetailModel(slug);
@@ -210,8 +205,6 @@ public class OntologyController {
             @RequestParam(required = false) Boolean isPublished,
             @RequestParam(required = false) List<String> slugs
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
 
         if (slugs != null && !slugs.isEmpty()) {
             log.info("Ontology list by slugs requested, slugs: {}", slugs);
@@ -235,9 +228,7 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
-        log.info("Ontology validation requested, ontologyIRI: {}", ontologyMetadata.getGraphName());
+        log.info("Ontology validation requested, slug: {}, ontologyIRI: {}", slug, ontologyMetadata.getGraphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
         Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
@@ -256,6 +247,8 @@ public class OntologyController {
             summary = "Žádost o katalogizační záznam",
             description = "Vyžádá katalogizační záznam slovníku z validační služby na základě RDF dat a výsledků validace. Vyžaduje oprávnění vlastníka nebo administrátora."
     )
+    @Hidden
+    @Deprecated(forRemoval = true)
     @PostMapping("{slug}/catalog-record")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
     public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
@@ -263,8 +256,6 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        String requestId = UUID.randomUUID().toString();
-        MDC.put(LOG_REQUEST_ID, requestId);
         log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
@@ -284,18 +275,18 @@ public class OntologyController {
     }
 
     private String getFileExtension(String format) {
-        return switch (format.toLowerCase()) {
+        return switch (format) {
             case "json-ld" -> "jsonld";
             case "ttl" -> "ttl";
-            default -> "txt";
+            default -> throw new IllegalStateException("Unreachable: format validated by SUPPORTED_DOWNLOAD_FORMATS");
         };
     }
 
     private String getContentType(String format) {
-        return switch (format.toLowerCase()) {
+        return switch (format) {
             case "json-ld" -> "application/ld+json";
             case "ttl" -> "text/turtle";
-            default -> "text/plain";
+            default -> throw new IllegalStateException("Unreachable: format validated by SUPPORTED_DOWNLOAD_FORMATS");
         };
     }
 }
