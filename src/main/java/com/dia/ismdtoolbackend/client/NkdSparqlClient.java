@@ -3,15 +3,14 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
-import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
 import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -176,29 +175,20 @@ public class NkdSparqlClient {
     }
 
     private boolean isConceptPublishedInNKD(String conceptIri) {
-        try {
-            String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
-
-            Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
-                    .query(query)
-                    .timeout(queryTimeout, TimeUnit.MILLISECONDS)
-                    .construct();
-
-            boolean isPublished = resultModel != null && !resultModel.isEmpty();
-            if (isPublished) {
-                log.debug("Concept is published in NKD: {}", conceptIri);
-            }
-            return isPublished;
-
-        } catch (QueryExceptionHTTP e) {
-            log.warn("SPARQL error checking concept in NKD: {} - {}", conceptIri, e.getMessage());
-            return false;
-        } catch (HttpException e) {
-            log.warn("HTTP error checking concept in NKD: {} - {}", conceptIri, e.getMessage());
-            return false;
-        } catch (Exception e) {
-            log.warn("Unexpected error checking concept in NKD: {} - {}", conceptIri, e.getMessage());
-            return false;
-        }
+        return SparqlExceptionMapper.lenient(
+                "NKD publication check for " + conceptIri,
+                () -> {
+                    String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
+                    Model resultModel = QueryExecutionHTTPBuilder.service(nkdSparqlEndpoint)
+                            .query(query)
+                            .timeout(queryTimeout, TimeUnit.MILLISECONDS)
+                            .construct();
+                    boolean isPublished = resultModel != null && !resultModel.isEmpty();
+                    if (isPublished) {
+                        log.debug("Concept is published in NKD: {}", conceptIri);
+                    }
+                    return isPublished;
+                },
+                false);
     }
 }

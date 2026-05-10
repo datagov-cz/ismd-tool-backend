@@ -4,13 +4,12 @@ import com.dia.ismdtoolbackend.exception.RppUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.query.RppSPARQLQuery;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
 import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -41,16 +40,18 @@ public class RppSparqlClient {
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
         requireEndpoint();
-        try (QueryExecution qe = QueryExecutionHTTPBuilder.service(rppEndpoint)
-                .query(query)
-                .timeout(rppSparqlTimeout, TimeUnit.MILLISECONDS)
-                .build()) {
-            return mapper.apply(qe.execSelect());
-        } catch (QueryExceptionHTTP | HttpException e) {
-            throw new RppUnavailableException("RPP " + label + " fetch failed: " + e.getMessage(), e);
-        } catch (Exception e) {
-            throw new RppUnavailableException("RPP " + label + " mapping failed: " + e.getMessage(), e);
-        }
+        return SparqlExceptionMapper.strict(
+                "RPP " + label,
+                RppUnavailableException.class,
+                () -> {
+                    try (QueryExecution qe = QueryExecutionHTTPBuilder.service(rppEndpoint)
+                            .query(query)
+                            .timeout(rppSparqlTimeout, TimeUnit.MILLISECONDS)
+                            .build()) {
+                        return mapper.apply(qe.execSelect());
+                    }
+                },
+                RppUnavailableException::new);
     }
 
     private List<RppAgenda> mapAgendaRows(ResultSet rs) {

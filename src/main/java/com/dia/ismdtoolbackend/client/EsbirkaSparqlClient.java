@@ -5,14 +5,13 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
 import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -60,16 +59,18 @@ public class EsbirkaSparqlClient {
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
         requireEndpoint();
-        try (QueryExecution qe = QueryExecutionHTTPBuilder.service(endpoint)
-                .query(query)
-                .timeout(sparqlTimeout, TimeUnit.MILLISECONDS)
-                .build()) {
-            return mapper.apply(qe.execSelect());
-        } catch (QueryExceptionHTTP | HttpException e) {
-            throw new EsbirkaUnavailableException("e-Sbírka " + label + " fetch failed: " + e.getMessage(), e);
-        } catch (Exception e) {
-            throw new EsbirkaUnavailableException("e-Sbírka " + label + " mapping failed: " + e.getMessage(), e);
-        }
+        return SparqlExceptionMapper.strict(
+                "e-Sbírka " + label,
+                EsbirkaUnavailableException.class,
+                () -> {
+                    try (QueryExecution qe = QueryExecutionHTTPBuilder.service(endpoint)
+                            .query(query)
+                            .timeout(sparqlTimeout, TimeUnit.MILLISECONDS)
+                            .build()) {
+                        return mapper.apply(qe.execSelect());
+                    }
+                },
+                EsbirkaUnavailableException::new);
     }
 
     private List<LawModel> mapLawRows(ResultSet rs) {
