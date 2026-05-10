@@ -8,7 +8,7 @@ import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
-import com.dia.ismdtoolbackend.exception.EsbirkaUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -139,7 +139,7 @@ class EsbirkaControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void lawSearchService503BubblesUp() throws Exception {
         when(esbirkaService.searchLaws(any(), anyInt()))
-                .thenThrow(new EsbirkaUnavailableException("e-Sbírka law search fetch failed"));
+                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka law search fetch failed"));
 
         mockMvc.perform(get("/api/eli/law/search"))
                 .andExpect(status().isServiceUnavailable())
@@ -182,7 +182,7 @@ class EsbirkaControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void versionsService503BubblesUp() throws Exception {
         when(esbirkaService.getVersions(LAW_IRI))
-                .thenThrow(new EsbirkaUnavailableException("e-Sbírka version list fetch failed"));
+                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka version list fetch failed"));
 
         mockMvc.perform(get("/api/eli/law/versions").param("lawIri", LAW_IRI))
                 .andExpect(status().isServiceUnavailable());
@@ -223,7 +223,7 @@ class EsbirkaControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void fragmentsService503BubblesUp() throws Exception {
         when(esbirkaService.getFragments(VERSION_IRI))
-                .thenThrow(new EsbirkaUnavailableException("e-Sbírka fragment tree fetch failed"));
+                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka fragment tree fetch failed"));
 
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
                 .andExpect(status().isServiceUnavailable());

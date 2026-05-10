@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.exception.RppUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -150,7 +150,7 @@ class RppSparqlClientTest {
     @Test
     void upstream500ThrowsRppUnavailable() {
         stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
-        assertThrows(RppUnavailableException.class, () -> client.fetchAllAgendas());
+        assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
     }
 
     @Test
@@ -159,14 +159,14 @@ class RppSparqlClientTest {
                 .withHeader("Content-Type", "application/sparql-results+json")
                 .withFixedDelay(5000)
                 .withBody(emptyResults())));
-        RppUnavailableException ex = assertThrows(RppUnavailableException.class, () -> client.fetchAllAgendas());
+        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
         assertNotNull(ex.getMessage());
     }
 
     @Test
     void unconfiguredEndpointThrowsRppUnavailable() {
         ReflectionTestUtils.setField(client, "rppEndpoint", "");
-        RppUnavailableException ex = assertThrows(RppUnavailableException.class, () -> client.fetchAllAgendas());
+        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
         assertTrue(ex.getMessage().contains("not configured"));
     }
 

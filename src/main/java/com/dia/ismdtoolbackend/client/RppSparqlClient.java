@@ -1,11 +1,12 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.exception.RppUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.query.RppSPARQLQuery;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlExceptionMapper;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
@@ -24,11 +25,24 @@ import java.util.function.Function;
 @Slf4j
 public class RppSparqlClient {
 
+    /**
+     * Endpoint label used for {@link SparqlEndpointUnavailableException} so the
+     * global handler can render a per-endpoint Czech message.
+     */
+    public static final String RPP_LABEL = "RPP";
+
     @Value("${rpp.sparql.endpoint:}")
     private String rppEndpoint;
 
     @Value("${rpp.sparql.timeout:10000}")
     private int rppSparqlTimeout;
+
+    @PostConstruct
+    void warnIfEndpointMissing() {
+        if (rppEndpoint == null || rppEndpoint.isBlank()) {
+            log.warn("rpp.sparql.endpoint is not configured — /api/rpp/* endpoints will return 503 until set.");
+        }
+    }
 
     public List<RppAgenda> fetchAllAgendas() {
         return executeSelect("agenda", RppSPARQLQuery.buildAgendaListQuery(), this::mapAgendaRows);
@@ -42,7 +56,7 @@ public class RppSparqlClient {
         requireEndpoint();
         return SparqlExceptionMapper.strict(
                 "RPP " + label,
-                RppUnavailableException.class,
+                SparqlEndpointUnavailableException.class,
                 () -> {
                     try (QueryExecution qe = QueryExecutionHTTPBuilder.service(rppEndpoint)
                             .query(query)
@@ -51,7 +65,7 @@ public class RppSparqlClient {
                         return mapper.apply(qe.execSelect());
                     }
                 },
-                RppUnavailableException::new);
+                (msg, cause) -> new SparqlEndpointUnavailableException(RPP_LABEL, msg, cause));
     }
 
     private List<RppAgenda> mapAgendaRows(ResultSet rs) {
@@ -103,7 +117,7 @@ public class RppSparqlClient {
 
     private void requireEndpoint() {
         if (rppEndpoint == null || rppEndpoint.trim().isEmpty()) {
-            throw new RppUnavailableException("RPP endpoint not configured");
+            throw new SparqlEndpointUnavailableException(RPP_LABEL, "RPP endpoint not configured");
         }
     }
 }

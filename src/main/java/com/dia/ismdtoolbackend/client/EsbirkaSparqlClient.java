@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.exception.EsbirkaUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
@@ -25,6 +25,12 @@ import java.util.function.Function;
 @Component
 @Slf4j
 public class EsbirkaSparqlClient {
+
+    /**
+     * Endpoint label used for {@link SparqlEndpointUnavailableException} so the
+     * global handler can render a per-endpoint Czech message.
+     */
+    public static final String ESBIRKA_LABEL = "e-Sbírka";
 
     @Value("${esbirka.sparql.endpoint:}")
     private String endpoint;
@@ -61,7 +67,7 @@ public class EsbirkaSparqlClient {
         requireEndpoint();
         return SparqlExceptionMapper.strict(
                 "e-Sbírka " + label,
-                EsbirkaUnavailableException.class,
+                SparqlEndpointUnavailableException.class,
                 () -> {
                     try (QueryExecution qe = QueryExecutionHTTPBuilder.service(endpoint)
                             .query(query)
@@ -70,7 +76,7 @@ public class EsbirkaSparqlClient {
                         return mapper.apply(qe.execSelect());
                     }
                 },
-                EsbirkaUnavailableException::new);
+                (msg, cause) -> new SparqlEndpointUnavailableException(ESBIRKA_LABEL, msg, cause));
     }
 
     private List<LawModel> mapLawRows(ResultSet rs) {
@@ -141,7 +147,7 @@ public class EsbirkaSparqlClient {
 
     private void requireEndpoint() {
         if (endpoint == null || endpoint.trim().isEmpty()) {
-            throw new EsbirkaUnavailableException("e-Sbírka endpoint not configured");
+            throw new SparqlEndpointUnavailableException(ESBIRKA_LABEL, "e-Sbírka endpoint not configured");
         }
     }
 }

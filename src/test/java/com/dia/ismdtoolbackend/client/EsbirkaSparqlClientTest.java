@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.exception.EsbirkaUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
@@ -272,7 +272,7 @@ class EsbirkaSparqlClientTest {
     @Test
     void upstream500ThrowsEsbirkaUnavailable() {
         stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
-        assertThrows(EsbirkaUnavailableException.class, () -> client.searchLaws(null, 20));
+        assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
     }
 
     @Test
@@ -281,7 +281,7 @@ class EsbirkaSparqlClientTest {
                 .withHeader("Content-Type", "application/sparql-results+json")
                 .withFixedDelay(5000)
                 .withBody(emptyLawResults())));
-        EsbirkaUnavailableException ex = assertThrows(EsbirkaUnavailableException.class,
+        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
                 () -> client.searchLaws(null, 20));
         assertNotNull(ex.getMessage());
     }
@@ -291,20 +291,20 @@ class EsbirkaSparqlClientTest {
         stubFor(any(anyUrl()).willReturn(aResponse()
                 .withHeader("Content-Type", "application/sparql-results+json")
                 .withBody("{ this is not valid sparql json")));
-        assertThrows(EsbirkaUnavailableException.class, () -> client.searchLaws(null, 20));
+        assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
     }
 
     @Test
     void connectionRefusedThrowsEsbirkaUnavailable() {
         // Point at a port that's not listening — a stopped wiremock instance equivalent.
         ReflectionTestUtils.setField(client, "endpoint", "http://127.0.0.1:1/sparql");
-        assertThrows(EsbirkaUnavailableException.class, () -> client.searchLaws(null, 20));
+        assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
     }
 
     @Test
     void unconfiguredEndpointThrowsEsbirkaUnavailable() {
         ReflectionTestUtils.setField(client, "endpoint", "");
-        EsbirkaUnavailableException ex = assertThrows(EsbirkaUnavailableException.class,
+        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
                 () -> client.searchLaws(null, 20));
         assertTrue(ex.getMessage().contains("not configured"));
     }
