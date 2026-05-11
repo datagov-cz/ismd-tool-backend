@@ -87,8 +87,10 @@ services:
     restart: unless-stopped
 
   fuseki:
-    build:
-      context: ./docker/fuseki
+    # Default: pull pre-built image from GHCR (~10s vs ~15min local build).
+    # To build from local source, use docker-compose.fuseki-build.yml override.
+    image: ${TOOL_FUSEKI_IMAGE:-ghcr.io/datagov-cz/ismd-tool-fuseki-dev:latest}
+    pull_policy: ${TOOL_FUSEKI_PULL_POLICY:-missing}
     # Bind to loopback only: Fuseki ships without authentication in this
     # compose setup (no shiro.ini), so its management API and SPARQL
     # endpoints would be fully open. 0.0.0.0 would expose the unauth
