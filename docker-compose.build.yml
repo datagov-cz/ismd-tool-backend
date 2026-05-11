@@ -7,6 +7,8 @@
 #                  --profile full-backend up --build
 #
 # Requires GITHUB_TOKEN + GITHUB_ACTOR for Maven access to GitHub Packages.
+# GITHUB_TOKEN is passed as a BuildKit secret (not a build arg) so it does
+# not leak into image history or build logs.
 # ==============================================
 
 services:
@@ -14,7 +16,15 @@ services:
     image: ismd-tool-backend:local
     pull_policy: never
     build:
-      context: .
+      # Default `.` works when running from this directory directly.
+      # When composed from ismd-infrastructure via `-f`, set TOOL_BACKEND_PATH
+      # to the path of this repo (e.g. ../ismd-tool-backend).
+      context: ${TOOL_BACKEND_PATH:-.}
       args:
-        GITHUB_TOKEN: ${GITHUB_TOKEN}
         GITHUB_ACTOR: ${GITHUB_ACTOR}
+      secrets:
+        - github_token
+
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN

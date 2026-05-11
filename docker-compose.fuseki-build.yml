@@ -1,0 +1,22 @@
+# ==============================================
+# ISMD Tool Fuseki - Build Override
+# ==============================================
+# Use with the base file to build the fuseki image from local source instead
+# of pulling the pre-built image from GHCR. Only needed when modifying the
+# Fuseki Dockerfile or fuseki-config.ttl.
+#
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.fuseki-build.yml \
+#                  --profile full-backend up --build
+#
+# When composed from ismd-infrastructure via `-f`, set TOOL_BACKEND_PATH
+# to the path of this repo (e.g. ../ismd-tool-backend).
+# ==============================================
+
+services:
+  fuseki:
+    image: ismd-tool-fuseki:local
+    pull_policy: never
+    build:
+      context: ${TOOL_BACKEND_PATH:-.}
+      dockerfile: docker/fuseki/Dockerfile

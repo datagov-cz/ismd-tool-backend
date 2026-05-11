@@ -1,0 +1,28 @@
+# Build artifacts
+target/
+*.class
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker / compose (not needed inside the build context)
+docker-compose*.yml
+Dockerfile
+.dockerignore
+docker/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Misc
+*.md
+node_modules/

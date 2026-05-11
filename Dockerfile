@@ -2,44 +2,46 @@
 FROM eclipse-temurin:17-jdk-alpine AS builder
 WORKDIR /app
 
-# Install bash
 RUN apk add --no-cache bash
 
-# Copy tool-backend source
-COPY . .
+ARG GITHUB_ACTOR=""
 
-# Make mvnw executable
+# Copy build manifests first so dependency layers cache across source changes.
+COPY mvnw pom.xml ./
+COPY .mvn .mvn
 RUN chmod +x mvnw
 
-# Build arguments
-ARG GITHUB_TOKEN
-ARG GITHUB_ACTOR
+# Maven settings.xml references the token via ${env.GITHUB_TOKEN}, which is
+# resolved at Maven runtime from the secret mount below — never embedded
+# in the image or build log.
+RUN mkdir -p /root/.m2 && \
+    printf '%s\n' \
+      '<settings><servers><server>' \
+      '<id>github</id>' \
+      "<username>${GITHUB_ACTOR}</username>" \
+      '<password>${env.GITHUB_TOKEN}</password>' \
+      '</server></servers></settings>' \
+      > /root/.m2/settings.xml
 
-# Configure Maven to authenticate with GitHub Packages (if needed)
-RUN if [ -n "${GITHUB_TOKEN}" ] && [ -n "${GITHUB_ACTOR}" ]; then \
-      echo "Configuring Maven for GitHub Packages..."; \
-      mkdir -p ~/.m2 && \
-      echo '<settings><servers><server>' > ~/.m2/settings.xml && \
-      echo '<id>github</id>' >> ~/.m2/settings.xml && \
-      echo "<username>${GITHUB_ACTOR}</username>" >> ~/.m2/settings.xml && \
-      echo "<password>${GITHUB_TOKEN}</password>" >> ~/.m2/settings.xml && \
-      echo '</server></servers></settings>' >> ~/.m2/settings.xml; \
-    fi
+# Copy source after manifests so source changes don't bust the dep cache layer.
+COPY src src
 
-# Build the application
-RUN ./mvnw clean install -DskipTests
+# Build with:
+#   - persistent BuildKit cache for /root/.m2/repository
+#     (dependencies are downloaded once, reused across builds)
+#   - GITHUB_TOKEN exposed only as a secret env var inside this RUN
+RUN --mount=type=cache,target=/root/.m2/repository \
+    --mount=type=secret,id=github_token,env=GITHUB_TOKEN \
+    ./mvnw clean install -DskipTests -B
 
 ### Runtime stage
 FROM eclipse-temurin:17-jre-alpine AS runtime
 WORKDIR /app
 
-# Set environment variables
 ENV SPRING_PROFILES_ACTIVE=production
 
-# Copy the built JAR
 COPY --from=builder /app/target/ismd-tool-backend-*.jar app.jar
 
-# Add labels
 LABEL org.opencontainers.image.title="ISMD Tool Backend"
 
 EXPOSE 8080
