@@ -35,8 +35,17 @@ class OntologyDetailExtractorResolvedSourcesTest {
         assertEquals(1, out.size());
         assertEquals(EnrichmentStatus.SKIPPED_NON_FRAGMENT, out.get(0).getEnrichmentStatus());
         assertEquals(ParsedEli.Level.LAW, out.get(0).getLevel());
-        assertNull(out.get(0).getDisplayLabel(),
-                "extractor stays parse-only — displayLabel is the service's job");
+        assertEquals("Zákon č. 361/2000 Sb.", out.get(0).getDisplayLabel(),
+                "extractor populates parse-only displayLabel via EsbirkaCzechCitationFormatter");
+    }
+
+    @Test
+    void buildResolvedSources_fragmentUrl_pendingHasFallbackDisplayLabel() {
+        List<ResolvedLegalSourceDto> out = OntologyDetailExtractor.buildResolvedSources(List.of(FRAGMENT));
+        assertEquals(EnrichmentStatus.PENDING, out.get(0).getEnrichmentStatus());
+        assertEquals("Zákon č. 361/2000 Sb., § 2 písm. d) (znění od 1. 4. 2024)",
+                out.get(0).getDisplayLabel(),
+                "fragment fallback uses segment-derived citation");
     }
 
     @Test

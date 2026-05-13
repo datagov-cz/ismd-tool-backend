@@ -143,21 +143,4 @@ class EsbirkaServiceImplResolveTest {
                 "fragmentIri must use canonical host");
     }
 
-    @Test
-    void buildFragmentCitationFromSegments_parPresent_dropsAncestors() {
-        String citation = EsbirkaServiceImpl.buildFragmentCitationFromSegments(java.util.List.of(
-                new ParsedEli.FragmentSegment("cast", "1"),
-                new ParsedEli.FragmentSegment("hlava", "1"),
-                new ParsedEli.FragmentSegment("par", "2"),
-                new ParsedEli.FragmentSegment("pism", "d")));
-        assertEquals("§ 2 písm. d)", citation);
-    }
-
-    @Test
-    void buildFragmentCitationFromSegments_noPar_keepsAllSegments() {
-        String citation = EsbirkaServiceImpl.buildFragmentCitationFromSegments(java.util.List.of(
-                new ParsedEli.FragmentSegment("cast", "1"),
-                new ParsedEli.FragmentSegment("hlava", "1")));
-        assertEquals("Část 1 Hlava 1", citation);
-    }
 }

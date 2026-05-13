@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
@@ -20,7 +21,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,8 +35,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     static final int MAX_FRAGMENT_DEPTH = 10;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
     private static final String NORMA_SUFFIX = "/dokument/norma";
-
-    private static final DateTimeFormatter CZECH_DATE = DateTimeFormatter.ofPattern("d. M. yyyy");
 
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
@@ -187,7 +185,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
         if (!parsed.isFragment()) {
             return baseDtoBuilder(parsed)
-                    .displayLabel(buildDisplayLabel(parsed, null))
+                    .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, null))
                     .enrichmentStatus(EnrichmentStatus.SKIPPED_NON_FRAGMENT)
                     .build();
         }
@@ -200,7 +198,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     parsed.fragmentIri(), parsed.versionIri(), parsed.lawIri());
             if (opt.isEmpty()) {
                 return baseDtoBuilder(parsed)
-                        .displayLabel(buildDisplayLabel(parsed, null))
+                        .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, null))
                         .enrichmentStatus(EnrichmentStatus.NOT_FOUND)
                         .build();
             }
@@ -209,13 +207,13 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .fragmentCitation(m.citation())
                     .versionValidUntil(m.versionValidUntil())
                     .isLatestVersion(m.isLatest())
-                    .displayLabel(buildDisplayLabel(parsed, m.citation()))
+                    .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, m.citation()))
                     .enrichmentStatus(EnrichmentStatus.OK)
                     .build();
         } catch (SparqlEndpointUnavailableException e) {
-            log.debug("e-Sbírka unavailable while resolving {}: {}", parsed.fragmentIri(), e.getMessage());
+            log.warn("e-Sbírka unavailable while resolving {}: {}", parsed.fragmentIri(), e.getMessage());
             return baseDtoBuilder(parsed)
-                    .displayLabel(buildDisplayLabel(parsed, null))
+                    .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, null))
                     .enrichmentStatus(EnrichmentStatus.UNAVAILABLE)
                     .build();
         }
@@ -237,63 +235,4 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                 .fragmentSegments(p.fragmentSegments());
     }
 
-    /**
-     * Build a display label from the parsed components, optionally using
-     * an authoritative SPARQL-fetched citation for the fragment portion.
-     */
-    static String buildDisplayLabel(ParsedEli p, String sparqlCitation) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Zákon č. ").append(p.lawNumber()).append("/").append(p.lawYear()).append(" Sb.");
-        if (p.isFragment()) {
-            String fragmentPart = sparqlCitation != null && !sparqlCitation.isBlank()
-                    ? sparqlCitation
-                    : buildFragmentCitationFromSegments(p.fragmentSegments());
-            if (!fragmentPart.isBlank()) {
-                sb.append(", ").append(fragmentPart);
-            }
-        }
-        if (p.versionDate() != null) {
-            sb.append(" (znění od ").append(p.versionDate().format(CZECH_DATE)).append(")");
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Fallback fragment citation built purely from path segments. Used when
-     * SPARQL is unavailable, the fragment isn't in the dataset, or we skip
-     * SPARQL on principle. If a {@code par_} segment is present, structural
-     * ancestors (cast/hlava/dil/oddil) are omitted — that matches e-Sbírka's
-     * own citation format.
-     */
-    static String buildFragmentCitationFromSegments(List<ParsedEli.FragmentSegment> segments) {
-        if (segments == null || segments.isEmpty()) return "";
-        boolean hasPar = segments.stream().anyMatch(s -> "par".equals(s.kind()));
-        StringBuilder sb = new StringBuilder();
-        for (ParsedEli.FragmentSegment s : segments) {
-            if (hasPar && isStructuralAncestor(s.kind())) continue;
-            if (!sb.isEmpty()) sb.append(' ');
-            sb.append(formatSegment(s));
-        }
-        return sb.toString();
-    }
-
-    private static boolean isStructuralAncestor(String kind) {
-        return "cast".equals(kind) || "hlava".equals(kind) || "dil".equals(kind) || "oddil".equals(kind);
-    }
-
-    private static String formatSegment(ParsedEli.FragmentSegment s) {
-        return switch (s.kind()) {
-            case "cast" -> "Část " + s.number();
-            case "hlava" -> "Hlava " + s.number();
-            case "dil" -> "Díl " + s.number();
-            case "oddil" -> "Oddíl " + s.number();
-            case "par" -> "§ " + s.number();
-            case "odst" -> "odst. " + s.number();
-            case "pism" -> "písm. " + s.number() + ")";
-            case "bod" -> "bod " + s.number();
-            case "ppc" -> "ppc " + s.number();
-            case "frag" -> "frag " + s.number();
-            default -> s.kind() + " " + s.number();
-        };
-    }
 }

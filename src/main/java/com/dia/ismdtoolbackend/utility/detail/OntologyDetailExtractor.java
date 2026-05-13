@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
@@ -413,6 +414,7 @@ public class OntologyDetailExtractor {
                 .sbirkaCode(parsed.sbirkaCode())
                 .versionDate(parsed.versionDate())
                 .fragmentSegments(parsed.fragmentSegments())
+                .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, null))
                 .enrichmentStatus(status)
                 .build();
     }
