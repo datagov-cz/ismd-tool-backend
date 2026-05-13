@@ -109,5 +109,36 @@ public class EsbirkaSPARQLQuery {
         return pss.toString();
     }
 
+    /**
+     * Resolve a single fragment IRI to its display citation + parent version's
+     * end-of-validity date + is-latest flag. Caller passes pre-derived parent
+     * versionIri and lawIri (from {@link com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser})
+     * so we avoid a {@code má-předka+} property-path traversal.
+     *
+     * <p>All three IRIs MUST be canonical-host IRIs and pre-validated via
+     * {@link com.dia.ismdtoolbackend.utility.security.SparqlIriValidator#isEsbirkaEliIri(String)}.
+     */
+    public static String buildResolveFragmentQuery(String fragmentIri, String versionIri, String lawIri) {
+        // Note: we cannot bind inputZneni via PSS because we also need to compare it
+        // structurally inside the SELECT projection (BIND). Instead, the version IRI
+        // is inlined as a VALUES row, leaving ?zneni as a real variable usable in
+        // (?zneni = ?posledniZneni) AS ?isLatest.
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText("""
+                SELECT ?citace ?ucinnostDo ((?zneni = ?posledniZneni) AS ?isLatest)
+                WHERE {
+                  VALUES ?zneni { ?inputZneni }
+                  ?inputFragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace .
+                  ?inputAkt <%1$smá-poslední-znění> ?posledniZneni .
+                  OPTIONAL { ?zneni <%1$súčinnost-znění-do> ?ucinnostDo }
+                }
+                LIMIT 1
+                """.formatted(NS));
+        pss.setIri("inputFragment", fragmentIri);
+        pss.setIri("inputZneni", versionIri);
+        pss.setIri("inputAkt", lawIri);
+        return pss.toString();
+    }
+
     private EsbirkaSPARQLQuery() {}
 }

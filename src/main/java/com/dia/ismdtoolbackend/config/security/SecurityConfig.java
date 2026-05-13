@@ -207,6 +207,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/eli/law/search").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/eli/law/versions").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/eli/law/fragments").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/eli/resolve").authenticated()
                         .anyRequest().denyAll()
                 )
                 // Disable CSRF for stateless JWT API

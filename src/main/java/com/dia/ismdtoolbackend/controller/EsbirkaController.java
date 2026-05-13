@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import io.swagger.v3.oas.annotations.Operation;
@@ -92,6 +93,27 @@ public class EsbirkaController {
             List<FragmentDto> results = esbirkaService.getFragments(versionIri);
             return ResponseEntity.ok(ApiResponseDto.success(results,
                     "Strom fragmentů úspěšně načten."));
+        } finally {
+            MDC.remove(LOG_REQUEST_ID);
+        }
+    }
+
+    @Operation(
+            summary = "Resolve e-Sbírka ELI URL to a display object",
+            description = "Parses the URL synchronously, and for fragment-level URLs " +
+                    "fetches the official citation + version metadata via SPARQL (cached 24h). " +
+                    "Forgiving: invalid URLs return HTTP 200 with enrichmentStatus=INVALID_IRI."
+    )
+    @GetMapping("/resolve")
+    public ResponseEntity<ApiResponseDto<ResolvedLegalSourceDto>> resolveLegalSource(
+            @RequestParam String iri) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        try {
+            log.info("e-Sbírka resolve, iri: {}", iri);
+            ResolvedLegalSourceDto dto = esbirkaService.resolveLegalSource(iri);
+            return ResponseEntity.ok(ApiResponseDto.success(dto,
+                    "Resolve dokončen."));
         } finally {
             MDC.remove(LOG_REQUEST_ID);
         }

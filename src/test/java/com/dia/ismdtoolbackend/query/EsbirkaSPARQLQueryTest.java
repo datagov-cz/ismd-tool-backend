@@ -83,4 +83,20 @@ class EsbirkaSPARQLQueryTest {
         assertTrue(q.contains("<" + VERSION_IRI + ">"),
                 "versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
     }
+
+    @Test
+    void buildResolveFragmentQuery_bindsAllThreeIris() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/cast_1/par_2/pism_d";
+        String q = EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, VERSION_IRI, LAW_IRI);
+
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
+        assertTrue(q.contains("má-poslední-znění"));
+        assertTrue(q.contains("účinnost-znění-do"));
+        assertTrue(q.contains("(?zneni = ?posledniZneni) AS ?isLatest"));
+        assertTrue(q.contains("LIMIT 1"));
+        assertTrue(q.contains("<" + fragmentIri + ">"), "fragmentIri must be inlined");
+        assertTrue(q.contains("<" + VERSION_IRI + ">"), "versionIri must be inlined");
+        assertTrue(q.contains("<" + LAW_IRI + ">"), "lawIri must be inlined");
+    }
 }

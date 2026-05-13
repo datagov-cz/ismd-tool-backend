@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
+import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 @Component
@@ -57,6 +59,20 @@ public class EsbirkaSparqlClient {
         return executeSelect("fragment tree",
                 EsbirkaSPARQLQuery.buildFragmentTreeQuery(versionIri),
                 this::mapFragmentRows);
+    }
+
+    /**
+     * Resolve a single fragment IRI to its display citation + parent version
+     * end-of-validity date + is-latest flag. Returns empty Optional when SPARQL
+     * returns zero rows (fragment not in dataset). Propagates
+     * {@link com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException}
+     * on connection failures via the executor.
+     */
+    public Optional<FragmentResolutionModel> resolveFragment(String fragmentIri, String versionIri, String lawIri) {
+        List<FragmentResolutionModel> rows = executeSelect("fragment resolution",
+                EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, versionIri, lawIri),
+                this::mapResolutionRows);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
@@ -120,6 +136,18 @@ public class EsbirkaSparqlClient {
             }
             String kind = parseKindFromIri(iri);
             out.add(new FragmentModel(iri, parent, citation, kind, order));
+        }
+        return out;
+    }
+
+    private List<FragmentResolutionModel> mapResolutionRows(ResultSet rs) {
+        List<FragmentResolutionModel> out = new ArrayList<>();
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String citation = SparqlSolutions.literalString(sol, "citace");
+            LocalDate validUntil = SparqlSolutions.literalDate(sol, "ucinnostDo");
+            boolean isLatest = SparqlSolutions.literalBool(sol, "isLatest");
+            out.add(new FragmentResolutionModel(citation, validUntil, isLatest));
         }
         return out;
     }
