@@ -285,8 +285,16 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    void resolveUnauthenticatedReturns403() throws Exception {
+    void resolveUnauthenticatedReturns200() throws Exception {
+        // /resolve is a public endpoint (mirrors /concept/{slug}/detail being public).
+        ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
+                .originalUrl("anything")
+                .enrichmentStatus(EnrichmentStatus.INVALID_IRI)
+                .build();
+        when(esbirkaService.resolveLegalSource("anything")).thenReturn(dto);
+
         mockMvc.perform(get("/api/eli/resolve").param("iri", "anything"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enrichmentStatus").value("INVALID_IRI"));
     }
 }

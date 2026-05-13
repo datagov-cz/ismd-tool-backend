@@ -105,7 +105,6 @@ public class SecurityConfig {
                                 response.setContentType("application/json");
                                 response.getWriter().write(
                                         "{\"success\":false,\"message\":\"Invalid or expired authentication token\"}");
-                                return;
                             }
                             // No token — allow anonymous access to proceed
                         })
@@ -149,6 +148,7 @@ public class SecurityConfig {
                         "/api/nkd/ontology/all",
                         "/api/nkd/ontology/download",
                         "/api/nkd/concept/detail",
+                        "/api/eli/resolve",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"
@@ -207,7 +207,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/eli/law/search").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/eli/law/versions").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/eli/law/fragments").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/eli/resolve").authenticated()
                         .anyRequest().denyAll()
                 )
                 // Disable CSRF for stateless JWT API

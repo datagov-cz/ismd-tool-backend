@@ -102,9 +102,11 @@ public class EsbirkaController {
             summary = "Resolve e-Sbírka ELI URL to a display object",
             description = "Parses the URL synchronously, and for fragment-level URLs " +
                     "fetches the official citation + version metadata via SPARQL (cached 24h). " +
-                    "Forgiving: invalid URLs return HTTP 200 with enrichmentStatus=INVALID_IRI."
+                    "Forgiving: invalid URLs return HTTP 200 with enrichmentStatus=INVALID_IRI. " +
+                    "Public endpoint — used by concept detail rendering for unauthenticated viewers."
     )
     @GetMapping("/resolve")
+    @PreAuthorize("permitAll()")
     public ResponseEntity<ApiResponseDto<ResolvedLegalSourceDto>> resolveLegalSource(
             @RequestParam String iri) {
         String requestId = UUID.randomUUID().toString();
@@ -113,7 +115,7 @@ public class EsbirkaController {
             log.info("e-Sbírka resolve, iri: {}", iri);
             ResolvedLegalSourceDto dto = esbirkaService.resolveLegalSource(iri);
             return ResponseEntity.ok(ApiResponseDto.success(dto,
-                    "Resolve dokončen."));
+                    "Resolve finished"));
         } finally {
             MDC.remove(LOG_REQUEST_ID);
         }
