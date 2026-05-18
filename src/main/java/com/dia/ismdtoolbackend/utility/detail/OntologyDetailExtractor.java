@@ -1,10 +1,15 @@
 package com.dia.ismdtoolbackend.utility.detail;
 
+import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
+import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
@@ -303,6 +308,10 @@ public class OntologyDetailExtractor {
                 .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
                 .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
                 .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
+                .definingLegalSourcesResolved(buildResolvedSources(
+                        (List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
+                .relatedLegalSourcesResolved(buildResolvedSources(
+                        (List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
                 .definingNonLegalSources((List<Map<String, Object>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
                 .relatedNonLegalSources((List<Map<String, Object>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
                 .sharingMethods((List<String>) conceptMap.get(ZPUSOBY_SDILENI_ALT))
@@ -364,5 +373,49 @@ public class OntologyDetailExtractor {
         }
 
         return descriptionMap;
+    }
+
+    /**
+     * Build parse-only resolved-source DTOs for the concept-detail response.
+     * Returns {@code null} when the input is null/empty so {@code @JsonInclude(NON_NULL)}
+     * omits the field. Never calls SPARQL — fragment URLs are flagged
+     * {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
+     */
+    static List<ResolvedLegalSourceDto> buildResolvedSources(List<String> urls) {
+        if (urls == null || urls.isEmpty()) return null;
+        List<ResolvedLegalSourceDto> out = new ArrayList<>(urls.size());
+        for (String url : urls) {
+            out.add(parseUrlToPendingDto(url));
+        }
+        return out;
+    }
+
+    private static ResolvedLegalSourceDto parseUrlToPendingDto(String url) {
+        ParsedEli parsed = EsbirkaEliParser.parse(url);
+        if (!parsed.isValid()) {
+            return ResolvedLegalSourceDto.builder()
+                    .originalUrl(url)
+                    .enrichmentStatus(EnrichmentStatus.INVALID_IRI)
+                    .build();
+        }
+        EnrichmentStatus status = parsed.isFragment()
+                ? EnrichmentStatus.PENDING
+                : EnrichmentStatus.SKIPPED_NON_FRAGMENT;
+        return ResolvedLegalSourceDto.builder()
+                .originalUrl(url)
+                .domain(parsed.domain())
+                .eliPath(parsed.eliPath())
+                .level(parsed.level())
+                .lawIri(parsed.lawIri())
+                .versionIri(parsed.versionIri())
+                .fragmentIri(parsed.fragmentIri())
+                .lawNumber(parsed.lawNumber())
+                .lawYear(parsed.lawYear())
+                .sbirkaCode(parsed.sbirkaCode())
+                .versionDate(parsed.versionDate())
+                .fragmentSegments(parsed.fragmentSegments())
+                .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, null))
+                .enrichmentStatus(status)
+                .build();
     }
 }

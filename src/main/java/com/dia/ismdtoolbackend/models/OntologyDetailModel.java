@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -93,6 +94,12 @@ public class OntologyDetailModel {
 
         @JsonProperty("související-ustanovení-právního-předpisu")
         private List<String> relatedLegalSources;
+
+        @JsonProperty("definující-ustanovení-právního-předpisu-resolved")
+        private List<ResolvedLegalSourceDto> definingLegalSourcesResolved;
+
+        @JsonProperty("související-ustanovení-právního-předpisu-resolved")
+        private List<ResolvedLegalSourceDto> relatedLegalSourcesResolved;
 
         @JsonProperty("definující-nelegislativní-zdroj")
         private List<Map<String, Object>> definingNonLegalSources;

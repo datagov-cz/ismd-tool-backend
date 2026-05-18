@@ -8,6 +8,9 @@ import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
+import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import org.junit.jupiter.api.BeforeEach;
@@ -227,5 +230,71 @@ class EsbirkaControllerTest {
 
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
                 .andExpect(status().isServiceUnavailable());
+    }
+
+    // -------- /resolve --------
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void resolveValidFragmentUrlReturns200WithDto() throws Exception {
+        String fragmentUrl = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
+                .originalUrl(fragmentUrl)
+                .level(ParsedEli.Level.FRAGMENT)
+                .fragmentCitation("§ 2 písm. d)")
+                .displayLabel("Zákon č. 187/2006 Sb., § 2 písm. d)")
+                .enrichmentStatus(EnrichmentStatus.OK)
+                .build();
+        when(esbirkaService.resolveLegalSource(fragmentUrl)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/resolve").param("iri", fragmentUrl))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.enrichmentStatus").value("OK"))
+                .andExpect(jsonPath("$.data.fragmentCitation").value("§ 2 písm. d)"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void resolveInvalidUrlReturns200WithInvalidIriStatus() throws Exception {
+        ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
+                .originalUrl("garbage")
+                .enrichmentStatus(EnrichmentStatus.INVALID_IRI)
+                .build();
+        when(esbirkaService.resolveLegalSource("garbage")).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/resolve").param("iri", "garbage"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enrichmentStatus").value("INVALID_IRI"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void resolveESbirkaDownReturns200WithUnavailableStatus() throws Exception {
+        String fragmentUrl = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
+                .originalUrl(fragmentUrl)
+                .level(ParsedEli.Level.FRAGMENT)
+                .enrichmentStatus(EnrichmentStatus.UNAVAILABLE)
+                .build();
+        when(esbirkaService.resolveLegalSource(fragmentUrl)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/resolve").param("iri", fragmentUrl))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enrichmentStatus").value("UNAVAILABLE"));
+    }
+
+    @Test
+    void resolveUnauthenticatedReturns200() throws Exception {
+        // /resolve is a public endpoint (mirrors /concept/{slug}/detail being public).
+        ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
+                .originalUrl("anything")
+                .enrichmentStatus(EnrichmentStatus.INVALID_IRI)
+                .build();
+        when(esbirkaService.resolveLegalSource("anything")).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/resolve").param("iri", "anything"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.enrichmentStatus").value("INVALID_IRI"));
     }
 }

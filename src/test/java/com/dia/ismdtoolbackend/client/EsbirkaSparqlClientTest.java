@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
+import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -15,6 +16,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
@@ -265,6 +267,88 @@ class EsbirkaSparqlClientTest {
         List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals("§ 2", out.get(0).getCitation());
+    }
+
+    // --- resolveFragment ----------------------------------------------------
+
+    @Test
+    void resolveFragment_happyPath_returnsCitationAndMetadata() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        String json = """
+                {
+                  "head": { "vars": ["citace", "ucinnostDo", "isLatest"] },
+                  "results": { "bindings": [
+                    { "citace":     {"type":"literal","value":"§ 2 písm. d)"},
+                      "ucinnostDo": {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#date","value":"2024-12-31"},
+                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"true"} }
+                  ] }
+                }
+                """;
+        stubSparql(json);
+
+        Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
+
+        assertTrue(out.isPresent());
+        assertEquals("§ 2 písm. d)", out.get().citation());
+        assertEquals(LocalDate.of(2024, 12, 31), out.get().versionValidUntil());
+        assertTrue(out.get().isLatest());
+    }
+
+    @Test
+    void resolveFragment_emptyResult_returnsEmptyOptional() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        stubSparql("""
+                {
+                  "head": { "vars": ["citace", "ucinnostDo", "isLatest"] },
+                  "results": { "bindings": [] }
+                }
+                """);
+
+        Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
+
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    void resolveFragment_noUcinnostDo_returnsNullValidUntil() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        String json = """
+                {
+                  "head": { "vars": ["citace", "ucinnostDo", "isLatest"] },
+                  "results": { "bindings": [
+                    { "citace":     {"type":"literal","value":"§ 2 písm. d)"},
+                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"false"} }
+                  ] }
+                }
+                """;
+        stubSparql(json);
+
+        Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
+
+        assertTrue(out.isPresent());
+        assertEquals("§ 2 písm. d)", out.get().citation());
+        assertNull(out.get().versionValidUntil());
+        assertFalse(out.get().isLatest());
+    }
+
+    @Test
+    void resolveFragment_endpointDown_throwsSparqlEndpointUnavailable() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
+
+        assertThrows(SparqlEndpointUnavailableException.class,
+                () -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI));
+    }
+
+    @Test
+    void resolveFragment_malformedBody_throwsSparqlEndpointUnavailable() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
+        stubFor(any(anyUrl()).willReturn(aResponse()
+                .withHeader("Content-Type", "application/sparql-results+json")
+                .withBody("{ malformed")));
+
+        assertThrows(SparqlEndpointUnavailableException.class,
+                () -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI));
     }
 
     // --- G12: failure modes -------------------------------------------------
