@@ -52,12 +52,39 @@ jobs:
       soft_fail: ${{ !(github.event_name == 'workflow_dispatch' && inputs.soft_fail == false) }}
     secrets: inherit
 
+  # Probe whether main has an actual app yet. Until the first release
+  # cuts dev -> main, main only contains workflows + LICENSE, so there
+  # is no image to scan. We use pom.xml as the marker for "app exists".
+  check-main:
+    name: Check main has an app
+    runs-on: ubuntu-latest
+    outputs:
+      has_app: ${{ steps.probe.outputs.has_app }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          sparse-checkout: pom.xml
+          sparse-checkout-cone-mode: false
+      - id: probe
+        run: |
+          if [ -f pom.xml ]; then
+            echo "has_app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_app=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::main has no pom.xml yet — skipping main image scan."
+          fi
+
   scan-main:
     name: Scan main image
+    needs: check-main
     if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build Docker on Main' && github.event.workflow_run.conclusion == 'success') ||
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.image_variant == 'main' || inputs.image_variant == 'both'))
+      needs.check-main.outputs.has_app == 'true' && (
+        (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build Docker on Main' && github.event.workflow_run.conclusion == 'success') ||
+        github.event_name == 'schedule' ||
+        (github.event_name == 'workflow_dispatch' && (inputs.image_variant == 'main' || inputs.image_variant == 'both'))
+      )
     uses: datagov-cz/ismd-infrastructure/.github/workflows/trivy-reusable.yml@dev
     with:
       image_ref: ghcr.io/datagov-cz/ismd-tool-backend:latest
