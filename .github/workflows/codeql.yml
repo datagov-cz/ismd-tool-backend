@@ -1,8 +1,7 @@
 name: CodeQL
 
 # GitHub-native SAST for Java. CodeQL needs to observe a real Maven build to
-# build its database, so we replicate the same setup as reusable-test.yml
-# (JDK 17 + mvnw package).
+# build its database, so we run a plain `mvn package` under JDK 17.
 # Findings appear in Security -> Code scanning.
 
 on:
@@ -51,14 +50,15 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: java-kotlin
+          languages: java
           queries: security-extended
           build-mode: manual
 
       - name: Build tool-backend
-        run: ./mvnw -DskipTests clean package
+        working-directory: ${{ github.workspace }}
+        run: mvn -B -DskipTests clean package
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:java-kotlin"
+          category: "/language:java"
