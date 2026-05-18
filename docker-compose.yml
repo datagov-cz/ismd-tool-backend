@@ -103,7 +103,7 @@ services:
     volumes:
       - fuseki_tdb2:/opt/fuseki/run/databases/tdb2/ismd-tool-dataset
       - fuseki_lucene:/opt/fuseki/run/databases/lucene/ismd-tool-dataset
-      - ./fuseki-config.ttl:/opt/fuseki/run/configuration/ismd-tool-dataset.ttl
+      - ./fuseki-config.ttl:/opt/fuseki/run/configuration/config.ttl
     networks:
       - ismd-network
 
