@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.service.rpp;
 
 import com.dia.ismdtoolbackend.client.RppSparqlClient;
 import com.dia.ismdtoolbackend.config.RppConfig;
-import com.dia.ismdtoolbackend.exception.RppUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppCodeComparator;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
@@ -63,7 +63,7 @@ public class RppSnapshotHolder {
             RppSnapshot fresh = buildFresh();
             current.set(fresh);
             return fresh;
-        } catch (RppUnavailableException e) {
+        } catch (SparqlEndpointUnavailableException e) {
             if (!existing.isEmpty()) {
                 log.warn("RPP refresh failed; serving stale snapshot loadedAt={}. cause={}",
                         existing.getLoadedAt(), e.getMessage());

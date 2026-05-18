@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
@@ -30,7 +31,6 @@ import static com.dia.constants.VocabularyConstants.*;
 @Slf4j
 public class ConceptCreator {
 
-    private static final String ELI_PATTERN = "https://opendata.eselpoint.cz/esel-esb/";
     private final URIGenerator uriGenerator = new URIGenerator();
     @Getter
     private OntModel ontModel;
@@ -600,15 +600,15 @@ public class ConceptCreator {
     private void addPrivacyProvisionsMetadata(Resource resource, List<String> privacyProvisions) {
         if (privacyProvisions != null && !privacyProvisions.isEmpty()) {
             for (String provision : privacyProvisions) {
-                if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
-                    String eliPart = UtilityMethods.extractEliPart(provision);
-                    if (eliPart != null) {
-                        String transformedProvision = ELI_PATTERN + eliPart;
-                        Property provisionProperty = ontModel.createProperty(
-                                uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
-                        resource.addProperty(provisionProperty, ontModel.createResource(transformedProvision));
-                    }
+                if (provision == null || provision.trim().isEmpty()) continue;
+                String trimmed = provision.trim();
+                if (!SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
+                    log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                    continue;
                 }
+                Property provisionProperty = ontModel.createProperty(
+                        uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+                resource.addProperty(provisionProperty, ontModel.createResource(trimmed));
             }
         }
     }
@@ -631,13 +631,13 @@ public class ConceptCreator {
         String propertyName = isDefining ? DEFINUJICI_USTANOVENI : SOUVISEJICI_USTANOVENI;
         Property property = ontModel.createProperty(OFN_NAMESPACE + propertyName);
 
-        if (UtilityMethods.containsEliPattern(source)) {
-            String eliPart = UtilityMethods.extractEliPart(source);
-            if (eliPart != null) {
-                String transformedUrl = ELI_PATTERN + eliPart;
-                resource.addProperty(property, ontModel.createResource(transformedUrl));
-            }
+        if (source == null || source.trim().isEmpty()) return;
+        String trimmed = source.trim();
+        if (!SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
+            log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+            return;
         }
+        resource.addProperty(property, ontModel.createResource(trimmed));
     }
 
     private void processNonLegalSource(Resource resource, String source, boolean isDefining) {
@@ -722,11 +722,12 @@ public class ConceptCreator {
         List<String> validProvisions = new java.util.ArrayList<>();
         if (privacyProvisions != null) {
             for (String provision : privacyProvisions) {
-                if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
-                    String eliPart = UtilityMethods.extractEliPart(provision);
-                    if (eliPart != null) {
-                        validProvisions.add(ELI_PATTERN + eliPart);
-                    }
+                if (provision == null || provision.trim().isEmpty()) continue;
+                String trimmed = provision.trim();
+                if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
+                    validProvisions.add(trimmed);
+                } else {
+                    log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
                 }
             }
         }

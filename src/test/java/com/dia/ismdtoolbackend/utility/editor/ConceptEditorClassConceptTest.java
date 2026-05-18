@@ -186,9 +186,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
 
         when(classConceptEditModel.getDefiningLegalSource())
-                .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2021/12"));
+                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/12"));
         when(classConceptEditModel.getRelatedLegalSource())
-                .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2022/100"));
+                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2022/100"));
 
         when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
@@ -215,7 +215,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                 .getObject()
                 .asResource()
                 .getURI();
-        assertTrue(definingIri.startsWith("https://opendata.eselpoint.cz/esel-esb/"));
+        assertTrue(definingIri.startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
         assertTrue(definingIri.contains("2021/12"));
 
         String relatedIri = updated.listProperties(relatedProp)
@@ -223,7 +223,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                 .getObject()
                 .asResource()
                 .getURI();
-        assertTrue(relatedIri.startsWith("https://opendata.eselpoint.cz/esel-esb/"));
+        assertTrue(relatedIri.startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
         assertTrue(relatedIri.contains("2022/100"));
     }
 
@@ -404,7 +404,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getAltNameModel()).thenReturn(null);
 
         when(classConceptEditModel.getPrivacyProvisions())
-                .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2023/50"));
+                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getType()).thenReturn(null);
@@ -436,7 +436,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                 .getObject()
                 .asResource()
                 .getURI();
-        assertTrue(provisionIri.startsWith("https://opendata.eselpoint.cz/esel-esb/"));
+        assertTrue(provisionIri.startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
         assertTrue(provisionIri.contains("2023/50"));
     }
 
@@ -449,7 +449,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
         Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-        Resource oldProvision = model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/10");
+        Resource oldProvision = model.createResource("https://opendata.eselpoint.gov.cz/esel-esb/2020/10");
         existing.addProperty(provisionProperty, oldProvision);
 
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
@@ -499,8 +499,8 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
         Property relatedProp = model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
 
-        existing.addProperty(definingProp, model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/1"));
-        existing.addProperty(relatedProp, model.createResource("https://opendata.eselpoint.cz/esel-esb/2020/2"));
+        existing.addProperty(definingProp, model.createResource("https://opendata.eselpoint.gov.cz/esel-esb/2020/1"));
+        existing.addProperty(relatedProp, model.createResource("https://opendata.eselpoint.gov.cz/esel-esb/2020/2"));
 
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
@@ -770,7 +770,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         stubAllClassFieldsNull(classConceptEditModel);
         when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
         when(classConceptEditModel.getPrivacyProvisions())
-                .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2023/50"));
+                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 
@@ -814,7 +814,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         stubAllClassFieldsNull(classConceptEditModel);
         when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.TRUE);
         when(classConceptEditModel.getPrivacyProvisions())
-                .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2023/50"));
+                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 

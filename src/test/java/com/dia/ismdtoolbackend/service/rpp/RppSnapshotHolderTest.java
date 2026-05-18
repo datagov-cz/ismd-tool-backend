@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.service.rpp;
 
 import com.dia.ismdtoolbackend.client.RppSparqlClient;
 import com.dia.ismdtoolbackend.config.RppConfig;
-import com.dia.ismdtoolbackend.exception.RppUnavailableException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.models.rpp.RppSnapshot;
@@ -95,7 +95,7 @@ class RppSnapshotHolderTest {
     void refetchFailureWithNonEmptyCacheServesStale() {
         when(client.fetchAllAgendas())
                 .thenReturn(List.of(new RppAgenda("a-iri", "1", "Ag")))
-                .thenThrow(new RppUnavailableException("upstream down"));
+                .thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
         when(client.fetchAllIsvs()).thenReturn(List.of(new RppIsvs("i-iri", "10", "Is", List.of())));
 
         RppSnapshot stale = holder.get();
@@ -107,8 +107,8 @@ class RppSnapshotHolderTest {
 
     @Test
     void refetchFailureWithEmptyCacheThrows() {
-        when(client.fetchAllAgendas()).thenThrow(new RppUnavailableException("upstream down"));
+        when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
 
-        assertThrows(RppUnavailableException.class, () -> holder.get());
+        assertThrows(SparqlEndpointUnavailableException.class, () -> holder.get());
     }
 }

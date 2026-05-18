@@ -322,9 +322,9 @@ class ConceptCreatorTest {
             setupBasicClassConcept("Legal Source Class", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-1");
             when(classConceptModel.getDefiningLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2021/12"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/12"));
             when(classConceptModel.getRelatedLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2022/100"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2022/100"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -351,7 +351,7 @@ class ConceptCreatorTest {
             setupBasicClassConcept("Class with defining only", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-DEF-ONLY");
             when(classConceptModel.getDefiningLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2023/11"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/11"));
             when(classConceptModel.getRelatedLegalSource())
                     .thenReturn(List.of());
 
@@ -382,7 +382,7 @@ class ConceptCreatorTest {
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of());
             when(classConceptModel.getRelatedLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2024/7"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2024/7"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -409,9 +409,9 @@ class ConceptCreatorTest {
             setupBasicClassConcept("Class with both legal sources", "subjekt");
             when(classConceptModel.getIdentifier()).thenReturn("LEGAL-BOTH-1");
             when(classConceptModel.getDefiningLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2019/10"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2019/10"));
             when(classConceptModel.getRelatedLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2020/5"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2020/5"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -459,6 +459,43 @@ class ConceptCreatorTest {
             assertFalse(result.hasProperty(related));
         }
 
+        @Test
+        void createSingleConcept_ShouldDropLegalSourcesOnBrokenLegacyHost() {
+            // Pre-#106 broken host (missing .gov) was silently accepted and host-rewritten;
+            // the new contract requires the canonical opendata.eselpoint.gov.cz host.
+            setupBasicClassConcept("Class with broken-host legal sources", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("LEGAL-BROKEN-HOST");
+            when(classConceptModel.getDefiningLegalSource())
+                    .thenReturn(List.of("https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2021/12"));
+            when(classConceptModel.getRelatedLegalSource())
+                    .thenReturn(List.of("https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2022/100"));
+
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
+            assertFalse(result.hasProperty(defining));
+            assertFalse(result.hasProperty(related));
+        }
+
+        @Test
+        void createSingleConcept_ShouldStoreLegalSourceVerbatimOnCanonicalHost() {
+            // Canonical e-Sbírka ELI must be stored verbatim — no host rewriting, no path slicing.
+            String canonical = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/12";
+            setupBasicClassConcept("Class with canonical legal source", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("LEGAL-VERBATIM");
+            when(classConceptModel.getDefiningLegalSource())
+                    .thenReturn(List.of(canonical));
+            when(classConceptModel.getRelatedLegalSource()).thenReturn(List.of());
+
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+            String storedIri = result.listProperties(defining).nextStatement()
+                    .getObject().asResource().getURI();
+            assertEquals(canonical, storedIri);
+        }
+
         // ========== A2. Non-legal sources for ClassConcept ==========
 
         @Test
@@ -502,7 +539,7 @@ class ConceptCreatorTest {
             setupBasicClassConcept("PrivateClass", "objekt");
             when(classConceptModel.getIdentifier()).thenReturn("PP-1");
             when(classConceptModel.getPrivacyProvisions())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2020/50"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2020/50"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -836,9 +873,9 @@ class ConceptCreatorTest {
             when(propertyConceptModel.getIdentifier()).thenReturn("PROP-SOURCES-1");
             when(propertyConceptModel.getDomain()).thenReturn("SourceDomain");
             when(propertyConceptModel.getDefiningLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2019/10"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2019/10"));
             when(propertyConceptModel.getRelatedLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2021/5"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/5"));
             when(propertyConceptModel.getDefiningNonLegalSource())
                     .thenReturn(List.of("https://example.org/property-doc-1"));
             when(propertyConceptModel.getRelatedNonLegalSource())
@@ -866,7 +903,7 @@ class ConceptCreatorTest {
             setupBasicRelationshipConcept("Private relation", "DomainClass", "RangeClass");
             when(relationshipConceptModel.getIdentifier()).thenReturn("REL-PRIVATE");
             when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.FALSE);
-            when(relationshipConceptModel.getPrivacyProvisions()).thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2020/50"));
+            when(relationshipConceptModel.getPrivacyProvisions()).thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2020/50"));
 
             // act
             Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
@@ -1020,9 +1057,9 @@ class ConceptCreatorTest {
             when(relationshipConceptModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
             when(relationshipConceptModel.getContentType()).thenReturn("obsah-rel");
             when(relationshipConceptModel.getDefiningLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2018/10"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2018/10"));
             when(relationshipConceptModel.getRelatedLegalSource())
-                    .thenReturn(List.of("https://eselpoint.cz/eli/cz/act/2020/5"));
+                    .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2020/5"));
             when(relationshipConceptModel.getDefiningNonLegalSource())
                     .thenReturn(List.of("https://example.org/rel-doc-1"));
             when(relationshipConceptModel.getRelatedNonLegalSource())
@@ -1061,14 +1098,14 @@ class ConceptCreatorTest {
             when(relationshipConceptModel.getIsPublic()).thenReturn(Boolean.TRUE);
             when(relationshipConceptModel.getDefiningLegalSource()).thenReturn(
                     List.of(
-                            "https://eselpoint.cz/eli/cz/act/2020/5",
+                            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2020/5",
                             "http://example.org/not-eli-def"
                     )
             );
             when(relationshipConceptModel.getRelatedLegalSource()).thenReturn(
                     List.of(
                             "http://example.org/not-eli-rel",
-                            "https://eselpoint.cz/eli/cz/act/2021/10"
+                            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/10"
                     )
             );
 

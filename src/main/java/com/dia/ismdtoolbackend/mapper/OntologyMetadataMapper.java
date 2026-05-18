@@ -24,6 +24,7 @@ public interface OntologyMetadataMapper {
     @Mapping(target = "name", ignore = true)
     @Mapping(target = "popis", ignore = true)
     @Mapping(target = "concepts", ignore = true)
+    @Mapping(target = "conceptCount", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
 
     default CommentModel commentEntityToModel(CommentEntity entity) {

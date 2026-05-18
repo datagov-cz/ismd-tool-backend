@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
@@ -462,12 +463,12 @@ public class ConceptEditor {
         Set<String> newProvisions = new HashSet<>();
 
         for (String provision : privacyProvisions) {
-            if (provision != null && !provision.trim().isEmpty() && UtilityMethods.containsEliPattern(provision)) {
-                String eliPart = UtilityMethods.extractEliPart(provision);
-                if (eliPart != null) {
-                    String transformedProvision = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
-                    newProvisions.add(transformedProvision);
-                }
+            if (provision == null || provision.trim().isEmpty()) continue;
+            String trimmed = provision.trim();
+            if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
+                newProvisions.add(trimmed);
+            } else {
+                log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
             }
         }
 
@@ -672,12 +673,12 @@ public class ConceptEditor {
         Set<String> newSourceURIs = new HashSet<>();
 
         for (String source : newSources) {
-            if (source != null && !source.trim().isEmpty() && UtilityMethods.containsEliPattern(source)) {
-                String eliPart = UtilityMethods.extractEliPart(source);
-                if (eliPart != null) {
-                    String transformedUrl = "https://opendata.eselpoint.cz/esel-esb/" + eliPart;
-                    newSourceURIs.add(transformedUrl);
-                }
+            if (source == null || source.trim().isEmpty()) continue;
+            String trimmed = source.trim();
+            if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
+                newSourceURIs.add(trimmed);
+            } else {
+                log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", trimmed);
             }
         }
 
