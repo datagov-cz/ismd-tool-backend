@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SearchResultDto {
+    private Long id;
     private String iri;
     private String slug;
     private String label;

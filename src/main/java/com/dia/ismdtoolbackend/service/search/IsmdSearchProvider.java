@@ -228,6 +228,7 @@ public class IsmdSearchProvider implements SearchProvider {
 
         return entities.stream()
                 .map(e -> SearchResultDto.builder()
+                        .id(e.getId())
                         .iri(e.getGraphName())
                         .slug(e.getSlug())
                         .label(e.getSlug())
