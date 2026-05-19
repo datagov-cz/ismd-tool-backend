@@ -16,11 +16,14 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
               AND (c.is_published = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+              AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByText(@Param("query") String query,
                                               @Param("userId") String userId,
                                               @Param("hasGraphFilter") boolean hasGraphFilter,
-                                              @Param("graphNames") List<String> graphNames);
+                                              @Param("graphNames") List<String> graphNames,
+                                              @Param("hasTypeFilter") boolean hasTypeFilter,
+                                              @Param("conceptType") String conceptType);
 
     /**
      * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
@@ -36,12 +39,15 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
               AND c.is_published = false
               AND (:isAdmin = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+              AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByTextUnpublished(@Param("query") String query,
                                                          @Param("userId") String userId,
                                                          @Param("isAdmin") boolean isAdmin,
                                                          @Param("hasGraphFilter") boolean hasGraphFilter,
-                                                         @Param("graphNames") List<String> graphNames);
+                                                         @Param("graphNames") List<String> graphNames,
+                                                         @Param("hasTypeFilter") boolean hasTypeFilter,
+                                                         @Param("conceptType") String conceptType);
 
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.concepts c
@@ -49,11 +55,14 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
               AND (c.is_published = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+              AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     long countSearchByText(@Param("query") String query,
                            @Param("userId") String userId,
                            @Param("hasGraphFilter") boolean hasGraphFilter,
-                           @Param("graphNames") List<String> graphNames);
+                           @Param("graphNames") List<String> graphNames,
+                           @Param("hasTypeFilter") boolean hasTypeFilter,
+                           @Param("conceptType") String conceptType);
 
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.concepts c
@@ -62,12 +71,15 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
               AND c.is_published = false
               AND (:isAdmin = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
+              AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     long countSearchByTextUnpublished(@Param("query") String query,
                                       @Param("userId") String userId,
                                       @Param("isAdmin") boolean isAdmin,
                                       @Param("hasGraphFilter") boolean hasGraphFilter,
-                                      @Param("graphNames") List<String> graphNames);
+                                      @Param("graphNames") List<String> graphNames,
+                                      @Param("hasTypeFilter") boolean hasTypeFilter,
+                                      @Param("conceptType") String conceptType);
 
     /**
      * Concept counts grouped by graph_name, restricted to a fixed set of graphs.

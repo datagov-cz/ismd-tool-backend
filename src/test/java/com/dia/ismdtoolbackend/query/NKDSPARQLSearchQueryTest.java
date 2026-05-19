@@ -47,7 +47,7 @@ class NKDSPARQLSearchQueryTest {
 
     @Test
     void buildConceptSearchQuery_containsBifContainsWithWildcard() {
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, null, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, null, null, null);
 
         assertTrue(query.contains("bif:contains"));
         assertTrue(query.contains("\"osoba*\""));
@@ -58,7 +58,7 @@ class NKDSPARQLSearchQueryTest {
 
     @Test
     void buildConceptSearchQuery_searchesCorrectFields() {
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
         assertTrue(query.contains("skos:prefLabel"));
         assertTrue(query.contains("skos:altLabel"));
@@ -73,7 +73,7 @@ class NKDSPARQLSearchQueryTest {
                 "https://slovnik.gov.cz/datovy/adresy"
         );
 
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, ontologyIris, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, ontologyIris, null, null);
 
         assertTrue(query.contains("VALUES ?ontology"));
         assertTrue(query.contains("<https://slovnik.gov.cz/datovy/osoby>"));
@@ -84,14 +84,14 @@ class NKDSPARQLSearchQueryTest {
 
     @Test
     void buildConceptSearchQuery_withoutOntologyIriFilter_noValuesClause() {
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, null, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, null, null, null);
 
         assertFalse(query.contains("VALUES ?ontology"));
     }
 
     @Test
     void buildConceptSearchQuery_withEmptyOntologyIriList_noValuesClause() {
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, List.of(), null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, List.of(), null, null);
 
         assertFalse(query.contains("VALUES ?ontology"));
     }
@@ -99,7 +99,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildConceptSearchQuery_withSingleRelationType_usesFilterExists() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                "osoba", "cs", 20, 0, null, List.of(RelationType.SUBCLASS));
+                "osoba", "cs", 20, 0, null, List.of(RelationType.SUBCLASS), null);
 
         assertTrue(query.contains("FILTER EXISTS { ?resource rdfs:subClassOf ?x }"));
     }
@@ -107,7 +107,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildConceptSearchQuery_withMultipleRelationTypes_combinesWithOr() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                "osoba", "cs", 20, 0, null, List.of(RelationType.SUBCLASS, RelationType.EXACT_MATCH));
+                "osoba", "cs", 20, 0, null, List.of(RelationType.SUBCLASS, RelationType.EXACT_MATCH), null);
 
         assertTrue(query.contains("EXISTS { ?resource rdfs:subClassOf ?x }"));
         assertTrue(query.contains("EXISTS { ?resource skos:exactMatch ?x }"));
@@ -118,7 +118,7 @@ class NKDSPARQLSearchQueryTest {
     void buildConceptSearchQuery_allRelationTypesMapped() {
         for (RelationType rt : RelationType.values()) {
             String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                    "test", "cs", 10, 0, null, List.of(rt));
+                    "test", "cs", 10, 0, null, List.of(rt), null);
             assertTrue(query.contains("FILTER EXISTS"), "Missing FILTER EXISTS for " + rt);
         }
     }
@@ -126,7 +126,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildConceptSearchQuery_superclass_hasCorrectPattern() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                "test", "cs", 10, 0, null, List.of(RelationType.SUPERCLASS));
+                "test", "cs", 10, 0, null, List.of(RelationType.SUPERCLASS), null);
 
         assertTrue(query.contains("{ ?x rdfs:subClassOf ?resource }"));
     }
@@ -134,7 +134,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildConceptSearchQuery_propertyOf_usesDomain() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                "test", "cs", 10, 0, null, List.of(RelationType.PROPERTY_OF));
+                "test", "cs", 10, 0, null, List.of(RelationType.PROPERTY_OF), null);
 
         assertTrue(query.contains("{ ?resource rdfs:domain ?x }"));
     }
@@ -142,7 +142,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildConceptSearchQuery_relationshipOf_usesRange() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                "test", "cs", 10, 0, null, List.of(RelationType.RELATIONSHIP_OF));
+                "test", "cs", 10, 0, null, List.of(RelationType.RELATIONSHIP_OF), null);
 
         assertTrue(query.contains("{ ?resource rdfs:range ?x }"));
     }
@@ -221,7 +221,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildConceptSearchQuery_maliciousLang_isSanitized() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                "test", "cs\" ) FILTER(false) #", 10, 0, null, null);
+                "test", "cs\" ) FILTER(false) #", 10, 0, null, null, null);
         assertFalse(query.contains("\" ) FILTER(false)"),
                 "Lang injection leaked into query: " + query);
     }
@@ -231,7 +231,7 @@ class NKDSPARQLSearchQueryTest {
         List<String> iris = List.of("https://example.org/ontology/1");
         List<RelationType> types = List.of(RelationType.SUBCLASS);
 
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, iris, types);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, iris, types, null);
 
         assertTrue(query.contains("VALUES ?ontology"));
         assertTrue(query.contains("FILTER EXISTS"));
@@ -239,14 +239,14 @@ class NKDSPARQLSearchQueryTest {
 
     @Test
     void buildConceptSearchQuery_appliesLanguagePreference() {
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "en", 10, 0, null, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "en", 10, 0, null, null, null);
 
         assertTrue(query.contains("LANG(?prefLabel) = \"en\""));
     }
 
     @Test
     void buildConceptSearchQuery_includesOntologyVariable() {
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
         assertTrue(query.contains("?ontology"));
         assertTrue(query.contains("skos:inScheme ?ontology"));
@@ -288,7 +288,7 @@ class NKDSPARQLSearchQueryTest {
                 "http://example.org/ont } SELECT * WHERE { ?s ?p ?o"
         );
 
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null, null);
 
         assertTrue(query.contains("<https://slovnik.gov.cz/datovy/osoby>"));
         assertFalse(query.contains("SELECT * WHERE { ?s ?p ?o"));
@@ -302,7 +302,7 @@ class NKDSPARQLSearchQueryTest {
                 "http://example.org/bad }"
         );
 
-        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null);
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("osoba", "cs", 20, 0, iris, null, null);
 
         assertFalse(query.contains("VALUES ?ontology"));
     }

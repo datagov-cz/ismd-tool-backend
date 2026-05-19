@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.search;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.SearchResultDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchType;
@@ -36,12 +37,14 @@ public class NkdSearchProvider implements SearchProvider {
             return new SearchProviderResult(List.of(), 0, 0, 0);
         }
 
+        // Role narrowing (CLASS/PROPERTY/RELATIONSHIP) skips the ontology branch
+        // and pushes the role into the concept SPARQL via FILTER EXISTS on the OFN role IRI.
         List<SearchResultDto> ontologyResults = (type == null || type == SearchType.ONTOLOGY)
                 ? searchOntologies(query, lang, limit, offset)
                 : List.of();
 
-        List<SearchResultDto> conceptResults = (type == null || type == SearchType.CONCEPT)
-                ? searchConcepts(query, lang, limit, offset, ontologyIris, relationTypes)
+        List<SearchResultDto> conceptResults = (type == null || type.isAnyConcept())
+                ? searchConcepts(query, lang, limit, offset, ontologyIris, relationTypes, type)
                 : List.of();
 
         // Concept counts for the page's ontology results — single batched query.
@@ -70,8 +73,8 @@ public class NkdSearchProvider implements SearchProvider {
                 type == null || type == SearchType.ONTOLOGY,
                 () -> fetchOntologyTotal(query));
         Integer totalConcepts = SearchProvider.countIfMatches(
-                type == null || type == SearchType.CONCEPT,
-                () -> fetchConceptTotal(query, ontologyIris, relationTypes));
+                type == null || type.isAnyConcept(),
+                () -> fetchConceptTotal(query, ontologyIris, relationTypes, type));
 
         int total = (totalOntologies != null ? totalOntologies : 0)
                 + (totalConcepts != null ? totalConcepts : 0);
@@ -100,11 +103,16 @@ public class NkdSearchProvider implements SearchProvider {
 
     private List<SearchResultDto> searchConcepts(String query, String lang, int limit, int offset,
                                                   List<String> ontologyIris,
-                                                  List<RelationType> relationTypes) {
+                                                  List<RelationType> relationTypes,
+                                                  SearchType type) {
+        ConceptType roleFilter = type != null ? type.toConceptType() : null;
         String sparql = NKDSPARQLSearchQuery.buildConceptSearchQuery(
-                query, lang, limit, offset, ontologyIris, relationTypes);
+                query, lang, limit, offset, ontologyIris, relationTypes, roleFilter);
         List<Map<String, String>> rows = nkdSparqlClient.executeSelect(sparql);
 
+        // When the SPARQL FILTER EXISTS narrowed by role, every returned row is
+        // guaranteed to be of that role — so we can populate conceptType from the
+        // request without re-querying the rdf:type set per concept.
         List<SearchResultDto> results = new ArrayList<>();
         for (Map<String, String> row : rows) {
             results.add(SearchResultDto.builder()
@@ -117,6 +125,7 @@ public class NkdSearchProvider implements SearchProvider {
                     .ontologyIri(row.get("ontology"))
                     .lastModified(row.get("modified"))
                     .type(SearchType.CONCEPT)
+                    .conceptType(roleFilter)
                     .source(SearchSource.NKD)
                     .build());
         }
@@ -180,10 +189,12 @@ public class NkdSearchProvider implements SearchProvider {
     }
 
     private Integer fetchConceptTotal(String query, List<String> ontologyIris,
-                                       List<RelationType> relationTypes) {
+                                       List<RelationType> relationTypes, SearchType type) {
         try {
+            ConceptType roleFilter = type != null ? type.toConceptType() : null;
             return fetchSingleCount(
-                    NKDSPARQLSearchQuery.buildConceptSearchCountQuery(query, ontologyIris, relationTypes));
+                    NKDSPARQLSearchQuery.buildConceptSearchCountQuery(
+                            query, ontologyIris, relationTypes, roleFilter));
         } catch (RuntimeException e) {
             log.warn("NKD concept total-count failed: {}", e.getMessage());
             return null;

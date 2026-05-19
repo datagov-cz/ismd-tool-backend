@@ -19,11 +19,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Repository;
 
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.RelationType;
 
 import java.net.http.HttpClient;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+
+import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.constants.VocabularyConstants.VZTAH;
 
 /**
  * Repository for managing RDF resources in Fuseki TDB2 via HTTP connection.
@@ -461,6 +467,17 @@ public class JenaTDB2Repository {
      *         altLabel, description, definition, types
      */
     public List<Map<String, String>> searchByText(String query, List<String> visibleGraphNames, int limit) {
+        return searchByText(query, visibleGraphNames, limit, null);
+    }
+
+    /**
+     * Role-narrowed variant of {@link #searchByText(String, List, int)} — when
+     * {@code conceptTypeFilter} is non-null, restricts results to resources that
+     * carry the matching OFN role marker ({@code slovníky:třída/vlastnost/vztah}).
+     * Used to back the {@code ?type=CLASS|PROPERTY|RELATIONSHIP} search filter.
+     */
+    public List<Map<String, String>> searchByText(String query, List<String> visibleGraphNames, int limit,
+                                                   ConceptType conceptTypeFilter) {
         if (visibleGraphNames == null || visibleGraphNames.isEmpty()) {
             return List.of();
         }
@@ -487,6 +504,13 @@ public class JenaTDB2Repository {
                     // outer SPARQL lexer — otherwise a Lucene escape like "\-" is rejected
                     // as an invalid SPARQL string escape sequence.
                     String sanitizedQuery = escapeForSparqlString(sanitizeLuceneQuery(query));
+                    // Role narrowing: derived from static OFN/OWL constants — no injection surface.
+                    // Accept either the OFN role IRI (ISMD-internal data carries both) or the
+                    // matching OWL type (so externally-imported owl:Class/ObjectProperty/
+                    // DatatypeProperty concepts also satisfy the filter).
+                    String typeFilterClause = conceptTypeFilter == null ? ""
+                            : "    FILTER(EXISTS { ?resource a <" + ofnRoleIri(conceptTypeFilter) + "> }"
+                                    + " || EXISTS { ?resource a <" + owlTypeIri(conceptTypeFilter) + "> }) ";
                     // text:query inside GRAPH — requires Jena 5.4+ where the property
                     // function is correctly wired through the TextDataset assembler.
                     //
@@ -508,6 +532,7 @@ public class JenaTDB2Repository {
                             "  VALUES ?g { " + valuesClause + "} " +
                             "  GRAPH ?g { " +
                             "    ?resource text:query (skos:prefLabel skos:altLabel dcterms:description skos:definition '" + sanitizedQuery + "*') . " +
+                            typeFilterClause +
                             "    OPTIONAL { ?resource skos:prefLabel ?prefLabelS . BIND(LANG(?prefLabelS) AS ?prefLabelLangS) } " +
                             "    OPTIONAL { ?resource skos:altLabel ?altLabelS } " +
                             "    OPTIONAL { ?resource dcterms:description ?descriptionS } " +
@@ -682,6 +707,22 @@ public class JenaTDB2Repository {
             case EXACT_MATCH -> "{ ?concept skos:exactMatch ?other } UNION { ?other skos:exactMatch ?concept }";
             case PROPERTY_OF -> "?concept rdfs:domain ?other";
             case RELATIONSHIP_OF -> "?concept rdfs:range ?other";
+        };
+    }
+
+    private static String ofnRoleIri(ConceptType type) {
+        return switch (type) {
+            case TRIDA -> OFN_NAMESPACE + TRIDA;
+            case VLASTNOST -> OFN_NAMESPACE + VLASTNOST;
+            case VZTAH -> OFN_NAMESPACE + VZTAH;
+        };
+    }
+
+    private static String owlTypeIri(ConceptType type) {
+        return switch (type) {
+            case TRIDA -> "http://www.w3.org/2002/07/owl#Class";
+            case VLASTNOST -> "http://www.w3.org/2002/07/owl#DatatypeProperty";
+            case VZTAH -> "http://www.w3.org/2002/07/owl#ObjectProperty";
         };
     }
 }
