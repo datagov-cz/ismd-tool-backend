@@ -508,9 +508,9 @@ class ConceptCreatorTest {
             when(classConceptModel.getRelatedLegalSource())
                     .thenReturn(List.of("dummy-legal-2"));
             when(classConceptModel.getDefiningNonLegalSource())
-                    .thenReturn(List.of("https://example.org/doc1"));
+                    .thenReturn(List.of(new DigitalObjectModel("Doc A", "Popis A", "https://example.org/doc1")));
             when(classConceptModel.getRelatedNonLegalSource())
-                    .thenReturn(List.of("https://example.org/doc2"));
+                    .thenReturn(List.of(new DigitalObjectModel(null, null, "https://example.org/doc2")));
 
             // act
             Resource result = conceptCreator.createSingleConcept(classConceptModel);
@@ -522,13 +522,24 @@ class ConceptCreatorTest {
             Property relProp = result.getModel().createProperty(
                     DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ
             );
+            Property schemaUrlProp = result.getModel().createProperty(SCHEMA_URL);
+            Property dctTitleProp = result.getModel().createProperty(DCT_NS + "title");
+            Property dctDescProp = result.getModel().createProperty(DCT_NS + "description");
 
             assertTrue(result.hasProperty(defProp));
             assertTrue(result.hasProperty(relProp));
 
             Resource doc = result.getProperty(defProp).getObject().asResource();
             assertNotNull(doc);
-            assertNotNull(doc.getURI());
+            assertTrue(doc.hasProperty(schemaUrlProp, result.getModel().createResource("https://example.org/doc1")));
+            assertTrue(doc.hasProperty(dctTitleProp));
+            assertTrue(doc.hasProperty(dctDescProp));
+            assertTrue(doc.hasProperty(RDF.type, result.getModel().createResource(DIGITALNI_OBJEKT)));
+
+            Resource relDoc = result.getProperty(relProp).getObject().asResource();
+            assertTrue(relDoc.hasProperty(schemaUrlProp, result.getModel().createResource("https://example.org/doc2")));
+            assertFalse(relDoc.hasProperty(dctTitleProp));
+            assertFalse(relDoc.hasProperty(dctDescProp));
         }
 
         // ========== A3. Privacy and governance for ClassConcept ==========
@@ -877,9 +888,9 @@ class ConceptCreatorTest {
             when(propertyConceptModel.getRelatedLegalSource())
                     .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/5"));
             when(propertyConceptModel.getDefiningNonLegalSource())
-                    .thenReturn(List.of("https://example.org/property-doc-1"));
+                    .thenReturn(List.of(new DigitalObjectModel("Prop doc 1", null, "https://example.org/property-doc-1")));
             when(propertyConceptModel.getRelatedNonLegalSource())
-                    .thenReturn(List.of("https://example.org/property-doc-2"));
+                    .thenReturn(List.of(new DigitalObjectModel("Prop doc 2", null, "https://example.org/property-doc-2")));
 
             // act
             Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
@@ -1061,9 +1072,9 @@ class ConceptCreatorTest {
             when(relationshipConceptModel.getRelatedLegalSource())
                     .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2020/5"));
             when(relationshipConceptModel.getDefiningNonLegalSource())
-                    .thenReturn(List.of("https://example.org/rel-doc-1"));
+                    .thenReturn(List.of(new DigitalObjectModel("Rel doc 1", null, "https://example.org/rel-doc-1")));
             when(relationshipConceptModel.getRelatedNonLegalSource())
-                    .thenReturn(List.of("https://example.org/rel-doc-2"));
+                    .thenReturn(List.of(new DigitalObjectModel("Rel doc 2", null, "https://example.org/rel-doc-2")));
             when(relationshipConceptModel.getExactMatch())
                     .thenReturn(List.of("http://example.org/relExact1", "http://example.org/relExact2"));
 

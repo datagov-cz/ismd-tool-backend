@@ -31,9 +31,9 @@ public abstract class ConceptEditModel {
     protected AltNameModel altNameModel;
     protected DescriptionModel descriptionModel;
     protected DefinitionModel definitionModel;
-    protected List<String> definingNonLegalSource;
+    protected List<DigitalObjectModel> definingNonLegalSource;
     protected List<String> definingLegalSource;
-    protected List<String> relatedNonLegalSource;
+    protected List<DigitalObjectModel> relatedNonLegalSource;
     protected List<String> relatedLegalSource;
     protected List<String> exactMatch;
     protected Boolean inTezaurus;

@@ -697,40 +697,57 @@ public class ConceptEditor {
         }
     }
 
-    private void updateNonLegalSourceList(Resource newConcept, Property property, List<String> newSources,
+    private void updateNonLegalSourceList(Resource newConcept, Property property, List<DigitalObjectModel> newSources,
                                            Resource oldConcept, Model model, Set<Statement> toRemove,
                                            Set<Statement> toAdd) {
         if (newSources == null) return;
 
-        List<String> nonEmptySources = newSources.stream()
-                .filter(s -> s != null && !s.trim().isEmpty())
-                .map(String::trim)
+        List<DigitalObjectModel> validSources = newSources.stream()
+                .filter(this::isValidDigitalObject)
                 .toList();
 
-        if (nonEmptySources.isEmpty()) {
+        long skipped = newSources.stream().filter(d -> !isValidDigitalObject(d)).count();
+        if (skipped > 0) {
+            log.warn("Skipped {} non-legal source(s) — url is blank or invalid", skipped);
+        }
+
+        if (validSources.isEmpty()) {
             removeAllByPredicate(oldConcept, property, toRemove, toAdd);
             return;
         }
 
         removeAllByPredicate(newConcept, property, toRemove, toAdd);
 
-        Resource digitalObjectType = model.createResource("https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt");
-        Property schemaUrlProperty = model.createProperty("http://schema.org/url");
-        Property dctermsTitle = model.createProperty("http://purl.org/dc/terms/title");
+        Resource digitalObjectType = model.createResource(DIGITALNI_OBJEKT);
+        Property schemaUrlProperty = model.createProperty(SCHEMA_URL);
+        Property dctermsTitle = model.createProperty(DCT_NS + "title");
+        Property dctermsDescription = model.createProperty(DCT_NS + "description");
 
-        for (String source : nonEmptySources) {
+        for (DigitalObjectModel source : validSources) {
             Resource digitalDocument = model.createResource();
 
             toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
+            toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty,
+                    model.createResource(source.getUrl().trim())));
 
-            if (UtilityMethods.isValidUrl(source)) {
-                toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty, model.createResource(source)));
-            } else {
-                toAdd.add(model.createStatement(digitalDocument, dctermsTitle, model.createLiteral(source, DEFAULT_LANG)));
+            if (source.getName() != null && !source.getName().trim().isEmpty()) {
+                toAdd.add(model.createStatement(digitalDocument, dctermsTitle,
+                        model.createLiteral(source.getName().trim(), DEFAULT_LANG)));
+            }
+            if (source.getDescription() != null && !source.getDescription().trim().isEmpty()) {
+                toAdd.add(model.createStatement(digitalDocument, dctermsDescription,
+                        model.createLiteral(source.getDescription().trim(), DEFAULT_LANG)));
             }
 
             toAdd.add(model.createStatement(newConcept, property, digitalDocument));
         }
+    }
+
+    private boolean isValidDigitalObject(DigitalObjectModel source) {
+        if (source == null) return false;
+        String url = source.getUrl();
+        if (url == null || url.trim().isEmpty()) return false;
+        return UtilityMethods.isValidUrl(url.trim());
     }
 
     private void renameConceptIRI(Model model, String oldIRI, String newIRI,

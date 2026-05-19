@@ -117,7 +117,8 @@ class ConceptSourcePropertyTest {
     void digitalDocumentStructure() {
         OntModel model = createDefaultModel();
         Resource concept = addOwlClass(model, "test-dd", "TestDD");
-        Resource doc = addDigitalDocument(model, "https://example.org/doc/1", "Testovací dokument", "https://example.org/files/doc.pdf");
+        Resource doc = addDigitalDocument(model, "https://example.org/doc/1",
+                "Testovací dokument", "Popis dokumentu", "https://example.org/files/doc.pdf");
 
         concept.addProperty(
                 model.createProperty(TEST_POJEM_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ),
@@ -135,6 +136,10 @@ class ConceptSourcePropertyTest {
             @SuppressWarnings("unchecked")
             Map<String, Object> title = (Map<String, Object>) docObj.get(NAZEV);
             assertEquals("Testovací dokument", title.get("cs"));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> description = (Map<String, Object>) docObj.get(POPIS);
+            assertNotNull(description);
+            assertEquals("Popis dokumentu", description.get("cs"));
             assertEquals("https://example.org/files/doc.pdf", docObj.get("url"));
         }
     }
