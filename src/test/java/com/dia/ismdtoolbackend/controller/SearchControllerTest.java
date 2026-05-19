@@ -84,6 +84,30 @@ class SearchControllerTest {
     }
 
     @Test
+    void search_withThreeCharQuery_returns400() throws Exception {
+        // Min length is 4 — matches FE validation and Virtuoso bif:contains FT370
+        // (wildcard word needs at least 4 leading characters).
+        mockMvc.perform(get("/api/search").param("q", "oso"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void search_withFourCharQuery_isAccepted() throws Exception {
+        SearchResponseDto response = SearchResponseDto.builder()
+                .results(List.of())
+                .returnedCount(0)
+                .limit(20)
+                .offset(0)
+                .build();
+        when(searchService.search(anyString(), any(), any(), anyInt(), anyInt(),
+                anyString(), any(), any(), any())).thenReturn(response);
+
+        mockMvc.perform(get("/api/search").param("q", "osob"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void search_withEmptyQuery_returns400() throws Exception {
         mockMvc.perform(get("/api/search").param("q", ""))
                 .andExpect(status().isBadRequest());

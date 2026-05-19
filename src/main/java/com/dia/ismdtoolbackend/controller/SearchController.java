@@ -30,7 +30,7 @@ public class SearchController {
     private final int maxLimit;
 
     public SearchController(SearchService searchService,
-                            @Value("${search.min-query-length:2}") int minQueryLength,
+                            @Value("${search.min-query-length:4}") int minQueryLength,
                             @Value("${search.max-limit:100}") int maxLimit) {
         this.searchService = searchService;
         this.minQueryLength = minQueryLength;
@@ -44,7 +44,8 @@ public class SearchController {
     )
     @GetMapping
     public ResponseEntity<ApiResponseDto<SearchResponseDto>> search(
-            @Parameter(description = "Vyhledávací dotaz (min. 2 znaky)", required = true)
+            @Parameter(description = "Vyhledávací dotaz (min. 4 znaky — odpovídá frontendové validaci " +
+                    "a Virtuoso FT370 minimální délce zástupného znaku pro NKD)", required = true)
             @RequestParam String q,
             @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT, CLASS, PROPERTY, RELATIONSHIP " +
                     "(CLASS/PROPERTY/RELATIONSHIP narrow to concepts of the given role)")
