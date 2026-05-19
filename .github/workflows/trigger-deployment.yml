@@ -153,7 +153,7 @@ jobs:
           fi
           
           echo "Validating image: $IMAGE"
-          if ! docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+          if ! docker buildx imagetools inspect "$IMAGE" >/dev/null; then
             echo "ERROR: Image manifest not found for $IMAGE" >&2
             exit 1
           fi
