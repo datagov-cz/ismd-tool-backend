@@ -146,11 +146,19 @@ public final class RdfTestModelFactory {
     }
 
     public static Resource addDigitalDocument(OntModel model, String iri, String titleCs, String url) {
+        return addDigitalDocument(model, iri, titleCs, null, url);
+    }
+
+    public static Resource addDigitalDocument(OntModel model, String iri, String titleCs, String descriptionCs, String url) {
         Resource doc = model.createResource(iri);
         doc.addProperty(RDF.type, model.createResource(DIGITALNI_OBJEKT));
         if (titleCs != null) {
             Property titleProp = model.createProperty(DCT_NS + "title");
             doc.addProperty(titleProp, model.createLiteral(titleCs, "cs"));
+        }
+        if (descriptionCs != null) {
+            Property descProp = model.createProperty(DCT_NS + "description");
+            doc.addProperty(descProp, model.createLiteral(descriptionCs, "cs"));
         }
         if (url != null) {
             Property urlProp = model.createProperty(SCHEMA_URL);

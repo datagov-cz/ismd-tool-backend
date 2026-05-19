@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.AltNameModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
+import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.utility.URIGenerator;
 import org.apache.jena.rdf.model.Property;
@@ -19,6 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /**
  * A — ClassConcept (TRIDA) tests
@@ -237,7 +239,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
         Property definingProp = model.createProperty(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
         Property relatedProp = model.createProperty(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
-        Property schemaUrlProp = model.createProperty("http://schema.org/url");
+        Property schemaUrlProp = model.createProperty(SCHEMA_URL);
+        Property dctTitleProp = model.createProperty(DCT_NS + "title");
+        Property dctDescProp = model.createProperty(DCT_NS + "description");
 
         when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
         when(classConceptEditModel.getNameModel()).thenReturn(null);
@@ -258,9 +262,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
         when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
         when(classConceptEditModel.getDefiningNonLegalSource())
-                .thenReturn(List.of("https://example.com/doc1"));
+                .thenReturn(List.of(new DigitalObjectModel("Doc 1", "Popis 1", "https://example.com/doc1")));
         when(classConceptEditModel.getRelatedNonLegalSource())
-                .thenReturn(List.of("https://example.com/doc2"));
+                .thenReturn(List.of(new DigitalObjectModel("Doc 2", "Popis 2", "https://example.com/doc2")));
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
         when(classConceptEditModel.getNamespace()).thenReturn(null);
@@ -281,12 +285,16 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                 .getObject()
                 .asResource();
         assertTrue(definingDoc.hasProperty(schemaUrlProp, model.createResource("https://example.com/doc1")));
+        assertTrue(definingDoc.hasProperty(dctTitleProp, model.createLiteral("Doc 1", DEFAULT_LANG)));
+        assertTrue(definingDoc.hasProperty(dctDescProp, model.createLiteral("Popis 1", DEFAULT_LANG)));
 
         Resource relatedDoc = updated.listProperties(relatedProp)
                 .nextStatement()
                 .getObject()
                 .asResource();
         assertTrue(relatedDoc.hasProperty(schemaUrlProp, model.createResource("https://example.com/doc2")));
+        assertTrue(relatedDoc.hasProperty(dctTitleProp, model.createLiteral("Doc 2", DEFAULT_LANG)));
+        assertTrue(relatedDoc.hasProperty(dctDescProp, model.createLiteral("Popis 2", DEFAULT_LANG)));
     }
 
     // A5 – Common text fields update (name / description / definition / altLabel)
@@ -538,9 +546,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         assertFalse(updated.hasProperty(relatedProp));
     }
 
-    // A7 – Non-legal sources created as digital documents with titles when non-URL values provided
+    // A7 – Non-legal sources with blank/invalid url are skipped (treated as an empty list)
     @Test
-    void editConcept_ShouldCreateNonLegalSourcesAsDigitalDocumentsForNonUrls() {
+    void editConcept_ShouldSkipNonLegalSourcesWithInvalidUrl() {
         String conceptIri = DEFAULT_NS + "class-nonlegal-clear";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class nonlegal clear", "cs"));
@@ -559,9 +567,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getAltNameModel()).thenReturn(null);
 
         when(classConceptEditModel.getDefiningNonLegalSource())
-                .thenReturn(List.of("not-a-url"));
+                .thenReturn(List.of(new DigitalObjectModel("Doc with no url", "Popis", "")));
         when(classConceptEditModel.getRelatedNonLegalSource())
-                .thenReturn(List.of("also-not-a-url"));
+                .thenReturn(List.of(new DigitalObjectModel("Doc with invalid url", "Popis", "not a url")));
 
         when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
         when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
@@ -586,22 +594,8 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         assertFalse(result.iriChanged);
         assertEquals(conceptIri, result.newConceptIRI);
 
-        assertTrue(updated.hasProperty(definingProp));
-        assertTrue(updated.hasProperty(relatedProp));
-
-        Property dctermsTitle = model.createProperty("http://purl.org/dc/terms/title");
-
-        Resource definingDoc = updated.listProperties(definingProp)
-                .nextStatement()
-                .getObject()
-                .asResource();
-        assertTrue(definingDoc.hasProperty(dctermsTitle, model.createLiteral("not-a-url", "cs")));
-
-        Resource relatedDoc = updated.listProperties(relatedProp)
-                .nextStatement()
-                .getObject()
-                .asResource();
-        assertTrue(relatedDoc.hasProperty(dctermsTitle, model.createLiteral("also-not-a-url", "cs")));
+        assertFalse(updated.hasProperty(definingProp));
+        assertFalse(updated.hasProperty(relatedProp));
     }
 
     // A8 – IRI rename updates object references

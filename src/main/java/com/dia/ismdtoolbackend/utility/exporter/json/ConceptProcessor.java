@@ -394,13 +394,18 @@ public class ConceptProcessor {
         }
 
         if (propIter == null || !propIter.hasNext()) {
-            Statement fallbackStmt = findPropertyByLocalName(concept, propertyName);
-            if (fallbackStmt != null && fallbackStmt.getObject().isResource()) {
+            List<Statement> fallbackStmts = findAllPropertiesByLocalName(concept, propertyName);
+            if (!fallbackStmts.isEmpty()) {
                 List<Map<String, Object>> sourceArray = new ArrayList<>();
-                Resource digitalDoc = fallbackStmt.getObject().asResource();
-                Map<String, Object> docObj = createDigitalDocumentObject(digitalDoc, ontModel);
-                if (!docObj.isEmpty()) {
-                    sourceArray.add(docObj);
+                for (Statement fallbackStmt : fallbackStmts) {
+                    if (!fallbackStmt.getObject().isResource()) continue;
+                    Map<String, Object> docObj = createDigitalDocumentObject(
+                            fallbackStmt.getObject().asResource(), ontModel);
+                    if (!docObj.isEmpty()) {
+                        sourceArray.add(docObj);
+                    }
+                }
+                if (!sourceArray.isEmpty()) {
                     conceptObj.put(jsonFieldName, sourceArray);
                 }
                 return;
@@ -475,6 +480,28 @@ public class ConceptProcessor {
 
             if (!titleObj.isEmpty()) {
                 docObj.put(NAZEV, titleObj);
+            }
+        }
+
+        Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
+        if (digitalDoc.hasProperty(descriptionProperty)) {
+            Map<String, Object> descObj = new LinkedHashMap<>();
+            StmtIterator descIter = digitalDoc.listProperties(descriptionProperty);
+
+            while (descIter.hasNext()) {
+                Statement descStmt = descIter.next();
+                if (descStmt.getObject().isLiteral()) {
+                    String lang = descStmt.getLanguage();
+                    String value = descStmt.getString();
+
+                    if (value != null && !value.trim().isEmpty()) {
+                        descObj.put(lang != null && !lang.isEmpty() ? lang : "cs", value);
+                    }
+                }
+            }
+
+            if (!descObj.isEmpty()) {
+                docObj.put(POPIS, descObj);
             }
         }
 
@@ -763,6 +790,21 @@ public class ConceptProcessor {
         }
 
         return null;
+    }
+
+    private List<Statement> findAllPropertiesByLocalName(Resource concept, String localName) {
+        List<Statement> matches = new ArrayList<>();
+        StmtIterator propIter = concept.listProperties();
+
+        while (propIter.hasNext()) {
+            Statement stmt = propIter.next();
+            String propertyUri = stmt.getPredicate().getURI();
+            if (propertyUri != null && localName.equals(extractLocalName(propertyUri))) {
+                matches.add(stmt);
+            }
+        }
+
+        return matches;
     }
 
     private String extractLocalName(String uri) {
