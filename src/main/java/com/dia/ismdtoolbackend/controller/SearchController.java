@@ -46,7 +46,8 @@ public class SearchController {
     public ResponseEntity<ApiResponseDto<SearchResponseDto>> search(
             @Parameter(description = "Vyhledávací dotaz (min. 2 znaky)", required = true)
             @RequestParam String q,
-            @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT")
+            @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT, CLASS, PROPERTY, RELATIONSHIP " +
+                    "(CLASS/PROPERTY/RELATIONSHIP narrow to concepts of the given role)")
             @RequestParam(required = false) SearchType type,
             @Parameter(description = "Zdroj dat: NKD, ISMD, ALL")
             @RequestParam(required = false) SearchSource source,

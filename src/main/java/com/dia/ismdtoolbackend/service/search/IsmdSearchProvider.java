@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.search;
 import com.dia.ismdtoolbackend.controller.dto.SearchResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.MatchedBy;
 import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
@@ -22,6 +23,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.constants.VocabularyConstants.VZTAH;
 
 @Slf4j
 @Component
@@ -76,7 +82,8 @@ public class IsmdSearchProvider implements SearchProvider {
         AtomicBoolean fusekiDegraded = new AtomicBoolean(false);
 
         // PG ontology list — matches on slug even for empty ontologies where Fuseki
-        // has no indexable labels.
+        // has no indexable labels. Role filters (CLASS/PROPERTY/RELATIONSHIP) are
+        // concept-only by definition, so they skip the ontology branch entirely.
         if (type == null || type == SearchType.ONTOLOGY) {
             allResults.addAll(searchOntologies(query, userId, isAdmin, publishedFilter));
         }
@@ -85,11 +92,13 @@ public class IsmdSearchProvider implements SearchProvider {
         // AND ontology labels — Fuseki rows self-classify by rdf:type). For an
         // ONTOLOGY-only request we skip the PG half (it returns nothing of interest),
         // skip the relation-type filter (concept-only), and let Fuseki contribute
-        // ontology label matches that PG slug-search would miss. For CONCEPT-only or
-        // unfiltered (type == null) we run the full path.
+        // ontology label matches that PG slug-search would miss. For CONCEPT,
+        // role-narrowed (CLASS/PROPERTY/RELATIONSHIP), or unfiltered we run the full
+        // path — the role narrowing pushes into PG (concept_type column) and Fuseki
+        // (FILTER EXISTS on the OFN role IRI) so unrelated rows never reach merge.
         if (type != SearchType.ONTOLOGY) {
             allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
-                    ontologyIris, relationTypes, fusekiDegraded, limit));
+                    ontologyIris, relationTypes, fusekiDegraded, limit, type));
         } else {
             allResults.addAll(searchOntologyLabelsViaFuseki(query, userId, isAdmin,
                     publishedFilter, ontologyIris, fusekiDegraded, limit));
@@ -108,9 +117,11 @@ public class IsmdSearchProvider implements SearchProvider {
 
         // Type filter: apply AFTER dedup so Fuseki-classified ontologies merge with
         // PG ontology hits (and PG concepts merge with Fuseki concepts) before we
-        // decide what to drop.
+        // decide what to drop. Role narrowing (CLASS/PROPERTY/RELATIONSHIP) requires
+        // the merged row to be a concept whose conceptType matches the requested role
+        // — sourced from PG's concept_type column or enriched from Fuseki rdf:types.
         List<SearchResultDto> results = deduped.values().stream()
-                .filter(r -> type == null || r.getType() == type)
+                .filter(r -> matchesType(r, type))
                 .toList();
 
         // Apply offset and limit in-memory
@@ -126,8 +137,8 @@ public class IsmdSearchProvider implements SearchProvider {
                 type == null || type == SearchType.ONTOLOGY,
                 () -> countOntologyMatches(query, userId, isAdmin, publishedFilter));
         Integer totalConcepts = SearchProvider.countIfMatches(
-                type == null || type == SearchType.CONCEPT,
-                () -> countConceptMatches(query, userId, isAdmin, publishedFilter, ontologyIris));
+                type == null || type.isAnyConcept(),
+                () -> countConceptMatches(query, userId, isAdmin, publishedFilter, ontologyIris, type));
 
         if (fusekiDegraded.get()) {
             return new SearchProviderResult(paged, results.size(),
@@ -185,15 +196,20 @@ public class IsmdSearchProvider implements SearchProvider {
 
     private Integer countConceptMatches(String query, String userId,
                                          boolean isAdmin, Boolean publishedFilter,
-                                         List<String> ontologyIris) {
+                                         List<String> ontologyIris, SearchType type) {
         try {
             boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
             List<String> graphNames = hasGraphFilter ? ontologyIris : List.of();
+            ConceptType roleFilter = type != null ? type.toConceptType() : null;
+            boolean hasTypeFilter = roleFilter != null;
+            String conceptTypeName = roleFilter != null ? roleFilter.name() : null;
             long count = Boolean.FALSE.equals(publishedFilter)
                     ? conceptMetadataRepository.countSearchByTextUnpublished(
-                            query, userId, isAdmin, hasGraphFilter, graphNames)
+                            query, userId, isAdmin, hasGraphFilter, graphNames,
+                            hasTypeFilter, conceptTypeName)
                     : conceptMetadataRepository.countSearchByText(
-                            query, userId, hasGraphFilter, graphNames);
+                            query, userId, hasGraphFilter, graphNames,
+                            hasTypeFilter, conceptTypeName);
             return (int) count;
         } catch (RuntimeException e) {
             log.warn("PG concept total-count failed: {}", e.getMessage());
@@ -228,12 +244,13 @@ public class IsmdSearchProvider implements SearchProvider {
                                                   String lang,
                                                   List<String> ontologyIris,
                                                   List<RelationType> relationTypes,
-                                                  AtomicBoolean fusekiDegraded, int limit) {
+                                                  AtomicBoolean fusekiDegraded, int limit,
+                                                  SearchType type) {
         GraphFilter filter = resolveGraphFilter(ontologyIris,
                 visibleGraphsFor(userId, isAdmin, publishedFilter));
 
         ParallelSearchResults raw = runParallelConceptSearch(
-                query, userId, isAdmin, publishedFilter, filter, limit, fusekiDegraded);
+                query, userId, isAdmin, publishedFilter, filter, limit, fusekiDegraded, type);
 
         List<SearchResultDto> merged = mergeByIri(raw.pg(), raw.fuseki());
         enrichPgOnlyLabels(merged, raw.fusekiIris(), lang, fusekiDegraded);
@@ -282,22 +299,28 @@ public class IsmdSearchProvider implements SearchProvider {
     private ParallelSearchResults runParallelConceptSearch(String query, String userId,
                                                             boolean isAdmin, Boolean publishedFilter,
                                                             GraphFilter filter, int limit,
-                                                            AtomicBoolean fusekiDegraded) {
+                                                            AtomicBoolean fusekiDegraded,
+                                                            SearchType type) {
         boolean unpublishedOnly = Boolean.FALSE.equals(publishedFilter);
+        ConceptType roleFilter = type != null ? type.toConceptType() : null;
+        boolean hasTypeFilter = roleFilter != null;
+        String conceptTypeName = roleFilter != null ? roleFilter.name() : null;
 
         CompletableFuture<List<SearchResultDto>> pgFuture = CompletableFuture.supplyAsync(() -> {
             List<ConceptMetadataEntity> entities = unpublishedOnly
                     ? conceptMetadataRepository.searchByTextUnpublished(
-                            query, userId, isAdmin, filter.hasGraphFilter(), filter.graphNames())
+                            query, userId, isAdmin, filter.hasGraphFilter(), filter.graphNames(),
+                            hasTypeFilter, conceptTypeName)
                     : conceptMetadataRepository.searchByText(
-                            query, userId, filter.hasGraphFilter(), filter.graphNames());
+                            query, userId, filter.hasGraphFilter(), filter.graphNames(),
+                            hasTypeFilter, conceptTypeName);
             return entities.stream()
                     .map(this::mapConceptEntity)
                     .toList();
         }, searchExecutor).orTimeout(pgTimeoutMs, TimeUnit.MILLISECONDS);
 
         CompletableFuture<List<SearchResultDto>> fusekiFuture = CompletableFuture.supplyAsync(
-                        () -> searchFuseki(query, filter.searchGraphs(), limit), searchExecutor)
+                        () -> searchFuseki(query, filter.searchGraphs(), limit, roleFilter), searchExecutor)
                 .orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS);
 
         List<SearchResultDto> pgResults;
@@ -440,7 +463,7 @@ public class IsmdSearchProvider implements SearchProvider {
 
         try {
             return CompletableFuture.supplyAsync(
-                            () -> searchFuseki(query, filter.searchGraphs(), limit), searchExecutor)
+                            () -> searchFuseki(query, filter.searchGraphs(), limit, null), searchExecutor)
                     .orTimeout(fusekiTimeoutMs, TimeUnit.MILLISECONDS)
                     .join();
         } catch (Exception e) {
@@ -450,22 +473,25 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames, int limit) {
+    private List<SearchResultDto> searchFuseki(String query, List<String> visibleGraphNames, int limit,
+                                                ConceptType conceptTypeFilter) {
         if (visibleGraphNames.isEmpty()) {
             log.debug("Fuseki search skipped: no visible graph names for user");
             return List.of();
         }
 
-        log.debug("Fuseki text search: query='{}', searching {} graphs",
-                query, visibleGraphNames.size());
+        log.debug("Fuseki text search: query='{}', searching {} graphs, conceptType={}",
+                query, visibleGraphNames.size(), conceptTypeFilter);
 
-        List<Map<String, String>> rows = jenaTDB2Repository.searchByText(query, visibleGraphNames, limit);
+        List<Map<String, String>> rows = jenaTDB2Repository.searchByText(
+                query, visibleGraphNames, limit, conceptTypeFilter);
 
         log.debug("Fuseki text search returned {} raw rows", rows.size());
 
         List<SearchResultDto> results = new ArrayList<>();
         for (Map<String, String> row : rows) {
-            SearchType resolvedType = classifyByRdfTypes(row.get("types"));
+            String typesField = row.get("types");
+            SearchType resolvedType = classifyByRdfTypes(typesField);
             // For ontology resources, the resource IRI IS the graph name — don't
             // populate ontologyIri with a self-reference (which would also overwrite
             // the PG ontology hit's null ontologyIri during merge). Concepts get the
@@ -473,6 +499,12 @@ public class IsmdSearchProvider implements SearchProvider {
             String ontologyIri = resolvedType == SearchType.ONTOLOGY
                     ? null
                     : row.get("graphName");
+            // Enrich conceptType from rdf:types so Fuseki-only concept rows survive
+            // the role-narrowing post-merge filter — PG side carries the column
+            // verbatim, but Fuseki-only rows would otherwise have conceptType=null.
+            ConceptType conceptType = resolvedType == SearchType.CONCEPT
+                    ? conceptTypeByRdfTypes(typesField)
+                    : null;
             results.add(SearchResultDto.builder()
                     .iri(row.get("resourceIri"))
                     .label(row.get("prefLabel"))
@@ -482,6 +514,7 @@ public class IsmdSearchProvider implements SearchProvider {
                     .definition(row.get("definition"))
                     .ontologyIri(ontologyIri)
                     .type(resolvedType)
+                    .conceptType(conceptType)
                     .source(SearchSource.ISMD)
                     .matchedBy(MatchedBy.SPARQL)
                     .build());
@@ -514,6 +547,43 @@ public class IsmdSearchProvider implements SearchProvider {
         if (isOntology) return SearchType.ONTOLOGY;
         if (isConcept) return SearchType.CONCEPT;
         return SearchType.CONCEPT;
+    }
+
+    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
+
+    /**
+     * Extracts the concept role from a pipe-separated rdf:type set produced by
+     * Fuseki text search. Accepts either the OFN role tag
+     * (slovníky:třída/vlastnost/vztah — what ISMD writes) or the corresponding
+     * OWL type (owl:Class/ObjectProperty/DatatypeProperty — what externally
+     * imported data may carry). Returns null when neither is present.
+     */
+    private static ConceptType conceptTypeByRdfTypes(String types) {
+        if (types == null || types.isEmpty()) return null;
+        String tridaIri = OFN_NAMESPACE + TRIDA;
+        String vlastnostIri = OFN_NAMESPACE + VLASTNOST;
+        String vztahIri = OFN_NAMESPACE + VZTAH;
+        for (String t : types.split("\\|")) {
+            if (tridaIri.equals(t) || OWL_CLASS.equals(t)) return ConceptType.TRIDA;
+            if (vlastnostIri.equals(t) || OWL_DATATYPE_PROPERTY.equals(t)) return ConceptType.VLASTNOST;
+            if (vztahIri.equals(t) || OWL_OBJECT_PROPERTY.equals(t)) return ConceptType.VZTAH;
+        }
+        return null;
+    }
+
+    /**
+     * Post-merge predicate that applies the request's {@code type} parameter to
+     * a deduped row. ONTOLOGY/CONCEPT match by {@code dto.type}; role-narrowing
+     * types (CLASS/PROPERTY/RELATIONSHIP) additionally require the concept's
+     * {@code conceptType} to match.
+     */
+    private static boolean matchesType(SearchResultDto r, SearchType type) {
+        if (type == null) return true;
+        if (type == SearchType.ONTOLOGY) return r.getType() == SearchType.ONTOLOGY;
+        if (type == SearchType.CONCEPT) return r.getType() == SearchType.CONCEPT;
+        return r.getType() == SearchType.CONCEPT && r.getConceptType() == type.toConceptType();
     }
 
     private void enrichWithLabels(List<SearchResultDto> results, String lang) {

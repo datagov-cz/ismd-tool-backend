@@ -1,9 +1,15 @@
 package com.dia.ismdtoolbackend.query;
 
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.constants.VocabularyConstants.VZTAH;
 
 public class NKDSPARQLSearchQuery {
 
@@ -16,6 +22,10 @@ public class NKDSPARQLSearchQuery {
             PREFIX bif: <bif:>
             """;
 
+    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
+
     /**
      * Builds a SPARQL SELECT query to search ontologies in NKD by text.
      * Searches across skos:prefLabel, dcterms:title, dcterms:description using bif:contains.
@@ -25,11 +35,10 @@ public class NKDSPARQLSearchQuery {
         String bifContains = "'\"" + sanitizedTerm + "*\"'";
         String safeLang = sanitizeLang(lang);
 
-        StringBuilder query = new StringBuilder(PREFIXES);
-        query.append("""
+        return PREFIXES + """
                 SELECT DISTINCT ?resource ?label ?labelLang ?title ?description ?ontologyIri ?modified WHERE {
                   ?resource a owl:Ontology .
-
+                
                   {
                     ?resource skos:prefLabel ?matchField .
                     ?matchField bif:contains %s .
@@ -40,7 +49,7 @@ public class NKDSPARQLSearchQuery {
                     ?resource dcterms:description ?matchField .
                     ?matchField bif:contains %s .
                   }
-
+                
                   OPTIONAL {
                     ?resource skos:prefLabel ?prefLabel .
                     FILTER(LANG(?prefLabel) = "%s")
@@ -50,17 +59,15 @@ public class NKDSPARQLSearchQuery {
                   }
                   BIND(COALESCE(?prefLabel, ?anyLabel) AS ?label)
                   BIND(LANG(COALESCE(?prefLabel, ?anyLabel)) AS ?labelLang)
-
+                
                   OPTIONAL { ?resource dcterms:title ?title }
                   OPTIONAL { ?resource dcterms:description ?description }
                   OPTIONAL { ?resource dcterms:modified ?modified }
-
+                
                   BIND(?resource AS ?ontologyIri)
                 }
                 LIMIT %d OFFSET %d
-                """.formatted(bifContains, bifContains, bifContains, safeLang, limit, offset));
-
-        return query.toString();
+                """.formatted(bifContains, bifContains, bifContains, safeLang, limit, offset);
     }
 
     /**
@@ -94,64 +101,26 @@ public class NKDSPARQLSearchQuery {
      * Optionally filters by ontology IRIs and relation types.
      */
     public static String buildConceptSearchQuery(String searchTerm, String lang, int limit, int offset,
-                                                  List<String> ontologyIris, List<RelationType> relationTypes) {
-        String sanitizedTerm = sanitizeSearchTerm(searchTerm);
+                                                  List<String> ontologyIris, List<RelationType> relationTypes,
+                                                  ConceptType conceptTypeFilter) {
         String safeLang = sanitizeLang(lang);
         StringBuilder query = new StringBuilder(PREFIXES);
 
+        // Structure: an inner subquery (?resource, ?ontology) does the heavy lifting
+        // (skos:Concept type, ontology binding, role filter, ontology IRI filter,
+        // text matching via bif:contains, relation-type filter) and applies LIMIT/OFFSET.
+        // The outer query then attaches OPTIONAL labels/descriptions for the surviving
+        // rows. This isolation is required for Virtuoso: placing the OPTIONAL/BIND
+        // projection in the same group as a 4-way bif:contains UNION combined with a
+        // FILTER EXISTS clause triggers a planner bug that silently returns zero rows.
         query.append("""
                 SELECT DISTINCT ?resource ?label ?labelLang ?altName ?description ?definition ?ontology ?modified WHERE {
-                  ?resource a skos:Concept .
-                  ?resource skos:inScheme ?ontology .
-
                 """);
 
-        // Ontology IRI filter using VALUES clause
-        if (ontologyIris != null && !ontologyIris.isEmpty()) {
-            List<String> validIris = ontologyIris.stream()
-                    .filter(SparqlIriValidator::isSafeHttpIri)
-                    .toList();
-            if (!validIris.isEmpty()) {
-                query.append("  VALUES ?ontology { ");
-                for (String iri : validIris) {
-                    query.append("<").append(iri).append("> ");
-                }
-                query.append("}\n\n");
-            }
-        }
+        appendResourceSubquery(query, searchTerm, ontologyIris, relationTypes, conceptTypeFilter, limit, offset);
 
-        // Text matching via bif:contains
         query.append("""
-                  {
-                    ?resource skos:prefLabel ?matchField .
-                    ?matchField bif:contains '"%s*"' .
-                  } UNION {
-                    ?resource skos:altLabel ?matchField .
-                    ?matchField bif:contains '"%s*"' .
-                  } UNION {
-                    ?resource dcterms:description ?matchField .
-                    ?matchField bif:contains '"%s*"' .
-                  } UNION {
-                    ?resource skos:definition ?matchField .
-                    ?matchField bif:contains '"%s*"' .
-                  }
 
-                """.formatted(sanitizedTerm, sanitizedTerm, sanitizedTerm, sanitizedTerm));
-
-        // Relation type filters
-        if (relationTypes != null && !relationTypes.isEmpty()) {
-            if (relationTypes.size() == 1) {
-                query.append("  ").append(buildRelationFilter(relationTypes.get(0))).append("\n\n");
-            } else {
-                String combined = relationTypes.stream()
-                        .map(rt -> "EXISTS " + getRelationPattern(rt))
-                        .collect(Collectors.joining("\n         || "));
-                query.append("  FILTER(\n         ").append(combined).append("\n       )\n\n");
-            }
-        }
-
-        // Label selection with language preference and fallback
-        query.append("""
                   OPTIONAL {
                     ?resource skos:prefLabel ?prefLabel .
                     FILTER(LANG(?prefLabel) = "%s")
@@ -167,10 +136,72 @@ public class NKDSPARQLSearchQuery {
                   OPTIONAL { ?resource skos:definition ?definition }
                   OPTIONAL { ?resource dcterms:modified ?modified }
                 }
-                LIMIT %d OFFSET %d
-                """.formatted(safeLang, limit, offset));
+                """.formatted(safeLang));
 
         return query.toString();
+    }
+
+    /**
+     * Emits the inner {@code { SELECT DISTINCT ?resource ?ontology WHERE { ... } LIMIT/OFFSET }}
+     * block that selects matching concept IRIs. Kept separate so the search query
+     * can layer label/description OPTIONALs on top without interfering with the
+     * planner's choice on the resource side.
+     */
+    private static void appendResourceSubquery(StringBuilder query, String searchTerm,
+                                                List<String> ontologyIris,
+                                                List<RelationType> relationTypes,
+                                                ConceptType conceptTypeFilter,
+                                                int limit, int offset) {
+        String sanitizedTerm = sanitizeSearchTerm(searchTerm);
+        query.append("  { SELECT DISTINCT ?resource ?ontology WHERE {\n")
+             .append("      ?resource a skos:Concept .\n")
+             .append("      ?resource skos:inScheme ?ontology .\n");
+
+        if (conceptTypeFilter != null) {
+            query.append("      ").append(buildRoleFilter(conceptTypeFilter)).append("\n");
+        }
+
+        if (ontologyIris != null && !ontologyIris.isEmpty()) {
+            List<String> validIris = ontologyIris.stream()
+                    .filter(SparqlIriValidator::isSafeHttpIri)
+                    .toList();
+            if (!validIris.isEmpty()) {
+                query.append("      VALUES ?ontology { ");
+                for (String iri : validIris) {
+                    query.append("<").append(iri).append("> ");
+                }
+                query.append("}\n");
+            }
+        }
+
+        query.append("""
+                      {
+                        ?resource skos:prefLabel ?matchField .
+                        ?matchField bif:contains '"%s*"' .
+                      } UNION {
+                        ?resource skos:altLabel ?matchField .
+                        ?matchField bif:contains '"%s*"' .
+                      } UNION {
+                        ?resource dcterms:description ?matchField .
+                        ?matchField bif:contains '"%s*"' .
+                      } UNION {
+                        ?resource skos:definition ?matchField .
+                        ?matchField bif:contains '"%s*"' .
+                      }
+                """.formatted(sanitizedTerm, sanitizedTerm, sanitizedTerm, sanitizedTerm));
+
+        if (relationTypes != null && !relationTypes.isEmpty()) {
+            if (relationTypes.size() == 1) {
+                query.append("      ").append(buildRelationFilter(relationTypes.get(0))).append("\n");
+            } else {
+                String combined = relationTypes.stream()
+                        .map(rt -> "EXISTS " + getRelationPattern(rt))
+                        .collect(Collectors.joining("\n             || "));
+                query.append("      FILTER(\n             ").append(combined).append("\n           )\n");
+            }
+        }
+
+        query.append("    } LIMIT ").append(limit).append(" OFFSET ").append(offset).append(" }\n");
     }
 
     /**
@@ -180,7 +211,8 @@ public class NKDSPARQLSearchQuery {
      */
     public static String buildConceptSearchCountQuery(String searchTerm,
                                                        List<String> ontologyIris,
-                                                       List<RelationType> relationTypes) {
+                                                       List<RelationType> relationTypes,
+                                                       ConceptType conceptTypeFilter) {
         String sanitizedTerm = sanitizeSearchTerm(searchTerm);
         StringBuilder query = new StringBuilder(PREFIXES);
 
@@ -190,6 +222,10 @@ public class NKDSPARQLSearchQuery {
                   ?resource skos:inScheme ?ontology .
 
                 """);
+
+        if (conceptTypeFilter != null) {
+            query.append("  ").append(buildRoleFilter(conceptTypeFilter)).append("\n\n");
+        }
 
         if (ontologyIris != null && !ontologyIris.isEmpty()) {
             List<String> validIris = ontologyIris.stream()
@@ -238,6 +274,40 @@ public class NKDSPARQLSearchQuery {
 
     private static String buildRelationFilter(RelationType type) {
         return "FILTER EXISTS " + getRelationPattern(type);
+    }
+
+    private static String ofnRoleFragment(ConceptType type) {
+        return switch (type) {
+            case TRIDA -> TRIDA;
+            case VLASTNOST -> VLASTNOST;
+            case VZTAH -> VZTAH;
+        };
+    }
+
+    /**
+     * Returns the OWL type that semantically matches an OFN concept role.
+     * {@link OWL2} classes are the upstream truth in OWL ontologies; the OFN role
+     * tags (slovníky:třída/vlastnost/vztah) are added by ISMD on import. NKD
+     * carries the OWL types verbatim but does NOT add the OFN tags — so the role
+     * filter must accept either.
+     */
+    private static String owlTypeIri(ConceptType type) {
+        return switch (type) {
+            case TRIDA -> OWL_CLASS;
+            case VLASTNOST -> OWL_DATATYPE_PROPERTY;
+            case VZTAH -> OWL_OBJECT_PROPERTY;
+        };
+    }
+
+    /**
+     * SPARQL clause that matches concepts whose rdf:type set contains either the
+     * OFN role IRI (ISMD-published data) or the matching OWL type (NKD data).
+     */
+    private static String buildRoleFilter(ConceptType type) {
+        String ofnIri = OFN_NAMESPACE + ofnRoleFragment(type);
+        String owlIri = owlTypeIri(type);
+        return "FILTER(EXISTS { ?resource a <" + ofnIri + "> }"
+                + " || EXISTS { ?resource a <" + owlIri + "> })";
     }
 
     private static String getRelationPattern(RelationType type) {
