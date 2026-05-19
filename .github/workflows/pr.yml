@@ -19,3 +19,10 @@ jobs:
       coverage_branch: ${{ vars.JACOCO_BRANCH_MINIMUM || '0.45' }}
       coverage_complexity: ${{ vars.JACOCO_COMPLEXITY_MINIMUM || '0.45' }}
     secrets: inherit
+
+  validate-docker-build:
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      branch: ${{ github.base_ref }}
+      push: false
+    secrets: inherit
