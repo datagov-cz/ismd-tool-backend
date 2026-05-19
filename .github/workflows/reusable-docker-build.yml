@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: ''
+      push:
+        description: 'Whether to push the image to GHCR (false = build-only validation)'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -27,8 +32,9 @@ jobs:
           fetch-depth: 0  # Fetch all history to get tags
 
       - name: Login to GitHub Container Registry
+        if: ${{ inputs.push }}
         uses: docker/login-action@v4
-        with: 
+        with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
@@ -81,11 +87,16 @@ jobs:
           IMAGE_TAG="ghcr.io/${{ env.REPO_PATH }}:${{ steps.version.outputs.version }}"
           LATEST_TAG="ghcr.io/${{ env.REPO_PATH }}:latest"
 
+          PUSH_FLAG=""
+          if [ "${{ inputs.push }}" = "true" ]; then
+            PUSH_FLAG="--push"
+          fi
+
           docker buildx build \
             -f Dockerfile \
             --secret id=github_token,env=GITHUB_TOKEN \
             --build-arg GITHUB_ACTOR="${{ github.actor }}" \
             -t "$IMAGE_TAG" \
             -t "$LATEST_TAG" \
-            --push \
+            $PUSH_FLAG \
             .
