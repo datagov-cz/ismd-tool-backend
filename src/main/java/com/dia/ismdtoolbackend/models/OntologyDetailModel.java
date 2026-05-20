@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
@@ -104,10 +105,10 @@ public class OntologyDetailModel {
         private List<ResolvedLegalSourceDto> relatedLegalSourcesResolved;
 
         @JsonProperty("definující-nelegislativní-zdroj")
-        private List<Map<String, Object>> definingNonLegalSources;
+        private List<NonLegalSourceDto> definingNonLegalSources;
 
         @JsonProperty("související-nelegislativní-zdroj")
-        private List<Map<String, Object>> relatedNonLegalSources;
+        private List<NonLegalSourceDto> relatedNonLegalSources;
 
         @JsonProperty("způsob-sdílení-údaje")
         private List<String> sharingMethods;

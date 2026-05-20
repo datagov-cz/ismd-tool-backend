@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import lombok.extern.slf4j.Slf4j;
@@ -281,7 +282,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areDifferent(local.getDefiningNonLegalSources(), published.getDefiningNonLegalSources())) {
-            builder.definingNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, Object>>>builder()
+            builder.definingNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<NonLegalSourceDto>>builder()
                     .localValue(local.getDefiningNonLegalSources())
                     .publishedValue(published.getDefiningNonLegalSources())
                     .isDifferent(true)
@@ -297,7 +298,7 @@ public class ConceptDeviationComparator {
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
         if (areDifferent(local.getRelatedNonLegalSources(), published.getRelatedNonLegalSources())) {
-            builder.relatedNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<Map<String, Object>>>builder()
+            builder.relatedNonLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<NonLegalSourceDto>>builder()
                     .localValue(local.getRelatedNonLegalSources())
                     .publishedValue(published.getRelatedNonLegalSources())
                     .isDifferent(true)
