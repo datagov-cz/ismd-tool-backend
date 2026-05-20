@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -59,10 +60,10 @@ public class PublishedConceptDeviationModel {
     private PropertyDeviation<List<String>> relatedLegalSources;
 
     @JsonProperty("definující-nelegislativní-zdroj")
-    private PropertyDeviation<List<Map<String, Object>>> definingNonLegalSources;
+    private PropertyDeviation<List<NonLegalSourceDto>> definingNonLegalSources;
 
     @JsonProperty("související-nelegislativní-zdroj")
-    private PropertyDeviation<List<Map<String, Object>>> relatedNonLegalSources;
+    private PropertyDeviation<List<NonLegalSourceDto>> relatedNonLegalSources;
 
     @JsonProperty("způsob-sdílení-údajů")
     private PropertyDeviation<List<String>> sharingMethods;

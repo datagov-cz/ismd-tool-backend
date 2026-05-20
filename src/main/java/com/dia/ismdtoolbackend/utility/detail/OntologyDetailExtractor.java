@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.detail;
 
+import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -312,8 +313,10 @@ public class OntologyDetailExtractor {
                         (List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
                 .relatedLegalSourcesResolved(buildResolvedSources(
                         (List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
-                .definingNonLegalSources((List<Map<String, Object>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ))
-                .relatedNonLegalSources((List<Map<String, Object>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ))
+                .definingNonLegalSources(buildNonLegalSources(
+                        (List<Map<String, Object>>) conceptMap.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ)))
+                .relatedNonLegalSources(buildNonLegalSources(
+                        (List<Map<String, Object>>) conceptMap.get(SOUVISEJICI_NELEGISLATIVNI_ZDROJ)))
                 .sharingMethods((List<String>) conceptMap.get(ZPUSOBY_SDILENI_ALT))
                 .acquisitionMethod(extractStringFromValue(conceptMap.get(ZPUSOB_ZISKANI_ALT)))
                 .contentType(extractStringFromValue(conceptMap.get(TYP_OBSAHU_ALT)))
@@ -324,6 +327,44 @@ public class OntologyDetailExtractor {
                 .conceptProperties(properties)
                 .conceptRelationships(relationships)
                 .build();
+    }
+
+    static List<NonLegalSourceDto> buildNonLegalSources(List<Map<String, Object>> rawSources) {
+        if (rawSources == null || rawSources.isEmpty()) {
+            return null;
+        }
+        List<NonLegalSourceDto> out = new ArrayList<>(rawSources.size());
+        for (Map<String, Object> src : rawSources) {
+            if (src == null) {
+                continue;
+            }
+            out.add(NonLegalSourceDto.builder()
+                    .iri(asString(src.get("iri")))
+                    .typ(asString(src.get("typ")))
+                    .nazev(asMultilingualMap(src.get(NAZEV)))
+                    .popis(asMultilingualMap(src.get(POPIS)))
+                    .url(asString(src.get("url")))
+                    .build());
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    private static String asString(Object value) {
+        return value instanceof String s ? s : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> asMultilingualMap(Object value) {
+        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+            return null;
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (e.getKey() instanceof String key && e.getValue() instanceof String val) {
+                out.put(key, val);
+            }
+        }
+        return out.isEmpty() ? null : out;
     }
 
     private String extractStringFromValue(Object value) {

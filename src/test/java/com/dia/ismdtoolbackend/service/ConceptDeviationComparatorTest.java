@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
@@ -329,7 +330,10 @@ class ConceptDeviationComparatorTest {
 
         @Test
         void identicalNonLegalSources_shouldReturnNoDeviation() {
-            Map<String, Object> source = Map.of("url", "https://example.com", "name", "Source");
+            NonLegalSourceDto source = NonLegalSourceDto.builder()
+                    .url("https://example.com")
+                    .nazev(Map.of("cs", "Source"))
+                    .build();
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
                     .definingNonLegalSources(List.of(source))
                     .build();
@@ -345,10 +349,10 @@ class ConceptDeviationComparatorTest {
         @Test
         void differentNonLegalSources_shouldDetectDeviation() {
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .definingNonLegalSources(List.of(Map.of("url", "https://a.com")))
+                    .definingNonLegalSources(List.of(NonLegalSourceDto.builder().url("https://a.com").build()))
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .definingNonLegalSources(List.of(Map.of("url", "https://b.com")))
+                    .definingNonLegalSources(List.of(NonLegalSourceDto.builder().url("https://b.com").build()))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
