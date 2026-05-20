@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import org.apache.jena.ontology.OntologyException;
@@ -60,6 +61,9 @@ class ConceptServiceImplTest {
 
     @Mock
     private JenaTDB2Repository jenaTDB2Repository;
+
+    @Mock
+    private RppSnapshotHolder rppSnapshotHolder;
 
     @InjectMocks
     private ConceptServiceImpl conceptService;

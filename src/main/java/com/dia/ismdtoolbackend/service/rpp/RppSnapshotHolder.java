@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -46,6 +47,33 @@ public class RppSnapshotHolder {
 
     public RppSnapshot peek() {
         return current.get();
+    }
+
+    public Optional<RppAgenda> findAgendaByIri(String iri) {
+        if (iri == null || iri.isBlank()) {
+            return Optional.empty();
+        }
+        return snapshotForLookup().getAgendas().stream()
+                .filter(a -> iri.equals(a.getIri()))
+                .findFirst();
+    }
+
+    public Optional<RppIsvs> findIsvsByIri(String iri) {
+        if (iri == null || iri.isBlank()) {
+            return Optional.empty();
+        }
+        return snapshotForLookup().getIsvs().stream()
+                .filter(i -> iri.equals(i.getIri()))
+                .findFirst();
+    }
+
+    private RppSnapshot snapshotForLookup() {
+        try {
+            return get();
+        } catch (SparqlEndpointUnavailableException e) {
+            log.debug("RPP snapshot unavailable for lookup; treating as miss. cause={}", e.getMessage());
+            return RppSnapshot.empty();
+        }
     }
 
     private RppSnapshot refreshUnderLock() {

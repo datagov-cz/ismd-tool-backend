@@ -16,11 +16,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -110,5 +112,59 @@ class RppSnapshotHolderTest {
         when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
 
         assertThrows(SparqlEndpointUnavailableException.class, () -> holder.get());
+    }
+
+    @Test
+    void findAgendaByIriReturnsMatch() {
+        RppAgenda a1 = new RppAgenda("a1-iri", "1", "Agenda One");
+        RppAgenda a2 = new RppAgenda("a2-iri", "2", "Agenda Two");
+        when(client.fetchAllAgendas()).thenReturn(List.of(a1, a2));
+        when(client.fetchAllIsvs()).thenReturn(List.of());
+
+        Optional<RppAgenda> found = holder.findAgendaByIri("a2-iri");
+
+        assertTrue(found.isPresent());
+        assertEquals("2", found.get().getCode());
+    }
+
+    @Test
+    void findAgendaByIriReturnsEmptyOnMiss() {
+        when(client.fetchAllAgendas()).thenReturn(List.of(new RppAgenda("a1-iri", "1", "Ag")));
+        when(client.fetchAllIsvs()).thenReturn(List.of());
+
+        assertTrue(holder.findAgendaByIri("unknown-iri").isEmpty());
+    }
+
+    @Test
+    void findAgendaByIriReturnsEmptyForNullOrBlank() {
+        assertTrue(holder.findAgendaByIri(null).isEmpty());
+        assertTrue(holder.findAgendaByIri("  ").isEmpty());
+        verify(client, times(0)).fetchAllAgendas();
+    }
+
+    @Test
+    void findIsvsByIriReturnsMatch() {
+        RppIsvs i1 = new RppIsvs("i1-iri", "10", "Isvs One", List.of());
+        when(client.fetchAllAgendas()).thenReturn(List.of());
+        when(client.fetchAllIsvs()).thenReturn(List.of(i1));
+
+        Optional<RppIsvs> found = holder.findIsvsByIri("i1-iri");
+
+        assertTrue(found.isPresent());
+        assertEquals("Isvs One", found.get().getNazev());
+    }
+
+    @Test
+    void findAgendaByIriReturnsEmptyWhenSnapshotUnavailable() {
+        when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
+
+        assertTrue(holder.findAgendaByIri("a-iri").isEmpty());
+    }
+
+    @Test
+    void findIsvsByIriReturnsEmptyWhenSnapshotUnavailable() {
+        when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
+
+        assertTrue(holder.findIsvsByIri("i-iri").isEmpty());
     }
 }
