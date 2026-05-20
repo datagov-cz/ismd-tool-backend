@@ -116,15 +116,15 @@ public final class RdfTestModelFactory {
                                                 String sharingMethod, String acquisitionMethod,
                                                 String contentType) {
         if (sharingMethod != null) {
-            Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOBY_SDILENI_UDAJE);
+            Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
             concept.addProperty(prop, sharingMethod);
         }
         if (acquisitionMethod != null) {
-            Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI + "-údaje");
+            Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI);
             concept.addProperty(prop, acquisitionMethod);
         }
         if (contentType != null) {
-            Property prop = model.createProperty(OFN_NAMESPACE + TYP_OBSAHU + "-údaje");
+            Property prop = model.createProperty(OFN_NAMESPACE + TYP_OBSAHU);
             concept.addProperty(prop, contentType);
         }
     }
