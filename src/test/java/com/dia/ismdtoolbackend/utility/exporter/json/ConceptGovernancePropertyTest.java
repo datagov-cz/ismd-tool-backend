@@ -45,7 +45,7 @@ class ConceptGovernancePropertyTest {
     void semicolonSplitting() {
         OntModel model = createDefaultModel();
         Resource concept = addOwlClass(model, "udaj", "Údaj");
-        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOBY_SDILENI_UDAJE);
+        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         concept.addProperty(prop, "publikace jako otevřená data; sdílení v PPDF");
         ModelStructure structure = createModelStructure(model);
 
@@ -56,22 +56,6 @@ class ConceptGovernancePropertyTest {
         assertEquals(2, values.size());
         assertTrue(values.contains("publikace jako otevřená data"));
         assertTrue(values.contains("sdílení v PPDF"));
-    }
-
-    @Test
-    @DisplayName("Old fallback property name má-způsob-sdílení-údaje is ignored")
-    void oldFallbackPropertyName_ignored() {
-        OntModel model = createDefaultModel();
-        Resource concept = addOwlClass(model, "udaj", "Údaj");
-        // Use the old fallback property name — should NOT be picked up
-        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
-        concept.addProperty(prop, "otevřená data");
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        assertFalse(result.containsKey(ZPUSOBY_SDILENI_ALT),
-                "Old fallback property names should be ignored");
     }
 
     @Test
@@ -121,7 +105,7 @@ class ConceptGovernancePropertyTest {
     void sharingMethodTrimmed() {
         OntModel model = createDefaultModel();
         Resource concept = addOwlClass(model, "udaj", "Údaj");
-        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOBY_SDILENI_UDAJE);
+        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         concept.addProperty(prop, "  otevřená data  ");
         ModelStructure structure = createModelStructure(model);
 
@@ -137,7 +121,7 @@ class ConceptGovernancePropertyTest {
     void governancePropertyResourceValue() {
         OntModel model = createDefaultModel();
         Resource concept = addOwlClass(model, "udaj", "Údaj");
-        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOBY_SDILENI_UDAJE);
+        Property prop = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
         concept.addProperty(prop, model.createResource("https://example.org/sdileni/otevrena-data"));
         ModelStructure structure = createModelStructure(model);
 

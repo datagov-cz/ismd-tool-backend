@@ -619,7 +619,7 @@ public class ConceptProcessor {
 
     private void addGovernancePropertyArray(Resource concept, Map<String, Object> conceptObj,
                                             OntModel ontModel) {
-        Property property = ontModel.getProperty(OFN_NAMESPACE + ZPUSOBY_SDILENI_UDAJE);
+        Property property = ontModel.getProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
 
         if (concept.hasProperty(property)) {
             StmtIterator propIter = concept.listProperties(property);
@@ -634,7 +634,7 @@ public class ConceptProcessor {
     private void addSingleGovernanceProperty(Resource concept, Map<String, Object> conceptObj,
                                              OntModel ontModel,
                                              String propertyName, String jsonFieldName) {
-        Property property = ontModel.getProperty(OFN_NAMESPACE + propertyName + "-údaje");
+        Property property = ontModel.getProperty(OFN_NAMESPACE + propertyName);
 
         if (concept.hasProperty(property)) {
             Statement stmt = concept.getProperty(property);
