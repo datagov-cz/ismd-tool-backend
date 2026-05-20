@@ -16,6 +16,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
@@ -50,6 +51,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final CommentRepository commentRepository;
     private final NkdSparqlClient nkdSparqlClient;
     private final ConceptDeviationComparator deviationComparator;
+    private final RppSnapshotHolder rppSnapshotHolder;
 
     @Override
     @Transactional
@@ -174,6 +176,8 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Detail pojmu s IRI " + conceptIri + " nebyl nalezen.");
         }
 
+        resolveRppReferences(conceptDetail);
+
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
 
         List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(conceptIri);
@@ -187,6 +191,17 @@ public class ConceptServiceImpl implements ConceptService {
         result.setPublishedConceptDeviationModel(conceptDeviation);
 
         return result;
+    }
+
+    private void resolveRppReferences(OntologyDetailModel.ConceptDetailModel detail) {
+        String agendaIri = detail.getAgenda();
+        if (agendaIri != null) {
+            rppSnapshotHolder.findAgendaByIri(agendaIri).ifPresent(detail::setAgendaResolved);
+        }
+        String aisIri = detail.getAis();
+        if (aisIri != null) {
+            rppSnapshotHolder.findIsvsByIri(aisIri).ifPresent(detail::setAisResolved);
+        }
     }
 
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,

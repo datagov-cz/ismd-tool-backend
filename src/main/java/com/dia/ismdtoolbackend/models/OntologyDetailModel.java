@@ -3,6 +3,8 @@ package com.dia.ismdtoolbackend.models;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
+import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
+import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -124,6 +126,12 @@ public class OntologyDetailModel {
 
         @JsonProperty("agenda")
         private String agenda;
+
+        @JsonProperty("agendový-informační-systém-resolved")
+        private RppIsvs aisResolved;
+
+        @JsonProperty("agenda-resolved")
+        private RppAgenda agendaResolved;
 
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
         private List<String> privacyProvisions;
