@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -194,7 +195,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OntologyDetailModel.ConceptDetailModel> getConceptsByIri(String ontologyIri) {
+    public List<MinimalConceptDto> getConceptsByIri(String ontologyIri) {
         if (ontologyIri == null || ontologyIri.isBlank()) {
             throw new OntologyException("IRI slovníku musí být zadáno.");
         }
@@ -213,7 +214,26 @@ public class OntologyServiceImpl implements OntologyService {
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         List<OntologyDetailModel.ConceptDetailModel> concepts = detailModel.getConcepts();
-        return concepts != null ? concepts : List.of();
+        if (concepts == null || concepts.isEmpty()) {
+            return List.of();
+        }
+
+        // Slug lives in PG, not in the RDF graph — join by conceptIri so the FE
+        // can deep-link via /concept/{slug} (local-only navigation key).
+        Map<String, String> slugByIri = conceptMetadataRepository.findByGraphName(ontologyIri).stream()
+                .filter(e -> e.getConceptIri() != null && e.getSlug() != null)
+                .collect(java.util.stream.Collectors.toMap(
+                        ConceptMetadataEntity::getConceptIri,
+                        ConceptMetadataEntity::getSlug,
+                        (a, b) -> a));
+
+        return concepts.stream()
+                .map(c -> MinimalConceptDto.builder()
+                        .iri(c.getIri())
+                        .slug(slugByIri.get(c.getIri()))
+                        .name(c.getName())
+                        .build())
+                .toList();
     }
 
     private void validateOntologyCreateModel(OntologyCreateModel model) {

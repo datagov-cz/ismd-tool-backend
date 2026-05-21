@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 
@@ -13,7 +13,7 @@ public interface OntologyService {
     void deleteOntology(Long ontologyId);
     OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId);
     GetOntologyDto getOntologyDetailModel(String ontologySlug);
-    List<OntologyDetailModel.ConceptDetailModel> getConceptsByIri(String ontologyIri);
+    List<MinimalConceptDto> getConceptsByIri(String ontologyIri);
     OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel);
     List<OntologyMetadataModel> getAll(String userId, Boolean isPublished);
     List<OntologyMetadataModel> getBySlugs(List<String> slugs);
