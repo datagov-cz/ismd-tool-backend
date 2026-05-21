@@ -7,7 +7,10 @@ import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
+import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.service.impl.NkdDetailServiceImpl;
+import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -44,6 +47,9 @@ class NkdDetailServiceImplTest {
 
     @Mock
     private JsonExporter jsonExporter;
+
+    @Mock
+    private RppSnapshotHolder rppSnapshotHolder;
 
     @InjectMocks
     private NkdDetailServiceImpl service;
@@ -126,12 +132,14 @@ class NkdDetailServiceImplTest {
     // ── Concept ────────────────────────────────────────────────────────
 
     @Test
-    void getConceptDetail_success_returnsDtoWithOntologyIri() {
+    void getConceptDetail_success_queryParamWinsOverDerivedOntologyIri() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         OntologyDetailModel.ConceptDetailModel model =
                 OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).build();
-        when(nkdSparqlClient.fetchPublishedConcept(CONCEPT_IRI)).thenReturn(Optional.of(model));
+        // Derived ontologyIri is intentionally different to prove the query param wins.
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, "https://example.org/ontology/derived")));
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, ONTOLOGY_IRI);
 
@@ -140,12 +148,28 @@ class NkdDetailServiceImplTest {
     }
 
     @Test
-    void getConceptDetail_nullOntologyIri_returnsDtoWithNullOntologyIri() {
+    void getConceptDetail_nullOntologyIriParam_fallsBackToDerivedOntologyIri() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         OntologyDetailModel.ConceptDetailModel model =
                 OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).build();
-        when(nkdSparqlClient.fetchPublishedConcept(CONCEPT_IRI)).thenReturn(Optional.of(model));
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, ONTOLOGY_IRI)));
+
+        GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
+
+        assertSame(model, dto.getConceptDetail());
+        assertEquals(ONTOLOGY_IRI, dto.getOntologyIri());
+    }
+
+    @Test
+    void getConceptDetail_nullOntologyIriParamAndNoInScheme_returnsNullOntologyIri() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        OntologyDetailModel.ConceptDetailModel model =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, null)));
 
         GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
 
@@ -154,9 +178,50 @@ class NkdDetailServiceImplTest {
     }
 
     @Test
+    void getConceptDetail_resolvesAgendaAndAisFromRpp() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        String agendaIri = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A1";
+        String aisIri = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/I1";
+        OntologyDetailModel.ConceptDetailModel model =
+                OntologyDetailModel.ConceptDetailModel.builder()
+                        .iri(CONCEPT_IRI)
+                        .agenda(agendaIri)
+                        .ais(aisIri)
+                        .build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, ONTOLOGY_IRI)));
+
+        RppAgenda agenda = org.mockito.Mockito.mock(RppAgenda.class);
+        RppIsvs ais = org.mockito.Mockito.mock(RppIsvs.class);
+        when(rppSnapshotHolder.findAgendaByIri(agendaIri)).thenReturn(Optional.of(agenda));
+        when(rppSnapshotHolder.findIsvsByIri(aisIri)).thenReturn(Optional.of(ais));
+
+        GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
+
+        assertSame(agenda, dto.getConceptDetail().getAgendaResolved());
+        assertSame(ais, dto.getConceptDetail().getAisResolved());
+    }
+
+    @Test
+    void getConceptDetail_missingAgendaAndAis_doesNotCallRpp() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        OntologyDetailModel.ConceptDetailModel model =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, ONTOLOGY_IRI)));
+
+        service.getConceptDetail(CONCEPT_IRI, null);
+
+        verify(rppSnapshotHolder, org.mockito.Mockito.never()).findAgendaByIri(anyString());
+        verify(rppSnapshotHolder, org.mockito.Mockito.never()).findIsvsByIri(anyString());
+    }
+
+    @Test
     void getConceptDetail_notFoundInNkd_throwsNkdResourceNotFound() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        when(nkdSparqlClient.fetchPublishedConcept(CONCEPT_IRI)).thenReturn(Optional.empty());
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI)).thenReturn(Optional.empty());
 
         assertThrows(NkdResourceNotFoundException.class,
                 () -> service.getConceptDetail(CONCEPT_IRI, null));
@@ -169,13 +234,13 @@ class NkdDetailServiceImplTest {
         assertThrows(NkdEndpointException.class,
                 () -> service.getConceptDetail(CONCEPT_IRI, null));
 
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConcept(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
     @Test
     void getConceptDetail_sparqlError_throwsNkdEndpointException() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        when(nkdSparqlClient.fetchPublishedConcept(CONCEPT_IRI))
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
                 .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
 
         assertThrows(NkdEndpointException.class,
@@ -187,7 +252,7 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         assertThrows(IllegalArgumentException.class,
                 () -> service.getConceptDetail("", null));
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConcept(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
     @Test
@@ -195,7 +260,7 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         assertThrows(IllegalArgumentException.class,
                 () -> service.getConceptDetail("not an iri", null));
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConcept(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
     @Test
@@ -203,7 +268,7 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         assertThrows(IllegalArgumentException.class,
                 () -> service.getConceptDetail(CONCEPT_IRI, "not an iri"));
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConcept(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedConceptWithScheme(anyString());
     }
 
     // ── Ontology list ──────────────────────────────────────────────────

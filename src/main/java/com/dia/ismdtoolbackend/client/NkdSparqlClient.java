@@ -8,7 +8,11 @@ import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -40,6 +44,13 @@ public class NkdSparqlClient {
     }
 
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
+        return fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
+    }
+
+    /**
+     * Concept fetch that also surfaces the {@code skos:inScheme} target
+     */
+    public Optional<PublishedConcept> fetchPublishedConceptWithScheme(String conceptIri) {
         log.debug("Fetching published concept from NKD: {}", conceptIri);
         String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
         Optional<Model> resultModel = executor.construct("NKD concept fetch for " + conceptIri, query);
@@ -47,14 +58,41 @@ public class NkdSparqlClient {
             log.info("No data found for concept in NKD: {}", conceptIri);
             return Optional.empty();
         }
-        log.debug("Fetched {} triples from NKD for concept: {}", resultModel.get().size(), conceptIri);
-        Model processedModel = detailExtractor.applyOFNTransformations(resultModel.get());
+        Model rawModel = resultModel.get();
+        log.debug("Fetched {} triples from NKD for concept: {}", rawModel.size(), conceptIri);
+        String inSchemeIri = extractInSchemeIri(rawModel, conceptIri);
+        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel.ConceptDetailModel conceptDetail =
                 detailExtractor.extractConceptDetail(processedModel, conceptIri,
                         OntologyDetailExtractor.iriResolver());
-        log.debug("Successfully extracted published concept detail from NKD: {}", conceptIri);
-        return Optional.of(conceptDetail);
+        log.debug("Successfully extracted published concept detail from NKD: {} (inScheme={})",
+                conceptIri, inSchemeIri);
+        return Optional.of(new PublishedConcept(conceptDetail, inSchemeIri));
     }
+
+    private static String extractInSchemeIri(Model rawModel, String conceptIri) {
+        Resource concept = rawModel.getResource(conceptIri);
+        Property inScheme = rawModel.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
+        StmtIterator stmts = rawModel.listStatements(concept, inScheme, (RDFNode) null);
+        try {
+            while (stmts.hasNext()) {
+                Statement stmt = stmts.next();
+                RDFNode object = stmt.getObject();
+                if (object.isURIResource()) {
+                    return object.asResource().getURI();
+                }
+            }
+        } finally {
+            stmts.close();
+        }
+        return null;
+    }
+
+    /**
+     * Carrier for concept detail + the skos:inScheme target IRI. Lives at client
+     * level so the service layer doesn't need to re-parse the raw NKD model.
+     */
+    public record PublishedConcept(OntologyDetailModel.ConceptDetailModel detail, String ontologyIri) {}
 
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
