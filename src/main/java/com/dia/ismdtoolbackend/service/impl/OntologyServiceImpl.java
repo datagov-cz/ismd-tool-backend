@@ -192,6 +192,30 @@ public class OntologyServiceImpl implements OntologyService {
         return result;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<OntologyDetailModel.ConceptDetailModel> getConceptsByIri(String ontologyIri) {
+        if (ontologyIri == null || ontologyIri.isBlank()) {
+            throw new OntologyException("IRI slovníku musí být zadáno.");
+        }
+
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIri);
+        if (ontologyMetadataOpt.isEmpty()) {
+            log.info("ISMD ontology not found for IRI: {}", ontologyIri);
+            throw new OntologyException("Slovník s IRI " + ontologyIri + " nebyl nalezen.");
+        }
+
+        Model rawModel = jenaTDB2Repository.fetchGraph(ontologyIri);
+        if (rawModel.isEmpty()) {
+            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+        }
+
+        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
+        List<OntologyDetailModel.ConceptDetailModel> concepts = detailModel.getConcepts();
+        return concepts != null ? concepts : List.of();
+    }
+
     private void validateOntologyCreateModel(OntologyCreateModel model) {
         if (model == null) {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");

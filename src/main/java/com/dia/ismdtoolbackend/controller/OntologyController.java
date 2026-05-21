@@ -8,10 +8,13 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -21,6 +24,7 @@ import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
 import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +58,7 @@ public class OntologyController {
     private final ValidationService validationService;
     private final ValidationClient validationClient;
     private final ValidationConfig validationConfig;
+    private final NkdDetailService nkdDetailService;
 
     @Operation(
             summary = "Nahrání slovníku ze souboru",
@@ -193,6 +198,33 @@ public class OntologyController {
         GetOntologyDto ontologyDto = ontologyService.getOntologyDetailModel(slug);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(ontologyDto, "Detail slovníku byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Seznam pojmů slovníku podle IRI",
+            description = "Vrací seznam pojmů slovníku podle jeho IRI. Parametr source určuje zdroj: ISMD (lokální úložiště) nebo NKD (Národní katalog dat). Veřejný endpoint."
+    )
+    @GetMapping("/concepts")
+    public ResponseEntity<ApiResponseDto<List<OntologyDetailModel.ConceptDetailModel>>> getConceptsByIri(
+            @Parameter(description = "IRI slovníku", required = true)
+            @RequestParam String iri,
+            @Parameter(description = "Zdroj: ISMD nebo NKD", required = true)
+            @RequestParam SearchSource source
+    ) {
+        log.info("Ontology concepts requested, iri: {}, source: {}", iri, source);
+
+        List<OntologyDetailModel.ConceptDetailModel> concepts = switch (source) {
+            case ISMD -> ontologyService.getConceptsByIri(iri);
+            case NKD -> {
+                OntologyDetailModel detail = nkdDetailService.getOntologyDetail(iri).getOntologyDetail();
+                List<OntologyDetailModel.ConceptDetailModel> nkdConcepts = detail.getConcepts();
+                yield nkdConcepts != null ? nkdConcepts : List.of();
+            }
+            default -> throw new IllegalArgumentException(
+                    "Nepodporovaný zdroj: " + source + ". Povolené hodnoty: ISMD, NKD.");
+        };
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Seznam pojmů byl úspěšně načten."));
     }
 
     @Operation(
