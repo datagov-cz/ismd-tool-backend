@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLBrowseQuery;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
 
     private final NkdSparqlClient nkdSparqlClient;
     private final JsonExporter jsonExporter;
+    private final RppSnapshotHolder rppSnapshotHolder;
 
     private volatile CachedValue<Integer> cachedTotalOntologies;
     private volatile CachedValue<Integer> cachedTotalConcepts;
@@ -136,21 +138,40 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             validateIri(ontologyIri);
         }
 
-        Optional<OntologyDetailModel.ConceptDetailModel> conceptDetail;
+        Optional<NkdSparqlClient.PublishedConcept> conceptResult;
         try {
-            conceptDetail = nkdSparqlClient.fetchPublishedConcept(iri);
+            conceptResult = nkdSparqlClient.fetchPublishedConceptWithScheme(iri);
         } catch (RuntimeException e) {
             log.warn("NKD SPARQL error while fetching concept {}: {}", iri, e.getMessage());
             throw new NkdEndpointException("NKD SPARQL endpoint je nedostupný.", e);
         }
 
-        OntologyDetailModel.ConceptDetailModel detail = conceptDetail.orElseThrow(() -> {
+        NkdSparqlClient.PublishedConcept published = conceptResult.orElseThrow(() -> {
             log.info("Concept not found in NKD: {}", iri);
             return new NkdResourceNotFoundException("Pojem s IRI " + iri + " nebyl v NKD nalezen.");
         });
 
-        String normalizedOntologyIri = (ontologyIri == null || ontologyIri.isBlank()) ? null : ontologyIri;
-        return new GetNkdConceptDto(detail, normalizedOntologyIri);
+        OntologyDetailModel.ConceptDetailModel detail = published.detail();
+        resolveRppReferences(detail);
+
+        // Query param wins (FE supplies it as breadcrumb context); fall back to
+        // the skos:inScheme target parsed from the NKD response so the FE has
+        // an IRI to deep-link the parent slovník with.
+        String resolvedOntologyIri =
+                (ontologyIri != null && !ontologyIri.isBlank()) ? ontologyIri : published.ontologyIri();
+
+        return new GetNkdConceptDto(detail, resolvedOntologyIri);
+    }
+
+    private void resolveRppReferences(OntologyDetailModel.ConceptDetailModel detail) {
+        String agendaIri = detail.getAgenda();
+        if (agendaIri != null) {
+            rppSnapshotHolder.findAgendaByIri(agendaIri).ifPresent(detail::setAgendaResolved);
+        }
+        String aisIri = detail.getAis();
+        if (aisIri != null) {
+            rppSnapshotHolder.findIsvsByIri(aisIri).ifPresent(detail::setAisResolved);
+        }
     }
 
     @Override
