@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -201,11 +202,13 @@ public class OntologyController {
     }
 
     @Operation(
-            summary = "Seznam pojmů slovníku podle IRI",
-            description = "Vrací seznam pojmů slovníku podle jeho IRI. Parametr source určuje zdroj: ISMD (lokální úložiště) nebo NKD (Národní katalog dat). Veřejný endpoint."
+            summary = "Minimalistický seznam pojmů slovníku podle IRI",
+            description = "Vrací minimalistický seznam pojmů slovníku (iri, slug, název) podle IRI slovníku. " +
+                    "Parametr source určuje zdroj: ISMD (lokální úložiště – položky obsahují slug pro navigaci) " +
+                    "nebo NKD (Národní katalog dat – položky obsahují pouze IRI). Veřejný endpoint."
     )
     @GetMapping("/concepts")
-    public ResponseEntity<ApiResponseDto<List<OntologyDetailModel.ConceptDetailModel>>> getConceptsByIri(
+    public ResponseEntity<ApiResponseDto<List<MinimalConceptDto>>> getConceptsByIri(
             @Parameter(description = "IRI slovníku", required = true)
             @RequestParam String iri,
             @Parameter(description = "Zdroj: ISMD nebo NKD", required = true)
@@ -213,12 +216,20 @@ public class OntologyController {
     ) {
         log.info("Ontology concepts requested, iri: {}, source: {}", iri, source);
 
-        List<OntologyDetailModel.ConceptDetailModel> concepts = switch (source) {
+        List<MinimalConceptDto> concepts = switch (source) {
             case ISMD -> ontologyService.getConceptsByIri(iri);
             case NKD -> {
                 OntologyDetailModel detail = nkdDetailService.getOntologyDetail(iri).getOntologyDetail();
                 List<OntologyDetailModel.ConceptDetailModel> nkdConcepts = detail.getConcepts();
-                yield nkdConcepts != null ? nkdConcepts : List.of();
+                if (nkdConcepts == null || nkdConcepts.isEmpty()) {
+                    yield List.of();
+                }
+                yield nkdConcepts.stream()
+                        .map(c -> MinimalConceptDto.builder()
+                                .iri(c.getIri())
+                                .name(c.getName())
+                                .build())
+                        .toList();
             }
             default -> throw new IllegalArgumentException(
                     "Nepodporovaný zdroj: " + source + ". Povolené hodnoty: ISMD, NKD.");

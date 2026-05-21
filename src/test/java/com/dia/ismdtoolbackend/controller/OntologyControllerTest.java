@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
@@ -967,11 +968,12 @@ class OntologyControllerTest {
     // ========== Get Concepts By IRI Tests ==========
 
     @Test
-    void testGetConceptsByIri_IsmdSuccess() throws Exception {
+    void testGetConceptsByIri_IsmdSuccess_includesSlug() throws Exception {
         String iri = "http://example.org/test-ontology";
 
-        OntologyDetailModel.ConceptDetailModel concept = OntologyDetailModel.ConceptDetailModel.builder()
+        MinimalConceptDto concept = MinimalConceptDto.builder()
                 .iri(iri + "/pojem/foo")
+                .slug("foo")
                 .name(java.util.Map.of("cs", "Foo"))
                 .build();
 
@@ -986,13 +988,15 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/foo"))
+                .andExpect(jsonPath("$.data[0].slug").value("foo"))
+                .andExpect(jsonPath("$.data[0].name.cs").value("Foo"))
                 .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
 
         verify(nkdDetailService, never()).getOntologyDetail(anyString());
     }
 
     @Test
-    void testGetConceptsByIri_NkdSuccess() throws Exception {
+    void testGetConceptsByIri_NkdSuccess_omitsSlug() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
         OntologyDetailModel.ConceptDetailModel concept = OntologyDetailModel.ConceptDetailModel.builder()
@@ -1015,6 +1019,9 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/bar"))
+                .andExpect(jsonPath("$.data[0].name.cs").value("Bar"))
+                // FE uses IRI for NKD navigation — slug must be omitted (NON_NULL).
+                .andExpect(jsonPath("$.data[0].slug").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
 
         verify(ontologyService, never()).getConceptsByIri(anyString());
