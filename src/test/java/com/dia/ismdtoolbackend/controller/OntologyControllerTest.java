@@ -5,11 +5,15 @@ import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.models.*;
+import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -75,6 +79,9 @@ class OntologyControllerTest {
 
     @MockitoBean
     private ValidationConfig validationConfig;
+
+    @MockitoBean
+    private NkdDetailService nkdDetailService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -955,5 +962,150 @@ class OntologyControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    // ========== Get Concepts By IRI Tests ==========
+
+    @Test
+    void testGetConceptsByIri_IsmdSuccess() throws Exception {
+        String iri = "http://example.org/test-ontology";
+
+        OntologyDetailModel.ConceptDetailModel concept = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(iri + "/pojem/foo")
+                .name(java.util.Map.of("cs", "Foo"))
+                .build();
+
+        when(ontologyService.getConceptsByIri(iri))
+                .thenReturn(java.util.List.of(concept));
+
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", iri)
+                        .param("source", "ISMD"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/foo"))
+                .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
+
+        verify(nkdDetailService, never()).getOntologyDetail(anyString());
+    }
+
+    @Test
+    void testGetConceptsByIri_NkdSuccess() throws Exception {
+        String iri = "https://data.gov.cz/zdroj/slovnik/test";
+
+        OntologyDetailModel.ConceptDetailModel concept = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(iri + "/pojem/bar")
+                .name(java.util.Map.of("cs", "Bar"))
+                .build();
+        OntologyDetailModel detail = OntologyDetailModel.builder()
+                .iri(iri)
+                .concepts(java.util.List.of(concept))
+                .build();
+
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenReturn(new GetNkdOntologyDto(detail));
+
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", iri)
+                        .param("source", "NKD"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/bar"))
+                .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
+
+        verify(ontologyService, never()).getConceptsByIri(anyString());
+    }
+
+    @Test
+    void testGetConceptsByIri_NkdEmptyConceptsCoercedToEmptyArray() throws Exception {
+        String iri = "https://data.gov.cz/zdroj/slovnik/test";
+
+        OntologyDetailModel detail = OntologyDetailModel.builder()
+                .iri(iri)
+                .concepts(null)
+                .build();
+
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenReturn(new GetNkdOntologyDto(detail));
+
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", iri)
+                        .param("source", "NKD"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void testGetConceptsByIri_IsmdNotFound() throws Exception {
+        String iri = "http://example.org/missing";
+
+        when(ontologyService.getConceptsByIri(iri))
+                .thenThrow(new org.apache.jena.ontology.OntologyException(
+                        "Slovník s IRI " + iri + " nebyl nalezen."));
+
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", iri)
+                        .param("source", "ISMD"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Slovník s IRI " + iri + " nebyl nalezen."));
+    }
+
+    @Test
+    void testGetConceptsByIri_NkdNotFound() throws Exception {
+        String iri = "https://data.gov.cz/zdroj/slovnik/missing";
+
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenThrow(new NkdResourceNotFoundException(
+                        "Slovník s IRI " + iri + " nebyl v NKD nalezen."));
+
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", iri)
+                        .param("source", "NKD"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Slovník s IRI " + iri + " nebyl v NKD nalezen."));
+    }
+
+    @Test
+    void testGetConceptsByIri_UnsupportedSourceRejected() throws Exception {
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", "http://example.org/x")
+                        .param("source", "UNPUBLISHED"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(ontologyService, never()).getConceptsByIri(anyString());
+        verify(nkdDetailService, never()).getOntologyDetail(anyString());
+    }
+
+    @Test
+    void testGetConceptsByIri_UnknownSourceRejected() throws Exception {
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", "http://example.org/x")
+                        .param("source", "BOGUS"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void testGetConceptsByIri_MissingSourceParamRejected() throws Exception {
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("iri", "http://example.org/x"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void testGetConceptsByIri_MissingIriParamRejected() throws Exception {
+        mockMvc.perform(get("/api/ontology/concepts")
+                        .param("source", "ISMD"))
+                .andExpect(status().isBadRequest());
     }
 }
