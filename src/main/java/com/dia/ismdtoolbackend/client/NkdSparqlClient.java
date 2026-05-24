@@ -1,9 +1,13 @@
 package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.config.NkdConfig;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
@@ -119,6 +123,53 @@ public class NkdSparqlClient {
         }
         log.debug("Fetched {} triples from NKD for ontology: {}", resultModel.get().size(), ontologyIri);
         return resultModel;
+    }
+
+    /**
+     * Batched concept-reference resolver against NKD. For each input IRI present
+     * on the remote endpoint, returns its {@code skos:inScheme} (ontology IRI)
+     * and the scheme's multilingual {@code dcterms:description}. IRIs absent from
+     * NKD are absent from the returned map.
+     *
+     * <p>One CONSTRUCT for the whole batch = one HTTP round-trip. Replaces the
+     * naive per-IRI fan-out which would issue N {@link #buildConstructQuery}
+     * calls (each pulling 100–300 triples of full concept graph) and serialize
+     * on the 4-permit thread pool.
+     *
+     * <p>Lenient mode: an NKD outage degrades to an empty map rather than
+     * failing the whole resolve request.
+     */
+    public Map<String, ResolvedConceptDto> fetchConceptResolutions(List<String> conceptIris) {
+        if (conceptIris == null || conceptIris.isEmpty()) {
+            return Map.of();
+        }
+        if (!executor.isConfigured()) {
+            log.warn("NKD endpoint not configured, skipping concept resolution batch");
+            return Map.of();
+        }
+        List<String> safeConceptIris = conceptIris.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .toList();
+        if (safeConceptIris.size() != conceptIris.size()) {
+            log.warn("Dropped {} invalid concept IRI(s) from NKD fetchConceptResolutions",
+                    conceptIris.size() - safeConceptIris.size());
+        }
+        if (safeConceptIris.isEmpty()) {
+            return Map.of();
+        }
+
+        String query = NKDSPARQLConstructQuery.buildResolutionConstructQuery(safeConceptIris);
+        Optional<Model> result = executor.constructLenient(
+                "NKD concept resolution batch (" + safeConceptIris.size() + " IRIs)", query);
+        if (result.isEmpty()) {
+            log.debug("NKD returned no resolutions for {} requested IRI(s)", safeConceptIris.size());
+            return Map.of();
+        }
+        Map<String, ResolvedConceptDto> resolutions =
+                JenaTDB2Repository.projectResolutions(result.get(), SearchSource.NKD);
+        log.debug("Resolved {} of {} requested concept IRI(s) against NKD",
+                resolutions.size(), safeConceptIris.size());
+        return resolutions;
     }
 
     public List<String> getPublishedResourcesList(List<String> resourceIris) {

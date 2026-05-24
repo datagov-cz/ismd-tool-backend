@@ -36,6 +36,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +71,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
     public void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
@@ -94,6 +96,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
@@ -305,6 +308,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
             throw new OntologyException("Data pro úpravu slovníku jsou prázdná");

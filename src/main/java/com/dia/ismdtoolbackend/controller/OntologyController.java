@@ -9,6 +9,9 @@ import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsRequest;
+import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsResponse;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -20,6 +23,7 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.ismdtoolbackend.service.impl.ConceptMetadataResolver;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
@@ -42,6 +46,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -60,6 +65,7 @@ public class OntologyController {
     private final ValidationClient validationClient;
     private final ValidationConfig validationConfig;
     private final NkdDetailService nkdDetailService;
+    private final ConceptMetadataResolver conceptMetadataResolver;
 
     @Operation(
             summary = "Nahrání slovníku ze souboru",
@@ -236,6 +242,26 @@ public class OntologyController {
         };
 
         return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Seznam pojmů byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Získání metadat referencovaných pojmů",
+            description = "Pro pole IRI pojmů vrací mapu IRI → {ontologyIri, ontologyDescription, source}. " +
+                    "FE volá tento endpoint po obdržení detailu pojmu/slovníku, aby obohatil prosté IRI " +
+                    "(nadřazená třída/vztah/vlastnost, ekvivalentní pojem, vlastnosti, vztahy) o informace " +
+                    "potřebné k navigaci napříč zdroji ISMD/NKD. Nerozlišené IRI jsou v odpovědi vynechány. " +
+                    "Veřejný endpoint."
+    )
+    @PostMapping("/concepts/resolve")
+    public ResponseEntity<ApiResponseDto<ResolveConceptsResponse>> resolveConceptReferences(
+            @Valid @RequestBody ResolveConceptsRequest request) {
+        log.info("Concept reference resolution requested, count: {}", request.iris().size());
+
+        Map<String, ResolvedConceptDto> resolved = conceptMetadataResolver.resolveAll(request.iris());
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(
+                new ResolveConceptsResponse(resolved),
+                "Metadata referencovaných pojmů byla úspěšně načtena."));
     }
 
     @Operation(
