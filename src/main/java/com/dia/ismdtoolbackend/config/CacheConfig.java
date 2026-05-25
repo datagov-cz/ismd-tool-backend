@@ -34,6 +34,9 @@ public class CacheConfig {
     static final long ESBIRKA_RESOLUTION_TTL_HOURS = 24;
     static final long ESBIRKA_RESOLUTION_MAX_ENTRIES = 5_000;
 
+    static final long CONCEPT_METADATA_TTL_HOURS = 24;
+    static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
+
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager mgr = new CaffeineCacheManager();
@@ -51,6 +54,15 @@ public class CacheConfig {
         mgr.registerCustomCache("esbirkaFragmentResolution", Caffeine.newBuilder()
                 .expireAfterWrite(ESBIRKA_RESOLUTION_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(ESBIRKA_RESOLUTION_MAX_ENTRIES)
+                .build());
+
+        // Backs the concept-reference resolver (POST /api/ontology/concepts/resolve).
+        // Per-IRI entries so partially-overlapping detail views share cache hits. 24h
+        // TTL is the safety net for NKD-side changes we can't observe; ISMD mutations
+        // are invalidated synchronously via @CacheEvict on OntologyServiceImpl.
+        mgr.registerCustomCache("conceptMetadataResolution", Caffeine.newBuilder()
+                .expireAfterWrite(CONCEPT_METADATA_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(CONCEPT_METADATA_MAX_ENTRIES)
                 .build());
 
         return mgr;

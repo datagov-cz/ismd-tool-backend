@@ -1,14 +1,21 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.config.DomainApplicationProfile;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.sparql.FusekiSparqlExecutor;
 import jakarta.annotation.PostConstruct;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.query.ParameterizedSparqlString;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
@@ -651,6 +658,130 @@ public class JenaTDB2Repository {
                         return result;
                     }
                 });
+    }
+
+    /**
+     * Batched ISMD concept-reference resolver. For each input IRI present in the
+     * local store, returns its {@code skos:inScheme} (ontology IRI) and the
+     * scheme's multilingual {@code dcterms:description}. IRIs not in any local
+     * graph are simply absent from the returned map — the caller falls back to
+     * NKD (or to the plain IRI on the FE).
+     *
+     * <p>One CONSTRUCT for the whole batch = one Fuseki semaphore permit. With
+     * only 10 permits total, per-IRI parallelism would serialize and quickly
+     * saturate the pool; batching keeps the worst-case path cheap.
+     *
+     * <p>Prefix-filtered: only matches the scheme whose IRI is a string prefix
+     * of the concept IRI. Local graphs sometimes contain stray
+     * {@code skos:inScheme} triples that point a foreign concept at the wrong
+     * scheme — without this filter the union-graph query returns those
+     * non-deterministically.
+     */
+    public Map<String, ResolvedConceptDto> fetchConceptResolutions(List<String> conceptIris) {
+        if (conceptIris == null || conceptIris.isEmpty()) {
+            return Map.of();
+        }
+
+        List<String> safeConceptIris = conceptIris.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .toList();
+        if (safeConceptIris.size() != conceptIris.size()) {
+            log.warn("Dropped {} invalid concept IRI(s) from fetchConceptResolutions",
+                    conceptIris.size() - safeConceptIris.size());
+        }
+        if (safeConceptIris.isEmpty()) {
+            return Map.of();
+        }
+
+        return executor.execute(
+                "fetching concept resolutions for " + safeConceptIris.size() + " IRIs",
+                "Failed to fetch concept resolutions from Fuseki",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("PREFIX dcterms: <http://purl.org/dc/terms/> ");
+                    pss.append("CONSTRUCT { ");
+                    pss.append("  ?concept skos:inScheme ?scheme . ");
+                    pss.append("  ?scheme dcterms:description ?desc . ");
+                    pss.append("} WHERE { VALUES ?concept { ");
+                    for (String iri : safeConceptIris) {
+                        pss.appendIri(iri);
+                        pss.append(" ");
+                    }
+                    pss.append("} GRAPH ?g { ");
+                    pss.append("  ?concept skos:inScheme ?scheme . ");
+                    pss.append("  FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
+                    pss.append("  OPTIONAL { ?scheme dcterms:description ?desc . } ");
+                    pss.append("} }");
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        Model result = qExec.execConstruct();
+                        Map<String, ResolvedConceptDto> resolutions =
+                                projectResolutions(result, SearchSource.ISMD);
+                        log.debug("Resolved {} of {} requested concept IRI(s) against ISMD",
+                                resolutions.size(), safeConceptIris.size());
+                        return resolutions;
+                    }
+                });
+    }
+
+    /**
+     * Iterates the result Model once and projects rows into a map keyed by concept
+     * IRI. Same shape used by both ISMD ({@link #fetchConceptResolutions}) and the
+     * NKD client — co-located here as a static helper so the two callers stay in
+     * sync on parsing rules.
+     */
+    public static Map<String, ResolvedConceptDto> projectResolutions(Model model, SearchSource source) {
+        if (model == null || model.isEmpty()) {
+            return Map.of();
+        }
+        Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
+        Property description = model.createProperty("http://purl.org/dc/terms/description");
+
+        Map<String, ResolvedConceptDto> out = new HashMap<>();
+        StmtIterator inSchemeStmts = model.listStatements(null, inScheme, (RDFNode) null);
+        try {
+            while (inSchemeStmts.hasNext()) {
+                Statement stmt = inSchemeStmts.next();
+                if (!stmt.getSubject().isURIResource() || !stmt.getObject().isURIResource()) {
+                    continue;
+                }
+                String conceptIri = stmt.getSubject().getURI();
+                if (out.containsKey(conceptIri)) {
+                    continue;
+                }
+                Resource scheme = stmt.getObject().asResource();
+                Map<String, String> descriptions = collectMultilingual(scheme, description);
+                out.put(conceptIri, ResolvedConceptDto.builder()
+                        .iri(conceptIri)
+                        .ontologyIri(scheme.getURI())
+                        .ontologyDescription(descriptions.isEmpty() ? null : descriptions)
+                        .source(source)
+                        .build());
+            }
+        } finally {
+            inSchemeStmts.close();
+        }
+        return out;
+    }
+
+    private static Map<String, String> collectMultilingual(Resource subject, Property property) {
+        Map<String, String> values = new LinkedHashMap<>();
+        StmtIterator stmts = subject.listProperties(property);
+        try {
+            while (stmts.hasNext()) {
+                RDFNode node = stmts.next().getObject();
+                if (!node.isLiteral()) continue;
+                Literal lit = node.asLiteral();
+                String text = lit.getString();
+                if (text == null || text.isEmpty()) continue;
+                String lang = lit.getLanguage();
+                String key = (lang == null || lang.isEmpty()) ? "" : lang;
+                values.putIfAbsent(key, text);
+            }
+        } finally {
+            stmts.close();
+        }
+        return values;
     }
 
     /**

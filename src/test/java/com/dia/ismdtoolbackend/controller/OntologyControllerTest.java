@@ -19,6 +19,7 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.ismdtoolbackend.service.impl.ConceptMetadataResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
@@ -83,6 +84,9 @@ class OntologyControllerTest {
 
     @MockitoBean
     private NkdDetailService nkdDetailService;
+
+    @MockitoBean
+    private ConceptMetadataResolver conceptMetadataResolver;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 

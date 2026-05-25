@@ -25,6 +25,7 @@ import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.util.unit.DataSize;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
@@ -104,6 +105,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
         if (file.isEmpty()) {
             throw new EmptyFileException("Uploaded file is empty");
