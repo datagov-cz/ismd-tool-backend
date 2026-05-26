@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.service.impl.NkdDetailServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.apache.jena.rdf.model.Model;
@@ -50,6 +51,9 @@ class NkdDetailServiceImplTest {
 
     @Mock
     private RppSnapshotHolder rppSnapshotHolder;
+
+    @Mock
+    private ReferencedConceptsEnricher referencedConceptsEnricher;
 
     @InjectMocks
     private NkdDetailServiceImpl service;
@@ -201,6 +205,24 @@ class NkdDetailServiceImplTest {
 
         assertSame(agenda, dto.getConceptDetail().getAgendaResolved());
         assertSame(ais, dto.getConceptDetail().getAisResolved());
+    }
+
+    @Test
+    void getConceptDetail_invokesReferencedConceptsEnricherOnDetail() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        OntologyDetailModel.ConceptDetailModel model =
+                OntologyDetailModel.ConceptDetailModel.builder()
+                        .iri(CONCEPT_IRI)
+                        .exactMatches(List.of("https://slovník.gov.cz/example/pojem/equiv"))
+                        .build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, ONTOLOGY_IRI)));
+
+        service.getConceptDetail(CONCEPT_IRI, null);
+
+        // Enricher runs on the same ConceptDetailModel the FE receives — no extra round-trip from the FE
+        verify(referencedConceptsEnricher).enrich(model);
     }
 
     @Test

@@ -55,6 +55,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
     private final NkdSparqlClient nkdSparqlClient;
     private final JsonExporter jsonExporter;
     private final RppSnapshotHolder rppSnapshotHolder;
+    private final ReferencedConceptsEnricher referencedConceptsEnricher;
 
     private volatile CachedValue<Integer> cachedTotalOntologies;
     private volatile CachedValue<Integer> cachedTotalConcepts;
@@ -152,6 +153,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         });
 
         OntologyDetailModel.ConceptDetailModel detail = published.detail();
+        referencedConceptsEnricher.enrich(detail);
         resolveRppReferences(detail);
 
         // Query param wins (FE supplies it as breadcrumb context); fall back to

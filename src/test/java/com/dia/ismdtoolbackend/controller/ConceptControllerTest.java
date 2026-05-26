@@ -664,6 +664,71 @@ class ConceptControllerTest {
     }
 
     @Test
+    void testGetConceptDetail_ReferencedConceptsResolvedExposed() throws Exception {
+        String slug = "test-concept-with-refs";
+        String exactMatchIri = "https://slovník.gov.cz/legislativní/sbírka/128/2000/pojem/obecní-úřad-obce";
+        String localPropertyIri = "https://slovník.gov.cz/example/pojem/název";
+
+        ConceptMetadataModel metadataModel = new ConceptMetadataModel();
+        metadataModel.setId(7L);
+        metadataModel.setSlug(slug);
+        metadataModel.setConceptIri("http://example.org/TestWithRefs");
+        metadataModel.setConceptName("TestWithRefs");
+        metadataModel.setConceptType(ConceptType.TRIDA);
+
+        com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto nkdEntry =
+                com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto.builder()
+                        .iri(exactMatchIri)
+                        .conceptName(java.util.Map.of("cs", "Obecní úřad obce"))
+                        .ontologyIri("https://slovník.gov.cz/legislativní/sbírka/128/2000")
+                        .ontologyName(java.util.Map.of("cs", "Zákon 128/2000"))
+                        .source(com.dia.ismdtoolbackend.enums.SearchSource.NKD)
+                        .build();
+        com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto ismdEntry =
+                com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto.builder()
+                        .iri(localPropertyIri)
+                        .conceptName(java.util.Map.of("cs", "Název"))
+                        .conceptSlug("example-nazev")
+                        .ontologyIri("https://slovník.gov.cz/example")
+                        .ontologyName(java.util.Map.of("cs", "Příklad"))
+                        .source(com.dia.ismdtoolbackend.enums.SearchSource.ISMD)
+                        .build();
+
+        com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel detailModel =
+                com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel.builder()
+                        .iri("http://example.org/TestWithRefs")
+                        .exactMatches(java.util.List.of(exactMatchIri))
+                        .referencedConceptsResolved(java.util.Map.of(
+                                exactMatchIri, nkdEntry,
+                                localPropertyIri, ismdEntry))
+                        .build();
+
+        com.dia.ismdtoolbackend.controller.dto.GetConceptDto conceptDto =
+                new com.dia.ismdtoolbackend.controller.dto.GetConceptDto();
+        conceptDto.setConceptMetadata(metadataModel);
+        conceptDto.setConceptDetail(detailModel);
+
+        when(conceptService.getConceptDetail(slug)).thenReturn(conceptDto);
+
+        mockMvc.perform(get("/api/concept/{slug}/detail", slug))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.conceptDetail['ekvivalentní-pojem'][0]").value(exactMatchIri))
+                // NKD entry: source surfaces, conceptSlug absent (JsonInclude.NON_NULL)
+                .andExpect(jsonPath("$.data.conceptDetail['referencované-pojmy-resolved']['"
+                        + exactMatchIri + "'].source").value("NKD"))
+                .andExpect(jsonPath("$.data.conceptDetail['referencované-pojmy-resolved']['"
+                        + exactMatchIri + "'].ontologyName.cs").value("Zákon 128/2000"))
+                .andExpect(jsonPath("$.data.conceptDetail['referencované-pojmy-resolved']['"
+                        + exactMatchIri + "'].conceptSlug").doesNotExist())
+                // ISMD entry: source + slug both present
+                .andExpect(jsonPath("$.data.conceptDetail['referencované-pojmy-resolved']['"
+                        + localPropertyIri + "'].source").value("ISMD"))
+                .andExpect(jsonPath("$.data.conceptDetail['referencované-pojmy-resolved']['"
+                        + localPropertyIri + "'].conceptSlug").value("example-nazev"));
+    }
+
+    @Test
     void testGetConceptDetail_DifferentConceptTypes() throws Exception {
         String slug = "property-concept";
 

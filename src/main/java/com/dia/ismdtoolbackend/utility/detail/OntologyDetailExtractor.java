@@ -151,6 +151,7 @@ public class OntologyDetailExtractor {
                     String name = extractFirstAvailableName(nameMap);
 
                     propertyModel.setName(name);
+                    propertyModel.setIri(propertyIri);
                     propertyModel.setRef(refResolver.apply(propertyIri));
 
                     properties.add(propertyModel);
@@ -186,6 +187,7 @@ public class OntologyDetailExtractor {
                 String name = nameStmt != null ? nameStmt.getString() : null;
 
                 propertyModel.setName(name);
+                propertyModel.setIri(propertyIri);
                 propertyModel.setRef(refResolver.apply(propertyIri));
 
                 properties.add(propertyModel);
@@ -216,6 +218,7 @@ public class OntologyDetailExtractor {
                     String name = extractFirstAvailableName(nameMap);
 
                     relationshipModel.setName(name);
+                    relationshipModel.setIri(relationshipIri);
                     relationshipModel.setRef(refResolver.apply(relationshipIri));
 
                     relationships.add(relationshipModel);
@@ -251,6 +254,7 @@ public class OntologyDetailExtractor {
                 String name = nameStmt != null ? nameStmt.getString() : null;
 
                 relationshipModel.setName(name);
+                relationshipModel.setIri(relationshipIri);
                 relationshipModel.setRef(refResolver.apply(relationshipIri));
 
                 relationships.add(relationshipModel);
