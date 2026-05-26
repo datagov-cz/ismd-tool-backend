@@ -61,9 +61,12 @@ class OntologyDetailExtractorRefTest {
 
         List<ConceptPropertiesModel> properties = classConcept.getConceptProperties();
         assertThat(properties).anySatisfy(p -> assertThat(p.getRef()).isEqualTo(PROPERTY_IRI));
+        // iri is the FE's key into referencedConceptsResolved — must be set regardless of refResolver choice
+        assertThat(properties).anySatisfy(p -> assertThat(p.getIri()).isEqualTo(PROPERTY_IRI));
 
         List<ConceptRelationshipsModel> relationships = classConcept.getConceptRelationships();
         assertThat(relationships).anySatisfy(r -> assertThat(r.getRef()).isEqualTo(RELATIONSHIP_IRI));
+        assertThat(relationships).anySatisfy(r -> assertThat(r.getIri()).isEqualTo(RELATIONSHIP_IRI));
     }
 
     @Test
@@ -86,6 +89,11 @@ class OntologyDetailExtractorRefTest {
                 .anySatisfy(p -> assertThat(p.getRef()).isEqualTo("vocab-věk"));
         assertThat(classConcept.getConceptRelationships())
                 .anySatisfy(r -> assertThat(r.getRef()).isEqualTo("vocab-bydlí-v"));
+        // iri stays the canonical IRI even when ref is a slug — drives FE lookup into referencedConceptsResolved
+        assertThat(classConcept.getConceptProperties())
+                .anySatisfy(p -> assertThat(p.getIri()).isEqualTo(PROPERTY_IRI));
+        assertThat(classConcept.getConceptRelationships())
+                .anySatisfy(r -> assertThat(r.getIri()).isEqualTo(RELATIONSHIP_IRI));
     }
 
     @Test

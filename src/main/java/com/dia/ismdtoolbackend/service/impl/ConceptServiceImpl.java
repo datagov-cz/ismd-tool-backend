@@ -52,6 +52,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final NkdSparqlClient nkdSparqlClient;
     private final ConceptDeviationComparator deviationComparator;
     private final RppSnapshotHolder rppSnapshotHolder;
+    private final ReferencedConceptsEnricher referencedConceptsEnricher;
 
     @Override
     @Transactional
@@ -176,6 +177,7 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Detail pojmu s IRI " + conceptIri + " nebyl nalezen.");
         }
 
+        referencedConceptsEnricher.enrich(conceptDetail);
         resolveRppReferences(conceptDetail);
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);

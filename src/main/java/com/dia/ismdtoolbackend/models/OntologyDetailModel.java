@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.models;
 
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
@@ -140,5 +141,15 @@ public class OntologyDetailModel {
         private List<ConceptPropertiesModel> conceptProperties;
 
         private List<ConceptRelationshipsModel> conceptRelationships;
+
+        /**
+         * Pre-resolved metadata for every referenced concept IRI in this detail
+         * (exact matches, broader classes/relations/properties, domain, range,
+         * and each property/relationship IRI). Keyed by concept IRI; unresolved
+         * IRIs are absent from the map. Replaces the FE's secondary call to
+         * {@code POST /api/ontology/concepts/resolve} for the detail page.
+         */
+        @JsonProperty("referencované-pojmy-resolved")
+        private Map<String, ResolvedConceptDto> referencedConceptsResolved;
     }
 }
