@@ -1147,4 +1147,59 @@ class ConceptCreatorTest {
             assertTrue(relIri.contains("2021/10"));
         }
     }
+
+    // ========== D. skos:inScheme — required by ConceptMetadataResolver / NKD ==========
+
+    @Nested
+    class InSchemeTests {
+
+        private static final String GRAPH = "https://example.org/slovnik/test-slovnik";
+
+        @Test
+        void classConcept_emitsInSchemePointingAtOntologyGraphName() {
+            setupBasicClassConcept("Some class", "subjekt");
+            when(classConceptModel.getOntologyGraphName()).thenReturn(GRAPH);
+
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            assertTrue(result.hasProperty(SKOS.inScheme,
+                    result.getModel().createResource(GRAPH)),
+                    "Class concept must carry skos:inScheme → ontologyGraphName");
+        }
+
+        @Test
+        void propertyConcept_emitsInSchemePointingAtOntologyGraphName() {
+            setupBasicPropertyConcept("Some property", "xsd:string");
+            when(propertyConceptModel.getOntologyGraphName()).thenReturn(GRAPH);
+
+            Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
+
+            assertTrue(result.hasProperty(SKOS.inScheme,
+                    result.getModel().createResource(GRAPH)),
+                    "Property concept must carry skos:inScheme → ontologyGraphName");
+        }
+
+        @Test
+        void relationshipConcept_emitsInSchemePointingAtOntologyGraphName() {
+            setupBasicRelationshipConcept("Some relation", "DomainClass", "RangeClass");
+            when(relationshipConceptModel.getOntologyGraphName()).thenReturn(GRAPH);
+
+            Resource result = conceptCreator.createSingleConcept(relationshipConceptModel);
+
+            assertTrue(result.hasProperty(SKOS.inScheme,
+                    result.getModel().createResource(GRAPH)),
+                    "Relationship concept must carry skos:inScheme → ontologyGraphName");
+        }
+
+        @Test
+        void blankOntologyGraphName_doesNotEmitInScheme() {
+            setupBasicClassConcept("Class without graph", "subjekt");
+            when(classConceptModel.getOntologyGraphName()).thenReturn("   ");
+
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            assertFalse(result.hasProperty(SKOS.inScheme),
+                    "Blank ontologyGraphName must not produce a skos:inScheme triple");
+        }
+    }
 }

@@ -96,6 +96,7 @@ public final class OFNTypeNormalizer {
     private static int normalizePropertyConcepts(Model model) {
         Resource slovnikyVztah = model.createResource(OFN_NAMESPACE + VZTAH);
         Resource slovnikyVlastnost = model.createResource(OFN_NAMESPACE + VLASTNOST);
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
         int count = 0;
 
         List<Resource> objectProperties = new ArrayList<>();
@@ -104,10 +105,18 @@ public final class OFNTypeNormalizer {
             objectProperties.add(iter.next());
         }
         for (Resource prop : objectProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, slovnikyVztah)) {
-                prop.addProperty(RDF.type, slovnikyVztah);
-                count++;
+            if (prop.isURIResource() && prop.getURI().contains("/pojem/")) {
+                boolean modified = false;
+                if (!prop.hasProperty(RDF.type, slovnikyVztah)) {
+                    prop.addProperty(RDF.type, slovnikyVztah);
+                    modified = true;
+                }
+                String ontologyIRI = extractOntologyIRIFromConcept(prop.getURI());
+                if (ontologyIRI != null && !prop.hasProperty(skosInScheme)) {
+                    prop.addProperty(skosInScheme, model.getResource(ontologyIRI));
+                    modified = true;
+                }
+                if (modified) count++;
             }
         }
 
@@ -118,10 +127,18 @@ public final class OFNTypeNormalizer {
         }
         for (Resource prop : datatypeProperties) {
             if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)
-                    && !prop.hasProperty(RDF.type, slovnikyVlastnost)) {
-                prop.addProperty(RDF.type, slovnikyVlastnost);
-                count++;
+                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)) {
+                boolean modified = false;
+                if (!prop.hasProperty(RDF.type, slovnikyVlastnost)) {
+                    prop.addProperty(RDF.type, slovnikyVlastnost);
+                    modified = true;
+                }
+                String ontologyIRI = extractOntologyIRIFromConcept(prop.getURI());
+                if (ontologyIRI != null && !prop.hasProperty(skosInScheme)) {
+                    prop.addProperty(skosInScheme, model.getResource(ontologyIRI));
+                    modified = true;
+                }
+                if (modified) count++;
             }
         }
 

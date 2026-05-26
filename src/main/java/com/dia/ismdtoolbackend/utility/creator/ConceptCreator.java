@@ -362,6 +362,15 @@ public class ConceptCreator {
         addBasicMetadata(resource, model);
         addSourceMetadata(resource, model);
         addMatchMetadata(resource, model);
+        addInScheme(resource, model);
+    }
+
+    private void addInScheme(Resource resource, ConceptCreateModel model) {
+        String graphName = model.getOntologyGraphName();
+        if (graphName == null || graphName.isBlank()) {
+            return;
+        }
+        resource.addProperty(SKOS.inScheme, ontModel.createResource(graphName));
     }
 
     private void addBasicMetadata(Resource resource, ConceptCreateModel model) {
