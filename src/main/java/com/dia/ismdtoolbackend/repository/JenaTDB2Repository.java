@@ -699,10 +699,10 @@ public class JenaTDB2Repository {
                 conn -> {
                     ParameterizedSparqlString pss = new ParameterizedSparqlString();
                     pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
-                    pss.append("PREFIX dcterms: <http://purl.org/dc/terms/> ");
                     pss.append("CONSTRUCT { ");
                     pss.append("  ?concept skos:inScheme ?scheme . ");
-                    pss.append("  ?scheme dcterms:description ?desc . ");
+                    pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+                    pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
                     pss.append("} WHERE { VALUES ?concept { ");
                     for (String iri : safeConceptIris) {
                         pss.appendIri(iri);
@@ -711,7 +711,8 @@ public class JenaTDB2Repository {
                     pss.append("} GRAPH ?g { ");
                     pss.append("  ?concept skos:inScheme ?scheme . ");
                     pss.append("  FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
-                    pss.append("  OPTIONAL { ?scheme dcterms:description ?desc . } ");
+                    pss.append("  OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+                    pss.append("  OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } ");
                     pss.append("} }");
                     try (QueryExecution qExec = conn.query(pss.asQuery())) {
                         Model result = qExec.execConstruct();
@@ -735,7 +736,7 @@ public class JenaTDB2Repository {
             return Map.of();
         }
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
-        Property description = model.createProperty("http://purl.org/dc/terms/description");
+        Property prefLabel = model.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel");
 
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         StmtIterator inSchemeStmts = model.listStatements(null, inScheme, (RDFNode) null);
@@ -749,12 +750,15 @@ public class JenaTDB2Repository {
                 if (out.containsKey(conceptIri)) {
                     continue;
                 }
+                Resource concept = stmt.getSubject().asResource();
                 Resource scheme = stmt.getObject().asResource();
-                Map<String, String> descriptions = collectMultilingual(scheme, description);
+                Map<String, String> conceptLabels = collectMultilingual(concept, prefLabel);
+                Map<String, String> schemeLabels = collectMultilingual(scheme, prefLabel);
                 out.put(conceptIri, ResolvedConceptDto.builder()
                         .iri(conceptIri)
+                        .conceptName(conceptLabels.isEmpty() ? null : conceptLabels)
                         .ontologyIri(scheme.getURI())
-                        .ontologyDescription(descriptions.isEmpty() ? null : descriptions)
+                        .ontologyName(schemeLabels.isEmpty() ? null : schemeLabels)
                         .source(source)
                         .build());
             }

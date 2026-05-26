@@ -1,0 +1,337 @@
+package com.dia.ismdtoolbackend.service.impl;
+
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.enums.SearchSource;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+/**
+ * Unit coverage for the orchestration logic in {@link ConceptMetadataResolver}:
+ * cache-first split, ISMD/NKD batching, lenient NKD vs. strict ISMD error
+ * propagation, slug enrichment scope, and input sanitisation.
+ */
+@ExtendWith(MockitoExtension.class)
+class ConceptMetadataResolverTest {
+
+    private static final String ISMD_IRI_1 = "https://data.gov.cz/zdroj/slovnik/local/pojem/a";
+    private static final String ISMD_IRI_2 = "https://data.gov.cz/zdroj/slovnik/local/pojem/b";
+    private static final String NKD_IRI = "https://slovník.gov.cz/datový/sportovní/pojem/sport";
+    private static final String UNSAFE_IRI = "not-an-iri";
+
+    @Mock private JenaTDB2Repository jenaTDB2Repository;
+    @Mock private NkdSparqlClient nkdSparqlClient;
+    @Mock private ConceptMetadataRepository conceptMetadataRepository;
+    @Mock private CacheManager cacheManager;
+    @Mock private Cache cache;
+
+    @InjectMocks
+    private ConceptMetadataResolver resolver;
+
+    @BeforeEach
+    void wireCache() {
+        // lenient: not every test needs the cache to be queried (e.g. empty-input early returns)
+        lenient().when(cacheManager.getCache(ConceptMetadataResolver.CACHE_NAME)).thenReturn(cache);
+    }
+
+    private static ResolvedConceptDto ismdDto(String iri) {
+        return ResolvedConceptDto.builder()
+                .iri(iri)
+                .conceptName(Map.of("cs", "Pojem"))
+                .ontologyIri("https://data.gov.cz/zdroj/slovnik/local")
+                .ontologyName(Map.of("cs", "Lokální slovník"))
+                .source(SearchSource.ISMD)
+                .build();
+    }
+
+    private static ResolvedConceptDto nkdDto(String iri) {
+        return ResolvedConceptDto.builder()
+                .iri(iri)
+                .conceptName(Map.of("cs", "NKD pojem"))
+                .ontologyIri("https://slovník.gov.cz/datový/sportovní")
+                .ontologyName(Map.of("cs", "Sportovní slovník"))
+                .source(SearchSource.NKD)
+                .build();
+    }
+
+    private static ConceptMetadataEntity entity(String iri, String slug) {
+        ConceptMetadataEntity e = new ConceptMetadataEntity();
+        e.setConceptIri(iri);
+        e.setSlug(slug);
+        return e;
+    }
+
+    @Nested
+    @DisplayName("Input sanitisation")
+    class InputSanitisation {
+
+        @Test
+        @DisplayName("null input → empty map, no downstream calls")
+        void nullInput() {
+            assertThat(resolver.resolveAll(null)).isEmpty();
+            verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, conceptMetadataRepository, cacheManager);
+        }
+
+        @Test
+        @DisplayName("empty list → empty map, no downstream calls")
+        void emptyInput() {
+            assertThat(resolver.resolveAll(List.of())).isEmpty();
+            verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, conceptMetadataRepository, cacheManager);
+        }
+
+        @Test
+        @DisplayName("all-invalid input → empty map, no SPARQL invoked")
+        void allUnsafe() {
+            assertThat(resolver.resolveAll(List.of(UNSAFE_IRI, "also bad"))).isEmpty();
+            verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, conceptMetadataRepository);
+        }
+
+        @Test
+        @DisplayName("invalid IRIs are dropped silently, valid ones still resolve")
+        void mixedInputDropsUnsafe() {
+            when(cache.get(eq(ISMD_IRI_1), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1)));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(UNSAFE_IRI, ISMD_IRI_1));
+
+            assertThat(out).containsOnlyKeys(ISMD_IRI_1);
+            verify(jenaTDB2Repository).fetchConceptResolutions(List.of(ISMD_IRI_1));
+        }
+
+        @Test
+        @DisplayName("duplicates are deduplicated before SPARQL")
+        void duplicatesDeduplicated() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+            when(jenaTDB2Repository.fetchConceptResolutions(captor.capture())).thenReturn(Map.of());
+            when(nkdSparqlClient.fetchConceptResolutions(anyList())).thenReturn(Map.of());
+
+            resolver.resolveAll(List.of(ISMD_IRI_1, ISMD_IRI_1, ISMD_IRI_1));
+
+            assertThat(captor.getValue()).containsExactly(ISMD_IRI_1);
+        }
+    }
+
+    @Nested
+    @DisplayName("Cache split")
+    class CacheSplit {
+
+        @Test
+        @DisplayName("all cache hits → no SPARQL invoked")
+        void allCacheHits() {
+            ResolvedConceptDto cachedA = ismdDto(ISMD_IRI_1);
+            ResolvedConceptDto cachedB = ismdDto(ISMD_IRI_2);
+            when(cache.get(ISMD_IRI_1, ResolvedConceptDto.class)).thenReturn(cachedA);
+            when(cache.get(ISMD_IRI_2, ResolvedConceptDto.class)).thenReturn(cachedB);
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1, ISMD_IRI_2));
+
+            assertThat(out).containsOnly(
+                    Map.entry(ISMD_IRI_1, cachedA),
+                    Map.entry(ISMD_IRI_2, cachedB));
+            verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, conceptMetadataRepository);
+        }
+
+        @Test
+        @DisplayName("partial cache → only misses go to ISMD; hits not re-cached")
+        void partialCache() {
+            ResolvedConceptDto cachedA = ismdDto(ISMD_IRI_1);
+            when(cache.get(ISMD_IRI_1, ResolvedConceptDto.class)).thenReturn(cachedA);
+            when(cache.get(ISMD_IRI_2, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_2)))
+                    .thenReturn(Map.of(ISMD_IRI_2, ismdDto(ISMD_IRI_2)));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1, ISMD_IRI_2));
+
+            assertThat(out).containsOnlyKeys(ISMD_IRI_1, ISMD_IRI_2);
+            verify(jenaTDB2Repository).fetchConceptResolutions(List.of(ISMD_IRI_2));
+            verify(cache, never()).put(eq(ISMD_IRI_1), any());
+            verify(cache, times(1)).put(eq(ISMD_IRI_2), any());
+        }
+
+        @Test
+        @DisplayName("null CacheManager.getCache → still resolves (no NPE)")
+        void cacheManagerReturnsNull() {
+            when(cacheManager.getCache(ConceptMetadataResolver.CACHE_NAME)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1)));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1));
+
+            assertThat(out).containsKey(ISMD_IRI_1);
+        }
+    }
+
+    @Nested
+    @DisplayName("ISMD/NKD fallback")
+    class IsmdNkdFallback {
+
+        @Test
+        @DisplayName("ISMD hits keep NKD untouched")
+        void ismdHitsSkipNkd() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1)));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            resolver.resolveAll(List.of(ISMD_IRI_1));
+
+            verify(nkdSparqlClient, never()).fetchConceptResolutions(anyList());
+        }
+
+        @Test
+        @DisplayName("ISMD miss falls through to NKD with only the unresolved IRIs")
+        void ismdMissFallsToNkd() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1, NKD_IRI)))
+                    .thenReturn(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1)));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(NKD_IRI)))
+                    .thenReturn(Map.of(NKD_IRI, nkdDto(NKD_IRI)));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1, NKD_IRI));
+
+            assertThat(out).containsOnlyKeys(ISMD_IRI_1, NKD_IRI);
+            assertThat(out.get(ISMD_IRI_1).source()).isEqualTo(SearchSource.ISMD);
+            assertThat(out.get(NKD_IRI).source()).isEqualTo(SearchSource.NKD);
+            verify(nkdSparqlClient).fetchConceptResolutions(List.of(NKD_IRI));
+        }
+
+        @Test
+        @DisplayName("NKD result is cached so a follow-up call can serve from cache")
+        void nkdHitIsCached() {
+            when(cache.get(NKD_IRI, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(NKD_IRI))).thenReturn(Map.of());
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(NKD_IRI)))
+                    .thenReturn(Map.of(NKD_IRI, nkdDto(NKD_IRI)));
+
+            resolver.resolveAll(List.of(NKD_IRI));
+
+            verify(cache).put(eq(NKD_IRI), any(ResolvedConceptDto.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("Error propagation")
+    class ErrorPropagation {
+
+        @Test
+        @DisplayName("ISMD throws SparqlEndpointUnavailableException → propagates (controller maps to 503)")
+        void ismdThrowsPropagates() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(anyList()))
+                    .thenThrow(new SparqlEndpointUnavailableException("ISMD", "boom"));
+
+            assertThatThrownBy(() -> resolver.resolveAll(List.of(ISMD_IRI_1)))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class)
+                    .hasMessage("boom");
+        }
+
+        @Test
+        @DisplayName("NKD client returns empty (lenient outage) → ISMD hits still returned")
+        void nkdLenientOutage() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1, NKD_IRI)))
+                    .thenReturn(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1)));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(NKD_IRI))).thenReturn(Map.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1, NKD_IRI));
+
+            assertThat(out).containsOnlyKeys(ISMD_IRI_1);
+        }
+    }
+
+    @Nested
+    @DisplayName("Slug enrichment")
+    class SlugEnrichment {
+
+        @Test
+        @DisplayName("ISMD hit gets slug from Postgres lookup")
+        void ismdHitGetsSlug() {
+            when(cache.get(ISMD_IRI_1, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(new HashMap<>(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1))));
+            when(conceptMetadataRepository.findByConceptIriIn(List.of(ISMD_IRI_1)))
+                    .thenReturn(List.of(entity(ISMD_IRI_1, "pojem-a")));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1));
+
+            assertThat(out.get(ISMD_IRI_1).conceptSlug()).isEqualTo("pojem-a");
+        }
+
+        @Test
+        @DisplayName("ISMD hit with no Postgres row keeps null slug (concept exists in graph but not metadata)")
+        void ismdHitMissingFromPostgres() {
+            when(cache.get(ISMD_IRI_1, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(new HashMap<>(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1))));
+            when(conceptMetadataRepository.findByConceptIriIn(List.of(ISMD_IRI_1))).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1));
+
+            assertThat(out.get(ISMD_IRI_1).conceptSlug()).isNull();
+        }
+
+        @Test
+        @DisplayName("NKD-resolved IRIs never trigger the slug repo lookup")
+        void nkdResolvedSkipsRepo() {
+            when(cache.get(NKD_IRI, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(NKD_IRI))).thenReturn(Map.of());
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(NKD_IRI)))
+                    .thenReturn(Map.of(NKD_IRI, nkdDto(NKD_IRI)));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(NKD_IRI));
+
+            assertThat(out.get(NKD_IRI).conceptSlug()).isNull();
+            verify(conceptMetadataRepository, never()).findByConceptIriIn(anyList());
+        }
+
+        @Test
+        @DisplayName("Postgres row with null slug is ignored (no overwrite to null)")
+        void nullSlugIgnored() {
+            when(cache.get(ISMD_IRI_1, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(new HashMap<>(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1))));
+            when(conceptMetadataRepository.findByConceptIriIn(List.of(ISMD_IRI_1)))
+                    .thenReturn(List.of(entity(ISMD_IRI_1, null)));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1));
+
+            assertThat(out.get(ISMD_IRI_1).conceptSlug()).isNull();
+        }
+    }
+}

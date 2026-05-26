@@ -246,10 +246,11 @@ public class OntologyController {
 
     @Operation(
             summary = "Získání metadat referencovaných pojmů",
-            description = "Pro pole IRI pojmů vrací mapu IRI → {ontologyIri, ontologyDescription, source}. " +
+            description = "Pro pole IRI pojmů vrací mapu IRI → {conceptName, conceptSlug, ontologyIri, ontologyName, source}. " +
                     "FE volá tento endpoint po obdržení detailu pojmu/slovníku, aby obohatil prosté IRI " +
                     "(nadřazená třída/vztah/vlastnost, ekvivalentní pojem, vlastnosti, vztahy) o informace " +
-                    "potřebné k navigaci napříč zdroji ISMD/NKD. Nerozlišené IRI jsou v odpovědi vynechány. " +
+                    "potřebné k navigaci napříč zdroji ISMD/NKD. {@code conceptSlug} je vyplněn pouze " +
+                    "pro ISMD pojmy; NKD pojmy se navigují podle IRI. Nerozlišené IRI jsou v odpovědi vynechány. " +
                     "Veřejný endpoint."
     )
     @PostMapping("/concepts/resolve")
