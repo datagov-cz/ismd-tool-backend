@@ -147,7 +147,8 @@ public class EsbirkaSparqlClient {
             String citation = SparqlSolutions.literalString(sol, "citace");
             LocalDate validUntil = SparqlSolutions.literalDate(sol, "ucinnostDo");
             boolean isLatest = SparqlSolutions.literalBool(sol, "isLatest");
-            out.add(new FragmentResolutionModel(citation, validUntil, isLatest));
+            String bodyHtml = SparqlSolutions.literalString(sol, "obsah");
+            out.add(new FragmentResolutionModel(citation, validUntil, isLatest, bodyHtml));
         }
         return out;
     }

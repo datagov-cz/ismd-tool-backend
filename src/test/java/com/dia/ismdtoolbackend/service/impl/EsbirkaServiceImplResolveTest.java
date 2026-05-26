@@ -69,17 +69,33 @@ class EsbirkaServiceImplResolveTest {
     void resolveLegalSource_fragmentUrl_happyPath_returnsOk() {
         when(cache.fetch(any(), any(), any()))
                 .thenReturn(Optional.of(new FragmentResolutionModel(
-                        "§ 2 písm. d)", LocalDate.of(2024, 12, 31), true)));
+                        "§ 2 písm. d)", LocalDate.of(2024, 12, 31), true, null)));
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
 
         assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
         assertEquals(ParsedEli.Level.FRAGMENT, dto.getLevel());
         assertEquals("§ 2 písm. d)", dto.getFragmentCitation());
+        assertNull(dto.getFragmentBodyHtml(),
+                "structural fragments without obsah must surface as null bodyHtml (not blank, not error)");
         assertEquals(LocalDate.of(2024, 12, 31), dto.getVersionValidUntil());
         assertTrue(dto.getIsLatestVersion());
         assertTrue(dto.getDisplayLabel().contains("§ 2 písm. d)"),
                 "displayLabel should use SPARQL citation when available: " + dto.getDisplayLabel());
+    }
+
+    @Test
+    void resolveLegalSource_fragmentUrl_withBodyHtml_surfacesObsah() {
+        String body = "<var>1.</var> Předání bude uskutečněno do čtyřiceti pěti (45) dnů.";
+        when(cache.fetch(any(), any(), any()))
+                .thenReturn(Optional.of(new FragmentResolutionModel(
+                        "Příloha č. 1 Čl. 13 bod 1", null, true, body)));
+
+        ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
+
+        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
+        assertEquals(body, dto.getFragmentBodyHtml(),
+                "fragmentBodyHtml must be passed verbatim from SPARQL obsah (preserves <var>/<a> tags for FE rendering)");
     }
 
     @Test
@@ -131,7 +147,7 @@ class EsbirkaServiceImplResolveTest {
     @Test
     void resolveLegalSource_legacyHost_originalUrlPreservedCanonicalIrisInDto() {
         when(cache.fetch(any(), any(), any()))
-                .thenReturn(Optional.of(new FragmentResolutionModel("§ 2 písm. d)", null, true)));
+                .thenReturn(Optional.of(new FragmentResolutionModel("§ 2 písm. d)", null, true, null)));
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(LEGACY_FRAGMENT_URL);
 

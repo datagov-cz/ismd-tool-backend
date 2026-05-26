@@ -45,7 +45,7 @@ class EsbirkaFragmentResolutionCacheTest {
 
     @Test
     void fetch_delegatesToClient() {
-        FragmentResolutionModel model = new FragmentResolutionModel("§ 2 písm. d)", LocalDate.of(2024, 12, 31), true);
+        FragmentResolutionModel model = new FragmentResolutionModel("§ 2 písm. d)", LocalDate.of(2024, 12, 31), true, null);
         when(client.resolveFragment(FRAGMENT_IRI, VERSION_IRI, LAW_IRI))
                 .thenReturn(Optional.of(model));
 
@@ -58,7 +58,7 @@ class EsbirkaFragmentResolutionCacheTest {
     @Test
     void fetch_isCached_secondCallSkipsClient() {
         cacheManager.getCache("esbirkaFragmentResolution").clear();
-        FragmentResolutionModel model = new FragmentResolutionModel("§ 2 písm. d)", null, true);
+        FragmentResolutionModel model = new FragmentResolutionModel("§ 2 písm. d)", null, true, null);
         when(client.resolveFragment(eq(FRAGMENT_IRI), eq(VERSION_IRI), eq(LAW_IRI)))
                 .thenReturn(Optional.of(model));
 

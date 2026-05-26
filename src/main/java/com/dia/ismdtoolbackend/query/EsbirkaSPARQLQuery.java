@@ -123,14 +123,19 @@ public class EsbirkaSPARQLQuery {
         // structurally inside the SELECT projection (BIND). Instead, the version IRI
         // is inlined as a VALUES row, leaving ?zneni as a real variable usable in
         // (?zneni = ?posledniZneni) AS ?isLatest.
+        //
+        // ?obsah is OPTIONAL because structural fragments (Část/Hlava/...) carry
+        // no text body — their resolution should still return citation and
+        // version metadata.
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.setCommandText("""
-                SELECT ?citace ?ucinnostDo ((?zneni = ?posledniZneni) AS ?isLatest)
+                SELECT ?citace ?ucinnostDo ?obsah ((?zneni = ?posledniZneni) AS ?isLatest)
                 WHERE {
                   VALUES ?zneni { ?inputZneni }
                   ?inputFragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace .
                   ?inputAkt <%1$smá-poslední-znění> ?posledniZneni .
                   OPTIONAL { ?zneni <%1$súčinnost-znění-do> ?ucinnostDo }
+                  OPTIONAL { ?inputFragment <%1$sobsahuje-fragment>/<%1$stext-fragmentu> ?obsah }
                 }
                 LIMIT 1
                 """.formatted(NS));

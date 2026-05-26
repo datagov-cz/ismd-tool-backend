@@ -205,6 +205,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             FragmentResolutionModel m = opt.get();
             return baseDtoBuilder(parsed)
                     .fragmentCitation(m.citation())
+                    .fragmentBodyHtml(m.bodyHtml())
                     .versionValidUntil(m.versionValidUntil())
                     .isLatestVersion(m.isLatest())
                     .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, m.citation()))

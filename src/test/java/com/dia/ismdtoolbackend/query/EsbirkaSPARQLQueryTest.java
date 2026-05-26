@@ -99,4 +99,19 @@ class EsbirkaSPARQLQueryTest {
         assertTrue(q.contains("<" + VERSION_IRI + ">"), "versionIri must be inlined");
         assertTrue(q.contains("<" + LAW_IRI + ">"), "lawIri must be inlined");
     }
+
+    @Test
+    void buildResolveFragmentQuery_projectsObsahViaOptionalChain() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/cast_1/par_2/pism_d";
+        String q = EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, VERSION_IRI, LAW_IRI);
+
+        assertTrue(q.contains("?obsah"), "obsah must be in SELECT/WHERE");
+        assertTrue(q.contains("obsahuje-fragment"),
+                "obsah is fetched via obsahuje-fragment/text-fragmentu chain");
+        assertTrue(q.contains("text-fragmentu"),
+                "obsah is fetched via obsahuje-fragment/text-fragmentu chain");
+        int optionalCount = q.split("(?i)OPTIONAL").length - 1;
+        assertTrue(optionalCount >= 2,
+                "Both ucinnost-znění-do and obsah must be OPTIONAL; found " + optionalCount);
+    }
 }
