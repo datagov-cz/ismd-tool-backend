@@ -328,6 +328,7 @@ public class OntologyDetailExtractor {
                 .ais(extractStringFromValue(conceptMap.get(AIS)))
                 .agenda(extractStringFromValue(conceptMap.get(AGENDA)))
                 .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
+                .privacyProvisionsResolved(buildResolvedSources((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .conceptProperties(properties)
                 .conceptRelationships(relationships)
                 .build();

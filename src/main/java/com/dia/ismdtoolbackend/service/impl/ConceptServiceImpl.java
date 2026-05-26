@@ -25,9 +25,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -217,25 +215,6 @@ public class ConceptServiceImpl implements ConceptService {
                 savedEntity.getConceptType(), savedEntity.getConceptIri());
 
         return savedEntity;
-    }
-
-    private List<String> findRelatedConcepts(Model model, String conceptUri) {
-        List<String> relatedConcepts = new ArrayList<>();
-        Resource domainResource = model.getResource(conceptUri);
-
-        ResIterator iterator = model.listSubjectsWithProperty(RDFS.domain, domainResource);
-        while (iterator.hasNext()) {
-            Resource property = iterator.nextResource();
-            relatedConcepts.add(property.getURI());
-        }
-
-        iterator = model.listSubjectsWithProperty(RDFS.range, domainResource);
-        while (iterator.hasNext()) {
-            Resource property = iterator.nextResource();
-            relatedConcepts.add(property.getURI());
-        }
-
-        return relatedConcepts;
     }
 
     private List<ConceptMetadataEntity> findRelatedConceptEntities(List<String> conceptUris) {

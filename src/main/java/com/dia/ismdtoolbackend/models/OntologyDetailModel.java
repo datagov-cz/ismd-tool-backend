@@ -138,6 +138,9 @@ public class OntologyDetailModel {
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
         private List<String> privacyProvisions;
 
+        @JsonProperty("ustanovení-dokládající-neveřejnost-údaje-resolved")
+        private List<ResolvedLegalSourceDto> privacyProvisionsResolved;
+
         private List<ConceptPropertiesModel> conceptProperties;
 
         private List<ConceptRelationshipsModel> conceptRelationships;

@@ -235,5 +235,4 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                 .versionDate(p.versionDate())
                 .fragmentSegments(p.fragmentSegments());
     }
-
 }
