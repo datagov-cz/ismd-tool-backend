@@ -151,6 +151,7 @@ public class SecurityConfig {
                         "/api/nkd/ontology/download",
                         "/api/nkd/concept/detail",
                         "/api/eli/resolve",
+                        "/api/codelist/**",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html"
