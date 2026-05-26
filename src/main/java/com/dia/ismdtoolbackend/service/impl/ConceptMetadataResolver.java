@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Resolves a batch of concept IRIs to {ontologyIri, ontologyDescription, source}.
+ * Resolves a batch of concept IRIs to {conceptName, conceptSlug, ontologyIri, ontologyName, source}.
  * The FE calls this once per concept-detail view, after the detail response
  * arrives, to enrich plain IRIs in {@code broaderClasses}, {@code exactMatches},
  * etc. into rich navigation metadata.
@@ -48,6 +50,7 @@ public class ConceptMetadataResolver {
 
     private final JenaTDB2Repository jenaTDB2Repository;
     private final NkdSparqlClient nkdSparqlClient;
+    private final ConceptMetadataRepository conceptMetadataRepository;
     private final CacheManager cacheManager;
 
     public Map<String, ResolvedConceptDto> resolveAll(List<String> iris) {
@@ -78,7 +81,8 @@ public class ConceptMetadataResolver {
             return out;
         }
 
-        Map<String, ResolvedConceptDto> ismdHits = jenaTDB2Repository.fetchConceptResolutions(misses);
+        Map<String, ResolvedConceptDto> rawIsmdHits = jenaTDB2Repository.fetchConceptResolutions(misses);
+        Map<String, ResolvedConceptDto> ismdHits = rawIsmdHits.isEmpty() ? rawIsmdHits : enrichWithSlugs(rawIsmdHits);
         ismdHits.forEach((iri, dto) -> {
             if (cache != null) cache.put(iri, dto);
             out.put(iri, dto);
@@ -96,5 +100,35 @@ public class ConceptMetadataResolver {
         }
 
         return out;
+    }
+
+    private Map<String, ResolvedConceptDto> enrichWithSlugs(Map<String, ResolvedConceptDto> ismdHits) {
+        List<String> iris = new ArrayList<>(ismdHits.keySet());
+        Map<String, String> slugByIri = new HashMap<>();
+        for (ConceptMetadataEntity entity : conceptMetadataRepository.findByConceptIriIn(iris)) {
+            if (entity.getConceptIri() != null && entity.getSlug() != null) {
+                slugByIri.putIfAbsent(entity.getConceptIri(), entity.getSlug());
+            }
+        }
+        if (slugByIri.isEmpty()) {
+            return ismdHits;
+        }
+        Map<String, ResolvedConceptDto> enriched = new HashMap<>(ismdHits.size());
+        ismdHits.forEach((iri, dto) -> {
+            String slug = slugByIri.get(iri);
+            if (slug == null) {
+                enriched.put(iri, dto);
+            } else {
+                enriched.put(iri, ResolvedConceptDto.builder()
+                        .iri(dto.iri())
+                        .conceptName(dto.conceptName())
+                        .conceptSlug(slug)
+                        .ontologyIri(dto.ontologyIri())
+                        .ontologyName(dto.ontologyName())
+                        .source(dto.source())
+                        .build());
+            }
+        });
+        return enriched;
     }
 }

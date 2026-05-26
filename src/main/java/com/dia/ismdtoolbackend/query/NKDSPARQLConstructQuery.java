@@ -8,18 +8,19 @@ public class NKDSPARQLConstructQuery {
 
     /**
      * Narrow batched CONSTRUCT for the concept-reference resolver:
-     * pulls only {@code skos:inScheme} and the scheme's {@code dcterms:description}
-     * for a batch of concept IRIs. One HTTP round-trip resolves the whole batch,
-     * which is ~50× cheaper than calling {@link #buildConstructQuery(String)} per
-     * IRI (that variant pulls the full concept graph + blank-node expansion).
+     * pulls {@code skos:inScheme} and the {@code skos:prefLabel} of both the
+     * concept and its scheme for a batch of concept IRIs. One HTTP round-trip
+     * resolves the whole batch, which is ~50× cheaper than calling
+     * {@link #buildConstructQuery(String)} per IRI (that variant pulls the full
+     * concept graph + blank-node expansion).
      */
     public static String buildResolutionConstructQuery(List<String> conceptIris) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
-        pss.append("PREFIX dcterms: <http://purl.org/dc/terms/> ");
         pss.append("CONSTRUCT { ");
         pss.append("  ?concept skos:inScheme ?scheme . ");
-        pss.append("  ?scheme dcterms:description ?desc . ");
+        pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+        pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
         pss.append("} WHERE { VALUES ?concept { ");
         for (String iri : conceptIris) {
             pss.appendIri(iri);
@@ -27,7 +28,8 @@ public class NKDSPARQLConstructQuery {
         }
         pss.append("} ?concept skos:inScheme ?scheme . ");
         pss.append("FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
-        pss.append("OPTIONAL { ?scheme dcterms:description ?desc . } ");
+        pss.append("OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+        pss.append("OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } ");
         pss.append("}");
         return pss.toString();
     }
