@@ -5,6 +5,7 @@ import java.time.LocalDate;
 public record FragmentResolutionModel(
         String citation,
         LocalDate versionValidUntil,
-        boolean isLatest
+        boolean isLatest,
+        String bodyHtml
 ) {
 }
