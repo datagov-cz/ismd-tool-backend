@@ -22,7 +22,7 @@ import java.util.List;
 @RequestMapping("/api/codelist")
 @RequiredArgsConstructor
 @Slf4j
-public class CodelistController {
+public class DatatypeCodelistController {
 
     @Operation(
             summary = "Číselník datových typů pro vlastnosti",

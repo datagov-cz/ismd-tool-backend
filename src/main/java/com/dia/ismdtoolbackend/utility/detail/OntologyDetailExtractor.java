@@ -1,9 +1,11 @@
 package com.dia.ismdtoolbackend.utility.detail;
 
+import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.enums.PropertyDataType;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptPropertiesModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptRelationshipsModel;
@@ -154,6 +156,10 @@ public class OntologyDetailExtractor {
                     propertyModel.setIri(propertyIri);
                     propertyModel.setRef(refResolver.apply(propertyIri));
 
+                    Object rawRange = conceptMap.get(OBOR_HODNOT);
+                    propertyModel.setRange(rawRange instanceof String s ? s : null);
+                    propertyModel.setRangeResolved(buildDataTypeDto(rawRange));
+
                     properties.add(propertyModel);
                 }
             }
@@ -189,6 +195,10 @@ public class OntologyDetailExtractor {
                 propertyModel.setName(name);
                 propertyModel.setIri(propertyIri);
                 propertyModel.setRef(refResolver.apply(propertyIri));
+
+                String rawRange = extractRawRange(propertyResource);
+                propertyModel.setRange(rawRange);
+                propertyModel.setRangeResolved(buildDataTypeDto(rawRange));
 
                 properties.add(propertyModel);
             }
@@ -297,9 +307,12 @@ public class OntologyDetailExtractor {
             relationships = Collections.emptyList();
         }
 
+        List<String> conceptTypes = (List<String>) conceptMap.get("typ");
+        boolean isVlastnost = conceptTypes != null && conceptTypes.contains("Vlastnost");
+
         return OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(conceptIri)
-                .types((List<String>) conceptMap.get("typ"))
+                .types(conceptTypes)
                 .name((Map<String, String>) conceptMap.get(NAZEV))
                 .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
                 .definition((Map<String, String>) conceptMap.get(DEFINICE))
@@ -308,6 +321,7 @@ public class OntologyDetailExtractor {
                 .exactMatches((List<String>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
                 .range((String) conceptMap.get(OBOR_HODNOT))
+                .rangeResolved(isVlastnost ? buildDataTypeDto(conceptMap.get(OBOR_HODNOT)) : null)
                 .broaderClasses((List<String>) conceptMap.get(NADRAZENA_TRIDA))
                 .broaderRelations((List<String>) conceptMap.get(NADRAZENY_VZTAH))
                 .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
@@ -426,6 +440,40 @@ public class OntologyDetailExtractor {
      * omits the field. Never calls SPARQL — fragment URLs are flagged
      * {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
      */
+    /**
+     * Read {@code rdfs:range} from a property {@code Resource} and emit it in
+     * the same shape {@code ConceptProcessor.addDomainAndRange} writes to the
+     * JSON map: abbreviated to {@code xsd:*} when in the XSD namespace, else
+     * the raw URI. Returns {@code null} when no range is set.
+     */
+    static String extractRawRange(Resource propertyResource) {
+        Statement rangeStmt = propertyResource.getProperty(org.apache.jena.vocabulary.RDFS.range);
+        if (rangeStmt == null || !rangeStmt.getObject().isResource()) {
+            return null;
+        }
+        String rangeUri = rangeStmt.getObject().asResource().getURI();
+        if (rangeUri == null) {
+            return null;
+        }
+        if (rangeUri.startsWith(XSD)) {
+            return "xsd:" + rangeUri.substring(XSD.length());
+        }
+        return rangeUri;
+    }
+
+    /**
+     * Resolve any raw range value (bare code, {@code xsd:}/{@code rdfs:} prefix,
+     * full IRI, Czech label) to a codelist DTO. Falls back to {@code Literal}
+     * for null/empty/unrecognised input — mirrors the write-path default in
+     * {@code ConceptCreator.addRangeProperty}.
+     */
+    static DataTypeDto buildDataTypeDto(Object rawRange) {
+        String raw = rawRange instanceof String s ? s : null;
+        return PropertyDataType.fromValue(raw)
+                .orElse(PropertyDataType.LITERAL)
+                .toDto();
+    }
+
     static List<ResolvedLegalSourceDto> buildResolvedSources(List<String> urls) {
         if (urls == null || urls.isEmpty()) return null;
         List<ResolvedLegalSourceDto> out = new ArrayList<>(urls.size());
