@@ -58,7 +58,6 @@ class RppControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void agendaSearchHappyPathReturnsEnvelope() throws Exception {
         when(rppService.searchAgendas(eq("spr"), eq(5)))
                 .thenReturn(List.of(
@@ -76,7 +75,6 @@ class RppControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void isvsSearchForwardsAllParams() throws Exception {
         when(rppService.searchIsvs(any(), anyInt(), any()))
                 .thenReturn(List.of(new RppSearchResultDto("iri-1", "1", "ISVS 1")));
@@ -99,7 +97,6 @@ class RppControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void defaultLimitAppliedWhenMissing() throws Exception {
         when(rppService.searchAgendas(any(), anyInt())).thenReturn(List.of());
 
@@ -112,7 +109,6 @@ class RppControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void limitZeroReturns400() throws Exception {
         mockMvc.perform(get("/api/rpp/agenda/search").param("limit", "0"))
                 .andExpect(status().isBadRequest())
@@ -121,7 +117,6 @@ class RppControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void limitAboveMaxReturns400() throws Exception {
         mockMvc.perform(get("/api/rpp/agenda/search").param("limit", "51"))
                 .andExpect(status().isBadRequest())
@@ -129,13 +124,6 @@ class RppControllerTest {
     }
 
     @Test
-    void unauthenticatedReturns403() throws Exception {
-        mockMvc.perform(get("/api/rpp/agenda/search"))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @WithMockSecurityUser(userId = "user123")
     void missingQueryForwardedAsNull() throws Exception {
         when(rppService.searchAgendas(any(), anyInt())).thenReturn(List.of());
 

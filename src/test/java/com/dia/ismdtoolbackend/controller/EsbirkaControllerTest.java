@@ -73,7 +73,6 @@ class EsbirkaControllerTest {
     // -------- /law/search --------
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void lawSearchHappyPathReturnsEnvelope() throws Exception {
         LawDto dto = new LawDto(LAW_IRI, "/eli/cz/sb/2006/187",
                 "https://opendata.eselpoint.gov.cz", "187/2006 Sb.",
@@ -91,7 +90,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void lawSearchDefaultLimitWhenMissing() throws Exception {
         when(esbirkaService.searchLaws(any(), anyInt())).thenReturn(List.of());
 
@@ -104,7 +102,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void lawSearchLimitZeroReturns400() throws Exception {
         mockMvc.perform(get("/api/eli/law/search").param("limit", "0"))
                 .andExpect(status().isBadRequest())
@@ -113,14 +110,12 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void lawSearchLimitAboveMaxReturns400() throws Exception {
         mockMvc.perform(get("/api/eli/law/search").param("limit", "51"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void lawSearchMissingQueryForwardedAsNull() throws Exception {
         when(esbirkaService.searchLaws(any(), anyInt())).thenReturn(List.of());
 
@@ -133,13 +128,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    void lawSearchUnauthenticatedReturns403() throws Exception {
-        mockMvc.perform(get("/api/eli/law/search"))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @WithMockSecurityUser(userId = "user123")
     void lawSearchService503BubblesUp() throws Exception {
         when(esbirkaService.searchLaws(any(), anyInt()))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka law search fetch failed"));
@@ -153,7 +141,6 @@ class EsbirkaControllerTest {
     // -------- /law/versions --------
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void versionsHappyPathReturnsList() throws Exception {
         LawVersionDto v = new LawVersionDto(VERSION_IRI, "/eli/cz/sb/2006/187/2026-04-01",
                 LocalDate.of(2026, 4, 1), null, "https://t/jednorazové", true);
@@ -167,7 +154,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void versionsInvalidIriReturns400() throws Exception {
         mockMvc.perform(get("/api/eli/law/versions").param("lawIri", "https://example.org/foo"))
                 .andExpect(status().isBadRequest())
@@ -175,14 +161,12 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void versionsMissingParamReturns400() throws Exception {
         mockMvc.perform(get("/api/eli/law/versions"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void versionsService503BubblesUp() throws Exception {
         when(esbirkaService.getVersions(LAW_IRI))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka version list fetch failed"));
@@ -194,7 +178,6 @@ class EsbirkaControllerTest {
     // -------- /law/fragments --------
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void fragmentsHappyPathReturnsTree() throws Exception {
         FragmentDto root = new FragmentDto(VERSION_IRI + "/par_1",
                 "/eli/cz/sb/2006/187/2026-04-01/par_1",
@@ -209,7 +192,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void fragmentsInvalidIriReturns400() throws Exception {
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", "javascript:alert(1)"))
                 .andExpect(status().isBadRequest())
@@ -217,13 +199,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    void fragmentsUnauthenticatedReturns403() throws Exception {
-        mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @WithMockSecurityUser(userId = "user123")
     void fragmentsService503BubblesUp() throws Exception {
         when(esbirkaService.getFragments(VERSION_IRI))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka fragment tree fetch failed"));
@@ -235,7 +210,6 @@ class EsbirkaControllerTest {
     // -------- /resolve --------
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void resolveValidFragmentUrlReturns200WithDto() throws Exception {
         String fragmentUrl = VERSION_IRI + "/dokument/norma/par_2/pism_d";
         ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
@@ -255,7 +229,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void resolveInvalidUrlReturns200WithInvalidIriStatus() throws Exception {
         ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()
                 .originalUrl("garbage")
@@ -269,7 +242,6 @@ class EsbirkaControllerTest {
     }
 
     @Test
-    @WithMockSecurityUser(userId = "user123")
     void resolveESbirkaDownReturns200WithUnavailableStatus() throws Exception {
         String fragmentUrl = VERSION_IRI + "/dokument/norma/par_2/pism_d";
         ResolvedLegalSourceDto dto = ResolvedLegalSourceDto.builder()

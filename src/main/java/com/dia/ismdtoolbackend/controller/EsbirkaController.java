@@ -39,7 +39,6 @@ public class EsbirkaController {
                     "Při prázdném dotazu se vrací nejnovější akty (rok desc, číslo asc)."
     )
     @GetMapping("/law/search")
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<List<LawDto>>> searchLaws(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer limit) {
@@ -62,7 +61,6 @@ public class EsbirkaController {
                     "pole \"latest\" označuje aktuálně poslední znění."
     )
     @GetMapping("/law/versions")
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<List<LawVersionDto>>> getVersions(
             @RequestParam String lawIri) {
         String requestId = UUID.randomUUID().toString();
@@ -84,7 +82,6 @@ public class EsbirkaController {
                     "stromová struktura sestavena na serveru)."
     )
     @GetMapping("/law/fragments")
-    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponseDto<List<FragmentDto>>> getFragments(
             @RequestParam String versionIri) {
         String requestId = UUID.randomUUID().toString();

@@ -150,6 +150,11 @@ public class SecurityConfig {
                         "/api/nkd/ontology/all",
                         "/api/nkd/ontology/download",
                         "/api/nkd/concept/detail",
+                        "/api/rpp/agenda/search",
+                        "/api/rpp/ais/search",
+                        "/api/eli/law/search",
+                        "/api/eli/law/versions",
+                        "/api/eli/law/fragments",
                         "/api/eli/resolve",
                         "/api/codelist/**",
                         "/v3/api-docs/**",
@@ -205,11 +210,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/rpp/agenda/search").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/rpp/ais/search").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/eli/law/search").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/eli/law/versions").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/eli/law/fragments").authenticated()
                         .anyRequest().denyAll()
                 )
                 // Disable CSRF for stateless JWT API

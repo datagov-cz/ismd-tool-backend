@@ -20,7 +20,6 @@ import java.util.List;
 @RequestMapping("/api/rpp")
 @RequiredArgsConstructor
 @Slf4j
-@PreAuthorize("isAuthenticated()")
 public class RppController {
 
     private final RppService rppService;
