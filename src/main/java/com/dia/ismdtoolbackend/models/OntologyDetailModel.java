@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -83,6 +84,9 @@ public class OntologyDetailModel {
 
         @JsonProperty("obor-hodnot")
         private String range;
+
+        @JsonProperty("obor-hodnot-resolved")
+        private DataTypeDto rangeResolved;
 
         @JsonProperty("nadřazená-třída")
         private List<String> broaderClasses;

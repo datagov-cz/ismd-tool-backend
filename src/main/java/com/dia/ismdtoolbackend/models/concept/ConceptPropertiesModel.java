@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 import lombok.Getter;
@@ -24,4 +25,17 @@ public class ConceptPropertiesModel {
      * full IRI for NKD resources (used with /api/nkd/concept/detail?iri=...).
      */
     private String ref;
+
+    /**
+     * Raw {@code rdfs:range} of this property concept, mirroring the parent
+     * concept's {@code obor-hodnot} field (e.g. {@code "xsd:string"}).
+     */
+    private String range;
+
+    /**
+     * Codelist-resolved view of {@link #range}. Falls back to the {@code Literal}
+     * entry when the underlying range is null/empty/unrecognised — matches the
+     * write-path default in {@code ConceptCreator.addRangeProperty}.
+     */
+    private DataTypeDto rangeResolved;
 }
