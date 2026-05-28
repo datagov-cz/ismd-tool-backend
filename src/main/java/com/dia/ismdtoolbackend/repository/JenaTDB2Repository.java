@@ -186,8 +186,8 @@ public class JenaTDB2Repository {
                 "Ensure the Fuseki container is built from docker/fuseki/Dockerfile so the jena-text " +
                 "module is loaded and the dataset is wrapped with a TextDataset (see fuseki-config.ttl).";
 
-        if (DomainApplicationProfile.isActive(environment, DomainApplicationProfile.TEST)) {
-            log.warn("{} (test profile — continuing without text search)", message);
+        if (DomainApplicationProfile.isActive(environment, DomainApplicationProfile.JUNIT)) {
+            log.warn("{} (junit profile — continuing without text search)", message);
         } else {
             log.error(message);
             throw new IllegalStateException(message);

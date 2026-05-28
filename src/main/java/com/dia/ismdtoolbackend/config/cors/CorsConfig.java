@@ -26,8 +26,8 @@ public class CorsConfig {
 
         if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.PRODUCTION)) {
             return productionCorsConfigurationSource();
-        } else if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.STAGE)) {
-            return stageCorsConfigurationSource();
+        } else if (DomainApplicationProfile.isActive(env, DomainApplicationProfile.TEST)) {
+            return testCorsConfigurationSource();
         } else {
             return localCorsConfigurationSource();
         }
@@ -45,8 +45,8 @@ public class CorsConfig {
         return source;
     }
 
-    private CorsConfigurationSource stageCorsConfigurationSource() {
-        var config = new CorsConfigUtil().createStageCorsConfiguration();
+    private CorsConfigurationSource testCorsConfigurationSource() {
+        var config = new CorsConfigUtil().createTestCorsConfiguration();
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;

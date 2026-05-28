@@ -24,7 +24,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * - Use @WithMockSecurityUser to inject mock authenticated users
  */
 @TestConfiguration
-@Profile("test")
+@Profile("junit")
 @EnableWebSecurity
 @EnableMethodSecurity  // Required for @PreAuthorize to work in tests
 public class TestSecurityConfig {

@@ -54,7 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration.class
         })
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
-@ActiveProfiles("test")
+@ActiveProfiles("junit")
 class OntologyControllerResolveTest {
 
     private static final String ISMD_IRI = "https://data.gov.cz/zdroj/slovnik/local/pojem/a";
