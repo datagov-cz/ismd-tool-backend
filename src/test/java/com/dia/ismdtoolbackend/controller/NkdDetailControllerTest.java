@@ -3,10 +3,14 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
+import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,13 +19,19 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -201,4 +211,229 @@ class NkdDetailControllerTest {
         mockMvc.perform(get("/api/nkd/concept/detail").param("iri", CONCEPT_IRI))
                 .andExpect(status().isOk());
     }
+
+    // ── List by IRIs ───────────────────────────────────────────────────
+
+    @Test
+    void getOntologyList_success_returns200() throws Exception {
+        GetNkdOntologyListDto dto = new GetNkdOntologyListDto(List.of(), null, 2, null);
+        when(nkdDetailService.getOntologyList(any())).thenReturn(dto);
+
+        mockMvc.perform(get("/api/nkd/ontology/list")
+                        .param("iris", ONTOLOGY_IRI, "https://example.org/ontology/2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void getOntologyList_missingIris_returns400() throws Exception {
+        mockMvc.perform(get("/api/nkd/ontology/list"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getOntologyList_upstreamUnavailable_returns503() throws Exception {
+        when(nkdDetailService.getOntologyList(any()))
+                .thenThrow(new NkdEndpointException("NKD SPARQL endpoint je nedostupný."));
+
+        mockMvc.perform(get("/api/nkd/ontology/list").param("iris", ONTOLOGY_IRI))
+                .andExpect(status().isServiceUnavailable());
+    }
+
+    // ── List all (paginated) ───────────────────────────────────────────
+
+    @Test
+    void listAllOntologies_defaultsApplied_returns200() throws Exception {
+        GetNkdOntologyListDto dto = new GetNkdOntologyListDto(List.of(), 0, 0, 0);
+        when(nkdDetailService.listAllOntologies(anyInt(), anyInt(), anyString())).thenReturn(dto);
+
+        mockMvc.perform(get("/api/nkd/ontology/all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<Integer> offsetCap = ArgumentCaptor.forClass(Integer.class);
+        ArgumentCaptor<String> langCap = ArgumentCaptor.forClass(String.class);
+        verify(nkdDetailService).listAllOntologies(limitCap.capture(), offsetCap.capture(), langCap.capture());
+        Assertions.assertEquals(20, limitCap.getValue());
+        Assertions.assertEquals(0, offsetCap.getValue());
+        Assertions.assertEquals("cs", langCap.getValue());
+    }
+
+    @Test
+    void listAllOntologies_explicitParams_forwardedToService() throws Exception {
+        GetNkdOntologyListDto dto = new GetNkdOntologyListDto(List.of(), 100, 100, 5000);
+        when(nkdDetailService.listAllOntologies(eq(50), eq(100), eq("en"))).thenReturn(dto);
+
+        mockMvc.perform(get("/api/nkd/ontology/all")
+                        .param("limit", "50")
+                        .param("offset", "100")
+                        .param("lang", "en"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.celkový-počet").value(100));
+    }
+
+    @Test
+    void listAllOntologies_upstreamUnavailable_returns503() throws Exception {
+        when(nkdDetailService.listAllOntologies(anyInt(), anyInt(), anyString()))
+                .thenThrow(new NkdEndpointException("NKD SPARQL endpoint je nedostupný."));
+
+        mockMvc.perform(get("/api/nkd/ontology/all"))
+                .andExpect(status().isServiceUnavailable());
+    }
+
+    // ── Download ───────────────────────────────────────────────────────
+
+    @Test
+    void downloadOntology_ttlDefault_returnsTurtleAttachment() throws Exception {
+        byte[] body = "<x> <y> <z> .".getBytes();
+        when(nkdDetailService.downloadOntology(eq(ONTOLOGY_IRI), eq("ttl"))).thenReturn(body);
+
+        MvcResult result = mockMvc.perform(get("/api/nkd/ontology/download").param("iri", ONTOLOGY_IRI))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("text/turtle"))
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.containsString("attachment; filename=\"")))
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.endsWith(".ttl\"")))
+                .andReturn();
+        Assertions.assertArrayEquals(body,
+                result.getResponse().getContentAsByteArray());
+    }
+
+    @Test
+    void downloadOntology_jsonLdFormat_returnsLdJsonAttachment() throws Exception {
+        byte[] body = "{\"@context\":{}}".getBytes();
+        when(nkdDetailService.downloadOntology(eq(ONTOLOGY_IRI), eq("json-ld"))).thenReturn(body);
+
+        mockMvc.perform(get("/api/nkd/ontology/download")
+                        .param("iri", ONTOLOGY_IRI)
+                        .param("format", "json-ld"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/ld+json"))
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.endsWith(".jsonld\"")));
+    }
+
+    @Test
+    void downloadOntology_jsonLdMixedCase_alsoMatches() throws Exception {
+        // Confirms equalsIgnoreCase branch in the contentType + extension switches.
+        when(nkdDetailService.downloadOntology(eq(ONTOLOGY_IRI), eq("JSON-LD"))).thenReturn(new byte[]{1, 2});
+
+        mockMvc.perform(get("/api/nkd/ontology/download")
+                        .param("iri", ONTOLOGY_IRI)
+                        .param("format", "JSON-LD"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/ld+json"))
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.endsWith(".jsonld\"")));
+    }
+
+    @Test
+    void downloadOntology_iriWithLastSegment_usesSegmentAsFilename() throws Exception {
+        String iri = "https://example.org/ontology/my-slug";
+        when(nkdDetailService.downloadOntology(eq(iri), eq("ttl"))).thenReturn(new byte[]{0});
+
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", iri))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.containsString("my-slug.ttl")));
+    }
+
+    @Test
+    void downloadOntology_iriWithQueryString_stripsQueryFromFilename() throws Exception {
+        String iri = "https://example.org/ontology/slug?v=2";
+        when(nkdDetailService.downloadOntology(eq(iri), eq("ttl"))).thenReturn(new byte[]{0});
+
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", iri))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.containsString("slug.ttl")))
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.not(Matchers.containsString("v=2"))));
+    }
+
+    @Test
+    void downloadOntology_iriWithFragment_stripsFragmentFromFilename() throws Exception {
+        String iri = "https://example.org/ontology/slug#main";
+        when(nkdDetailService.downloadOntology(eq(iri), eq("ttl"))).thenReturn(new byte[]{0});
+
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", iri))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.containsString("slug.ttl")))
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.not(Matchers.containsString("main"))));
+    }
+
+    @Test
+    void downloadOntology_iriEndsWithSlash_fallsBackToOntologyFilename() throws Exception {
+        String iri = "https://example.org/ontology/";
+        when(nkdDetailService.downloadOntology(eq(iri), eq("ttl"))).thenReturn(new byte[]{0});
+
+        // Last char is slash, so slash >= length-1 → fallback to "ontology".
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", iri))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.containsString("ontology.ttl")));
+    }
+
+    @Test
+    void downloadOntology_iriWithoutSlash_fallsBackToOntologyFilename() throws Exception {
+        String iri = "urn-no-slash-iri";
+        when(nkdDetailService.downloadOntology(eq(iri), eq("ttl"))).thenReturn(new byte[]{0});
+
+        // No '/' → slash < 0 → fallback to "ontology".
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", iri))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        Matchers.containsString("ontology.ttl")));
+    }
+
+    @Test
+    void downloadOntology_iriWithUnicodeSegment_isUrlEncoded() throws Exception {
+        String iri = "https://example.org/ontology/příklad";
+        when(nkdDetailService.downloadOntology(eq(iri), eq("ttl"))).thenReturn(new byte[]{0});
+
+        // URLEncoder encodes UTF-8 bytes, '+' replaced with %20 in the controller.
+        // Just confirm the ASCII suffix and no raw non-ASCII characters in the header.
+        MvcResult res = mockMvc.perform(get("/api/nkd/ontology/download").param("iri", iri))
+                .andExpect(status().isOk())
+                .andReturn();
+        String disposition = res.getResponse().getHeader("Content-Disposition");
+        Assertions.assertNotNull(disposition);
+        Assertions.assertTrue(disposition.endsWith(".ttl\""),
+                "Disposition should end with .ttl: " + disposition);
+        Assertions.assertTrue(disposition.contains("%"),
+                "Disposition should contain percent-encoded segment: " + disposition);
+    }
+
+    @Test
+    void downloadOntology_upstreamUnavailable_returns503() throws Exception {
+        when(nkdDetailService.downloadOntology(anyString(), anyString()))
+                .thenThrow(new NkdEndpointException("NKD SPARQL endpoint je nedostupný."));
+
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", ONTOLOGY_IRI))
+                .andExpect(status().isServiceUnavailable());
+    }
+
+    @Test
+    void downloadOntology_notFound_returns404() throws Exception {
+        when(nkdDetailService.downloadOntology(anyString(), anyString()))
+                .thenThrow(new NkdResourceNotFoundException("Slovník nenalezen."));
+
+        mockMvc.perform(get("/api/nkd/ontology/download").param("iri", ONTOLOGY_IRI))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void downloadOntology_missingIri_returns400() throws Exception {
+        mockMvc.perform(get("/api/nkd/ontology/download"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // Suppress IDE complaints about an "unused" item-DTO import we keep for symmetry
+    // with other list-endpoint tests in the file.
+    @SuppressWarnings("unused")
+    private NkdOntologyListItemDto unusedSymmetryReference;
 }

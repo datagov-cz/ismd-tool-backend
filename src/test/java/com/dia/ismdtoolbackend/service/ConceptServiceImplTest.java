@@ -1,20 +1,31 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
+import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
+import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
+import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
@@ -64,6 +75,21 @@ class ConceptServiceImplTest {
 
     @Mock
     private RppSnapshotHolder rppSnapshotHolder;
+
+    @Mock
+    private OntologyDetailExtractor detailExtractor;
+
+    @Mock
+    private CommentRepository commentRepository;
+
+    @Mock
+    private NkdSparqlClient nkdSparqlClient;
+
+    @Mock
+    private ConceptDeviationComparator deviationComparator;
+
+    @Mock
+    private ReferencedConceptsEnricher referencedConceptsEnricher;
 
     @InjectMocks
     private ConceptServiceImpl conceptService;
@@ -510,6 +536,305 @@ class ConceptServiceImplTest {
                 () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se aktualizovat metadata pojmu"));
+    }
+
+    // ========== getConceptDetail Tests ==========
+    //
+    // Covers ConceptServiceImpl.getConceptDetail + checkPublishedConcept +
+    // resolveRppReferences — the full /api/concept/{slug}/detail read workflow.
+    // Each test mocks the orchestration boundary; the deviation/comparator/RPP
+    // helpers have their own dedicated test suites.
+
+    private static final String TEST_SLUG = "test-slug";
+
+    @Test
+    void getConceptDetail_slugNotFound_throws() {
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.empty());
+
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> conceptService.getConceptDetail(TEST_SLUG));
+        assertTrue(ex.getMessage().contains(TEST_SLUG));
+    }
+
+    @Test
+    void getConceptDetail_emptyGraph_throws() {
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
+
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> conceptService.getConceptDetail(TEST_SLUG));
+        assertTrue(ex.getMessage().toLowerCase().contains("prázdn")
+                || ex.getMessage().toLowerCase().contains("empty"));
+    }
+
+    @Test
+    void getConceptDetail_extractorReturnsNull_throws() {
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(null);
+
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> conceptService.getConceptDetail(TEST_SLUG));
+        assertTrue(ex.getMessage().contains(TEST_CONCEPT_IRI));
+    }
+
+    @Test
+    void getConceptDetail_unpublished_skipsDeviationCheck() {
+        // isPublished=false → checkPublishedConcept must short-circuit, NKD client never called.
+        testConceptEntity.setIsPublished(false);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(TEST_CONCEPT_IRI)
+                .build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(false);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertNotNull(result);
+        assertEquals(detail, result.getConceptDetail());
+        assertNull(result.getPublishedConceptDeviationModel());
+        verify(referencedConceptsEnricher).enrich(detail);
+        verify(nkdSparqlClient, never()).fetchPublishedConcept(anyString());
+        verify(deviationComparator, never()).compareConceptDetails(any(), any());
+    }
+
+    @Test
+    void getConceptDetail_publishedAndNkdMatches_runsDeviationComparator() {
+        testConceptEntity.setIsPublished(true);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel localDetail =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        OntologyDetailModel.ConceptDetailModel publishedDetail =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        // First call (top-level) returns the detail; second call (from checkPublishedConcept)
+        // also returns it. Argument is the same so a single `thenReturn` covers both.
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(true);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI)).thenReturn(Optional.of(publishedDetail));
+
+        PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
+                .status(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION)
+                .build();
+        when(deviationComparator.compareConceptDetails(localDetail, publishedDetail)).thenReturn(deviationResult);
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertNotNull(result);
+        assertEquals(deviationResult, result.getPublishedConceptDeviationModel());
+        verify(deviationComparator).compareConceptDetails(localDetail, publishedDetail);
+    }
+
+    @Test
+    void getConceptDetail_publishedButNotInNkd_returnsConceptNotFoundDeviation() {
+        testConceptEntity.setIsPublished(true);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel localDetail =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(true);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertEquals(PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
+                result.getPublishedConceptDeviationModel().getStatus());
+        verify(deviationComparator, never()).compareConceptDetails(any(), any());
+    }
+
+    @Test
+    void getConceptDetail_publishedButNkdThrows_returnsEndpointUnavailableDeviation() {
+        testConceptEntity.setIsPublished(true);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel localDetail =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(true);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI))
+                .thenThrow(new RuntimeException("NKD timeout"));
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertEquals(PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
+                result.getPublishedConceptDeviationModel().getStatus());
+    }
+
+    @Test
+    void getConceptDetail_publishedButLocalExtractFailsInDeviationCheck_returnsQueryErrorDeviation() {
+        // Top-level extract succeeds, but the second extract inside checkPublishedConcept
+        // returns null. Hits the QUERY_ERROR branch.
+        testConceptEntity.setIsPublished(true);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel localDetail =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        // First call returns detail (top-level), second returns null (inside checkPublishedConcept).
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI))
+                .thenReturn(localDetail)
+                .thenReturn(null);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(true);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertEquals(PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
+                result.getPublishedConceptDeviationModel().getStatus());
+        verify(nkdSparqlClient, never()).fetchPublishedConcept(anyString());
+    }
+
+    @Test
+    void getConceptDetail_attachesComments() {
+        testConceptEntity.setIsPublished(false);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI))
+                .thenReturn(OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build());
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(false);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+
+        CommentEntity comment = new CommentEntity();
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of(comment));
+        when(conceptMetadataMapper.commentEntitiesToModels(List.of(comment)))
+                .thenReturn(new ArrayList<>(List.of()));
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertNotNull(result.getConceptMetadata());
+        verify(commentRepository).findByConceptIRI(TEST_CONCEPT_IRI);
+        verify(conceptMetadataMapper).commentEntitiesToModels(List.of(comment));
+    }
+
+    // ── resolveRppReferences branches ──────────────────────────────────
+
+    @Test
+    void getConceptDetail_resolvesAgendaWhenSet() {
+        testConceptEntity.setIsPublished(false);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(TEST_CONCEPT_IRI)
+                .agenda("https://rpp.example/agenda/A1")
+                .build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(false);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+
+        RppAgenda agenda = mock(RppAgenda.class);
+        when(rppSnapshotHolder.findAgendaByIri("https://rpp.example/agenda/A1")).thenReturn(Optional.of(agenda));
+
+        conceptService.getConceptDetail(TEST_SLUG);
+
+        verify(rppSnapshotHolder).findAgendaByIri("https://rpp.example/agenda/A1");
+        verify(rppSnapshotHolder, never()).findIsvsByIri(anyString());
+    }
+
+    @Test
+    void getConceptDetail_resolvesAisWhenSet() {
+        testConceptEntity.setIsPublished(false);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(TEST_CONCEPT_IRI)
+                .ais("https://rpp.example/isvs/I1")
+                .build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(false);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+
+        RppIsvs isvs = mock(RppIsvs.class);
+        when(rppSnapshotHolder.findIsvsByIri("https://rpp.example/isvs/I1")).thenReturn(Optional.of(isvs));
+
+        conceptService.getConceptDetail(TEST_SLUG);
+
+        verify(rppSnapshotHolder).findIsvsByIri("https://rpp.example/isvs/I1");
+        verify(rppSnapshotHolder, never()).findAgendaByIri(anyString());
+    }
+
+    @Test
+    void getConceptDetail_noRppReferences_skipsHolder() {
+        testConceptEntity.setIsPublished(false);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        // No agenda, no ais set on the detail.
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(TEST_CONCEPT_IRI)
+                .build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(false);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+
+        conceptService.getConceptDetail(TEST_SLUG);
+
+        verify(rppSnapshotHolder, never()).findAgendaByIri(anyString());
+        verify(rppSnapshotHolder, never()).findIsvsByIri(anyString());
+    }
+
+    private static Model nonEmptyModel() {
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource(TEST_CONCEPT_IRI),
+                m.createProperty("http://www.w3.org/2000/01/rdf-schema#label"),
+                "Test");
+        return m;
     }
 
     // ========== Helper Methods ==========

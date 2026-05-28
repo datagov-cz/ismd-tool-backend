@@ -96,18 +96,46 @@ class SecurityFilterChainIntegrationTest {
 
     // ── Public endpoints accessible without auth ──────────────────────────
 
+    // The list below MUST mirror the securityMatcher allowlist in
+    // SecurityConfig.publicSecurityFilterChain. This is a regression guard:
+    // if the allowlist is trimmed (intentionally or accidentally), the matching
+    // entry here will start failing with 401/403 and force the change to be
+    // explicit. Concrete paths are chosen so they actually match the wildcard
+    // patterns (e.g. `/api/codelist/property-datatypes` exercises `/api/codelist/**`).
     @ParameterizedTest
     @ValueSource(strings = {
+            // Actuator
             "/actuator/health",
+            "/actuator/health/liveness",
             "/actuator/info",
+            // Ontology read endpoints
             "/api/ontology/test-slug/download",
             "/api/ontology/test-slug/detail",
-            "/api/ontology/list",
-            "/api/concept/list",
+            "/api/ontology/concepts",
             "/api/ontology/concepts/resolve",
+            "/api/ontology/list",
+            // Concept read endpoints
+            "/api/concept/list",
+            "/api/concept/test-slug/detail",
+            // NKD read endpoints
+            "/api/nkd/ontology/list",
             "/api/nkd/ontology/detail",
+            "/api/nkd/ontology/all",
+            "/api/nkd/ontology/download",
             "/api/nkd/concept/detail",
+            // RPP read endpoints
+            "/api/rpp/agenda/search",
+            "/api/rpp/ais/search",
+            // e-Sbírka read endpoints
+            "/api/eli/law/search",
+            "/api/eli/law/versions",
+            "/api/eli/law/fragments",
+            "/api/eli/resolve",
+            // Codelist (wildcard)
+            "/api/codelist/property-datatypes",
+            // OpenAPI / Swagger
             "/v3/api-docs",
+            "/swagger-ui/index.html",
             "/swagger-ui.html"
     })
     void publicEndpoints_accessibleWithoutAuth(String path) throws Exception {
@@ -146,6 +174,10 @@ class SecurityFilterChainIntegrationTest {
                 .isIn(401, 302);
     }
 
+    // Mirror of every requestMatcher in SecurityConfig.authenticatedSecurityFilterChain.
+    // Same regression-guard logic as the public list — if a matcher is removed,
+    // the corresponding entry here will start returning 200/4xx instead of 401/302
+    // and force the security change to be explicit.
     static Stream<Arguments> protectedEndpoints() {
         return Stream.of(
                 Arguments.of("GET", "/api/user/me"),
@@ -153,7 +185,9 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("POST", "/api/ontology/create"),
                 Arguments.of("PATCH", "/api/ontology/test/edit"),
                 Arguments.of("DELETE", "/api/ontology/test/delete"),
-                Arguments.of("POST", "/api/concept/create"),
+                Arguments.of("POST", "/api/ontology/test/validate"),
+                Arguments.of("POST", "/api/ontology/test/catalog-record"),
+                Arguments.of("POST", "/api/concept/test/create"),
                 Arguments.of("PATCH", "/api/concept/test/edit"),
                 Arguments.of("DELETE", "/api/concept/test/delete"),
                 Arguments.of("POST", "/api/comment/post"),

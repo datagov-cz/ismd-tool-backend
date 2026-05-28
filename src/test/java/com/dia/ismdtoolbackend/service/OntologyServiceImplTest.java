@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -473,5 +475,310 @@ class OntologyServiceImplTest {
                 .addProperty(model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
                         model.createResource("http://www.w3.org/2002/07/owl#Ontology"));
         return model;
+    }
+
+    // ========== getConceptsByIri Tests (B1) ==========
+    //
+    // Covers /api/ontology/concepts?ontologyIri=... — the slim concept-listing
+    // endpoint used by the FE for navigation. Branches: input validation,
+    // ontology-not-found, empty-graph, empty-concepts-list short-circuit, and
+    // the slug-join from PG metadata.
+
+    @Test
+    void getConceptsByIri_nullIri_throws() {
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getConceptsByIri(null));
+        assertTrue(ex.getMessage().toLowerCase().contains("iri"));
+    }
+
+    @Test
+    void getConceptsByIri_blankIri_throws() {
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getConceptsByIri("   "));
+        assertTrue(ex.getMessage().toLowerCase().contains("iri"));
+    }
+
+    @Test
+    void getConceptsByIri_ontologyNotFound_throws() {
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
+
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
+        assertTrue(ex.getMessage().contains(TEST_GRAPH_NAME));
+    }
+
+    @Test
+    void getConceptsByIri_emptyGraph_throws() {
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
+                .thenReturn(Optional.of(testOntologyEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
+
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
+        assertTrue(ex.getMessage().toLowerCase().contains("prázdn")
+                || ex.getMessage().toLowerCase().contains("empty"));
+    }
+
+    @Test
+    void getConceptsByIri_noConceptsInDetail_returnsEmptyList() {
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
+                .thenReturn(Optional.of(testOntologyEntity));
+        Model rawModel = nonEmptyOntologyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(rawModel);
+        when(detailExtractor.extractOntologyDetail(rawModel))
+                .thenReturn(OntologyDetailModel.builder().concepts(null).build());
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+
+        assertTrue(out.isEmpty());
+        // PG lookup is never executed when the RDF detail has no concepts.
+        verify(conceptMetadataRepository, never()).findByGraphName(anyString());
+    }
+
+    @Test
+    void getConceptsByIri_emptyConceptsList_returnsEmptyList() {
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
+                .thenReturn(Optional.of(testOntologyEntity));
+        Model rawModel = nonEmptyOntologyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(rawModel);
+        when(detailExtractor.extractOntologyDetail(rawModel))
+                .thenReturn(OntologyDetailModel.builder().concepts(List.of()).build());
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    void getConceptsByIri_joinsConceptSlugsFromPg() {
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
+                .thenReturn(Optional.of(testOntologyEntity));
+        Model rawModel = nonEmptyOntologyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel c1 = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri("http://example.org/c/1")
+                .name(Map.of("cs", "Pojem 1"))
+                .build();
+        OntologyDetailModel.ConceptDetailModel c2 = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri("http://example.org/c/2")
+                .name(Map.of("cs", "Pojem 2"))
+                .build();
+        OntologyDetailModel.ConceptDetailModel c3UnmappedSlug = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri("http://example.org/c/3")
+                .name(Map.of("cs", "Pojem 3"))
+                .build();
+        when(detailExtractor.extractOntologyDetail(rawModel))
+                .thenReturn(OntologyDetailModel.builder().concepts(List.of(c1, c2, c3UnmappedSlug)).build());
+
+        // PG returns slugs for c1 and c2 only; c3 has no metadata row.
+        // Also include a noise entity with null conceptIri/slug to exercise the filter.
+        ConceptMetadataEntity e1 = new ConceptMetadataEntity();
+        e1.setConceptIri("http://example.org/c/1");
+        e1.setSlug("pojem-1");
+        ConceptMetadataEntity e2 = new ConceptMetadataEntity();
+        e2.setConceptIri("http://example.org/c/2");
+        e2.setSlug("pojem-2");
+        ConceptMetadataEntity eNoise = new ConceptMetadataEntity();
+        eNoise.setConceptIri(null);
+        eNoise.setSlug(null);
+        when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
+                .thenReturn(List.of(e1, e2, eNoise));
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+
+        assertEquals(3, out.size());
+        assertEquals("http://example.org/c/1", out.get(0).getIri());
+        assertEquals("pojem-1", out.get(0).getSlug());
+        assertEquals("http://example.org/c/2", out.get(1).getIri());
+        assertEquals("pojem-2", out.get(1).getSlug());
+        assertEquals("http://example.org/c/3", out.get(2).getIri());
+        assertNull(out.get(2).getSlug(), "Concepts without a PG metadata row should have null slug");
+    }
+
+    // ========== getAll / getBySlugs Tests (B2 — enrichEntitiesWithBatchMetadata) ==========
+    //
+    // Covers /api/ontology/list — both `userId`/`isPublished` repo selectors AND
+    // the batch-metadata join through enrichEntitiesWithBatchMetadata +
+    // partitionModelBySubject + enrichMetadataFromModel.
+
+    @Test
+    void getAll_noFilters_callsFindAll() {
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of());
+
+        List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
+
+        assertTrue(out.isEmpty());
+        verify(ontologyMetadataRepository).findAll();
+        verify(ontologyMetadataRepository, never()).findAllByUserId(anyString());
+        verify(ontologyMetadataRepository, never()).findAllByIsPublished(anyBoolean());
+    }
+
+    @Test
+    void getAll_userIdOnly_callsFindAllByUserId() {
+        when(ontologyMetadataRepository.findAllByUserId(TEST_USER_ID)).thenReturn(List.of());
+
+        ontologyService.getAll(TEST_USER_ID, null);
+
+        verify(ontologyMetadataRepository).findAllByUserId(TEST_USER_ID);
+    }
+
+    @Test
+    void getAll_isPublishedOnly_callsFindAllByIsPublished() {
+        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of());
+
+        ontologyService.getAll(null, true);
+
+        verify(ontologyMetadataRepository).findAllByIsPublished(true);
+    }
+
+    @Test
+    void getAll_userIdAndIsPublished_callsCombinedFinder() {
+        when(ontologyMetadataRepository.findAllByUserIdAndIsPublished(TEST_USER_ID, false))
+                .thenReturn(List.of());
+
+        ontologyService.getAll(TEST_USER_ID, false);
+
+        verify(ontologyMetadataRepository).findAllByUserIdAndIsPublished(TEST_USER_ID, false);
+    }
+
+    @Test
+    void getAll_enrichesEachEntityWithBatchMetadata() {
+        OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setGraphName("http://example.org/o/1");
+        OntologyMetadataEntity e2 = new OntologyMetadataEntity();
+        e2.setGraphName("http://example.org/o/2");
+        // Entity with null graphName must be filtered out of the batch fetch but
+        // still mapped via the entity stream — its enrichMetadataFromModel call
+        // receives a null model.
+        OntologyMetadataEntity eNoGraph = new OntologyMetadataEntity();
+        eNoGraph.setGraphName(null);
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1, e2, eNoGraph));
+
+        Model batchModel = buildBatchMetadataModel();
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1", "http://example.org/o/2")))
+                .thenReturn(batchModel);
+
+        OntologyMetadataModel m1 = new OntologyMetadataModel();
+        OntologyMetadataModel m2 = new OntologyMetadataModel();
+        OntologyMetadataModel mNoGraph = new OntologyMetadataModel();
+        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
+        when(ontologyMetadataMapper.toDto(e2)).thenReturn(m2);
+        when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
+
+        CommentEntity comment = new CommentEntity();
+        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of(comment));
+        when(commentRepository.findByOntologyIRI("http://example.org/o/2")).thenReturn(List.of());
+        when(commentRepository.findByOntologyIRI(null)).thenReturn(List.of());
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+
+        List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
+
+        assertEquals(3, out.size());
+        // o/1 has skos:prefLabel "Slovník 1" in the batch model.
+        assertEquals("Slovník 1", m1.getName());
+        // o/2 has skos:prefLabel "Slovník 2" + dcterms:description "Popis 2".
+        assertEquals("Slovník 2", m2.getName());
+        assertEquals("Popis 2", m2.getPopis());
+        // Null-graph entity falls back to UtilityMethods-derived name (not asserting exact
+        // fallback value — what matters is enrichMetadataFromModel was called and returned
+        // without throwing).
+        assertNotNull(mNoGraph);
+        verify(commentRepository).findByOntologyIRI("http://example.org/o/1");
+    }
+
+    @Test
+    void getAll_emptyResult_returnsEmptyListAndSkipsBatchFetch() {
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of());
+
+        List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
+
+        assertTrue(out.isEmpty());
+        verify(jenaTDB2Repository, never()).fetchMetadataProperties(anyList());
+        verify(ontologyMetadataMapper, never()).toDto(any(OntologyMetadataEntity.class));
+    }
+
+    @Test
+    void getBySlugs_nullList_throws() {
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getBySlugs(null));
+        assertTrue(ex.getMessage().toLowerCase().contains("slugů")
+                || ex.getMessage().toLowerCase().contains("prázdn"));
+    }
+
+    @Test
+    void getBySlugs_emptyList_throws() {
+        assertThrows(OntologyException.class, () -> ontologyService.getBySlugs(List.of()));
+    }
+
+    @Test
+    void getBySlugs_overLimit_throws() {
+        List<String> sevenSlugs = List.of("a", "b", "c", "d", "e", "f", "g");
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getBySlugs(sevenSlugs));
+        assertTrue(ex.getMessage().contains("6"));
+    }
+
+    @Test
+    void getBySlugs_happyPath_enrichesViaBatchMetadata() {
+        OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setGraphName("http://example.org/o/1");
+        when(ontologyMetadataRepository.findBySlugIn(List.of("slug-1"))).thenReturn(List.of(e1));
+
+        Model batchModel = buildBatchMetadataModel();
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1")))
+                .thenReturn(batchModel);
+
+        OntologyMetadataModel m1 = new OntologyMetadataModel();
+        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
+        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of());
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+
+        List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));
+
+        assertEquals(1, out.size());
+        assertEquals("Slovník 1", m1.getName());
+    }
+
+    @Test
+    void getBySlugs_emptyRepoResult_returnsEmptyList() {
+        when(ontologyMetadataRepository.findBySlugIn(List.of("missing"))).thenReturn(List.of());
+
+        List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("missing"));
+
+        assertTrue(out.isEmpty());
+        verify(jenaTDB2Repository, never()).fetchMetadataProperties(anyList());
+    }
+
+    // ── helpers ────────────────────────────────────────────────────────
+
+    private Model nonEmptyOntologyModel() {
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource(TEST_GRAPH_NAME),
+                m.createProperty("http://www.w3.org/2000/01/rdf-schema#label"),
+                "x");
+        return m;
+    }
+
+    /**
+     * Build a batch model that {@code partitionModelBySubject} will split into per-graph
+     * submodels. Triples for o/1: only skos:prefLabel. For o/2: skos:prefLabel + dcterms:description.
+     * Lets enrichMetadataFromModel exercise both the prefLabel branch and the description branch.
+     */
+    private Model buildBatchMetadataModel() {
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Slovník 1"));
+        m.add(m.createResource("http://example.org/o/2"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Slovník 2"));
+        m.add(m.createResource("http://example.org/o/2"),
+                m.createProperty("http://purl.org/dc/terms/description"),
+                m.createLiteral("Popis 2"));
+        return m;
     }
 }
