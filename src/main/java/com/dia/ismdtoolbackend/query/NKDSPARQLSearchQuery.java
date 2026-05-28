@@ -71,8 +71,20 @@ public class NKDSPARQLSearchQuery {
     }
 
     /**
-     * Returns the count-only variant of {@link #buildOntologySearchQuery} —
-     * same WHERE clause, no pagination, single-row {@code ?total}.
+     * Returns the count-only variant of {@link #buildOntologySearchQuery}.
+     *
+     * <p>The trailing {@code OPTIONAL { ?resource dcterms:description ?desc }}
+     * is a Virtuoso planner workaround — without it, a lean WHERE with only
+     * {@code ?resource a owl:Ontology} + a 3-way {@code bif:contains} UNION
+     * silently returns zero rows for some search terms (e.g. "auto" matches
+     * inside word like "automotive"/"automaticky" in descriptions, but the
+     * planner picks a non-FTS path and yields 0). Adding any extra non-trivial
+     * triple nudges Virtuoso onto a working plan that
+     * matches the page query. The OPTIONAL is semantically a no-op for
+     * {@code COUNT(DISTINCT ?resource)} so it's safe.
+     *
+     * <p>See also the comment in {@link #buildConceptSearchQuery} on the
+     * related FILTER-EXISTS/UNION planner bug.
      */
     public static String buildOntologySearchCountQuery(String searchTerm) {
         String sanitizedTerm = sanitizeSearchTerm(searchTerm);
@@ -91,6 +103,7 @@ public class NKDSPARQLSearchQuery {
                     ?resource dcterms:description ?matchField .
                     ?matchField bif:contains %s .
                   }
+                  OPTIONAL { ?resource dcterms:description ?desc }
                 }
                 """.formatted(bifContains, bifContains, bifContains);
     }
