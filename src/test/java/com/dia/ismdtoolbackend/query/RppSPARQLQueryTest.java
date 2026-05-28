@@ -20,6 +20,7 @@ class RppSPARQLQueryTest {
         String q = RppSPARQLQuery.buildIsvsListQuery();
         assertDoesNotThrow(() -> QueryFactory.create(q));
         assertTrue(q.contains("https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy"));
+        assertTrue(q.contains("https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/určený-informační-systém-veřejné-správy"));
         assertTrue(q.contains("OPTIONAL"));
     }
 }

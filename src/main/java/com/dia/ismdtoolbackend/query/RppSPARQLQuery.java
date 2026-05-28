@@ -9,6 +9,9 @@ public class RppSPARQLQuery {
     //   Agenda  code: legislativní/sbírka/111/2009/pojem/má-kód-agendy        (returns A-prefixed codes)
     //   Agenda  name: legislativní/sbírka/111/2009/pojem/má-název-agendy
     //   ISVS    type: legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy
+    //                legislativní/sbírka/365/2000/pojem/určený-informační-systém-veřejné-správy
+    //                (upstream uses two disjoint classes — no subClassOf between them — so both
+    //                 must be enumerated)
     //   ISVS    code: agendový/104/pojem/má-identifikátor-isvs                (numeric string id)
     //   ISVS    name: legislativní/sbírka/329/2020/pojem/název-isvs           (note: no "má-" prefix)
     //   ISVS→Agenda:  legislativní/sbírka/329/2020/pojem/poskytuje-služby-pro-výkon-agendy
@@ -35,7 +38,11 @@ public class RppSPARQLQuery {
 
                 SELECT ?isvs ?code ?nazev ?agenda
                 WHERE {
-                  ?isvs a <https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy> ;
+                  VALUES ?isvsType {
+                    <https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/informační-systém-veřejné-správy>
+                    <https://slovník.gov.cz/legislativní/sbírka/365/2000/pojem/určený-informační-systém-veřejné-správy>
+                  }
+                  ?isvs a ?isvsType ;
                         <https://slovník.gov.cz/agendový/104/pojem/má-identifikátor-isvs> ?code ;
                         <https://slovník.gov.cz/legislativní/sbírka/329/2020/pojem/název-isvs> ?nazev .
                   OPTIONAL {
