@@ -80,7 +80,11 @@ class NkdSearchProviderTest {
         row.put("description", "Ontologie pro osoby");
         row.put("ontologyIri", "https://example.org/ontology/1");
 
-        when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of(row));
+        // Two-stage call: IRI list → page query → count query.
+        stubOntologyIriList(List.of("https://example.org/ontology/1"));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
+                .thenReturn(List.of(row))
+                .thenReturn(List.of(Map.of("total", "1")));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("osoby", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null, false, null);
@@ -90,6 +94,20 @@ class NkdSearchProviderTest {
         assertEquals(SearchType.ONTOLOGY, dto.getType());
         assertEquals(SearchSource.NKD, dto.getSource());
         assertEquals("Slovník osob", dto.getLabel());
+    }
+
+    /**
+     * Stubs the candidate-IRI-list query (the first NKD call when wantsOntologies
+     * is true). The IRI list query is the only one that contains "owl:Ontology"
+     * but does NOT invoke bif:contains, so we match on that fingerprint.
+     */
+    private void stubOntologyIriList(List<String> iris) {
+        List<Map<String, String>> rows = iris.stream()
+                .map(iri -> Map.of("resource", iri))
+                .toList();
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.argThat(
+                q -> q != null && q.contains("owl:Ontology") && !q.contains("bif:contains"))))
+                .thenReturn(rows);
     }
 
     @Test
@@ -106,10 +124,14 @@ class NkdSearchProviderTest {
         conceptRow.put("label", "Koncept");
         conceptRow.put("ontology", "https://example.org/ontology/1");
 
-        // First call = ontology search, second call = concept search
-        when(nkdSparqlClient.executeSelect(anyString()))
+        // Two-stage ontology path: IRI list → page + count queries.
+        // Concept path: page + count queries (no IRI list prelude).
+        stubOntologyIriList(List.of("https://example.org/ontology/1"));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
                 .thenReturn(List.of(ontologyRow))
-                .thenReturn(List.of(conceptRow));
+                .thenReturn(List.of(conceptRow))
+                .thenReturn(List.of(Map.of("total", "1")))
+                .thenReturn(List.of(Map.of("total", "1")));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
@@ -132,9 +154,12 @@ class NkdSearchProviderTest {
         row2.put("label", "Second");
         row2.put("ontology", "https://example.org/resource/1");
 
-        when(nkdSparqlClient.executeSelect(anyString()))
+        stubOntologyIriList(List.of("https://example.org/resource/1"));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
                 .thenReturn(List.of(row1))
-                .thenReturn(List.of(row2));
+                .thenReturn(List.of(row2))
+                .thenReturn(List.of(Map.of("total", "1")))
+                .thenReturn(List.of(Map.of("total", "1")));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
@@ -187,8 +212,10 @@ class NkdSearchProviderTest {
         ontologyRow.put("ontologyIri", "https://example.org/ontology/1");
         ontologyRow.put("modified", "2024-03-04");
 
-        // Page query → ontologyRow; concept-counts batch → cnt=42; both COUNT
-        // queries → total=1. Match by query content so each stub hits its query.
+        // IRI-list prelude → 1 candidate; page query → ontologyRow;
+        // concept-counts batch → cnt=42; ontology COUNT → total=1.
+        // Match by query content so each stub hits its query.
+        stubOntologyIriList(List.of("https://example.org/ontology/1"));
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("LIMIT")))
                 .thenReturn(List.of(ontologyRow));
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
@@ -230,6 +257,38 @@ class NkdSearchProviderTest {
         assertEquals("2025-06-15T10:30:00", dto.getLastModified());
         // Concept results don't carry conceptCount (it's an ontology-only field).
         assertNull(dto.getConceptCount());
+        assertEquals(0, result.totalOntologies());
+        assertEquals(1, result.totalConcepts());
+    }
+
+    @Test
+    void search_ontologyIriListFails_ontologySearchYieldsEmpty() {
+        // The IRI-list query is the first call when wantsOntologies is true.
+        // If it fails (upstream down, syntax bug, etc.) we must not blow up the
+        // whole search — concepts still come through, ontology results are empty.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        Map<String, String> conceptRow = new LinkedHashMap<>();
+        conceptRow.put("resource", "https://example.org/concept/1");
+        conceptRow.put("label", "Pojem");
+        conceptRow.put("ontology", "https://example.org/ontology/1");
+
+        // IRI list throws; concept page + concept count succeed.
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.argThat(
+                q -> q != null && q.contains("owl:Ontology") && !q.contains("bif:contains"))))
+                .thenThrow(new RuntimeException("upstream boom"));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("LIMIT")))
+                .thenReturn(List.of(conceptRow));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?resource)")))
+                .thenReturn(List.of(Map.of("total", "1")));
+
+        SearchProvider.SearchProviderResult result =
+                nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
+
+        assertEquals(1, result.results().size());
+        assertEquals("https://example.org/concept/1", result.results().get(0).getIri());
+        // Ontology branch returns empty results — totalOntologies must be 0,
+        // not null (we attempted the count and got a deterministic zero).
         assertEquals(0, result.totalOntologies());
         assertEquals(1, result.totalConcepts());
     }

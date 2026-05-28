@@ -27,18 +27,46 @@ public class NKDSPARQLSearchQuery {
     private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
 
     /**
+     * Builds a SPARQL SELECT query that lists every {@code owl:Ontology} IRI in NKD.
+     *
+     * <p>Used to materialise the candidate IRI list for {@link #buildOntologySearchQuery}
+     * and {@link #buildOntologySearchCountQuery}, which both need to restrict the
+     * {@code bif:contains} UNION to known ontology IRIs via {@code VALUES ?resource}.
+     * See those methods' javadoc for the Virtuoso planner bug that forces this
+     * two-stage approach.
+     */
+    public static String buildOntologyIriListQuery() {
+        return PREFIXES + """
+                SELECT DISTINCT ?resource WHERE {
+                  ?resource a owl:Ontology .
+                }
+                """;
+    }
+
+    /**
      * Builds a SPARQL SELECT query to search ontologies in NKD by text.
      * Searches across skos:prefLabel, dcterms:title, dcterms:description using bif:contains.
+     *
+     * <p><b>Two-stage call required.</b> Caller must first fetch the candidate ontology
+     * IRIs via {@link #buildOntologyIriListQuery} and pass them here. Virtuoso 07.20.3242
+     * cannot correctly evaluate {@code ?r a owl:Ontology} + multi-way {@code bif:contains}
+     * UNION in a single query — it either returns 0 rows (false negatives, lean form)
+     * or a cartesian product against every {@code owl:Ontology} resource (false positives,
+     * any OPTIONAL/EXISTS variant). Restricting with {@code VALUES ?resource} sidesteps
+     * the planner bug entirely. See upstream issue
+     * <a href="https://github.com/openlink/virtuoso-opensource/issues/960">#960</a>,
+     * open since 2021 with no fix.
      */
-    public static String buildOntologySearchQuery(String searchTerm, String lang, int limit, int offset) {
+    public static String buildOntologySearchQuery(String searchTerm, String lang, int limit, int offset,
+                                                   List<String> candidateIris) {
         String sanitizedTerm = sanitizeSearchTerm(searchTerm);
         String bifContains = "'\"" + sanitizedTerm + "*\"'";
         String safeLang = sanitizeLang(lang);
+        String valuesBlock = buildValuesBlock(candidateIris);
 
         return PREFIXES + """
                 SELECT DISTINCT ?resource ?label ?labelLang ?title ?description ?ontologyIri ?modified WHERE {
-                  ?resource a owl:Ontology .
-                
+                %s
                   {
                     ?resource skos:prefLabel ?matchField .
                     ?matchField bif:contains %s .
@@ -49,7 +77,7 @@ public class NKDSPARQLSearchQuery {
                     ?resource dcterms:description ?matchField .
                     ?matchField bif:contains %s .
                   }
-                
+
                   OPTIONAL {
                     ?resource skos:prefLabel ?prefLabel .
                     FILTER(LANG(?prefLabel) = "%s")
@@ -59,40 +87,30 @@ public class NKDSPARQLSearchQuery {
                   }
                   BIND(COALESCE(?prefLabel, ?anyLabel) AS ?label)
                   BIND(LANG(COALESCE(?prefLabel, ?anyLabel)) AS ?labelLang)
-                
+
                   OPTIONAL { ?resource dcterms:title ?title }
                   OPTIONAL { ?resource dcterms:description ?description }
                   OPTIONAL { ?resource dcterms:modified ?modified }
-                
+
                   BIND(?resource AS ?ontologyIri)
                 }
                 LIMIT %d OFFSET %d
-                """.formatted(bifContains, bifContains, bifContains, safeLang, limit, offset);
+                """.formatted(valuesBlock, bifContains, bifContains, bifContains, safeLang, limit, offset);
     }
 
     /**
-     * Returns the count-only variant of {@link #buildOntologySearchQuery}.
-     *
-     * <p>The trailing {@code OPTIONAL { ?resource dcterms:description ?desc }}
-     * is a Virtuoso planner workaround — without it, a lean WHERE with only
-     * {@code ?resource a owl:Ontology} + a 3-way {@code bif:contains} UNION
-     * silently returns zero rows for some search terms (e.g. "auto" matches
-     * inside word like "automotive"/"automaticky" in descriptions, but the
-     * planner picks a non-FTS path and yields 0). Adding any extra non-trivial
-     * triple nudges Virtuoso onto a working plan that
-     * matches the page query. The OPTIONAL is semantically a no-op for
-     * {@code COUNT(DISTINCT ?resource)} so it's safe.
-     *
-     * <p>See also the comment in {@link #buildConceptSearchQuery} on the
-     * related FILTER-EXISTS/UNION planner bug.
+     * Count-only variant of {@link #buildOntologySearchQuery}. Same WHERE semantics,
+     * same {@code VALUES ?resource} requirement — see that method's javadoc for the
+     * Virtuoso planner bug this works around.
      */
-    public static String buildOntologySearchCountQuery(String searchTerm) {
+    public static String buildOntologySearchCountQuery(String searchTerm, List<String> candidateIris) {
         String sanitizedTerm = sanitizeSearchTerm(searchTerm);
         String bifContains = "'\"" + sanitizedTerm + "*\"'";
+        String valuesBlock = buildValuesBlock(candidateIris);
 
         return PREFIXES + """
                 SELECT (COUNT(DISTINCT ?resource) AS ?total) WHERE {
-                  ?resource a owl:Ontology .
+                %s
                   {
                     ?resource skos:prefLabel ?matchField .
                     ?matchField bif:contains %s .
@@ -103,9 +121,28 @@ public class NKDSPARQLSearchQuery {
                     ?resource dcterms:description ?matchField .
                     ?matchField bif:contains %s .
                   }
-                  OPTIONAL { ?resource dcterms:description ?desc }
                 }
-                """.formatted(bifContains, bifContains, bifContains);
+                """.formatted(valuesBlock, bifContains, bifContains, bifContains);
+    }
+
+    /**
+     * Renders {@code VALUES ?resource { <iri1> <iri2> ... }} for the candidate
+     * IRI list, dropping any IRI that fails {@link SparqlIriValidator#isSafeHttpIri}
+     * (defence-in-depth — the upstream IRI-list query should only produce safe IRIs).
+     * An empty list emits {@code VALUES ?resource { }}, which makes the outer query
+     * return zero rows — the right answer when NKD has no ontologies at all.
+     */
+    private static String buildValuesBlock(List<String> candidateIris) {
+        StringBuilder sb = new StringBuilder("  VALUES ?resource { ");
+        if (candidateIris != null) {
+            for (String iri : candidateIris) {
+                if (SparqlIriValidator.isSafeHttpIri(iri)) {
+                    sb.append("<").append(iri).append("> ");
+                }
+            }
+        }
+        sb.append("}");
+        return sb.toString();
     }
 
     /**

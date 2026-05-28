@@ -37,10 +37,21 @@ public class NkdSearchProvider implements SearchProvider {
             return new SearchProviderResult(List.of(), 0, 0, 0);
         }
 
+        boolean wantsOntologies = type == null || type == SearchType.ONTOLOGY;
+
+        // Virtuoso 07.20.3242 can't correctly join `?r a owl:Ontology` with a
+        // multi-way bif:contains UNION (upstream issue #960). The ontology page
+        // and count queries instead restrict via `VALUES ?resource { ... }`, so
+        // we materialise the IRI list once here and pass it to both calls.
+        // ~11 IRIs in NKD; one extra round-trip per ontology-bearing search.
+        List<String> ontologyIriCandidates = wantsOntologies
+                ? fetchOntologyIriCandidates()
+                : List.of();
+
         // Role narrowing (CLASS/PROPERTY/RELATIONSHIP) skips the ontology branch
         // and pushes the role into the concept SPARQL via FILTER EXISTS on the OFN role IRI.
-        List<SearchResultDto> ontologyResults = (type == null || type == SearchType.ONTOLOGY)
-                ? searchOntologies(query, lang, limit, offset)
+        List<SearchResultDto> ontologyResults = wantsOntologies
+                ? searchOntologies(query, lang, limit, offset, ontologyIriCandidates)
                 : List.of();
 
         List<SearchResultDto> conceptResults = (type == null || type.isAnyConcept())
@@ -70,8 +81,8 @@ public class NkdSearchProvider implements SearchProvider {
         List<SearchResultDto> results = new ArrayList<>(deduped.values());
 
         Integer totalOntologies = SearchProvider.countIfMatches(
-                type == null || type == SearchType.ONTOLOGY,
-                () -> fetchOntologyTotal(query));
+                wantsOntologies,
+                () -> fetchOntologyTotal(query, ontologyIriCandidates));
         Integer totalConcepts = SearchProvider.countIfMatches(
                 type == null || type.isAnyConcept(),
                 () -> fetchConceptTotal(query, ontologyIris, relationTypes, type));
@@ -81,8 +92,36 @@ public class NkdSearchProvider implements SearchProvider {
         return new SearchProviderResult(results, total, totalOntologies, totalConcepts);
     }
 
-    private List<SearchResultDto> searchOntologies(String query, String lang, int limit, int offset) {
-        String sparql = NKDSPARQLSearchQuery.buildOntologySearchQuery(query, lang, limit, offset);
+    /**
+     * Fetches the IRI list of every {@code owl:Ontology} in NKD. Used to feed
+     * the {@code VALUES ?resource} clause of the search queries — see the comment
+     * in {@link #search} for why. Returns an empty list (not null) on upstream
+     * failure so the search degrades to zero ontology results rather than 503.
+     */
+    private List<String> fetchOntologyIriCandidates() {
+        try {
+            List<Map<String, String>> rows = nkdSparqlClient.executeSelect(
+                    NKDSPARQLSearchQuery.buildOntologyIriListQuery());
+            List<String> iris = new ArrayList<>(rows.size());
+            for (Map<String, String> row : rows) {
+                String iri = row.get("resource");
+                if (iri != null && !iri.isBlank()) {
+                    iris.add(iri);
+                }
+            }
+            return iris;
+        } catch (RuntimeException e) {
+            log.warn("NKD ontology-IRI-list query failed, ontology search will return empty: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<SearchResultDto> searchOntologies(String query, String lang, int limit, int offset,
+                                                    List<String> candidateIris) {
+        if (candidateIris.isEmpty()) {
+            return List.of();
+        }
+        String sparql = NKDSPARQLSearchQuery.buildOntologySearchQuery(query, lang, limit, offset, candidateIris);
         List<Map<String, String>> rows = nkdSparqlClient.executeSelect(sparql);
 
         List<SearchResultDto> results = new ArrayList<>();
@@ -179,9 +218,12 @@ public class NkdSearchProvider implements SearchProvider {
         }
     }
 
-    private Integer fetchOntologyTotal(String query) {
+    private Integer fetchOntologyTotal(String query, List<String> candidateIris) {
+        if (candidateIris.isEmpty()) {
+            return 0;
+        }
         try {
-            return fetchSingleCount(NKDSPARQLSearchQuery.buildOntologySearchCountQuery(query));
+            return fetchSingleCount(NKDSPARQLSearchQuery.buildOntologySearchCountQuery(query, candidateIris));
         } catch (RuntimeException e) {
             log.warn("NKD ontology total-count failed: {}", e.getMessage());
             return null;

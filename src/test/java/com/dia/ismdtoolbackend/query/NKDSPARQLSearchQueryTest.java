@@ -10,20 +10,51 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class NKDSPARQLSearchQueryTest {
 
+    private static final List<String> SAMPLE_CANDIDATE_IRIS = List.of(
+            "https://example.org/ontology/1",
+            "https://example.org/ontology/2");
+
+    @Test
+    void buildOntologyIriListQuery_listsAllOwlOntologies() {
+        String query = NKDSPARQLSearchQuery.buildOntologyIriListQuery();
+
+        assertTrue(query.contains("owl:Ontology"));
+        assertTrue(query.contains("?resource"));
+        assertFalse(query.contains("bif:contains"),
+                "IRI list query must not invoke the broken bif:contains planner path");
+    }
+
     @Test
     void buildOntologySearchQuery_containsBifContainsWithWildcard() {
-        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery("osoba", "cs", 20, 0);
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "osoba", "cs", 20, 0, SAMPLE_CANDIDATE_IRIS);
 
         assertTrue(query.contains("bif:contains"));
         assertTrue(query.contains("\"osoba*\""));
-        assertTrue(query.contains("owl:Ontology"));
         assertTrue(query.contains("LIMIT 20"));
         assertTrue(query.contains("OFFSET 0"));
     }
 
     @Test
+    void buildOntologySearchQuery_restrictsViaValuesNotTypeFilter() {
+        // Virtuoso bug #960: type-narrowing with bif:contains UNION returns wrong
+        // results. We restrict via VALUES ?resource over a pre-fetched candidate
+        // list instead. Asserting both the shape and the absence of the broken form.
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "osoba", "cs", 20, 0, SAMPLE_CANDIDATE_IRIS);
+
+        assertTrue(query.contains("VALUES ?resource"),
+                "Ontology search must restrict via VALUES, not type-filter (Virtuoso #960)");
+        assertTrue(query.contains("<https://example.org/ontology/1>"));
+        assertTrue(query.contains("<https://example.org/ontology/2>"));
+        assertFalse(query.contains("?resource a owl:Ontology"),
+                "Type-narrowing on ontology search triggers Virtuoso planner bug");
+    }
+
+    @Test
     void buildOntologySearchQuery_searchesCorrectFields() {
-        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery("test", "cs", 10, 0);
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "test", "cs", 10, 0, SAMPLE_CANDIDATE_IRIS);
 
         assertTrue(query.contains("skos:prefLabel"));
         assertTrue(query.contains("dcterms:title"));
@@ -32,17 +63,45 @@ class NKDSPARQLSearchQueryTest {
 
     @Test
     void buildOntologySearchQuery_appliesLanguagePreference() {
-        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery("test", "en", 10, 0);
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "test", "en", 10, 0, SAMPLE_CANDIDATE_IRIS);
 
         assertTrue(query.contains("LANG(?prefLabel) = \"en\""));
     }
 
     @Test
     void buildOntologySearchQuery_appliesPagination() {
-        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery("test", "cs", 50, 100);
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "test", "cs", 50, 100, SAMPLE_CANDIDATE_IRIS);
 
         assertTrue(query.contains("LIMIT 50"));
         assertTrue(query.contains("OFFSET 100"));
+    }
+
+    @Test
+    void buildOntologySearchQuery_unsafeIriInCandidateList_isStripped() {
+        List<String> mixed = List.of(
+                "https://example.org/safe",
+                "javascript:alert(1)",
+                "https://example.org/safe2");
+        String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
+                "test", "cs", 10, 0, mixed);
+
+        assertTrue(query.contains("<https://example.org/safe>"));
+        assertTrue(query.contains("<https://example.org/safe2>"));
+        assertFalse(query.contains("javascript:"),
+                "Unsafe IRI leaked into VALUES block");
+    }
+
+    @Test
+    void buildOntologySearchCountQuery_restrictsViaValues() {
+        String query = NKDSPARQLSearchQuery.buildOntologySearchCountQuery(
+                "test", SAMPLE_CANDIDATE_IRIS);
+
+        assertTrue(query.contains("COUNT(DISTINCT ?resource)"));
+        assertTrue(query.contains("VALUES ?resource"));
+        assertTrue(query.contains("<https://example.org/ontology/1>"));
+        assertFalse(query.contains("?resource a owl:Ontology"));
     }
 
     @Test
@@ -212,7 +271,7 @@ class NKDSPARQLSearchQueryTest {
     @Test
     void buildOntologySearchQuery_maliciousLang_isSanitized() {
         String query = NKDSPARQLSearchQuery.buildOntologySearchQuery(
-                "test", "cs\" ) FILTER(false) #", 10, 0);
+                "test", "cs\" ) FILTER(false) #", 10, 0, SAMPLE_CANDIDATE_IRIS);
         // The injected payload must not appear unescaped inside the string literal.
         assertFalse(query.contains("\" ) FILTER(false)"),
                 "Lang injection leaked into query: " + query);
