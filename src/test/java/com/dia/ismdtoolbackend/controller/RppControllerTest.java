@@ -5,7 +5,9 @@ import com.dia.ismdtoolbackend.config.RppConfig;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.client.RppSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.RppSearchResultDto;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.service.RppService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -133,5 +135,29 @@ class RppControllerTest {
         ArgumentCaptor<String> qCap = ArgumentCaptor.forClass(String.class);
         verify(rppService).searchAgendas(qCap.capture(), anyInt());
         org.junit.jupiter.api.Assertions.assertNull(qCap.getValue());
+    }
+
+    @Test
+    void agendaSearchService503BubblesUp() throws Exception {
+        when(rppService.searchAgendas(any(), anyInt()))
+                .thenThrow(new SparqlEndpointUnavailableException(RppSparqlClient.RPP_LABEL,
+                        "RPP agenda search fetch failed"));
+
+        mockMvc.perform(get("/api/rpp/agenda/search").param("q", "spr"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("RPP data nejsou momentálně dostupná."));
+    }
+
+    @Test
+    void isvsSearchService503BubblesUp() throws Exception {
+        when(rppService.searchIsvs(any(), anyInt(), any()))
+                .thenThrow(new SparqlEndpointUnavailableException(RppSparqlClient.RPP_LABEL,
+                        "RPP ISVS search fetch failed"));
+
+        mockMvc.perform(get("/api/rpp/ais/search").param("q", "alfa"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("RPP data nejsou momentálně dostupná."));
     }
 }
