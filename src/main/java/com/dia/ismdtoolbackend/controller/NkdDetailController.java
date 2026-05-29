@@ -87,7 +87,9 @@ public class NkdDetailController {
     ) {
         log.info("NKD ontology list-all requested, limit={}, offset={}, lang={}", limit, offset, lang);
 
+        long t0 = System.currentTimeMillis();
         GetNkdOntologyListDto dto = nkdDetailService.listAllOntologies(limit, offset, lang);
+        log.info("[timing] NkdDetailController.listAllNkdOntologies service call took {} ms", System.currentTimeMillis() - t0);
 
         return ResponseEntity.ok()
                 .body(ApiResponseDto.success(dto, "Seznam slovníků z NKD byl úspěšně načten."));

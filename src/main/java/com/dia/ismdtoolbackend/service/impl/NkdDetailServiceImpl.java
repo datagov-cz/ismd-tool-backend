@@ -242,6 +242,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
 
         String sortLang = (lang == null || lang.isBlank()) ? DEFAULT_LANG : lang;
 
+        long tStage1 = System.currentTimeMillis();
         List<String> pageIris;
         try {
             pageIris = fetchOntologyIrisPage(sortLang, limit, offset);
@@ -249,18 +250,27 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             log.warn("NKD SPARQL error while listing ontology IRIs: {}", e.getMessage());
             throw new NkdEndpointException("NKD SPARQL endpoint je nedostupný.", e);
         }
+        log.info("[timing] listAllOntologies stage1 (fetchOntologyIrisPage, {} iris) took {} ms",
+                pageIris.size(), System.currentTimeMillis() - tStage1);
 
+        long tStage2 = System.currentTimeMillis();
         Map<String, Integer> conceptCounts = pageIris.isEmpty()
                 ? Map.of()
                 : fetchConceptCountsForOntologies(pageIris);
+        log.info("[timing] listAllOntologies stage2 (fetchConceptCountsForOntologies) took {} ms",
+                System.currentTimeMillis() - tStage2);
 
         // Per-IRI CONSTRUCT round-trips reuse the existing extractor so labels
         // (multi-language) and dates match the detail endpoint exactly.
         // Items unfetchable from NKD are skipped, matching getOntologyList behaviour.
+        long tStage3 = System.currentTimeMillis();
         List<NkdOntologyListItemDto> items = new ArrayList<>(pageIris.size());
         for (String iri : pageIris) {
+            long tIri = System.currentTimeMillis();
             try {
                 Optional<OntologyDetailModel> detail = nkdSparqlClient.fetchPublishedOntology(iri);
+                long iriMs = System.currentTimeMillis() - tIri;
+                log.info("[timing] listAllOntologies stage3 fetchPublishedOntology iri={} took {} ms", iri, iriMs);
                 if (detail.isEmpty()) {
                     log.info("NKD ontology vanished between list and fetch, skipping: {}", iri);
                     continue;
@@ -271,9 +281,14 @@ public class NkdDetailServiceImpl implements NkdDetailService {
                         iri, e.getMessage());
             }
         }
+        log.info("[timing] listAllOntologies stage3 (per-IRI CONSTRUCT loop, {} iris) took {} ms total",
+                pageIris.size(), System.currentTimeMillis() - tStage3);
 
+        long tStage4 = System.currentTimeMillis();
         int totalOntologies = getCachedTotalOntologies();
         int totalConcepts = getCachedTotalConcepts();
+        log.info("[timing] listAllOntologies stage4 (cached totals) took {} ms",
+                System.currentTimeMillis() - tStage4);
 
         GetNkdOntologyListDto response = new GetNkdOntologyListDto();
         response.setOntologies(items);
