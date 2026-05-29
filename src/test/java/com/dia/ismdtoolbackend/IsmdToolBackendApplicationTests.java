@@ -6,7 +6,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
-@ActiveProfiles("test")
+@ActiveProfiles("junit")
 @TestPropertySource(properties = {
         "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
         "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",

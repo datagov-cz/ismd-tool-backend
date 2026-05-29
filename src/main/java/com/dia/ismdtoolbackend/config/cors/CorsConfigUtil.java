@@ -51,7 +51,7 @@ public class CorsConfigUtil {
         return config;
     }
 
-    public CorsConfiguration createStageCorsConfiguration() {
+    public CorsConfiguration createTestCorsConfiguration() {
         var config = new CorsConfiguration();
         config.setAllowedOrigins(List.of("https://www.domain.org"));
         config.setAllowedOriginPatterns(DEV_PATTERNS);

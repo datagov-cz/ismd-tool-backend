@@ -17,12 +17,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Test for {@link CorsConfigUtil} when we simulate stage environment.
+ * Test for {@link CorsConfigUtil} when we simulate test environment.
  *
  * @see CorsConfig
  */
 @SpringBootTest
-@ActiveProfiles("stage")
+@ActiveProfiles("junit")
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
@@ -34,20 +34,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.security.oauth2.client.provider.keycloak-test.jwk-set-uri=http://localhost/jwks",
         "spring.security.oauth2.client.provider.keycloak-test.user-name-attribute=preferred_username",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost/jwks",
-        "spring.datasource.url=jdbc:h2:mem:testdb-stage;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
+        "spring.datasource.url=jdbc:h2:mem:testdb-testenv;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
         "spring.datasource.username=sa",
         "spring.datasource.password=password",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.database=h2",
         "spring.liquibase.liquibase-schema=PUBLIC"
 })
-class CorsConfigStageTest {
+class CorsConfigTestEnvTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @Test
-    void stageFrontendDomain() throws Exception {
+    void testFrontendDomain() throws Exception {
         String testOrigin = "https://www.domain.org";
 
         mockMvc.perform(get("/actuator/health")

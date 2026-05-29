@@ -141,12 +141,12 @@ class JenaTDB2RepositorySearchTest {
     }
 
     @Test
-    void init_textModuleMissingInTestProfile_logsAndContinues() {
-        // Same misconfig signal as above, but in the test profile we must NOT throw —
+    void init_textModuleMissingInJunitProfile_logsAndContinues() {
+        // Same misconfig signal as above, but in the junit profile we must NOT throw —
         // tests legitimately run without a TextDataset wired and shouldn't all fail
         // at @PostConstruct.
         MockEnvironment testEnv = new MockEnvironment();
-        testEnv.setActiveProfiles("test");
+        testEnv.setActiveProfiles("junit");
 
         when(mockConnection.queryAsk(anyString())).thenReturn(true);
 

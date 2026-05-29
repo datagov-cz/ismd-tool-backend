@@ -8,7 +8,7 @@ This document lists all environment variables for running the ISMD Tool Backend 
 - **Required**: No
 - **Description**: Active Spring profile(s)
 - **Default**: `default` (uses `application.properties`)
-- **Possible values**: `local`, `stage`, `production`
+- **Possible values**: `local`, `dev`, `test`, `production`
 - **Example**: `SPRING_PROFILES_ACTIVE=local`
 
 ## Setting Environment Variables
@@ -31,7 +31,7 @@ export SPRING_PROFILES_ACTIVE=local
 services:
   ismd-backend:
     environment:
-      - SPRING_PROFILES_ACTIVE=stage
+      - SPRING_PROFILES_ACTIVE=test
 ```
 
 ### Kubernetes
@@ -84,7 +84,7 @@ While Keycloak is primarily configured via `application-*.properties`, you can o
 
 1. ⚠️ **NEVER commit environment variable values to git**
 2. ⚠️ **Use secret management systems** (Azure Key Vault, AWS Secrets Manager, etc.)
-3. ⚠️ **Use different credentials** for each environment (local, stage, production)
+3. ⚠️ **Use different credentials** for each environment (local, dev, test, production)
 4. ✅ **Document** which variables are required for each environment
 5. ✅ **Use strong passwords** for production databases
 6. ✅ **Rotate credentials regularly** in production

@@ -90,7 +90,7 @@ The application uses profile-based configuration:
 - **`application.properties`** - Common properties and defaults
 - **`application-local.properties`** - Local development configuration (active by default)
 - **`application-dev.properties`** - Development environment
-- **`application-stage.properties`** - Staging environment
+- **`application-test.properties`** - Test environment (deployed)
 - **`application-production.properties`** - Production environment
 
 For local development, the `local` profile is active by default.
