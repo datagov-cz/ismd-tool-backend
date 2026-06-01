@@ -148,8 +148,7 @@ public class OntologyDetailExtractor {
                 if (conceptIri.equals(domain)) {
                     ConceptPropertiesModel propertyModel = new ConceptPropertiesModel();
 
-                    @SuppressWarnings("unchecked")
-                    Map<String, String> nameMap = (Map<String, String>) conceptMap.get(NAZEV);
+                    Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), conceptIri, NAZEV);
                     String name = extractFirstAvailableName(nameMap);
 
                     propertyModel.setName(name);
@@ -223,8 +222,7 @@ public class OntologyDetailExtractor {
                 if (conceptIri.equals(domain)) {
                     ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
 
-                    @SuppressWarnings("unchecked")
-                    Map<String, String> nameMap = (Map<String, String>) conceptMap.get(NAZEV);
+                    Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), relationshipIri, NAZEV);
                     String name = extractFirstAvailableName(nameMap);
 
                     relationshipModel.setName(name);
@@ -286,6 +284,47 @@ public class OntologyDetailExtractor {
         return nameMap.values().iterator().next();
     }
 
+    /**
+     * Coerce a raw multilingual property value from the {@link ConceptProcessor} export map
+     * into a strict {@code Map<String, String>} (lang → single label).
+     *
+     * <p>{@code ConceptProcessor.addValueToLanguageMap} promotes a language entry to a
+     * {@code List} when a concept carries more than one value for the same language
+     * (e.g. two {@code skos:prefLabel @cs}). The detail contract is single-valued, so we
+     * keep the first String and warn-log the dropped extras. Without this, the raw
+     * {@code (Map<String, String>)} cast slips a {@code List} past type erasure and Jackson
+     * later throws {@link ClassCastException} while serializing the whole ontology detail.
+     */
+    private Map<String, String> coerceToStringMap(Object value, String conceptIri, String field) {
+        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+            return null;
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (!(e.getKey() instanceof String lang)) {
+                continue;
+            }
+            Object v = e.getValue();
+            if (v instanceof String s) {
+                out.put(lang, s);
+            } else if (v instanceof List<?> list) {
+                String first = list.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .findFirst()
+                        .orElse(null);
+                if (first != null) {
+                    out.put(lang, first);
+                    if (list.size() > 1) {
+                        log.warn("Concept {} has {} '{}' values for lang '{}'; keeping first, dropping {} extra(s)",
+                                conceptIri, list.size(), field, lang, list.size() - 1);
+                    }
+                }
+            }
+        }
+        return out.isEmpty() ? null : out;
+    }
+
     @SuppressWarnings("unchecked")
     private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap,
                                                                           ConceptData conceptData,
@@ -313,10 +352,10 @@ public class OntologyDetailExtractor {
         return OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(conceptIri)
                 .types(conceptTypes)
-                .name((Map<String, String>) conceptMap.get(NAZEV))
+                .name(coerceToStringMap(conceptMap.get(NAZEV), conceptIri, NAZEV))
                 .alternativeName((Map<String, Object>) conceptMap.get(ALTERNATIVNI_NAZEV))
-                .definition((Map<String, String>) conceptMap.get(DEFINICE))
-                .description((Map<String, String>) conceptMap.get(POPIS))
+                .definition(coerceToStringMap(conceptMap.get(DEFINICE), conceptIri, DEFINICE))
+                .description(coerceToStringMap(conceptMap.get(POPIS), conceptIri, POPIS))
                 .identifier((String) conceptMap.get(IDENTIFIKATOR))
                 .exactMatches((List<String>) conceptMap.get(EKVIVALENTNI_POJEM))
                 .domain((String) conceptMap.get(DEFINICNI_OBOR))
