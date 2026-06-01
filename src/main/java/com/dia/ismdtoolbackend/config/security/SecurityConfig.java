@@ -19,7 +19,7 @@ import org.springframework.util.StringUtils;
 
 @Slf4j
 @Configuration
-@Profile("!test")
+@Profile("!junit")
 @EnableWebSecurity
 @EnableMethodSecurity
 @RequiredArgsConstructor
