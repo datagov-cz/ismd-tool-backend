@@ -1,0 +1,157 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ismd-postgres-dev
+    environment:
+      POSTGRES_DB: ismd_tool_db
+      POSTGRES_USER: ismd_user
+      POSTGRES_PASSWORD: ismd_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - ismd-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ismd_user -d ismd_tool_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: ismd-keycloak-dev
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://ismd-postgres-dev:5432/keycloak_db
+      KC_DB_USERNAME: ismd_user
+      KC_DB_PASSWORD: ismd_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # Optional CAAIS IdP configuration (used only with the caais profile)
+      CAAIS_CLIENT_ID: ${CAAIS_CLIENT_ID:-your-client-id-here}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/keycloak/:/opt/keycloak/data/import/
+    networks:
+      - ismd-network
+    depends_on:
+      - postgres
+
+  nginx-mtls:
+    image: nginx:1.25-alpine
+    container_name: ismd-nginx-mtls
+    profiles:
+      - caais
+    volumes:
+      - ./docker/nginx-mtls/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Internal TLS certificate (Keycloak -> nginx)
+      - type: bind
+        source: ./docker/nginx-mtls/certs/internal.crt
+        target: /etc/nginx/certs/internal/internal.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docker/nginx-mtls/certs/internal.key
+        target: /etc/nginx/certs/internal/internal.key
+        read_only: true
+        bind:
+          create_host_path: false
+      # CAAIS client certificate (nginx -> CAAIS)
+      - type: bind
+        source: ./docker/keycloak/secrets/certifikate.crt
+        target: /etc/nginx/certs/caais/certifikate.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docker/keycloak/secrets/private.key
+        target: /etc/nginx/certs/caais/private.key
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - ismd-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  fuseki:
+    # Default: pull pre-built image from GHCR (~10s vs ~15min local build).
+    # To build from local source, use docker-compose.fuseki-build.yml override.
+    image: ${TOOL_FUSEKI_IMAGE:-ghcr.io/datagov-cz/ismd-tool-fuseki-dev:latest}
+    pull_policy: ${TOOL_FUSEKI_PULL_POLICY:-missing}
+    # Bind to loopback only: Fuseki ships without authentication in this
+    # compose setup (no shiro.ini), so its management API and SPARQL
+    # endpoints would be fully open. 0.0.0.0 would expose the unauth
+    # endpoints to every host on the LAN. 127.0.0.1 keeps host-side dev
+    # tooling (browser UI, IDE-run backend) working while preventing
+    # remote access. Production is not affected — ACA uses
+    # external_enabled = false with .internal domain routing.
+    ports:
+      - "127.0.0.1:3030:3030"
+    volumes:
+      - fuseki_tdb2:/opt/fuseki/run/databases/tdb2/ismd-tool-dataset
+      - fuseki_lucene:/opt/fuseki/run/databases/lucene/ismd-tool-dataset
+      - ./fuseki-config.ttl:/opt/fuseki/run/configuration/config.ttl
+    networks:
+      - ismd-network
+
+  backend:
+    # Default: pull pre-built dev image from GHCR.
+    # To build from local source, use docker-compose.build.yml override.
+    image: ${TOOL_BACKEND_IMAGE:-ghcr.io/datagov-cz/ismd-tool-backend-dev:latest}
+    pull_policy: ${TOOL_BACKEND_PULL_POLICY:-missing}
+    container_name: ismd-tool-backend
+    profiles:
+      - full-backend
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      POSTGRES_URL: jdbc:postgresql://ismd-postgres-dev:5432/ismd_tool_db
+      POSTGRES_USER: ismd_user
+      POSTGRES_PASSWORD: ismd_password
+      FUSEKI_URL: http://fuseki:3030/ismd-tool-dataset
+      KEYCLOAK_ISSUER_URI: http://ismd-keycloak-dev:8080/realms/ismd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ismd
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://ismd-keycloak-dev:8080/realms/ismd/protocol/openid-connect/certs
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      CORS_ALLOWED_ORIGINS: http://localhost:3001
+    extra_hosts:
+      - "localhost:host-gateway"
+    networks:
+      - ismd-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      fuseki:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  postgres_keycloak_data:
+    driver: local
+  fuseki_tdb2:
+    driver: local
+  fuseki_lucene:
+    driver: local
+
+networks:
+  ismd-network:
+    name: ismd-network
+    driver: bridge

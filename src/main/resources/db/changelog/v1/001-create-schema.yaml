@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-schema
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT COUNT(*) FROM information_schema.schemata
+                  WHERE schema_name = 'ismd_schema'
+      changes:
+        - sql:
+            sql: CREATE SCHEMA IF NOT EXISTS ismd_schema

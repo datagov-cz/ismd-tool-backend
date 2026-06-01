@@ -1,5 +1,9 @@
 name: Trigger Deployment
 
+concurrency:
+  group: deploy-tool-backend-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  cancel-in-progress: false
+
 on:
   # Triggered when a new image is published
   workflow_run:
@@ -149,7 +153,7 @@ jobs:
           fi
           
           echo "Validating image: $IMAGE"
-          if ! docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+          if ! docker buildx imagetools inspect "$IMAGE" >/dev/null; then
             echo "ERROR: Image manifest not found for $IMAGE" >&2
             exit 1
           fi
