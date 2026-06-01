@@ -37,7 +37,6 @@ public class IsmdSearchProvider implements SearchProvider {
     private static final String SKOS_ALT_LABEL = "http://www.w3.org/2004/02/skos/core#altLabel";
     private static final String DCTERMS_DESCRIPTION = "http://purl.org/dc/terms/description";
     private static final String SKOS_DEFINITION = "http://www.w3.org/2004/02/skos/core#definition";
-    private static final String SKOS_CONCEPT = "http://www.w3.org/2004/02/skos/core#Concept";
     private static final String SKOS_CONCEPT_SCHEME = "http://www.w3.org/2004/02/skos/core#ConceptScheme";
     private static final String OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
@@ -254,6 +253,7 @@ public class IsmdSearchProvider implements SearchProvider {
                 query, userId, isAdmin, publishedFilter, filter, limit, fusekiDegraded, type);
 
         List<SearchResultDto> merged = mergeByIri(raw.pg(), raw.fuseki());
+        backfillPgIdsForFusekiOnlyRows(merged);
         enrichPgOnlyLabels(merged, raw.fusekiIris(), lang, fusekiDegraded);
         return applyRelationTypeFilter(merged, relationTypes);
     }
@@ -378,6 +378,60 @@ public class IsmdSearchProvider implements SearchProvider {
         log.debug("After merge+dedup: {} results (PG={}, Fuseki={}, unique={})",
                 mergedResults.size(), pg.size(), fuseki.size(), merged.size());
         return mergedResults;
+    }
+
+    /**
+     * Backfills the Postgres {@code id} (and other PG-sourced metadata) on rows that
+     * came back Fuseki-only ({@code matchedBy=SPARQL}, so {@code id == null}). A
+     * concept can be Fuseki-only here even when a {@code concept_metadata} row
+     * exists: PG text search matches on {@code concept_name}/{@code slug}, so a hit
+     * that only matched on {@code definition}/{@code description} in the Fuseki text
+     * index would never have been returned by the PG side. One batched lookup by
+     * IRI closes that gap.
+     * <p>
+     * Visibility is safe: every IRI reaching the merge already lives in a graph the
+     * caller may see (Fuseki was scoped to {@code visibleGraphNames}), so fetching
+     * the same IRI's PG row exposes nothing new. Failure is non-fatal — rows keep
+     * their null id and the search still succeeds.
+     */
+    private void backfillPgIdsForFusekiOnlyRows(List<SearchResultDto> merged) {
+        List<String> orphanIris = merged.stream()
+                .filter(dto -> dto.getId() == null && dto.getIri() != null)
+                .map(SearchResultDto::getIri)
+                .distinct()
+                .toList();
+        if (orphanIris.isEmpty()) return;
+
+        Map<String, ConceptMetadataEntity> byIri;
+        try {
+            List<ConceptMetadataEntity> rows = conceptMetadataRepository.findByConceptIriIn(orphanIris);
+            byIri = new HashMap<>(rows.size() * 2);
+            for (ConceptMetadataEntity e : rows) {
+                if (e.getConceptIri() != null) byIri.put(e.getConceptIri(), e);
+            }
+        } catch (RuntimeException e) {
+            log.warn("PG id backfill for {} Fuseki-only rows failed, leaving ids null: {}",
+                    orphanIris.size(), e.getMessage());
+            return;
+        }
+        if (byIri.isEmpty()) return;
+
+        for (SearchResultDto dto : merged) {
+            if (dto.getId() != null || dto.getIri() == null) continue;
+            ConceptMetadataEntity e = byIri.get(dto.getIri());
+            if (e == null) continue;
+
+            dto.setId(e.getId());
+            if (dto.getSlug() == null) dto.setSlug(e.getSlug());
+            if (dto.getConceptType() == null) dto.setConceptType(e.getConceptType());
+            if (dto.getOntologyIri() == null) dto.setOntologyIri(e.getGraphName());
+            if (dto.getIsPublished() == null) dto.setIsPublished(e.getIsPublished());
+            if (dto.getLastModified() == null && e.getUpdatedAt() != null) {
+                dto.setLastModified(e.getUpdatedAt().toString());
+            }
+        }
+        log.debug("PG id backfill: matched {}/{} Fuseki-only IRIs to PG rows",
+                byIri.size(), orphanIris.size());
     }
 
     /**
@@ -526,27 +580,21 @@ public class IsmdSearchProvider implements SearchProvider {
     /**
      * Classifies a Fuseki search hit by its rdf:type set (pipe-separated).
      * An ontology / concept scheme always carries skos:ConceptScheme or owl:Ontology;
-     * a concept carries skos:Concept. Ambiguous or missing types fall back to CONCEPT,
-     * which matches how the text index was historically consumed.
+     * a concept carries skos:Concept. The ontology node in our data is both
+     * ConceptScheme and Ontology but never skos:Concept, so an ontology marker is
+     * decisive. Everything else — including skos:Concept, ambiguous, or missing
+     * types — falls back to CONCEPT, matching how the text index was historically
+     * consumed.
      */
     private static SearchType classifyByRdfTypes(String types) {
         if (types == null || types.isEmpty()) {
             return SearchType.CONCEPT;
         }
-        boolean isOntology = false;
-        boolean isConcept = false;
         for (String t : types.split("\\|")) {
             if (SKOS_CONCEPT_SCHEME.equals(t) || OWL_ONTOLOGY.equals(t)) {
-                isOntology = true;
-            } else if (SKOS_CONCEPT.equals(t)) {
-                isConcept = true;
+                return SearchType.ONTOLOGY;
             }
         }
-        // skos:Concept wins over skos:ConceptScheme only if the resource is not also
-        // an ontology — the ontology node in our data is both ConceptScheme and Ontology
-        // but never skos:Concept, so this ordering is safe.
-        if (isOntology) return SearchType.ONTOLOGY;
-        if (isConcept) return SearchType.CONCEPT;
         return SearchType.CONCEPT;
     }
 
@@ -688,6 +736,7 @@ public class IsmdSearchProvider implements SearchProvider {
 
     private SearchResultDto mapConceptEntity(ConceptMetadataEntity e) {
         return SearchResultDto.builder()
+                .id(e.getId())
                 .iri(e.getConceptIri())
                 .slug(e.getSlug())
                 .label(e.getConceptName())
