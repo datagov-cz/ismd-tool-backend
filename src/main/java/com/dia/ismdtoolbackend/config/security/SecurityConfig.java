@@ -212,16 +212,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
                         .anyRequest().denyAll()
                 )
-                // Disable CSRF for stateless JWT API
+                // CSRF disabled: auth is stateless Bearer-JWT only (no cookie/session
+                // credential exists), so cross-site request forgery is not possible.
                 .csrf(AbstractHttpConfigurer::disable)
-                // Allow session creation for OAuth2 login flow (stores authentication after Keycloak redirect)
+                // Stateless session management — identity comes solely from the validated
+                // Bearer JWT. The interactive OIDC login flow lives in the frontend
+                // (NextAuth + Keycloak, brokered via CAAIS); this backend is a pure
+                // resource server and never initiates a browser login.
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
-                )
-                // OAuth2 Login for browser-based authentication (Keycloak)
-                .oauth2Login(oauth2 -> oauth2
-                        .defaultSuccessUrl("/", true)
-                        .failureUrl("/login?error=true")
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 // OAuth2 Resource Server for JWT validation
                 .oauth2ResourceServer(oauth2 -> oauth2
