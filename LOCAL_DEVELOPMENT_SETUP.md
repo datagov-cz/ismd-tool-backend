@@ -27,8 +27,13 @@ Before you begin, ensure you have the following installed:
 | **Docker**         | Latest                                | https://www.docker.com/products/docker-desktop            |
 | **Docker Compose** | Latest (included with Docker Desktop) | -                                                         |
 | **Git**            | Latest                                | https://git-scm.com/downloads                             |
-| **Common Library** | Latest dev*                           | https://github.com/datagov-cz/ismd-validator-backend.git  |
-*build version in pom.xml must match
+
+> **Common Library (`com.dia:ismd-validator-common`)**: You do **not** need to clone or build this yourself.
+> It is consumed as a prebuilt artifact from **GitHub Packages** (the version is pinned in `pom.xml`,
+> currently `1.0.12`). All you need is GitHub Packages authentication configured in `~/.m2/settings.xml`
+> with a token that has the `read:packages` scope — see
+> [GitHub Packages authentication fails](#maven-issues) under Troubleshooting. `mvn clean install` then
+> downloads it automatically.
 
 
 
@@ -137,7 +142,7 @@ This will:
 - Run tests
 - Build the JAR file
 
-**Note**: This requires access to GitHub Packages for the `ismd-validator-common` dependency. Ensure you have configured Maven authentication in `~/.m2/settings.xml`.
+**Note**: This downloads the prebuilt `com.dia:ismd-validator-common` artifact (version pinned in `pom.xml`) from GitHub Packages. It will fail with a `401`/`403` until you configure Maven authentication in `~/.m2/settings.xml` — see [GitHub Packages authentication fails](#maven-issues) for the exact `settings.xml` and required token scope (`read:packages`). You do not need to clone or build the common library locally.
 
 ---
 
@@ -1006,7 +1011,7 @@ For issues and questions:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-12-31
+**Document Version**: 1.1
+**Last Updated**: 2026-06-02
 **Author**: Richard Koubek
 **Project**: ISMD Tool Backend
