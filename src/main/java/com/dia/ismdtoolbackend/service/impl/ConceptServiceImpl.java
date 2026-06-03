@@ -168,6 +168,13 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
+        // The class-detail read traverses only this concept's own graph, so a
+        // property/relationship whose rdfs:domain points here but which lives in a
+        // different vocabulary graph would be dropped (it is still visible from the
+        // property's own detail). Merge those cross-graph members in so the class
+        // shows them too. Additive only — safe for the downstream deviation check.
+        rawModel.add(jenaTDB2Repository.fetchExternalDomainMembers(conceptIri));
+
         OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(rawModel, conceptIri);
 
         if (conceptDetail == null) {
