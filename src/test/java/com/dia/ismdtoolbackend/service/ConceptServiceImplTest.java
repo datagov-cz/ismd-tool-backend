@@ -116,6 +116,11 @@ class ConceptServiceImplTest {
 
         testModel = ModelFactory.createDefaultModel();
         testResource = testModel.createResource(TEST_CONCEPT_IRI);
+
+        // getConceptDetail merges cross-graph rdfs:domain members into the fetched
+        // graph; default to no extra members so existing detail tests are unaffected.
+        when(jenaTDB2Repository.fetchExternalDomainMembers(anyString()))
+                .thenReturn(ModelFactory.createDefaultModel());
     }
 
     // ========== createConcept Tests ==========

@@ -418,6 +418,56 @@ public class JenaTDB2Repository {
         return fetchMetadataProperties(List.of(graphName));
     }
 
+    /**
+     * Returns the triples describing every property/relationship across ALL local
+     * graphs whose {@code rdfs:domain} is {@code conceptIri} — i.e. the members
+     * that point <em>at</em> this concept. Merged into the concept's own graph by
+     * the detail pipeline so the class-detail read
+     * ({@link com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor#extractConceptPropertiesFromModel})
+     * sees properties that live in a different vocabulary graph than the class.
+     *
+     * <p>The class-detail read fetches only the class's own named graph, so a
+     * cross-vocabulary {@code property rdfs:domain class} edge (the property living
+     * in graph A, the class in graph B) was invisible from the class side even
+     * though the property's own detail showed it. This closes that asymmetry.
+     *
+     * <p>Returns exactly the triples the extractor reads off each member resource:
+     * {@code rdf:type}, {@code skos:prefLabel}, {@code rdfs:domain}, {@code rdfs:range}.
+     */
+    public Model fetchExternalDomainMembers(String conceptIri) {
+        if (!SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            log.warn("Skipping fetchExternalDomainMembers for unsafe concept IRI");
+            return ModelFactory.createDefaultModel();
+        }
+        return executor.execute(
+                "fetching cross-graph domain members for " + conceptIri,
+                "Failed to fetch cross-graph domain members",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("CONSTRUCT { ");
+                    pss.append("  ?member rdf:type ?type . ");
+                    pss.append("  ?member rdfs:domain ?concept . ");
+                    pss.append("  ?member skos:prefLabel ?label . ");
+                    pss.append("  ?member rdfs:range ?range . ");
+                    pss.append("} WHERE { GRAPH ?g { ");
+                    pss.append("  ?member rdfs:domain ?concept . ");
+                    pss.append("  ?member rdf:type ?type . ");
+                    pss.append("  OPTIONAL { ?member skos:prefLabel ?label } ");
+                    pss.append("  OPTIONAL { ?member rdfs:range ?range } ");
+                    pss.append("} }");
+                    pss.setIri("concept", conceptIri);
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        Model result = qExec.execConstruct();
+                        log.debug("Fetched {} cross-graph domain-member triples for {}",
+                                result.size(), conceptIri);
+                        return result;
+                    }
+                });
+    }
+
     public List<String> findRelatedConceptUris(String conceptUri, String graphName) {
         return executor.execute(
                 "finding related concepts for " + conceptUri + " in graph " + graphName,
