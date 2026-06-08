@@ -26,13 +26,99 @@ public final class OFNTypeNormalizer {
 
     private OFNTypeNormalizer() {}
 
+    /**
+     * Read/NKD-path normalization with no authoritative graph IRI. {@code inScheme}
+     * is derived per-concept by stripping {@code /pojem/} from the concept IRI
+     * ({@link #extractOntologyIRIFromConcept}). Used where there is no single
+     * owning vocabulary (e.g. {@code OntologyDetailExtractor}, which mixes graphs).
+     */
     public static int normalize(Model model) {
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
         count += normalizeOwlClassConcepts(model);
         count += normalizePropertyConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
+        count += ensureOwnedConceptsHaveInScheme(model, null);
         return count;
+    }
+
+    /**
+     * Upload-path normalization. {@code graphName} is the authoritative vocabulary
+     * IRI derived from the RDF; every {@code skos:Concept} <b>under that namespace</b>
+     * that lacks an {@code skos:inScheme} gets {@code inScheme → graphName} (not the
+     * {@code /pojem/}-stripped value, which can diverge). Concepts whose IRI is NOT
+     * under {@code graphName} (alien / referenced concepts) are left untouched — they
+     * are not claimed as owned by this vocabulary.
+     *
+     * @param model     the parsed upload model
+     * @param graphName the authoritative vocabulary IRI (must be non-null)
+     */
+    public static int normalize(Model model, String graphName) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null for the upload-path normalizer");
+        }
+        int count = 0;
+        count += ensureConceptsHaveSkosType(model);
+        count += normalizeOwlClassConcepts(model);
+        count += normalizePropertyConcepts(model);
+        count += convertLabelsToSkosPrefLabel(model);
+        count += ensureOwnedConceptsHaveInScheme(model, graphName);
+        return count;
+    }
+
+    /**
+     * Guarantees the resolution invariant for owned concepts: every
+     * {@code skos:Concept} carries a {@code skos:inScheme}. When {@code graphName}
+     * is provided, only concepts under that namespace are touched and they receive
+     * {@code inScheme → graphName} authoritatively; alien concepts are skipped.
+     * When {@code graphName} is null (read path), {@code inScheme} is derived by
+     * stripping {@code /pojem/} from the concept IRI, and concepts that can't yield
+     * a derived scheme are left as-is.
+     */
+    private static int ensureOwnedConceptsHaveInScheme(Model model, String graphName) {
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        int count = 0;
+
+        List<Resource> concepts = new ArrayList<>();
+        ResIterator iter = model.listResourcesWithProperty(RDF.type, SKOS.Concept);
+        while (iter.hasNext()) {
+            Resource r = iter.next();
+            if (r.isURIResource()) {
+                concepts.add(r);
+            }
+        }
+
+        for (Resource concept : concepts) {
+            if (concept.hasProperty(skosInScheme)) {
+                continue;
+            }
+            String scheme;
+            if (graphName != null) {
+                if (!isOwnedConcept(concept.getURI(), graphName)) {
+                    continue;
+                }
+                scheme = graphName;
+            } else {
+                scheme = extractOntologyIRIFromConcept(concept.getURI());
+                if (scheme == null) {
+                    continue;
+                }
+            }
+            concept.addProperty(skosInScheme, model.getResource(scheme));
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Ownership predicate mirroring the resolution invariant
+     * ({@code STRSTARTS(conceptIri, scheme)} in
+     * {@code JenaTDB2Repository#fetchConceptResolutions}). A concept is owned by
+     * {@code graphName} iff its IRI starts with the vocabulary IRI; owned concepts
+     * are {@code {graphName}/pojem/{name}}.
+     */
+    public static boolean isOwnedConcept(String conceptIri, String graphName) {
+        return conceptIri != null && graphName != null && conceptIri.startsWith(graphName);
     }
 
     private static int ensureConceptsHaveSkosType(Model model) {

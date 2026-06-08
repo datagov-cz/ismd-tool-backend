@@ -100,7 +100,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_Success() throws Exception {
         String userId = "user123";
-        String providedName = "test-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.ttl",
@@ -109,19 +108,18 @@ class OntologyControllerTest {
         );
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
-        expectedMetadata.setGraphName(providedName);
+        expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").isString());
     }
@@ -142,7 +140,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -166,7 +164,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         TestOntologySecurityService.setAllowModify(true);
@@ -190,7 +188,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -212,7 +210,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenThrow(new RuntimeException("Parse error"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -226,7 +224,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_MissingFile() throws Exception {
         String userId = "user123";
-        String providedName = "jsonld-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.jsonld",
@@ -235,12 +232,11 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isBadRequest());
     }
 
@@ -248,7 +244,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_JsonLdFormat() throws Exception {
         String userId = "user123";
-        String providedName = "jsonld-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.jsonld",
@@ -257,19 +252,18 @@ class OntologyControllerTest {
         );
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
-        expectedMetadata.setGraphName(providedName);
+        expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId));
     }
 
@@ -284,7 +278,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -316,7 +310,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_AlreadyExistsScenario() throws Exception {
         String userId = "user123";
-        String providedName = "existing-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.ttl",
@@ -326,22 +319,21 @@ class OntologyControllerTest {
 
         OntologyMetadataModel existingMetadata = new OntologyMetadataModel();
         existingMetadata.setId(1L);
-        existingMetadata.setGraphName(providedName);
+        existingMetadata.setGraphName("file");
         existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
                 .thenReturn(existingMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.id").value(1))
-                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
-                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + providedName));
+                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + "file"));
     }
 
     @Test

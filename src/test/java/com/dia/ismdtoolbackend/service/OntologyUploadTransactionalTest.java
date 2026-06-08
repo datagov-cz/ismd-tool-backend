@@ -106,7 +106,7 @@ class OntologyUploadTransactionalTest {
                 .when(jenaTDB2Repository).putOntologyModel(anyString(), any());
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1"));
 
         assertTrue(thrown.getMessage().contains("TDB2"));
         // Metadata repository should not have been called
@@ -126,7 +126,7 @@ class OntologyUploadTransactionalTest {
         when(ontologyMetadataRepository.save(any())).thenThrow(new RuntimeException("DB constraint violation"));
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1"));
 
         // TDB2 should be cleaned up
         verify(jenaTDB2Repository).deleteGraph(anyString());
@@ -147,7 +147,7 @@ class OntologyUploadTransactionalTest {
                 .when(jenaTDB2Repository).deleteGraph(anyString());
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1"));
 
         // Original exception should still propagate
         assertTrue(thrown.getMessage().contains("Failed to upload ontology"));
@@ -179,7 +179,7 @@ class OntologyUploadTransactionalTest {
                 .when(conceptMetadataRepository).saveAll(any());
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1"));
 
         verify(jenaTDB2Repository).deleteGraph(anyString());
     }

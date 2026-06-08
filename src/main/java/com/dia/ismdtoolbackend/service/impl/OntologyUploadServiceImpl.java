@@ -106,7 +106,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String userId) throws IOException, OntologyUploadException {
         if (file.isEmpty()) {
             throw new EmptyFileException("Uploaded file is empty");
         }
@@ -125,7 +125,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
         OntModel finalModel = getOntologyModel(file, rdfLang);
         try {
-            String graphName = determineGraphName(file, providedName, finalModel);
+            String graphName = determineGraphName(finalModel);
             log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
             List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel);
@@ -137,7 +137,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             checkSlugUniqueness(graphName);
 
             // 2. Normalize OFN types and labels at import time
-            int normalizedCount = OFNTypeNormalizer.normalize(finalModel);
+            int normalizedCount = OFNTypeNormalizer.normalize(finalModel, graphName);
             if (normalizedCount > 0) {
                 log.info("Normalized OFN types on {} resources", normalizedCount);
             }
@@ -210,33 +210,36 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private String determineGraphName(MultipartFile file, String providedName, OntModel model) {
-        if (providedName != null && !providedName.trim().isEmpty()) {
-            log.debug("Using provided graph name: {}", providedName);
-            return providedName;
-        }
-
+    private String determineGraphName(OntModel model) {
+        // The RDF data is authoritative for the vocabulary IRI / graph name. If no
+        // ontology IRI can be derived, FAIL — never fabricate a filename-based name,
+        // which produces orphan concepts whose namespace diverges from the graph.
         String ontologyIRI = extractOntologyIRI(model);
-        if (ontologyIRI != null) {
-            log.debug("Using extracted ontology IRI as graph name: {}", ontologyIRI);
-            return ontologyIRI;
+        if (ontologyIRI == null) {
+            throw new OntologyUploadException(
+                    "Z RDF dat nelze odvodit IRI slovníku (chybí owl:Ontology nebo skos:ConceptScheme). "
+                            + "Slovník nelze nahrát bez identity odvozené z dat.");
         }
-
-        String fileName = file.getOriginalFilename();
-        String baseName = fileName != null ?
-                fileName.replaceAll("\\.[^.]+$", "") : "ontology";
-
-        String generatedName = String.format(DEFAULT_NS + "%s-%s", baseName, UUID.randomUUID());
-        log.debug("Generated graph name: {}", generatedName);
-        return generatedName;
+        log.debug("Using extracted ontology IRI as graph name: {}", ontologyIRI);
+        return ontologyIRI;
     }
 
     private String extractOntologyIRI(OntModel model) {
-        ResIterator ontologies = model.listResourcesWithProperty(RDF.type, OWL2.Ontology);
-        if (ontologies.hasNext()) {
-            Resource ont = ontologies.next();
-            if (ont.isURIResource()) {
-                return ont.getURI();
+        // owl:Ontology is the primary signal; SKOS-only vocabularies declare the
+        // vocabulary as a skos:ConceptScheme instead, so accept that too.
+        String iri = firstUriSubjectOfType(model, OWL2.Ontology);
+        if (iri == null) {
+            iri = firstUriSubjectOfType(model, SKOS.ConceptScheme);
+        }
+        return iri;
+    }
+
+    private String firstUriSubjectOfType(OntModel model, Resource type) {
+        ResIterator subjects = model.listResourcesWithProperty(RDF.type, type);
+        while (subjects.hasNext()) {
+            Resource subject = subjects.next();
+            if (subject.isURIResource()) {
+                return subject.getURI();
             }
         }
         return null;
@@ -334,7 +337,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
 
-            if (shouldSkipConcept(conceptResource)) {
+            if (shouldSkipConcept(conceptResource, graphName)) {
                 continue;
             }
 
@@ -377,12 +380,23 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private boolean shouldSkipConcept(Resource conceptResource) {
+    private boolean shouldSkipConcept(Resource conceptResource, String graphName) {
         if (!conceptResource.isURIResource()) {
             return true;
         }
 
         String conceptIri = conceptResource.getURI();
+
+        // Alien-concept guard: a concept whose IRI is not under this vocabulary's
+        // namespace is not owned by this upload (e.g. an embedded legislative
+        // reference). Don't claim it with a Postgres ownership row — it stays a
+        // referenced concept, resolved later via its own vocabulary / NKD. Mirrors
+        // the resolution invariant STRSTARTS(conceptIri, graphName).
+        if (!OFNTypeNormalizer.isOwnedConcept(conceptIri, graphName)) {
+            log.debug("Skipping alien concept not owned by {}: {}", graphName, conceptIri);
+            return true;
+        }
+
         Optional<ConceptMetadataEntity> existing = conceptMetadataRepository.findByConceptIri(conceptIri);
         if (existing.isPresent()) {
             log.debug("Concept already exists: {}", conceptIri);

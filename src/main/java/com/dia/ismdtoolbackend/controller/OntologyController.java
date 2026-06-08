@@ -74,17 +74,15 @@ public class OntologyController {
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
             @RequestParam(value = "file", required = false) MultipartFile file,
-            @RequestParam(name = "providedName", required = false) String providedName,
             @AuthenticationPrincipal SecurityUser securityUser) throws IOException {
 
         log.info(
-                "Ontology upload requested, fileName: {}, providedName: {}, userId: {}",
+                "Ontology upload requested, fileName: {}, userId: {}",
                 file.getOriginalFilename(),
-                providedName,
                 securityUser.getUserId()
         );
 
-        OntologyMetadataModel savedOntology = ontologyUploadService.uploadFromFile(file, providedName, securityUser.getUserId());
+        OntologyMetadataModel savedOntology = ontologyUploadService.uploadFromFile(file, securityUser.getUserId());
         log.info("Ontology upload successful: {}", savedOntology.getGraphName());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
