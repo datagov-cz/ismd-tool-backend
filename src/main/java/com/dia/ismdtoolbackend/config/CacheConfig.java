@@ -12,13 +12,15 @@ import java.util.concurrent.TimeUnit;
 /**
  * Caffeine-backed caches for read-only e-Sbírka SPARQL operations.
  *
- * <p>Three caches with distinct lifetimes:
+ * <p>Caches with distinct lifetimes:
  * <ul>
  *   <li>{@code esbirkaLawSearch} — law-search results, 60 min TTL (catalogue evolves daily).</li>
  *   <li>{@code esbirkaLawVersions} — version lists per law, 60 min TTL.</li>
  *   <li>{@code esbirkaFragmentResolution} — fragment citation + version metadata,
  *       24 h TTL (fragments are immutable; only is-latest can shift when a new
  *       version is published).</li>
+ *   <li>{@code esbirkaLawContent} — whole-version content trees (fragment tree + HTML
+ *       bodies), 24 h TTL, capped at 200 entries (~2 MB each; published text is immutable).</li>
  * </ul>
  *
  * <p>Per-cache specs require {@code registerCustomCache} rather than the shared
@@ -33,6 +35,11 @@ public class CacheConfig {
 
     static final long ESBIRKA_RESOLUTION_TTL_HOURS = 24;
     static final long ESBIRKA_RESOLUTION_MAX_ENTRIES = 5_000;
+
+    // Whole-version content payloads are large (~2 MB each), so cap entry count tightly
+    // and keep a long TTL — a published version's text is immutable.
+    static final long ESBIRKA_CONTENT_TTL_HOURS = 24;
+    static final long ESBIRKA_CONTENT_MAX_ENTRIES = 200;
 
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
     static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
@@ -54,6 +61,11 @@ public class CacheConfig {
         mgr.registerCustomCache("esbirkaFragmentResolution", Caffeine.newBuilder()
                 .expireAfterWrite(ESBIRKA_RESOLUTION_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(ESBIRKA_RESOLUTION_MAX_ENTRIES)
+                .build());
+
+        mgr.registerCustomCache("esbirkaLawContent", Caffeine.newBuilder()
+                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
                 .build());
 
         // Backs the concept-reference resolver (POST /api/ontology/concepts/resolve).

@@ -49,6 +49,17 @@ public class EsbirkaSparqlClient {
                 this::mapLawRows);
     }
 
+    /**
+     * Exact law lookup by predpis number + year. Returns empty Optional when no law
+     * matches (e.g. the number/year combination does not exist in the dataset).
+     */
+    public Optional<LawModel> findLawByNumberYear(String number, int year) {
+        List<LawModel> rows = executeSelect("law by number/year",
+                EsbirkaSPARQLQuery.buildLawByNumberYearQuery(number, year),
+                this::mapLawRows);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
     public List<LawVersionModel> fetchVersions(String lawIri) {
         return executeSelect("version list",
                 EsbirkaSPARQLQuery.buildVersionListQuery(lawIri),
@@ -59,6 +70,17 @@ public class EsbirkaSparqlClient {
         return executeSelect("fragment tree",
                 EsbirkaSPARQLQuery.buildFragmentTreeQuery(versionIri),
                 this::mapFragmentRows);
+    }
+
+    /**
+     * Whole-version content: every fragment with its rendered HTML body (obsah) in one
+     * round-trip. Same shape as {@link #fetchFragments} plus a (nullable) {@code bodyHtml}
+     * per row — structural fragments carry no body.
+     */
+    public List<FragmentModel> fetchVersionContent(String versionIri) {
+        return executeSelect("version content",
+                EsbirkaSPARQLQuery.buildVersionContentQuery(versionIri),
+                this::mapFragmentContentRows);
     }
 
     /**
@@ -136,6 +158,29 @@ public class EsbirkaSparqlClient {
             }
             String kind = parseKindFromIri(iri);
             out.add(new FragmentModel(iri, parent, citation, kind, order));
+        }
+        return out;
+    }
+
+    /**
+     * Like {@link #mapFragmentRows} but also reads the OPTIONAL {@code obsah} HTML body.
+     * A null body is expected and valid for structural fragments (Část/Hlava/…).
+     */
+    private List<FragmentModel> mapFragmentContentRows(ResultSet rs) {
+        List<FragmentModel> out = new ArrayList<>();
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String iri = SparqlSolutions.resourceUri(sol, "fragment");
+            String parent = SparqlSolutions.resourceUri(sol, "parent");
+            String citation = SparqlSolutions.literalString(sol, "citace");
+            String order = SparqlSolutions.literalString(sol, "order");
+            String bodyHtml = SparqlSolutions.literalString(sol, "obsah");
+            if (iri == null || parent == null) {
+                log.warn("Fragment content row missing iri/parent; iri={}", iri);
+                continue;
+            }
+            String kind = parseKindFromIri(iri);
+            out.add(new FragmentModel(iri, parent, citation, kind, order, bodyHtml));
         }
         return out;
     }

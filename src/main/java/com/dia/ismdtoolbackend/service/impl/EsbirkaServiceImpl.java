@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
+import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -76,6 +77,119 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
         return assembleTree(rows, versionIri);
     }
+
+    /**
+     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered
+     * content of its latest version.
+     *
+     * <p>Resolution chain: parse number/year → exact law lookup (NOT a citation
+     * substring match) → latest version (má-poslední-znění) → whole-version content
+     * query. The returned {@link LawContentDto} carries the resolved law/version header
+     * and the full version list (for an FE switcher) alongside the fragment tree, whose
+     * nodes each carry their rendered HTML body for in-document browsing.
+     *
+     * <p>Cached by the normalized {@code number/year} key — both the resolution and the
+     * (~2 MB) content payload are expensive, and a published version's text is immutable.
+     */
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawContent", key = "#root.target.normalizeLawRef(#lawRef)")
+    public LawContentDto getLawContent(String lawRef) {
+        NumberYear ny = parseNumberYear(lawRef);
+
+        LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
+
+        List<LawVersionModel> versions = client.fetchVersions(law.getIri());
+        LawVersionModel latest = pickLatest(versions);
+        if (latest == null) {
+            throw new IllegalArgumentException(
+                    "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
+        }
+
+        String versionIri = latest.getIri();
+        List<FragmentModel> rows = client.fetchVersionContent(versionIri);
+        if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
+            log.warn("Version content for {} has {} rows (over {} threshold).",
+                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+        }
+
+        List<LawVersionDto> versionDtos = new ArrayList<>(versions.size());
+        for (LawVersionModel v : versions) {
+            versionDtos.add(toVersionDto(v));
+        }
+
+        return LawContentDto.builder()
+                .lawIri(law.getIri())
+                .citace(law.getCitace())
+                .versionIri(versionIri)
+                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(versionIri))
+                .versionDate(latest.getUcinnostOd())
+                .versions(versionDtos)
+                .fragments(assembleTree(rows, versionIri))
+                .build();
+    }
+
+    /**
+     * Latest version = the one flagged via má-poslední-znění (LawVersionModel.latest).
+     * Falls back to the first row (fetchVersions orders newest-first by účinnost-znění-od)
+     * when no row is flagged — defensive against upstream data without the flag.
+     */
+    private static LawVersionModel pickLatest(List<LawVersionModel> versions) {
+        if (versions.isEmpty()) {
+            return null;
+        }
+        for (LawVersionModel v : versions) {
+            if (v.isLatest()) {
+                return v;
+            }
+        }
+        return versions.get(0);
+    }
+
+    /**
+     * Parse a "number/year" reference into its parts. Tolerates surrounding whitespace
+     * and a trailing " Sb." Rejects anything that isn't exactly number/year — partial
+     * input (e.g. "49") is the FE's cue to use /law/search instead.
+     */
+    static NumberYear parseNumberYear(String lawRef) {
+        if (lawRef == null || lawRef.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Zadejte referenci právního aktu ve tvaru číslo/rok (např. 49/1997).");
+        }
+        String cleaned = lawRef.trim();
+        int sb = cleaned.indexOf(" Sb");
+        if (sb > 0) {
+            cleaned = cleaned.substring(0, sb).trim();
+        }
+        int slash = cleaned.indexOf('/');
+        if (slash <= 0 || slash >= cleaned.length() - 1) {
+            throw new IllegalArgumentException(
+                    "Referenci zadejte ve tvaru číslo/rok (např. 49/1997).");
+        }
+        String number = cleaned.substring(0, slash).trim();
+        String yearStr = cleaned.substring(slash + 1).trim();
+        int year;
+        try {
+            year = Integer.parseInt(yearStr);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "Rok v referenci musí být číslo (např. 49/1997).");
+        }
+        if (number.isBlank() || !number.chars().allMatch(Character::isDigit)) {
+            throw new IllegalArgumentException(
+                    "Číslo předpisu v referenci musí být číselné (např. 49/1997).");
+        }
+        return new NumberYear(number, year);
+    }
+
+    /** Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a cache entry. */
+    public String normalizeLawRef(String lawRef) {
+        NumberYear ny = parseNumberYear(lawRef);
+        return ny.number() + "/" + ny.year();
+    }
+
+    record NumberYear(String number, int year) {}
 
     /**
      * Tree assembly. Top-level fragments have parent = {@code <versionIri>/dokument/norma}.
@@ -171,6 +285,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         dto.setKind(m.getKind());
         dto.setCitation(m.getCitation());
         dto.setOrder(m.getOrder());
+        dto.setBodyHtml(m.getBodyHtml());
         return dto;
     }
 

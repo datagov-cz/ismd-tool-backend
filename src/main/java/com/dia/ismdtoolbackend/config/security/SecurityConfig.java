@@ -155,6 +155,7 @@ public class SecurityConfig {
                         "/api/eli/law/search",
                         "/api/eli/law/versions",
                         "/api/eli/law/fragments",
+                        "/api/eli/law/content",
                         "/api/eli/resolve",
                         "/api/codelist/**",
                         "/v3/api-docs/**",

@@ -203,6 +203,88 @@ class EsbirkaServiceImplTest {
         assertEquals(5_001, out.size());
     }
 
+    // -------- getLawContent: number/year resolution --------
+
+    @Test
+    void getLawContentParsesNumberYearAndResolvesLatestVersion() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        String olderIri = LAW_IRI + "/2020-01-01";
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true),
+                new LawVersionModel(olderIri, LocalDate.of(2020, 1, 1), null, "t", false)));
+        String par = VERSION_IRI + "/par_1";
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001", "<var>§ 1</var>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+
+        assertEquals(LAW_IRI, out.getLawIri());
+        assertEquals("49/1997 Sb.", out.getCitace());
+        assertEquals(VERSION_IRI, out.getVersionIri());
+        assertEquals(LocalDate.of(2026, 4, 1), out.getVersionDate());
+        assertEquals(2, out.getVersions().size());
+        assertEquals(1, out.getFragments().size());
+        assertEquals("<var>§ 1</var>", out.getFragments().get(0).getBodyHtml());
+    }
+
+    @Test
+    void getLawContentPicksLatestEvenWhenNotFirstRow() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        String latestIri = LAW_IRI + "/2026-04-01";
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
+                new LawVersionModel(latestIri, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(latestIri)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+        assertEquals(latestIri, out.getVersionIri());
+    }
+
+    @Test
+    void getLawContentTrimsAndStripsSbSuffix() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("  49/1997 Sb. ");
+        assertEquals(LAW_IRI, out.getLawIri());
+    }
+
+    @Test
+    void getLawContentUnknownLawThrows() {
+        when(client.findLawByNumberYear("999", 1997)).thenReturn(java.util.Optional.empty());
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("999/1997"));
+        assertEquals("Právní akt č. 999/1997 nebyl nalezen.", ex.getMessage());
+    }
+
+    @Test
+    void getLawContentRejectsPartialInput() {
+        // bare number is the FE's cue to use /law/search instead
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("49"));
+        assertEquals("Referenci zadejte ve tvaru číslo/rok (např. 49/1997).", ex.getMessage());
+    }
+
+    @Test
+    void getLawContentRejectsNonNumericYear() {
+        assertThrows(IllegalArgumentException.class, () -> service.getLawContent("49/abc"));
+    }
+
+    @Test
+    void getLawContentRejectsNonNumericNumber() {
+        assertThrows(IllegalArgumentException.class, () -> service.getLawContent("abc/1997"));
+    }
+
+    @Test
+    void getLawContentRejectsBlank() {
+        assertThrows(IllegalArgumentException.class, () -> service.getLawContent("  "));
+    }
+
     // -------- DTO mapping edge cases --------
 
     @Test

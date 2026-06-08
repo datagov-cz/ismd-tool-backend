@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.config.EsbirkaConfig;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
+import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -92,6 +93,30 @@ public class EsbirkaController {
             List<FragmentDto> results = esbirkaService.getFragments(versionIri);
             return ResponseEntity.ok(ApiResponseDto.success(results,
                     "Strom fragmentů úspěšně načten."));
+        } finally {
+            MDC.remove(LOG_REQUEST_ID);
+        }
+    }
+
+    @Operation(
+            summary = "Celé znění právního aktu podle reference číslo/rok",
+            description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\"), vyhledá daný " +
+                    "právní akt přesnou shodou, vybere jeho poslední znění a vrátí celé jeho znění: " +
+                    "hlavičku (IRI aktu, citace, znění, datum účinnosti), seznam všech znění (pro přepínač) " +
+                    "a strom fragmentů, kde každý uzel nese své HTML \"obsah\" tělo pro interaktivní " +
+                    "procházení a výběr sekcí. Pro částečný vstup (např. \"49\") použijte /law/search. " +
+                    "Výsledek je cachován (znění je neměnné)."
+    )
+    @GetMapping("/law/content")
+    public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(
+            @RequestParam String law) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        try {
+            log.info("e-Sbírka law content, law: {}", law);
+            LawContentDto result = esbirkaService.getLawContent(law);
+            return ResponseEntity.ok(ApiResponseDto.success(result,
+                    "Celé znění právního aktu úspěšně načteno."));
         } finally {
             MDC.remove(LOG_REQUEST_ID);
         }

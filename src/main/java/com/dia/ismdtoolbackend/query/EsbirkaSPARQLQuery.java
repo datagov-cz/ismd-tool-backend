@@ -63,6 +63,30 @@ public class EsbirkaSPARQLQuery {
     }
 
     /**
+     * Exact law lookup by predpis number + year (e.g. "49" + 1997 → 49/1997 Sb.).
+     * Uses equality on číslo-předpisu / rok-předpisu, NOT a citation substring match —
+     * a CONTAINS("49/1997") would wrongly match "149/1997", "249/1997", etc.
+     * číslo is xsd:string; rok is xsd:gYear — both compared via STR() for robustness.
+     */
+    public static String buildLawByNumberYearQuery(String number, int year) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText("""
+                SELECT ?akt ?citace ?cislo ?rok ?sbirka WHERE {
+                  ?akt a <%1$správní-akt> ;
+                       <%1$scitace-právního-aktu> ?citace ;
+                       <%1$sčíslo-předpisu> ?cislo ;
+                       <%1$srok-předpisu> ?rok ;
+                       <%1$spatří-do-sbírky> ?sbirka .
+                  FILTER(STR(?cislo) = ?numNeedle && STR(?rok) = ?yearNeedle)
+                }
+                LIMIT 1
+                """.formatted(NS));
+        pss.setLiteral("numNeedle", number);
+        pss.setLiteral("yearNeedle", String.valueOf(year));
+        return pss.toString();
+    }
+
+    /**
      * Versions for a given law, ordered newest-first by účinnost-znění-od.
      * Latest flagged via equality with má-poslední-znění.
      * lawIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
@@ -102,6 +126,39 @@ public class EsbirkaSPARQLQuery {
                   ?fragment <%1$smá-předka> ?parent ;
                             <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace ;
                             <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
+                }
+                ORDER BY ?order
+                """.formatted(NS));
+        pss.setIri("inputZneni", versionIri);
+        return pss.toString();
+    }
+
+    /**
+     * Whole-version content query: every fragment of a version with its parent edge,
+     * citation, lex-sortable order key, AND its rendered HTML body (obsah) in a single
+     * round-trip. Used to deliver the full law text to the FE for in-document browsing
+     * without per-fragment {@code /resolve} calls.
+     *
+     * <p>The obsah join ({@code obsahuje-fragment/text-fragmentu}) MUST stay OPTIONAL:
+     * structural fragments (Část/Hlava/Díl/Oddíl) carry no text body, and a non-optional
+     * join silently drops them — breaking the navigable tree. (Verified: ~13% of fragments
+     * have no body for sampled versions.)
+     *
+     * <p>versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the
+     * controller boundary.
+     */
+    public static String buildVersionContentQuery(String versionIri) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText("""
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+                SELECT ?fragment ?parent ?citace ?order ?obsah
+                WHERE {
+                  ?inputZneni <%1$smá-fragment-znění> ?fragment .
+                  ?fragment <%1$smá-předka> ?parent ;
+                            <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace ;
+                            <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
+                  OPTIONAL { ?fragment <%1$sobsahuje-fragment>/<%1$stext-fragmentu> ?obsah }
                 }
                 ORDER BY ?order
                 """.formatted(NS));
