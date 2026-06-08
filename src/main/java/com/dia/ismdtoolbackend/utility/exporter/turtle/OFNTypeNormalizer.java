@@ -29,17 +29,34 @@ public final class OFNTypeNormalizer {
     private OFNTypeNormalizer() {}
 
     /**
-     * Read/NKD-path normalization with no authoritative graph IRI. {@code inScheme}
-     * is derived per-concept by stripping {@code /pojem/} from the concept IRI
-     * ({@link #extractOntologyIRIFromConcept}). Used where there is no single
-     * owning vocabulary (e.g. {@code OntologyDetailExtractor}, which mixes graphs).
+     * Local-detail-path normalization. Infers the OFN role tags
+     * ({@code skos:Concept}, {@code slovníky:třída/vztah/vlastnost}) and converts
+     * labels so real concepts survive {@link TurtleFilterUtil}, but does NOT touch
+     * {@code skos:inScheme}: local vocabularies are written via the authoritative
+     * upload path, which guarantees every owned concept carries an explicit
+     * {@code inScheme}. Deriving it here would be redundant and risks the
+     * {@code /pojem/} string heuristic diverging from the real scheme.
      */
-    public static int normalize(Model model) {
+    public static int normalizeForLocalDetail(Model model) {
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
         count += normalizeOwlClassConcepts(model);
         count += normalizePropertyConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
+        return count;
+    }
+
+    /**
+     * NKD-path normalization. Same role-tag/label inference as
+     * {@link #normalizeForLocalDetail} PLUS {@code skos:inScheme} derivation: NKD data
+     * is out of our control and often arrives without an explicit scheme, so we infer
+     * it per-concept by stripping {@code /pojem/} from the concept IRI
+     * ({@link #extractOntologyIRIFromConcept}) — a reasonable inference given OFN's IRI
+     * structure. There is no single authoritative graph IRI here (the detail model can
+     * mix vocabularies), hence the per-concept derivation rather than a fixed graphName.
+     */
+    public static int normalizeForNkd(Model model) {
+        int count = normalizeForLocalDetail(model);
         count += ensureConceptsHaveDerivedInScheme(model);
         return count;
     }
@@ -215,10 +232,15 @@ public final class OFNTypeNormalizer {
         return added;
     }
 
+    /**
+     * Infers OFN role tags ({@code skos:Concept}, {@code slovníky:pojem},
+     * {@code slovníky:třída}) on {@code owl:Class} concepts. Role tags only — does NOT
+     * touch {@code skos:inScheme} (that's the NKD-only derivation step, or the
+     * authoritative upload step).
+     */
     private static int normalizeOwlClassConcepts(Model model) {
         Resource slovnikyPojem = model.createResource(OFN_NAMESPACE + POJEM);
         Resource slovnikyTrida = model.createResource(OFN_NAMESPACE + TRIDA);
-        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
         int count = 0;
 
         List<Resource> classesToNormalize = new ArrayList<>();
@@ -244,21 +266,20 @@ public final class OFNTypeNormalizer {
                 cls.addProperty(RDF.type, slovnikyTrida);
                 modified = true;
             }
-            String ontologyIRI = extractOntologyIRIFromConcept(cls.getURI());
-            if (ontologyIRI != null && !cls.hasProperty(skosInScheme)) {
-                cls.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                modified = true;
-            }
             if (modified) count++;
         }
 
         return count;
     }
 
+    /**
+     * Infers OFN role tags ({@code slovníky:vztah} on object properties,
+     * {@code slovníky:vlastnost} on datatype properties) for {@code /pojem/} concepts.
+     * Role tags only — does NOT touch {@code skos:inScheme}.
+     */
     private static int normalizePropertyConcepts(Model model) {
         Resource slovnikyVztah = model.createResource(OFN_NAMESPACE + VZTAH);
         Resource slovnikyVlastnost = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
         int count = 0;
 
         List<Resource> objectProperties = new ArrayList<>();
@@ -267,18 +288,10 @@ public final class OFNTypeNormalizer {
             objectProperties.add(iter.next());
         }
         for (Resource prop : objectProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")) {
-                boolean modified = false;
-                if (!prop.hasProperty(RDF.type, slovnikyVztah)) {
-                    prop.addProperty(RDF.type, slovnikyVztah);
-                    modified = true;
-                }
-                String ontologyIRI = extractOntologyIRIFromConcept(prop.getURI());
-                if (ontologyIRI != null && !prop.hasProperty(skosInScheme)) {
-                    prop.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                    modified = true;
-                }
-                if (modified) count++;
+            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
+                    && !prop.hasProperty(RDF.type, slovnikyVztah)) {
+                prop.addProperty(RDF.type, slovnikyVztah);
+                count++;
             }
         }
 
@@ -289,18 +302,10 @@ public final class OFNTypeNormalizer {
         }
         for (Resource prop : datatypeProperties) {
             if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)) {
-                boolean modified = false;
-                if (!prop.hasProperty(RDF.type, slovnikyVlastnost)) {
-                    prop.addProperty(RDF.type, slovnikyVlastnost);
-                    modified = true;
-                }
-                String ontologyIRI = extractOntologyIRIFromConcept(prop.getURI());
-                if (ontologyIRI != null && !prop.hasProperty(skosInScheme)) {
-                    prop.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                    modified = true;
-                }
-                if (modified) count++;
+                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)
+                    && !prop.hasProperty(RDF.type, slovnikyVlastnost)) {
+                prop.addProperty(RDF.type, slovnikyVlastnost);
+                count++;
             }
         }
 

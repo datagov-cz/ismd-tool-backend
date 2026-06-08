@@ -40,7 +40,7 @@ class OFNTypeNormalizerTest {
         cls.addProperty(RDF.type, OWL2.Class);
         cls.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
 
-        OFNTypeNormalizer.normalize(model);
+        OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
         assertTrue(cls.hasProperty(inScheme, model.createResource(ONTOLOGY)),
@@ -54,7 +54,7 @@ class OFNTypeNormalizerTest {
         prop.addProperty(RDF.type, OWL2.DatatypeProperty);
         prop.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
 
-        OFNTypeNormalizer.normalize(model);
+        OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
         assertTrue(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)),
@@ -68,7 +68,7 @@ class OFNTypeNormalizerTest {
         prop.addProperty(RDF.type, OWL2.ObjectProperty);
         prop.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
 
-        OFNTypeNormalizer.normalize(model);
+        OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
         assertTrue(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)),
@@ -85,7 +85,7 @@ class OFNTypeNormalizerTest {
         Property inScheme = model.createProperty(SKOS_INSCHEME);
         prop.addProperty(inScheme, model.createResource(otherScheme));
 
-        OFNTypeNormalizer.normalize(model);
+        OFNTypeNormalizer.normalizeForNkd(model);
 
         assertTrue(prop.hasProperty(inScheme, model.createResource(otherScheme)),
                 "Existing skos:inScheme must be preserved");
@@ -99,7 +99,7 @@ class OFNTypeNormalizerTest {
         Resource prop = model.createResource("https://example.org/something/not-a-concept");
         prop.addProperty(RDF.type, OWL2.DatatypeProperty);
 
-        OFNTypeNormalizer.normalize(model);
+        OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
         assertFalse(prop.hasProperty(inScheme),
@@ -277,5 +277,37 @@ class OFNTypeNormalizerTest {
 
         assertFalse(c.hasProperty(model.createProperty(SKOS_INSCHEME)),
                 "Empty allow-list (EXCLUDE_ALL) must add no inScheme");
+    }
+
+    // --- Read-path split: local does NOT derive inScheme, NKD does ---
+
+    @Test
+    void normalizeForLocalDetail_doesNotDeriveInScheme_butStillInfersRoleTags() {
+        Model model = ModelFactory.createDefaultModel();
+        Resource cls = model.createResource(CLASS_IRI);
+        cls.addProperty(RDF.type, OWL2.Class);
+        cls.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+
+        OFNTypeNormalizer.normalizeForLocalDetail(model);
+
+        // Role tags still inferred so the concept survives TurtleFilterUtil...
+        assertTrue(cls.hasProperty(RDF.type, SKOS.Concept),
+                "Local path must still infer skos:Concept role tag");
+        // ...but inScheme is NOT derived: local data is authoritative post-upload-fix.
+        assertFalse(cls.hasProperty(model.createProperty(SKOS_INSCHEME)),
+                "Local path must NOT derive skos:inScheme (redundant; trusts authoritative upload)");
+    }
+
+    @Test
+    void normalizeForNkd_derivesInScheme_fromPojemPattern() {
+        Model model = ModelFactory.createDefaultModel();
+        Resource cls = model.createResource(CLASS_IRI);
+        cls.addProperty(RDF.type, OWL2.Class);
+        cls.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+
+        OFNTypeNormalizer.normalizeForNkd(model);
+
+        assertTrue(cls.hasProperty(model.createProperty(SKOS_INSCHEME), model.createResource(ONTOLOGY)),
+                "NKD path must derive skos:inScheme by stripping /pojem/ from the concept IRI");
     }
 }
