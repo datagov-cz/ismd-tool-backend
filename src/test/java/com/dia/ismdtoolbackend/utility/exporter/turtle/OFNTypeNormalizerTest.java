@@ -11,6 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.vocabulary.SKOS;
 
+import java.util.List;
+import java.util.Set;
+
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.POJEM;
 import static org.junit.jupiter.api.Assertions.*;
@@ -197,5 +200,82 @@ class OFNTypeNormalizerTest {
         Property inScheme = model.createProperty(SKOS_INSCHEME);
         assertFalse(alien.hasProperty(inScheme, model.createResource(ONTOLOGY)),
                 "Alien concept must NOT be claimed with inScheme → graphName");
+    }
+
+    // --- detectOwnedConceptsMissingInScheme (pure detection) ---
+
+    @Test
+    void detect_returnsOwnedConceptsMissingInScheme_andDoesNotMutate() {
+        Model model = ModelFactory.createDefaultModel();
+        String missing = ONTOLOGY + "/pojem/bez-scheme";
+        Resource concept = model.createResource(missing);
+        concept.addProperty(RDF.type, SKOS.Concept);
+        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+
+        long sizeBefore = model.size();
+        List<String> result = OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY);
+
+        assertEquals(List.of(missing), result, "Should report the one owned concept missing inScheme");
+        assertEquals(sizeBefore, model.size(), "detect must not mutate the model");
+        Property inScheme = model.createProperty(SKOS_INSCHEME);
+        assertFalse(concept.hasProperty(inScheme), "detect must not add inScheme");
+    }
+
+    @Test
+    void detect_ignoresConceptsThatAlreadyHaveInScheme() {
+        Model model = ModelFactory.createDefaultModel();
+        Resource concept = model.createResource(CLASS_IRI);
+        concept.addProperty(RDF.type, SKOS.Concept);
+        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+        concept.addProperty(model.createProperty(SKOS_INSCHEME), model.createResource(ONTOLOGY));
+
+        assertTrue(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY).isEmpty(),
+                "A concept that already has inScheme is not 'missing'");
+    }
+
+    @Test
+    void detect_ignoresAlienConcepts() {
+        Model model = ModelFactory.createDefaultModel();
+        Resource alien = model.createResource("https://example.org/128-2000/pojem/obec");
+        alien.addProperty(RDF.type, SKOS.Concept);
+        alien.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+
+        assertTrue(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY).isEmpty(),
+                "Alien concepts are not owned and must not appear in the missing list");
+    }
+
+    // --- normalize(model, graphName, allowList) selective stamping ---
+
+    @Test
+    void normalizeWithAllowList_stampsOnlyListedConcepts() {
+        Model model = ModelFactory.createDefaultModel();
+        String keep = ONTOLOGY + "/pojem/keep";
+        String drop = ONTOLOGY + "/pojem/drop";
+        for (String iri : List.of(keep, drop)) {
+            Resource c = model.createResource(iri);
+            c.addProperty(RDF.type, SKOS.Concept);
+            c.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+        }
+
+        OFNTypeNormalizer.normalize(model, ONTOLOGY, Set.of(keep));
+
+        Property inScheme = model.createProperty(SKOS_INSCHEME);
+        assertTrue(model.getResource(keep).hasProperty(inScheme, model.createResource(ONTOLOGY)),
+                "Allow-listed concept must be stamped");
+        assertFalse(model.getResource(drop).hasProperty(inScheme),
+                "Concept not in the allow-list must be left without inScheme (excluded)");
+    }
+
+    @Test
+    void normalizeWithEmptyAllowList_stampsNothing() {
+        Model model = ModelFactory.createDefaultModel();
+        Resource c = model.createResource(ONTOLOGY + "/pojem/x");
+        c.addProperty(RDF.type, SKOS.Concept);
+        c.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+
+        OFNTypeNormalizer.normalize(model, ONTOLOGY, Set.of());
+
+        assertFalse(c.hasProperty(model.createProperty(SKOS_INSCHEME)),
+                "Empty allow-list (EXCLUDE_ALL) must add no inScheme");
     }
 }

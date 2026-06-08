@@ -8,8 +8,11 @@ import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
+import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
@@ -21,6 +24,8 @@ import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.ismdtoolbackend.service.impl.ConceptMetadataResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.List;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -112,7 +117,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -140,7 +145,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -164,7 +169,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         TestOntologySecurityService.setAllowModify(true);
@@ -188,7 +193,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -210,7 +215,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new RuntimeException("Parse error"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -232,7 +237,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -256,7 +261,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -265,6 +270,66 @@ class OntologyControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_missingInScheme_returns400WithDecisionPayload() throws Exception {
+        String userId = "user123";
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test.ttl", "text/turtle",
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
+        );
+
+        String graphName = "https://slovník.gov.cz/a3791";
+        String conceptIri = graphName + "/pojem/vysoká-škola";
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
+                .thenThrow(new InSchemeDecisionRequiredException(
+                        graphName,
+                        List.of(new MissingConceptDto(conceptIri, "vysoká škola", graphName))));
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("MISSING_INSCHEME_DECISION_REQUIRED"))
+                .andExpect(jsonPath("$.data.graphName").value(graphName))
+                .andExpect(jsonPath("$.data.conceptsMissingInScheme[0].conceptIri").value(conceptIri))
+                .andExpect(jsonPath("$.data.conceptsMissingInScheme[0].proposedInScheme").value(graphName));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_withDecisionParams_passesThroughToService() throws Exception {
+        String userId = "user123";
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test.ttl", "text/turtle",
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
+        );
+
+        OntologyMetadataModel expected = new OntologyMetadataModel();
+        expected.setGraphName("file");
+        expected.setUser(new UserModel(userId));
+
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
+                .thenReturn(expected);
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(file)
+                        .param("normalizeMode", "PER_CONCEPT")
+                        .param("conceptsToNormalize", "https://slovník.gov.cz/a3791/pojem/x")
+                        .param("conceptsToNormalize", "https://slovník.gov.cz/a3791/pojem/y"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.graphName").value("file"));
+
+        verify(ontologyUploadService).uploadFromFile(
+                any(),
+                eq(userId),
+                eq(NormalizeMode.PER_CONCEPT),
+                eq(List.of("https://slovník.gov.cz/a3791/pojem/x", "https://slovník.gov.cz/a3791/pojem/y")));
     }
 
     @Test
@@ -278,7 +343,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -323,7 +388,7 @@ class OntologyControllerTest {
         existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(existingMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")

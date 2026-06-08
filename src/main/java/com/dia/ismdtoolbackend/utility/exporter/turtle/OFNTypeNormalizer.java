@@ -8,7 +8,9 @@ import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.dia.constants.VocabularyConstants.*;
 
@@ -38,7 +40,7 @@ public final class OFNTypeNormalizer {
         count += normalizeOwlClassConcepts(model);
         count += normalizePropertyConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
-        count += ensureOwnedConceptsHaveInScheme(model, null);
+        count += ensureConceptsHaveDerivedInScheme(model);
         return count;
     }
 
@@ -57,25 +59,107 @@ public final class OFNTypeNormalizer {
         if (graphName == null || graphName.isBlank()) {
             throw new IllegalArgumentException("graphName must be non-null for the upload-path normalizer");
         }
+        // NORMALIZE_ALL convenience: stamp every owned concept that's missing inScheme.
+        return normalize(model, graphName, new HashSet<>(detectOwnedConceptsMissingInScheme(model, graphName)));
+    }
+
+    /**
+     * Upload-path normalization with an explicit allow-list of concepts to stamp.
+     * Runs the type/label normalization steps unconditionally, then adds
+     * {@code inScheme → graphName} ONLY for concepts whose IRI is in
+     * {@code conceptsToNormalize}. Concepts not in the list (the user's "exclude"
+     * choice) are left without inScheme and remain unresolvable by design.
+     *
+     * @param model                the parsed upload model
+     * @param graphName            the authoritative vocabulary IRI (must be non-null)
+     * @param conceptsToNormalize  IRIs of owned concepts the user chose to normalize
+     */
+    public static int normalize(Model model, String graphName, Set<String> conceptsToNormalize) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null for the upload-path normalizer");
+        }
+        Set<String> allowList = conceptsToNormalize == null ? Set.of() : conceptsToNormalize;
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
         count += normalizeOwlClassConcepts(model);
         count += normalizePropertyConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
-        count += ensureOwnedConceptsHaveInScheme(model, graphName);
+        count += addInSchemeForAllowedConcepts(model, graphName, allowList);
         return count;
     }
 
     /**
-     * Guarantees the resolution invariant for owned concepts: every
-     * {@code skos:Concept} carries a {@code skos:inScheme}. When {@code graphName}
-     * is provided, only concepts under that namespace are touched and they receive
-     * {@code inScheme → graphName} authoritatively; alien concepts are skipped.
-     * When {@code graphName} is null (read path), {@code inScheme} is derived by
-     * stripping {@code /pojem/} from the concept IRI, and concepts that can't yield
-     * a derived scheme are left as-is.
+     * Pure detection (no mutation): returns the IRIs of owned concepts (under
+     * {@code graphName}) that lack {@code skos:inScheme}. Drives the
+     * {@code MISSING_INSCHEME_DECISION_REQUIRED} prompt. Detect BEFORE
+     * {@link #normalize} — once normalize runs, the type-normalization steps may have
+     * stamped inScheme on some concepts and they'd no longer appear missing.
      */
-    private static int ensureOwnedConceptsHaveInScheme(Model model, String graphName) {
+    public static List<String> detectOwnedConceptsMissingInScheme(Model model, String graphName) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null to detect missing inScheme");
+        }
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
+        List<String> missing = new ArrayList<>();
+
+        for (Resource concept : ownedConceptCandidates(model, pojemResource, graphName)) {
+            if (!concept.hasProperty(skosInScheme)) {
+                missing.add(concept.getURI());
+            }
+        }
+        return missing;
+    }
+
+    /**
+     * Owned concept candidates under {@code graphName}: URI resources typed as
+     * {@code skos:Concept} or {@code slovníky:pojem}, de-duplicated.
+     */
+    private static List<Resource> ownedConceptCandidates(Model model, Resource pojemResource, String graphName) {
+        List<Resource> candidates = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        collectOwnedTyped(model, SKOS.Concept, graphName, candidates, seen);
+        collectOwnedTyped(model, pojemResource, graphName, candidates, seen);
+        return candidates;
+    }
+
+    private static void collectOwnedTyped(Model model, Resource type, String graphName,
+                                          List<Resource> out, Set<String> seen) {
+        ResIterator iter = model.listResourcesWithProperty(RDF.type, type);
+        while (iter.hasNext()) {
+            Resource r = iter.next();
+            if (r.isURIResource() && isOwnedConcept(r.getURI(), graphName) && seen.add(r.getURI())) {
+                out.add(r);
+            }
+        }
+    }
+
+    /**
+     * Adds {@code inScheme → graphName} for owned concepts whose IRI is in the
+     * allow-list and that don't already have an inScheme. Owned concepts NOT in the
+     * allow-list are left untouched (excluded by user decision).
+     */
+    private static int addInSchemeForAllowedConcepts(Model model, String graphName, Set<String> allowList) {
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
+        int count = 0;
+
+        for (Resource concept : ownedConceptCandidates(model, pojemResource, graphName)) {
+            if (concept.hasProperty(skosInScheme) || !allowList.contains(concept.getURI())) {
+                continue;
+            }
+            concept.addProperty(skosInScheme, model.getResource(graphName));
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Read/NKD-path inScheme derivation (no authoritative graphName). Adds
+     * {@code inScheme} to every {@code skos:Concept} by stripping {@code /pojem/} from
+     * its IRI; concepts that can't yield a derived scheme are left as-is.
+     */
+    private static int ensureConceptsHaveDerivedInScheme(Model model) {
         Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
         int count = 0;
 
@@ -92,17 +176,9 @@ public final class OFNTypeNormalizer {
             if (concept.hasProperty(skosInScheme)) {
                 continue;
             }
-            String scheme;
-            if (graphName != null) {
-                if (!isOwnedConcept(concept.getURI(), graphName)) {
-                    continue;
-                }
-                scheme = graphName;
-            } else {
-                scheme = extractOntologyIRIFromConcept(concept.getURI());
-                if (scheme == null) {
-                    continue;
-                }
+            String scheme = extractOntologyIRIFromConcept(concept.getURI());
+            if (scheme == null) {
+                continue;
             }
             concept.addProperty(skosInScheme, model.getResource(scheme));
             count++;
