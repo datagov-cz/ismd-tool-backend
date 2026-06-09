@@ -42,4 +42,12 @@ public class LawContentDto {
 
     /** Rendered fragment tree of {@link #versionIri}, each node carrying its HTML body. */
     private List<FragmentDto> fragments;
+
+    /**
+     * The whole version assembled into one coherent HTML body server-side: a document-ordered,
+     * nested tree of {@code <section data-eli=… data-kind=…>} wrappers, each containing its
+     * fragment's HTML body (when any) followed by its children. Lets the FE render the full law
+     * directly; {@link #fragments} remains available for tree-based navigation.
+     */
+    private String bodyHtml;
 }

@@ -21,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -126,6 +127,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             versionDtos.add(toVersionDto(v));
         }
 
+        List<FragmentDto> fragments = assembleTree(rows, versionIri);
+
         return LawContentDto.builder()
                 .lawIri(law.getIri())
                 .citace(law.getCitace())
@@ -133,8 +136,45 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                 .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(versionIri))
                 .versionDate(latest.getUcinnostOd())
                 .versions(versionDtos)
-                .fragments(assembleTree(rows, versionIri))
+                .fragments(fragments)
+                .bodyHtml(renderBodyHtml(fragments))
                 .build();
+    }
+
+    /**
+     * Assemble the whole-version HTML body server-side from the fragment tree.
+     *
+     * <p>Each fragment is wrapped in a {@code <section>} carrying its ELI path and kind as data
+     * attributes (FE hooks for deep-linking / styling); the fragment's own {@code bodyHtml}
+     * (null for structural fragments) precedes its children, so the output is a nested,
+     * document-ordered tree. Order is the tree's order — the server-side {@code ORDER BY ?order}
+     * preserved by {@link #assembleTree}.
+     */
+    private static String renderBodyHtml(List<FragmentDto> roots) {
+        StringBuilder sb = new StringBuilder();
+        for (FragmentDto root : roots) {
+            appendFragmentHtml(sb, root);
+        }
+        return sb.toString();
+    }
+
+    private static void appendFragmentHtml(StringBuilder sb, FragmentDto node) {
+        sb.append("<section data-eli=\"")
+                .append(HtmlUtils.htmlEscape(nullToEmpty(node.getEliPath())))
+                .append("\" data-kind=\"")
+                .append(HtmlUtils.htmlEscape(nullToEmpty(node.getKind())))
+                .append("\">");
+        if (node.getBodyHtml() != null) {
+            sb.append(node.getBodyHtml());
+        }
+        for (FragmentDto child : node.getChildren()) {
+            appendFragmentHtml(sb, child);
+        }
+        sb.append("</section>");
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 
     /**

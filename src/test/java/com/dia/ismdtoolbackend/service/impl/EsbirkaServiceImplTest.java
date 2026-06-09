@@ -322,6 +322,73 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
+    void getLawContentAssemblesNestedBodyHtmlInDocumentOrder() {
+        // Server-side bodyHtml: a document-ordered, nested tree of <section> wrappers, each
+        // carrying its fragment's body (null for structural nodes) followed by its children.
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+
+        // cast_1 (structural, no body) -> par_1 (body) -> odst_1 (body), then par_2 (body).
+        String cast = NORMA_ROOT + "/cast_1";
+        String par1 = cast + "/par_1";
+        String odst = par1 + "/odst_1";
+        String par2 = NORMA_ROOT + "/par_2";
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(cast, NORMA_ROOT, "Část 1", "cast", "0001", null),
+                new FragmentModel(par1, cast, "§ 1", "par", "0002", "<p>§ 1</p>"),
+                new FragmentModel(odst, par1, "§ 1 odst. 1", "odst", "0003", "<p>(1)</p>"),
+                new FragmentModel(par2, NORMA_ROOT, "§ 2", "par", "0004", "<p>§ 2</p>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+
+        String body = out.getBodyHtml();
+        // Document order: §1 before its odst, both before §2.
+        assertTrue(body.indexOf("<p>§ 1</p>") < body.indexOf("<p>(1)</p>"), "§ 1 must precede its odst");
+        assertTrue(body.indexOf("<p>(1)</p>") < body.indexOf("<p>§ 2</p>"), "odst must precede § 2");
+        // Structural cast_1 contributes a wrapper but no body literal of its own.
+        assertTrue(body.contains("data-kind=\"cast\""), "structural node still wrapped");
+        assertTrue(body.contains("data-kind=\"odst\""));
+        // Nesting: odst_1's section is INSIDE par_1's section (no closing </section> between
+        // the §1 body and the (1) body — the odst opens before §1's section closes).
+        int par1Body = body.indexOf("<p>§ 1</p>");
+        int odstBody = body.indexOf("<p>(1)</p>");
+        assertEquals(0, countCloseSections(body, par1Body, odstBody),
+                "odst must nest inside par_1 — no </section> between their bodies");
+        // Balanced wrappers: one <section> open and close per fragment (4 fragments).
+        assertEquals(4, countOccurrences(body, "<section "), "one wrapper per fragment");
+        assertEquals(4, countOccurrences(body, "</section>"), "wrappers must be balanced");
+        // bodyHtml is emitted as-is (not escaped) — raw <p> tags survive.
+        assertTrue(body.contains("<p>§ 1</p>"));
+        // The tree is still present alongside the assembled body.
+        assertEquals(2, out.getFragments().size());
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int n = 0, i = 0;
+        while ((i = haystack.indexOf(needle, i)) >= 0) { n++; i += needle.length(); }
+        return n;
+    }
+
+    private static int countCloseSections(String s, int from, int to) {
+        return countOccurrences(s.substring(from, to), "</section>");
+    }
+
+    @Test
+    void getLawContentEmptyContentYieldsEmptyBodyHtml() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+        assertEquals("", out.getBodyHtml());
+        assertTrue(out.getFragments().isEmpty());
+    }
+
+    @Test
     void getLawContentPicksLatestEvenWhenNotFirstRow() {
         when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
