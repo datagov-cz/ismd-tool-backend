@@ -35,8 +35,14 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     static final int MAX_FRAGMENT_DEPTH = 10;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
-    private static final String NORMA_SUFFIX = "/dokument/norma";
-    private static final String POZNAMKY_SUFFIX = "/dokument/poznamkypodcarou";
+
+    /**
+     * Marker for the structural document containers of a version. Direct children of any
+     * {@code <versionIri>/dokument/<container>} (norma / poznamkypodcarou / prilohy / …) are
+     * tree roots. Used by {@link #assembleTree} to detect roots structurally rather than
+     * against a hardcoded container list.
+     */
+    private static final String DOKUMENT_INFIX = "/dokument/";
 
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
@@ -193,25 +199,16 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     record NumberYear(String number, int year) {}
 
     /**
-     * Tree assembly. Top-level fragments are anchored under one of two structural roots:
-     * {@code <versionIri>/dokument/norma} (the body of the act) and
-     * {@code <versionIri>/dokument/poznamkypodcarou} (footnotes) — both contribute roots,
-     * so footnote fragments (which carry real text) are not dropped.
-     * Multi-root is supported (any number of children of either anchor).
-     *
-     * <p>Orphans (rows whose parent IRI is neither an anchor root nor present in the
-     * result set) are dropped with a warn-log. On large laws a known systematic source of
-     * orphans is intermediate {@code frag_*} grouping nodes that {@code má-fragment-znění}
-     * never returns (they carry no citace/order), orphaning their text-bearing children —
-     * tracked as a follow-up; see the orphan warn-log for the live count. Depth is capped
-     * at {@link #MAX_FRAGMENT_DEPTH} as a defensive measure against cyclic / pathological data.
+     * Tree assembly. A fragment is a <em>root</em> when its parent is a structural document
+     * container — {@code <versionIri>/dokument/<container>} for any container (norma = the
+     * body, poznamkypodcarou = footnotes, prilohy = annexes, …); roots are detected
+     * structurally. Multi-root is supported.
      */
     List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
         if (rows.isEmpty()) {
             return List.of();
         }
-        String normaRoot = versionIri + NORMA_SUFFIX;
-        String poznamkyRoot = versionIri + POZNAMKY_SUFFIX;
+        String dokumentPrefix = versionIri + DOKUMENT_INFIX;
 
         Map<String, FragmentDto> nodes = new HashMap<>(rows.size());
         for (FragmentModel m : rows) {
@@ -223,30 +220,74 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         String firstOrphanParent = null;
         for (FragmentModel m : rows) {
             FragmentDto self = nodes.get(m.getIri());
-            String parent = m.getParentIri();
-            if (normaRoot.equals(parent) || poznamkyRoot.equals(parent)) {
+            String anchor = resolveAnchor(m.getParentIri(), nodes, dokumentPrefix);
+            if (anchor == null) {
+                // Unresolvable parent: surface as a root so the fragment's text is never
+                // lost, but count it for the warn-log so the data anomaly stays visible.
                 roots.add(self);
-                continue;
-            }
-            FragmentDto parentNode = nodes.get(parent);
-            if (parentNode == null) {
                 orphanCount++;
                 if (firstOrphanParent == null) {
-                    firstOrphanParent = parent;
+                    firstOrphanParent = m.getParentIri();
                 }
-                continue;
+            } else if (ROOT_ANCHOR.equals(anchor)) {
+                roots.add(self);
+            } else {
+                nodes.get(anchor).getChildren().add(self);
             }
-            parentNode.getChildren().add(self);
         }
 
         if (orphanCount > 0) {
-            log.warn("Dropped {} orphan fragment row(s) for version {} (parent IRI neither an anchor root "
-                            + "nor in result set; sample parent IRI: {}).",
+            log.warn("Surfaced {} fragment row(s) as roots for version {} because their parent IRI "
+                            + "resolved to neither an existing node nor a dokument container "
+                            + "(sample parent IRI: {}).",
                     orphanCount, versionIri, firstOrphanParent);
         }
 
         capDepth(roots, 1, versionIri);
         return roots;
+    }
+
+    /** Sentinel returned by {@link #resolveAnchor} when a fragment resolves to a tree root. */
+    private static final String ROOT_ANCHOR = "ROOT";
+
+    /**
+     * Resolve where a fragment with the given parent IRI should attach.
+     * <ul>
+     *   <li>The IRI of an existing node → attach as that node's child.</li>
+     *   <li>{@link #ROOT_ANCHOR} → the fragment is a tree root (parent is, or walks up to,
+     *       a {@code <versionIri>/dokument/<container>} segment).</li>
+     *   <li>{@code null} → unresolvable; caller surfaces it as a root (no text lost) and warns.</li>
+     * </ul>
+     * Walks the parent IRI up by path segments (stripping a trailing slash first), stopping
+     * at the first existing node or {@code dokument/<container>} segment.
+     */
+    private static String resolveAnchor(String parentIri, Map<String, FragmentDto> nodes, String dokumentPrefix) {
+        if (parentIri == null) {
+            return null;
+        }
+        String cur = parentIri;
+        while (true) {
+            if (nodes.containsKey(cur)) {
+                return cur;
+            }
+            if (isDokumentRoot(cur, dokumentPrefix)) {
+                return ROOT_ANCHOR;
+            }
+            int slash = cur.lastIndexOf('/');
+            if (slash <= 0) {
+                return null;
+            }
+            cur = cur.substring(0, slash);
+        }
+    }
+
+    /** True when {@code iri} is exactly {@code <versionIri>/dokument/<single-segment>}. */
+    private static boolean isDokumentRoot(String iri, String dokumentPrefix) {
+        if (!iri.startsWith(dokumentPrefix)) {
+            return false;
+        }
+        String rest = iri.substring(dokumentPrefix.length());
+        return !rest.isEmpty() && rest.indexOf('/') < 0;
     }
 
     private void capDepth(List<FragmentDto> nodes, int depth, String versionIri) {

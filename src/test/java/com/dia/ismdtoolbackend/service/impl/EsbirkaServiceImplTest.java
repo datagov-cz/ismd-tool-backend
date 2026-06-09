@@ -161,21 +161,94 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
-    void orphanRowsAreDroppedWithWarn() {
-        // par_1 is a root; "ghost" claims a parent that isn't in the result set.
-        String par = VERSION_IRI + "/par_1";
-        String ghost = VERSION_IRI + "/par_1/odst_1";
-        String missingParent = VERSION_IRI + "/par_99/odst_5";
+    void fragUnderParWhoseGrouperIsMissing_reparentsToNearestExistingAncestor() {
+        // e-Sbírka nests text fragments under intermediate frag_* grouping nodes that
+        // má-fragment-znění never returns. The child's parent IRI (.../par_1/frag_X) is not
+        // in the set; walking the IRI path up one segment lands on par_1, which IS. The text
+        // fragment must attach to par_1, not be dropped. (Live: 151/152 such rows on 262/2006.)
+        String par = NORMA_ROOT + "/par_1";
+        String missingGrouper = par + "/frag_6660499";
+        String text = missingGrouper + "/text_1";
         when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(ghost, par, "§ 1 odst. 1", "odst", "0002"),
-                new FragmentModel(missingParent, missingParent + "-no-such",
-                        "ghost", "odst", "0003")));
+                new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0002")));
         List<FragmentDto> out = service.getFragments(VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(1, out.get(0).getChildren().size());
-        assertEquals(ghost, out.get(0).getChildren().get(0).getIri());
+        assertEquals(text, out.get(0).getChildren().get(0).getIri());
+    }
+
+    @Test
+    void prilohyDokumentContainerIsAThirdRoot() {
+        // Besides norma and poznamkypodcarou, annexes live under <V>/dokument/prilohy.
+        // A priloha fragment whose grouper parent is missing must walk up to the prilohy
+        // container and become a root. (Live: priloha_0 on 262/2006.)
+        String par = NORMA_ROOT + "/par_1";
+        String prilohyRoot = VERSION_IRI + "/dokument/prilohy";
+        String priloha = prilohyRoot + "/priloha_0";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(priloha, prilohyRoot + "/frag_6668611", "Příloha", "priloha", "9999")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals(2, out.size());
+        assertEquals(par, out.get(0).getIri());
+        assertEquals(priloha, out.get(1).getIri());
+    }
+
+    @Test
+    void realisticMixedShape_losesNoFragment() {
+        // End-to-end regression mirroring labour law 262/2006's structure: a norma subtree
+        // with a text fragment nested under a MISSING frag_* grouper, a footnote root, and an
+        // annex whose grouper is also missing. Every input row must appear in the tree exactly
+        // once. (Pre-fix, ~11% of rows like these were dropped.)
+        String cast = NORMA_ROOT + "/cast_1";
+        String par = cast + "/par_1";
+        String missingGrouper = par + "/frag_100";
+        String text = missingGrouper + "/text_1";
+        String footnote = VERSION_IRI + "/dokument/poznamkypodcarou/frag_9";
+        String annexGrouper = VERSION_IRI + "/dokument/prilohy/frag_50";
+        String annex = VERSION_IRI + "/dokument/prilohy/priloha_0";
+
+        List<FragmentModel> rows = List.of(
+                new FragmentModel(cast, NORMA_ROOT, "Část 1", "cast", "0001"),
+                new FragmentModel(par, cast, "§ 1", "par", "0002"),
+                new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0003"),
+                new FragmentModel(footnote, VERSION_IRI + "/dokument/poznamkypodcarou", "1)", "frag", "0004"),
+                new FragmentModel(annex, annexGrouper, "Příloha 1", "priloha", "0005"));
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(rows);
+
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+
+        // Walk the assembled tree and collect every IRI; must equal the 5 input IRIs.
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.Deque<FragmentDto> stack = new java.util.ArrayDeque<>(out);
+        while (!stack.isEmpty()) {
+            FragmentDto n = stack.pop();
+            assertTrue(seen.add(n.getIri()), "fragment appeared twice: " + n.getIri());
+            stack.addAll(n.getChildren());
+        }
+        assertEquals(java.util.Set.of(cast, par, text, footnote, annex), seen,
+                "every input fragment must appear exactly once — no text lost");
+
+        // Roots: cast (norma child), footnote, annex. text/par are nested, not roots.
+        assertEquals(3, out.size());
+    }
+
+    @Test
+    void unresolvableParentIsSurfacedAsRootNotDropped() {
+        // A parent that resolves to neither an existing node nor a dokument container is a
+        // genuine data anomaly. We surface the fragment as a root (its text is never lost)
+        // and warn, rather than silently dropping it.
+        String par = NORMA_ROOT + "/par_1";
+        String ghost = VERSION_IRI + "/par_99/odst_5";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(ghost, ghost + "-no-such", "ghost", "odst", "0003")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals(2, out.size());
+        assertEquals(par, out.get(0).getIri());
+        assertEquals(ghost, out.get(1).getIri());
     }
 
     @Test
