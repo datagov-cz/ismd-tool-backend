@@ -36,6 +36,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     static final int MAX_FRAGMENT_DEPTH = 10;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
     private static final String NORMA_SUFFIX = "/dokument/norma";
+    private static final String POZNAMKY_SUFFIX = "/dokument/poznamkypodcarou";
 
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
@@ -192,17 +193,25 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     record NumberYear(String number, int year) {}
 
     /**
-     * Tree assembly. Top-level fragments have parent = {@code <versionIri>/dokument/norma}.
-     * Multi-root is supported (any number of children of the norma node).
-     * Orphans (rows whose parent IRI is not in the result set and is not the norma root)
-     * are dropped with a warn-log. Depth is capped at {@link #MAX_FRAGMENT_DEPTH} as a
-     * defensive measure against cyclic / pathological data.
+     * Tree assembly. Top-level fragments are anchored under one of two structural roots:
+     * {@code <versionIri>/dokument/norma} (the body of the act) and
+     * {@code <versionIri>/dokument/poznamkypodcarou} (footnotes) — both contribute roots,
+     * so footnote fragments (which carry real text) are not dropped.
+     * Multi-root is supported (any number of children of either anchor).
+     *
+     * <p>Orphans (rows whose parent IRI is neither an anchor root nor present in the
+     * result set) are dropped with a warn-log. On large laws a known systematic source of
+     * orphans is intermediate {@code frag_*} grouping nodes that {@code má-fragment-znění}
+     * never returns (they carry no citace/order), orphaning their text-bearing children —
+     * tracked as a follow-up; see the orphan warn-log for the live count. Depth is capped
+     * at {@link #MAX_FRAGMENT_DEPTH} as a defensive measure against cyclic / pathological data.
      */
     List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
         if (rows.isEmpty()) {
             return List.of();
         }
         String normaRoot = versionIri + NORMA_SUFFIX;
+        String poznamkyRoot = versionIri + POZNAMKY_SUFFIX;
 
         Map<String, FragmentDto> nodes = new HashMap<>(rows.size());
         for (FragmentModel m : rows) {
@@ -211,24 +220,29 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
         List<FragmentDto> roots = new ArrayList<>();
         int orphanCount = 0;
+        String firstOrphanParent = null;
         for (FragmentModel m : rows) {
             FragmentDto self = nodes.get(m.getIri());
             String parent = m.getParentIri();
-            if (normaRoot.equals(parent)) {
+            if (normaRoot.equals(parent) || poznamkyRoot.equals(parent)) {
                 roots.add(self);
                 continue;
             }
             FragmentDto parentNode = nodes.get(parent);
             if (parentNode == null) {
                 orphanCount++;
+                if (firstOrphanParent == null) {
+                    firstOrphanParent = parent;
+                }
                 continue;
             }
             parentNode.getChildren().add(self);
         }
 
         if (orphanCount > 0) {
-            log.warn("Dropped {} orphan fragment row(s) for version {} (parent IRI not in result set and not norma root).",
-                    orphanCount, versionIri);
+            log.warn("Dropped {} orphan fragment row(s) for version {} (parent IRI neither an anchor root "
+                            + "nor in result set; sample parent IRI: {}).",
+                    orphanCount, versionIri, firstOrphanParent);
         }
 
         capDepth(roots, 1, versionIri);

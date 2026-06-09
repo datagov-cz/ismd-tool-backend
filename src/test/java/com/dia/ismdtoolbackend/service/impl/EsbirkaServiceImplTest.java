@@ -128,6 +128,26 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
+    void poznamkyPodcarouFragmentsBecomeRoots() {
+        // Footnotes hang off <versionIri>/dokument/poznamkypodcarou, a second structural
+        // root alongside /dokument/norma. They carry real text and must not be dropped.
+        // (Live: labour law 262/2006 has 123 such footnote fragments, all text-bearing.)
+        String poznamkyRoot = VERSION_IRI + "/dokument/poznamkypodcarou";
+        String par = VERSION_IRI + "/par_1";
+        String fn1 = poznamkyRoot + "/frag_1";
+        String fn2 = poznamkyRoot + "/frag_2";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(fn1, poznamkyRoot, "1)", "frag", "9001"),
+                new FragmentModel(fn2, poznamkyRoot, "2)", "frag", "9002")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals(3, out.size());
+        assertEquals(par, out.get(0).getIri());
+        assertEquals(fn1, out.get(1).getIri());
+        assertEquals(fn2, out.get(2).getIri());
+    }
+
+    @Test
     void multiRootIsSupported() {
         String par1 = VERSION_IRI + "/par_1";
         String par2 = VERSION_IRI + "/par_2";
