@@ -190,7 +190,13 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         return new NumberYear(number, year);
     }
 
-    /** Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a cache entry. */
+    /**
+     * Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a
+     * cache entry. <strong>Not dead code</strong> — invoked reflectively by the {@code @Cacheable}
+     * SpEL key on {@link #getLawContent} ({@code #root.target.normalizeLawRef(#lawRef)}); must
+     * stay {@code public} for SpEL {@code #root.target} to resolve it. Covered by
+     * {@code EsbirkaServiceImplTest.normalizeLawRefCollapsesEquivalentRefsToOneKey}.
+     */
     public String normalizeLawRef(String lawRef) {
         NumberYear ny = parseNumberYear(lawRef);
         return ny.number() + "/" + ny.year();

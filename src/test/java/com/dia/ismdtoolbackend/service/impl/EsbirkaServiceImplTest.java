@@ -378,6 +378,30 @@ class EsbirkaServiceImplTest {
         assertThrows(IllegalArgumentException.class, () -> service.getLawContent("  "));
     }
 
+    // -------- normalizeLawRef: @Cacheable key generator --------
+
+    @Test
+    void normalizeLawRefCollapsesEquivalentRefsToOneKey() {
+        // normalizeLawRef is the SpEL key expression for @Cacheable on getLawContent
+        // (#root.target.normalizeLawRef(#lawRef)). It MUST collapse trim/Sb.-suffix
+        // variants to a single key, or equivalent refs each store a separate ~2 MB entry.
+        assertEquals("49/1997", service.normalizeLawRef("49/1997"));
+        assertEquals("49/1997", service.normalizeLawRef("  49/1997  "));
+        assertEquals("49/1997", service.normalizeLawRef("49/1997 Sb."));
+        assertEquals("49/1997", service.normalizeLawRef("  49/1997 Sb. "));
+        // Leading-zero year is normalized via Integer parse (1997, not "1997 ").
+        assertEquals("262/2006", service.normalizeLawRef("262/2006 Sb."));
+    }
+
+    @Test
+    void normalizeLawRefRejectsPartialInputLikeGetLawContent() {
+        // Same parser as getLawContent, so the cache-key path rejects junk identically
+        // rather than producing a bogus key.
+        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("49"));
+        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("abc/1997"));
+        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("  "));
+    }
+
     // -------- DTO mapping edge cases --------
 
     @Test
