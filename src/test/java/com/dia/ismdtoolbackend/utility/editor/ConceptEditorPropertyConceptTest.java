@@ -76,7 +76,6 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
         when(propertyConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(propertyConceptEditModel.getExactMatch()).thenReturn(null);
         when(propertyConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(propertyConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, propertyConceptEditModel, model, null);

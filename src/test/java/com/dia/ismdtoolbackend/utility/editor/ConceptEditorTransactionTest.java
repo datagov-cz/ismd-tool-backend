@@ -45,7 +45,6 @@ class ConceptEditorTransactionTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
         when(classConceptEditModel.getPrivacyProvisions()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
