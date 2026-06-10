@@ -83,23 +83,78 @@ public class ConceptMetadataResolver {
 
         Map<String, ResolvedConceptDto> rawIsmdHits = jenaTDB2Repository.fetchConceptResolutions(misses);
         Map<String, ResolvedConceptDto> ismdHits = rawIsmdHits.isEmpty() ? rawIsmdHits : enrichWithSlugs(rawIsmdHits);
-        ismdHits.forEach((iri, dto) -> {
-            if (cache != null) cache.put(iri, dto);
-            out.put(iri, dto);
-        });
+
+        Map<String, ResolvedConceptDto> freshHits = new HashMap<>(ismdHits);
 
         List<String> remaining = misses.stream()
                 .filter(iri -> !ismdHits.containsKey(iri))
                 .toList();
         if (!remaining.isEmpty()) {
-            Map<String, ResolvedConceptDto> nkdHits = nkdSparqlClient.fetchConceptResolutions(remaining);
-            nkdHits.forEach((iri, dto) -> {
-                if (cache != null) cache.put(iri, dto);
-                out.put(iri, dto);
-            });
+            freshHits.putAll(nkdSparqlClient.fetchConceptResolutions(remaining));
         }
 
+        // Expand relationship domain/range stubs into fully-resolved DTOs before
+        // caching, so the cache and the response never hold a half-resolved stub.
+        // Targets are classes (not relationships), so this recursion terminates.
+        Map<String, ResolvedConceptDto> finalHits = resolveDomainRangeStubs(freshHits);
+
+        finalHits.forEach((iri, dto) -> {
+            if (cache != null) cache.put(iri, dto);
+            out.put(iri, dto);
+        });
+
         return out;
+    }
+
+    /**
+     * Replaces the iri-only domain/range stubs carried by relationship DTOs with
+     * fully-resolved {@link ResolvedConceptDto}s. The stub IRIs are resolved in a
+     * single batched {@link #resolveAll} call (cache-backed), then grafted back.
+     * A stub whose target can't be resolved is dropped to {@code null}.
+     */
+    private Map<String, ResolvedConceptDto> resolveDomainRangeStubs(Map<String, ResolvedConceptDto> hits) {
+        List<String> targetIris = new ArrayList<>();
+        for (ResolvedConceptDto dto : hits.values()) {
+            collectStubIri(dto.resolvedDomain(), targetIris);
+            collectStubIri(dto.resolvedRange(), targetIris);
+        }
+        if (targetIris.isEmpty()) {
+            return hits;
+        }
+
+        Map<String, ResolvedConceptDto> resolvedTargets = resolveAll(targetIris);
+
+        Map<String, ResolvedConceptDto> out = new HashMap<>(hits.size());
+        hits.forEach((iri, dto) -> {
+            if (dto.resolvedDomain() == null && dto.resolvedRange() == null) {
+                out.put(iri, dto);
+                return;
+            }
+            out.put(iri, ResolvedConceptDto.builder()
+                    .iri(dto.iri())
+                    .conceptName(dto.conceptName())
+                    .conceptSlug(dto.conceptSlug())
+                    .ontologyIri(dto.ontologyIri())
+                    .ontologyName(dto.ontologyName())
+                    .source(dto.source())
+                    .resolvedDomain(expandStub(dto.resolvedDomain(), resolvedTargets))
+                    .resolvedRange(expandStub(dto.resolvedRange(), resolvedTargets))
+                    .build());
+        });
+        return out;
+    }
+
+    private static void collectStubIri(ResolvedConceptDto stub, List<String> sink) {
+        if (stub != null && stub.iri() != null) {
+            sink.add(stub.iri());
+        }
+    }
+
+    private static ResolvedConceptDto expandStub(ResolvedConceptDto stub, Map<String, ResolvedConceptDto> resolved) {
+        if (stub == null || stub.iri() == null) {
+            return null;
+        }
+        return resolved.get(stub.iri());
     }
 
     private Map<String, ResolvedConceptDto> enrichWithSlugs(Map<String, ResolvedConceptDto> ismdHits) {
