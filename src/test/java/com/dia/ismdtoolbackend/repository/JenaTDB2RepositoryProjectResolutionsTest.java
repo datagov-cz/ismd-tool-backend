@@ -32,6 +32,7 @@ class JenaTDB2RepositoryProjectResolutionsTest {
     private static final String DOMAIN_IRI = SCHEME + "/pojem/trida-a";
     private static final String RANGE_IRI = SCHEME + "/pojem/trida-b";
     private static final String RELATIONSHIP_TYPE = OFN_NAMESPACE + VZTAH;
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
 
     private static Resource res(Model m, String iri) {
         return m.createResource(iri);
@@ -57,6 +58,31 @@ class JenaTDB2RepositoryProjectResolutionsTest {
         assertThat(dto.resolvedDomain().iri()).isEqualTo(DOMAIN_IRI);
         // Stub carries only the IRI — name/ontology are filled by the resolver's second hop.
         assertThat(dto.resolvedDomain().conceptName()).isNull();
+        assertThat(dto.resolvedRange()).isNotNull();
+        assertThat(dto.resolvedRange().iri()).isEqualTo(RANGE_IRI);
+    }
+
+    @Test
+    @DisplayName("NKD relationship typed only as owl:ObjectProperty still yields domain/range stubs")
+    void owlObjectPropertyYieldsStubs() {
+        // Published NKD vocabularies type relationships as owl:ObjectProperty, NOT the
+        // OFN …/vztah role IRI. The projection must accept either typing or NKD
+        // relationships silently lose their domain/range.
+        Model m = ModelFactory.createDefaultModel();
+        Resource scheme = res(m, SCHEME);
+        Resource rel = res(m, REL_IRI);
+        rel.addProperty(SKOS.inScheme, scheme);
+        rel.addProperty(SKOS.prefLabel, m.createLiteral("Vztah", "cs"));
+        rel.addProperty(RDF.type, res(m, OWL_OBJECT_PROPERTY));
+        rel.addProperty(RDFS.domain, res(m, DOMAIN_IRI));
+        rel.addProperty(RDFS.range, res(m, RANGE_IRI));
+
+        Map<String, ResolvedConceptDto> out = JenaTDB2Repository.projectResolutions(m, SearchSource.NKD);
+
+        ResolvedConceptDto dto = out.get(REL_IRI);
+        assertThat(dto).isNotNull();
+        assertThat(dto.resolvedDomain()).isNotNull();
+        assertThat(dto.resolvedDomain().iri()).isEqualTo(DOMAIN_IRI);
         assertThat(dto.resolvedRange()).isNotNull();
         assertThat(dto.resolvedRange().iri()).isEqualTo(RANGE_IRI);
     }

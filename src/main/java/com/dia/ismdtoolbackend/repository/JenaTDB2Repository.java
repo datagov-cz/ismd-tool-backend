@@ -47,6 +47,8 @@ import static com.dia.constants.VocabularyConstants.VZTAH;
 @Getter
 public class JenaTDB2Repository {
 
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+
     private final HttpClient fusekiHttpClient;
     private final Semaphore fusekiSemaphore;
     private final int fusekiSemaphoreTimeout;
@@ -798,7 +800,10 @@ public class JenaTDB2Repository {
         Property rdfType = model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
         Property rdfsDomain = model.createProperty("http://www.w3.org/2000/01/rdf-schema#domain");
         Property rdfsRange = model.createProperty("http://www.w3.org/2000/01/rdf-schema#range");
-        String relationshipTypeIri = OFN_NAMESPACE + VZTAH;
+        // A relationship is typed by the OFN role IRI (…/vztah) in ISMD-authored
+        // graphs, but published NKD vocabularies type relationships only as
+        // owl:ObjectProperty. Accept either — a hit on one is enough.
+        Set<String> relationshipTypeIris = Set.of(OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
 
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         StmtIterator inSchemeStmts = model.listStatements(null, inScheme, (RDFNode) null);
@@ -823,7 +828,7 @@ public class JenaTDB2Repository {
                 // replaces them with fully-resolved DTOs (or null) before caching.
                 ResolvedConceptDto domainStub = null;
                 ResolvedConceptDto rangeStub = null;
-                if (hasType(concept, rdfType, relationshipTypeIri)) {
+                if (hasAnyType(concept, rdfType, relationshipTypeIris)) {
                     domainStub = resourceStub(concept, rdfsDomain);
                     rangeStub = resourceStub(concept, rdfsRange);
                 }
@@ -844,12 +849,12 @@ public class JenaTDB2Repository {
         return out;
     }
 
-    private static boolean hasType(Resource concept, Property rdfType, String typeIri) {
+    private static boolean hasAnyType(Resource concept, Property rdfType, Set<String> typeIris) {
         StmtIterator types = concept.listProperties(rdfType);
         try {
             while (types.hasNext()) {
                 RDFNode node = types.next().getObject();
-                if (node.isURIResource() && typeIri.equals(node.asResource().getURI())) {
+                if (node.isURIResource() && typeIris.contains(node.asResource().getURI())) {
                     return true;
                 }
             }
@@ -957,7 +962,7 @@ public class JenaTDB2Repository {
         return switch (type) {
             case TRIDA -> "http://www.w3.org/2002/07/owl#Class";
             case VLASTNOST -> "http://www.w3.org/2002/07/owl#DatatypeProperty";
-            case VZTAH -> "http://www.w3.org/2002/07/owl#ObjectProperty";
+            case VZTAH -> OWL_OBJECT_PROPERTY;
         };
     }
 }

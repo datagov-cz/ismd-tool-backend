@@ -321,6 +321,34 @@ class ConceptMetadataResolverTest {
         }
 
         @Test
+        @DisplayName("slugged relationship keeps domain/range — slug enrichment must not strip stubs before expansion")
+        void sluggedRelationshipKeepsDomainRange() {
+            // Production case: the relationship has a Postgres slug row, so enrichWithSlugs
+            // rebuilds its DTO. That rebuild must carry the domain/range stubs forward, or
+            // resolveDomainRangeStubs finds nothing to expand and the FE sees no targets.
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, RANGE_IRI))));
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(DOMAIN_IRI, RANGE_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(
+                            DOMAIN_IRI, ismdDto(DOMAIN_IRI),
+                            RANGE_IRI, ismdDto(RANGE_IRI))));
+            // The relationship itself has a slug; its domain/range targets resolve without one.
+            when(conceptMetadataRepository.findByConceptIriIn(anyList()))
+                    .thenReturn(List.of(entity(REL_IRI, "rel-slug")));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(REL_IRI));
+
+            ResolvedConceptDto rel = out.get(REL_IRI);
+            assertThat(rel.conceptSlug()).isEqualTo("rel-slug");
+            assertThat(rel.resolvedDomain()).as("domain must survive slug enrichment").isNotNull();
+            assertThat(rel.resolvedDomain().iri()).isEqualTo(DOMAIN_IRI);
+            assertThat(rel.resolvedDomain().conceptName()).isNotNull();
+            assertThat(rel.resolvedRange()).as("range must survive slug enrichment").isNotNull();
+            assertThat(rel.resolvedRange().iri()).isEqualTo(RANGE_IRI);
+        }
+
+        @Test
         @DisplayName("relationship with an unresolvable range → range dropped to null, domain kept")
         void unresolvableRangeDropped() {
             when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);

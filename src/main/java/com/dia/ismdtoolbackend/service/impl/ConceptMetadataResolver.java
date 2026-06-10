@@ -181,6 +181,11 @@ public class ConceptMetadataResolver {
                         .ontologyIri(dto.ontologyIri())
                         .ontologyName(dto.ontologyName())
                         .source(dto.source())
+                        // Preserve the iri-only domain/range stubs so the later
+                        // resolveDomainRangeStubs pass can still expand them; the
+                        // slug rebuild must not silently drop relationship targets.
+                        .resolvedDomain(dto.resolvedDomain())
+                        .resolvedRange(dto.resolvedRange())
                         .build());
             }
         });
