@@ -32,7 +32,6 @@ public class ConceptEditor {
     private static final String AIS = "agendaSystemCode";
     private static final String IS_PUBLIC = "isPublic";
     private static final String IN_TEZAURUS = "inTezaurus";
-    private static final String NAMESPACE = "namespace";
 
     private final URIGenerator uriGenerator = new URIGenerator();
 
@@ -184,7 +183,6 @@ public class ConceptEditor {
         updateNonLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
         updateExactMatch(context.newConcept, editModel.getExactMatch(), context.oldConcept, model, toRemove, toAdd);
         updateBooleanProperty(context.newConcept, IN_TEZAURUS, editModel.getInTezaurus(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, NAMESPACE, editModel.getNamespace(), context.oldConcept, model, toRemove, toAdd);
     }
 
     private void updateNameModel(Resource newConcept, NameModel nameModel, Resource oldConcept,
@@ -294,25 +292,25 @@ public class ConceptEditor {
                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (altNameModel == null) return;
 
-        Map<String, String> oldAltNamesWithLang = getPropertyValuesWithLanguage(oldConcept);
+        Map<String, String> oldAltNamesByLang = getAllPropertyValuesWithLanguage(oldConcept, SKOS.altLabel);
 
-        Map<String, String> newAltNamesWithLang = new HashMap<>();
+        Map<String, String> newAltNamesByLang = new HashMap<>();
         if (altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
             for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
                 if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
                         : DEFAULT_LANG;
-                    newAltNamesWithLang.put(entry.getValue().trim(), languageTag);
+                    newAltNamesByLang.put(languageTag, entry.getValue().trim());
                 }
             }
         }
 
-        if (!oldAltNamesWithLang.equals(newAltNamesWithLang)) {
+        if (!oldAltNamesByLang.equals(newAltNamesByLang)) {
             removeAllByPredicate(newConcept, SKOS.altLabel, toRemove, toAdd);
-            for (Map.Entry<String, String> entry : newAltNamesWithLang.entrySet()) {
+            for (Map.Entry<String, String> entry : newAltNamesByLang.entrySet()) {
                 toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
-                        model.createLiteral(entry.getKey(), entry.getValue())));
+                        model.createLiteral(entry.getValue(), entry.getKey())));
             }
         }
     }
@@ -808,9 +806,6 @@ public class ConceptEditor {
         if (editModel.getInTezaurus() != null) {
             predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + IN_TEZAURUS));
         }
-        if (editModel.getNamespace() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + NAMESPACE));
-        }
 
         switch (editModel.getConceptTypeEnum()) {
             case TRIDA -> {
@@ -927,23 +922,6 @@ public class ConceptEditor {
     private String getPropertyValue(Resource resource, Property property) {
         Statement stmt = resource.getProperty(property);
         return stmt != null && stmt.getObject().isLiteral() ? stmt.getObject().asLiteral().getString() : null;
-    }
-
-    private Map<String, String> getPropertyValuesWithLanguage(Resource resource) {
-        Map<String, String> valuesWithLang = new HashMap<>();
-        StmtIterator iter = resource.listProperties(SKOS.altLabel);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getObject().isLiteral()) {
-                Literal literal = stmt.getObject().asLiteral();
-                String value = literal.getString();
-                String lang = literal.getLanguage() != null && !literal.getLanguage().isEmpty()
-                    ? literal.getLanguage()
-                    : DEFAULT_LANG;
-                valuesWithLang.put(value, lang);
-            }
-        }
-        return valuesWithLang;
     }
 
     private Map<String, String> getAllPropertyValuesWithLanguage(Resource resource, Property property) {
