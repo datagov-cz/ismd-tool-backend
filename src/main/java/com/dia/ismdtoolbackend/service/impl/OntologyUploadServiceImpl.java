@@ -7,6 +7,9 @@ import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
+import com.dia.ismdtoolbackend.enums.NormalizeMode;
+import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
@@ -106,7 +109,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
-    public OntologyMetadataModel uploadFromFile(MultipartFile file, String providedName, String userId) throws IOException, OntologyUploadException {
+    public OntologyMetadataModel uploadFromFile(MultipartFile file, String userId,
+                                                NormalizeMode normalizeMode,
+                                                List<String> conceptsToNormalize) throws IOException, OntologyUploadException {
         if (file.isEmpty()) {
             throw new EmptyFileException("Uploaded file is empty");
         }
@@ -125,7 +130,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
         OntModel finalModel = getOntologyModel(file, rdfLang);
         try {
-            String graphName = determineGraphName(file, providedName, finalModel);
+            String graphName = determineGraphName(finalModel);
             log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
             List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel);
@@ -136,20 +141,37 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             // 1. Fail-fast validation — check slug uniqueness before any persistence
             checkSlugUniqueness(graphName);
 
-            // 2. Normalize OFN types and labels at import time
-            int normalizedCount = OFNTypeNormalizer.normalize(finalModel);
+            // 2. Missing-inScheme decision gate. Detect BEFORE normalize (normalize would
+            //    stamp inScheme and hide the gap). If any owned concept lacks inScheme and
+            //    the user hasn't decided, reject with the list — nothing persisted.
+            List<String> missingInScheme = OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(finalModel, graphName);
+            if (!missingInScheme.isEmpty() && normalizeMode == null) {
+                List<MissingConceptDto> missingDtos = missingInScheme.stream()
+                        .map(iri -> new MissingConceptDto(
+                                iri, UtilityMethods.extractNameFromIRI(iri), graphName))
+                        .toList();
+                log.info("Upload requires inScheme decision: {} concept(s) missing skos:inScheme in {}",
+                        missingDtos.size(), graphName);
+                throw new InSchemeDecisionRequiredException(graphName, missingDtos);
+            }
+
+            // 3. Resolve which missing concepts to normalize from the user's decision.
+            Set<String> conceptsToStamp = resolveConceptsToNormalize(missingInScheme, normalizeMode, conceptsToNormalize);
+
+            // 4. Normalize OFN types/labels + add inScheme only for the chosen concepts.
+            int normalizedCount = OFNTypeNormalizer.normalize(finalModel, graphName, conceptsToStamp);
             if (normalizedCount > 0) {
                 log.info("Normalized OFN types on {} resources", normalizedCount);
             }
 
-            // 3. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
+            // 5. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
             try {
                 jenaTDB2Repository.putOntologyModel(graphName, finalModel);
             } catch (Exception e) {
                 throw new OntologyUploadException("Failed to save ontology to TDB2: " + e.getMessage(), e);
             }
 
-            // 4. Save metadata to PostgreSQL — protected by @Transactional
+            // 6. Save metadata to PostgreSQL — protected by @Transactional
             //    If anything below fails, Spring rolls back PostgreSQL; catch cleans up TDB2
             OntologyMetadataModel metadata;
             try {
@@ -210,33 +232,65 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private String determineGraphName(MultipartFile file, String providedName, OntModel model) {
-        if (providedName != null && !providedName.trim().isEmpty()) {
-            log.debug("Using provided graph name: {}", providedName);
-            return providedName;
-        }
-
+    private String determineGraphName(OntModel model) {
+        // The RDF data is authoritative for the vocabulary IRI / graph name. If no
+        // ontology IRI can be derived, FAIL — never fabricate a filename-based name,
+        // which produces orphan concepts whose namespace diverges from the graph.
         String ontologyIRI = extractOntologyIRI(model);
-        if (ontologyIRI != null) {
-            log.debug("Using extracted ontology IRI as graph name: {}", ontologyIRI);
-            return ontologyIRI;
+        if (ontologyIRI == null) {
+            throw new OntologyUploadException(
+                    "Z RDF dat nelze odvodit IRI slovníku (chybí owl:Ontology nebo skos:ConceptScheme). "
+                            + "Slovník nelze nahrát bez identity odvozené z dat.");
         }
+        log.debug("Using extracted ontology IRI as graph name: {}", ontologyIRI);
+        return ontologyIRI;
+    }
 
-        String fileName = file.getOriginalFilename();
-        String baseName = fileName != null ?
-                fileName.replaceAll("\\.[^.]+$", "") : "ontology";
-
-        String generatedName = String.format(DEFAULT_NS + "%s-%s", baseName, UUID.randomUUID());
-        log.debug("Generated graph name: {}", generatedName);
-        return generatedName;
+    /**
+     * Maps the user's {@link NormalizeMode} decision to the set of missing-inScheme
+     * concept IRIs that should be normalized (stamped with {@code inScheme → graphName}).
+     * The complement — missing concepts NOT returned here — are excluded: no inScheme,
+     * no ownership row, triples kept.
+     */
+    private Set<String> resolveConceptsToNormalize(List<String> missingInScheme,
+                                                   NormalizeMode normalizeMode,
+                                                   List<String> conceptsToNormalize) {
+        if (missingInScheme.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> missingSet = new HashSet<>(missingInScheme);
+        // normalizeMode is non-null here (the decision gate above returned otherwise).
+        return switch (normalizeMode) {
+            case NORMALIZE_ALL -> missingSet;
+            case EXCLUDE_ALL -> Set.of();
+            case PER_CONCEPT -> {
+                if (conceptsToNormalize == null) {
+                    yield Set.of();
+                }
+                // Only honor IRIs that are actually in the missing set; ignore unknowns.
+                Set<String> chosen = new HashSet<>(conceptsToNormalize);
+                chosen.retainAll(missingSet);
+                yield chosen;
+            }
+        };
     }
 
     private String extractOntologyIRI(OntModel model) {
-        ResIterator ontologies = model.listResourcesWithProperty(RDF.type, OWL2.Ontology);
-        if (ontologies.hasNext()) {
-            Resource ont = ontologies.next();
-            if (ont.isURIResource()) {
-                return ont.getURI();
+        // owl:Ontology is the primary signal; SKOS-only vocabularies declare the
+        // vocabulary as a skos:ConceptScheme instead, so accept that too.
+        String iri = firstUriSubjectOfType(model, OWL2.Ontology);
+        if (iri == null) {
+            iri = firstUriSubjectOfType(model, SKOS.ConceptScheme);
+        }
+        return iri;
+    }
+
+    private String firstUriSubjectOfType(OntModel model, Resource type) {
+        ResIterator subjects = model.listResourcesWithProperty(RDF.type, type);
+        while (subjects.hasNext()) {
+            Resource subject = subjects.next();
+            if (subject.isURIResource()) {
+                return subject.getURI();
             }
         }
         return null;
@@ -334,7 +388,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
 
-            if (shouldSkipConcept(conceptResource)) {
+            if (shouldSkipConcept(conceptResource, graphName)) {
                 continue;
             }
 
@@ -377,12 +431,33 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private boolean shouldSkipConcept(Resource conceptResource) {
+    private boolean shouldSkipConcept(Resource conceptResource, String graphName) {
         if (!conceptResource.isURIResource()) {
             return true;
         }
 
         String conceptIri = conceptResource.getURI();
+
+        // Alien-concept guard: a concept whose IRI is not under this vocabulary's
+        // namespace is not owned by this upload (e.g. an embedded legislative
+        // reference). Don't claim it with a Postgres ownership row — it stays a
+        // referenced concept, resolved later via its own vocabulary / NKD. Mirrors
+        // the resolution invariant STRSTARTS(conceptIri, graphName).
+        if (!OFNTypeNormalizer.isOwnedConcept(conceptIri, graphName)) {
+            log.debug("Skipping alien concept not owned by {}: {}", graphName, conceptIri);
+            return true;
+        }
+
+        // Excluded-concept guard: an owned concept that still lacks skos:inScheme after
+        // normalization is one the user chose to EXCLUDE. It must not get an ownership
+        // row — it would be unresolvable (no inScheme) and falsely claimed. Its triples
+        // remain in the graph as inert context.
+        Property skosInScheme = conceptResource.getModel().createProperty(SKOS_NS + "inScheme");
+        if (!conceptResource.hasProperty(skosInScheme)) {
+            log.debug("Skipping excluded concept (no skos:inScheme) in {}: {}", graphName, conceptIri);
+            return true;
+        }
+
         Optional<ConceptMetadataEntity> existing = conceptMetadataRepository.findByConceptIri(conceptIri);
         if (existing.isPresent()) {
             log.debug("Concept already exists: {}", conceptIri);

@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
@@ -106,7 +107,7 @@ class OntologyUploadTransactionalTest {
                 .when(jenaTDB2Repository).putOntologyModel(anyString(), any());
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
 
         assertTrue(thrown.getMessage().contains("TDB2"));
         // Metadata repository should not have been called
@@ -126,7 +127,7 @@ class OntologyUploadTransactionalTest {
         when(ontologyMetadataRepository.save(any())).thenThrow(new RuntimeException("DB constraint violation"));
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
 
         // TDB2 should be cleaned up
         verify(jenaTDB2Repository).deleteGraph(anyString());
@@ -147,7 +148,7 @@ class OntologyUploadTransactionalTest {
                 .when(jenaTDB2Repository).deleteGraph(anyString());
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
 
         // Original exception should still propagate
         assertTrue(thrown.getMessage().contains("Failed to upload ontology"));
@@ -179,7 +180,7 @@ class OntologyUploadTransactionalTest {
                 .when(conceptMetadataRepository).saveAll(any());
 
         OntologyUploadException thrown = assertThrows(OntologyUploadException.class,
-                () -> uploadService.uploadFromFile(file, "Test Ontology", "user1"));
+                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
 
         verify(jenaTDB2Repository).deleteGraph(anyString());
     }

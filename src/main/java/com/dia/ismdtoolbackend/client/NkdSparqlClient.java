@@ -65,7 +65,7 @@ public class NkdSparqlClient {
         Model rawModel = resultModel.get();
         log.debug("Fetched {} triples from NKD for concept: {}", rawModel.size(), conceptIri);
         String inSchemeIri = extractInSchemeIri(rawModel, conceptIri);
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        Model processedModel = detailExtractor.applyOFNTransformationsForNkd(rawModel);
         OntologyDetailModel.ConceptDetailModel conceptDetail =
                 detailExtractor.extractConceptDetail(processedModel, conceptIri,
                         OntologyDetailExtractor.iriResolver());
@@ -100,7 +100,7 @@ public class NkdSparqlClient {
 
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
-            Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
+            Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);
             OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel,
                     OntologyDetailExtractor.iriResolver());
             log.debug("Successfully extracted published ontology detail from NKD: {}", ontologyIri);

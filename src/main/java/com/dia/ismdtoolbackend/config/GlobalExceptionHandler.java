@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -59,6 +60,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyValidationException(OntologyValidationException e) {
         log.warn("Ontology validation failed: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(InSchemeDecisionRequiredException.class)
+    public ResponseEntity<ApiResponseDto<MissingInSchemeDecisionDto>> handleInSchemeDecisionRequired(InSchemeDecisionRequiredException e) {
+        log.info("Upload paused for inScheme decision: {} concept(s) missing skos:inScheme",
+                e.getConceptsMissingInScheme().size());
+        MissingInSchemeDecisionDto data = new MissingInSchemeDecisionDto(
+                e.getGraphName(), e.getConceptsMissingInScheme());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponseDto.error(data, e.getMessage(), InSchemeDecisionRequiredException.ERROR_CODE));
     }
 
     @ExceptionHandler(OntologyStorageException.class)
