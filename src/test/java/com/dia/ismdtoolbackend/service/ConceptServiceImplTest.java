@@ -887,11 +887,6 @@ class ConceptServiceImplTest {
             public ConceptType getConceptTypeEnum() {
                 return ConceptType.TRIDA;
             }
-
-            @Override
-            protected void validateSpecificFields() {
-                // Override method not applicable for this test
-            }
         };
         model.setConceptType("TRIDA");
 
