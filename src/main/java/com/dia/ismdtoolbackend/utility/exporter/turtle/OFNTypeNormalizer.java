@@ -172,6 +172,86 @@ public final class OFNTypeNormalizer {
     }
 
     /**
+     * Closes the "excluded concept leaks into TDB2" gap. After {@link #normalize},
+     * an owned-namespace concept the user chose NOT to normalize is left without
+     * {@code skos:inScheme} — it gets no Postgres ownership row, yet its triples
+     * would otherwise still be written to TDB2, producing a subject that is owned
+     * by namespace but invisible to the metadata store (drift the reconciler would
+     * have to treat as a special case). This prunes those subjects before the TDB2
+     * write so "no PG row ⇒ no RDF" holds for owned concepts.
+     *
+     * <p>Safety: an excluded concept is removed only if no other subject in the
+     * model references it as an object (e.g. an owned class's {@code rdfs:subClassOf},
+     * a relationship's {@code rdfs:domain}/{@code rdfs:range}). A still-referenced
+     * excluded concept is kept as inert context so we never leave a dangling edge
+     * pointing at a bodiless IRI — the same rationale that keeps alien/referenced
+     * external concepts (e.g. {@code adresa}) in the graph. Removing it would
+     * degrade the referencing concept's detail/export view.
+     *
+     * <p>Run after {@link #normalize} (so allow-listed concepts already carry
+     * inScheme and are not candidates) and before the TDB2 write.
+     *
+     * @param model     the parsed, normalized upload model
+     * @param graphName the authoritative vocabulary IRI (must be non-null)
+     * @return the number of excluded concepts whose triples were removed
+     */
+    public static int pruneUnreferencedExcludedConcepts(Model model, String graphName) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null to prune excluded concepts");
+        }
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
+
+        // Two-pass: decide which excluded concepts to remove against the original model
+        // state, then remove them
+        List<Resource> toRemove = new ArrayList<>();
+        for (Resource concept : ownedConceptCandidates(model, pojemResource, graphName)) {
+            // Excluded = owned-namespace candidate the user left without inScheme
+            if (concept.hasProperty(skosInScheme)) {
+                continue;
+            }
+            if (isReferencedByOther(model, concept)) {
+                log.debug("Keeping excluded concept (still referenced by another subject): {}",
+                        concept.getURI());
+                continue;
+            }
+            toRemove.add(concept);
+        }
+
+        for (Resource concept : toRemove) {
+            // Remove the concept's body (all triples where it is the subject)
+            model.removeAll(concept, null, null);
+            log.debug("Pruned unreferenced excluded concept from upload model: {}", concept.getURI());
+        }
+        if (!toRemove.isEmpty()) {
+            log.info("Pruned {} unreferenced excluded concept(s) from {} before TDB2 write",
+                    toRemove.size(), graphName);
+        }
+        return toRemove.size();
+    }
+
+    /**
+     * True if any subject other than {@code concept} has a statement with
+     * {@code concept} as its object — i.e. something in the model points at it.
+     * A self-referential statement (concept as both subject and object) does not
+     * count as an external reference.
+     */
+    private static boolean isReferencedByOther(Model model, Resource concept) {
+        StmtIterator incoming = model.listStatements(null, null, concept);
+        try {
+            while (incoming.hasNext()) {
+                Statement stmt = incoming.next();
+                if (!stmt.getSubject().equals(concept)) {
+                    return true;
+                }
+            }
+        } finally {
+            incoming.close();
+        }
+        return false;
+    }
+
+    /**
      * Read/NKD-path inScheme derivation (no authoritative graphName). Adds
      * {@code inScheme} to every {@code skos:Concept} by stripping {@code /pojem/} from
      * its IRI; concepts that can't yield a derived scheme are left as-is.
