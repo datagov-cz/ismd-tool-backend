@@ -425,6 +425,54 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
+    void testUploadFromFile_excludeAll_prunesUnreferencedFromTdb2_keepsReferenced() throws Exception {
+        // EXCLUDE_ALL: neither concept gets inScheme / a PG row. C1 references C2 via
+        // rdfs:subClassOf. The prune must drop C1 (unreferenced) from the model written
+        // to TDB2, but KEEP C2 (still referenced by C1) so no dangling edge is left —
+        // closing the "excluded concept leaks into TDB2" gap without losing context.
+        String userId = "user123";
+        byte[] ttl = String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> ."
+                        + " <%s> a owl:Ontology ."
+                        + " <%s> a <%s> ; rdfs:subClassOf <%s> ."
+                        + " <%s> a <%s> .",
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_C2, DECISION_POJEM
+        ).getBytes();
+
+        when(multipartFile.getBytes()).thenReturn(ttl);
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId);
+
+        // Snapshot the model contents DURING the call — the service closes finalModel in
+        // its finally block, so post-call inspection would hit a closed model.
+        boolean[] c1Present = {true};
+        boolean[] c2Present = {false};
+        boolean[] edgeFromC1ToC2 = {false};
+        doAnswer(invocation -> {
+            OntModel model = invocation.getArgument(1);
+            c1Present[0] = model.containsResource(model.createResource(DECISION_C1))
+                    && model.listStatements(model.createResource(DECISION_C1), null, (org.apache.jena.rdf.model.RDFNode) null).hasNext();
+            c2Present[0] = model.listStatements(model.createResource(DECISION_C2), null, (org.apache.jena.rdf.model.RDFNode) null).hasNext();
+            edgeFromC1ToC2[0] = model.contains(
+                    model.createResource(DECISION_C1),
+                    model.createProperty("http://www.w3.org/2000/01/rdf-schema#subClassOf"),
+                    model.createResource(DECISION_C2));
+            return null;
+        }).when(jenaTDB2Repository).putOntologyModel(eq(DECISION_ONTOLOGY), any(OntModel.class));
+
+        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.EXCLUDE_ALL, null);
+
+        assertFalse(c1Present[0],
+                "Unreferenced excluded concept C1 must be pruned from the model written to TDB2");
+        assertTrue(c2Present[0],
+                "Excluded concept C2 is referenced by C1 and must be KEPT as inert context");
+        assertFalse(edgeFromC1ToC2[0],
+                "C1's body (incl. its edge to C2) is gone because C1 itself was pruned");
+    }
+
+    @Test
     void testUploadFromFile_IOExceptionHandling() throws Exception {
         String userId = "user123";
 

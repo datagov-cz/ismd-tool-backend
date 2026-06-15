@@ -3,9 +3,11 @@ package com.dia.ismdtoolbackend.utility.exporter.turtle;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.Test;
 
 import org.apache.jena.rdf.model.ResIterator;
@@ -16,6 +18,7 @@ import java.util.Set;
 
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.POJEM;
+import static com.dia.constants.VocabularyConstants.SKOS_NS;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -309,5 +312,110 @@ class OFNTypeNormalizerTest {
 
         assertTrue(cls.hasProperty(model.createProperty(SKOS_INSCHEME), model.createResource(ONTOLOGY)),
                 "NKD path must derive skos:inScheme by stripping /pojem/ from the concept IRI");
+    }
+
+    // --- pruneUnreferencedExcludedConcepts: close the "excluded leaks into TDB2" gap ---
+
+    private static Resource ownedConcept(Model model, String iri) {
+        Resource c = model.createResource(iri);
+        c.addProperty(RDF.type, SKOS.Concept);
+        c.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+        return c;
+    }
+
+    @Test
+    void prune_throws_whenGraphNameNull() {
+        Model model = ModelFactory.createDefaultModel();
+        assertThrows(IllegalArgumentException.class,
+                () -> OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, null));
+    }
+
+    @Test
+    void prune_removesUnreferencedExcludedConcept() {
+        Model model = ModelFactory.createDefaultModel();
+        String excludedIri = ONTOLOGY + "/pojem/excluded";
+        Resource excluded = ownedConcept(model, excludedIri);
+        excluded.addProperty(model.createProperty(SKOS_NS + "prefLabel"), "Excluded");
+
+        int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
+
+        assertEquals(1, pruned, "The single unreferenced excluded concept should be pruned");
+        assertFalse(model.listStatements(model.createResource(excludedIri), null, (RDFNode) null).hasNext(),
+                "Excluded concept body must be removed from the model");
+    }
+
+    @Test
+    void prune_keepsExcludedConcept_whenReferencedByOwnedConcept() {
+        Model model = ModelFactory.createDefaultModel();
+        // Owned (normalized) class points at an excluded class via rdfs:subClassOf.
+        String ownedIri = ONTOLOGY + "/pojem/owned-trida";
+        Resource owned = ownedConcept(model, ownedIri);
+        owned.addProperty(model.createProperty(SKOS_NS + "inScheme"), model.createResource(ONTOLOGY));
+
+        String excludedIri = ONTOLOGY + "/pojem/excluded-parent";
+        Resource excluded = ownedConcept(model, excludedIri);
+        excluded.addProperty(model.createProperty(SKOS_NS + "prefLabel"), "Parent");
+        owned.addProperty(RDFS.subClassOf, excluded);
+
+        int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
+
+        assertEquals(0, pruned, "A referenced excluded concept must NOT be pruned");
+        assertTrue(model.listStatements(excluded, null, (RDFNode) null).hasNext(),
+                "Referenced excluded concept must keep its triples (inert context)");
+        assertTrue(owned.hasProperty(RDFS.subClassOf, excluded),
+                "Owned concept's edge to the excluded concept must survive (no dangling reference)");
+    }
+
+    @Test
+    void prune_leavesNormalizedConceptsUntouched() {
+        Model model = ModelFactory.createDefaultModel();
+        String keptIri = ONTOLOGY + "/pojem/kept";
+        Resource kept = ownedConcept(model, keptIri);
+        kept.addProperty(model.createProperty(SKOS_NS + "inScheme"), model.createResource(ONTOLOGY));
+
+        int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
+
+        assertEquals(0, pruned, "Concepts carrying inScheme are owned, not excluded");
+        assertTrue(model.listStatements(kept, null, (RDFNode) null).hasNext(),
+                "Normalized owned concept must be left intact");
+    }
+
+    @Test
+    void prune_leavesAlienConceptUntouched() {
+        // An alien (external-namespace) concept without inScheme is NOT an owned
+        // candidate, so prune must ignore it entirely — even when unreferenced.
+        Model model = ModelFactory.createDefaultModel();
+        String alienIri = "https://example.org/jine/pojem/adresa";
+        Resource alien = model.createResource(alienIri);
+        alien.addProperty(RDF.type, SKOS.Concept);
+        alien.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
+
+        int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
+
+        assertEquals(0, pruned, "Alien concepts are not owned candidates and must be left alone");
+        assertTrue(model.listStatements(alien, null, (RDFNode) null).hasNext(),
+                "Alien concept triples must remain");
+    }
+
+    @Test
+    void prune_afterExcludeAllNormalize_endToEnd() {
+        // Simulates the EXCLUDE_ALL path: normalize with an empty allow-list leaves
+        // every owned concept without inScheme; prune then removes the unreferenced ones.
+        Model model = ModelFactory.createDefaultModel();
+        String aIri = ONTOLOGY + "/pojem/a";
+        String bIri = ONTOLOGY + "/pojem/b-referenced";
+        Resource a = ownedConcept(model, aIri);
+        Resource b = ownedConcept(model, bIri);
+        // a references b, so b must survive even though both are excluded.
+        a.addProperty(RDFS.subClassOf, b);
+
+        OFNTypeNormalizer.normalize(model, ONTOLOGY, Set.of()); // EXCLUDE_ALL
+        int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
+
+        assertEquals(1, pruned, "Only the unreferenced excluded concept (a) is pruned");
+        assertFalse(model.listStatements(model.createResource(aIri), null, (RDFNode) null).hasNext(),
+                "Unreferenced excluded concept 'a' must be removed");
+        assertTrue(model.listStatements(b, null, (RDFNode) null).hasNext(),
+                "Referenced excluded concept 'b' must be kept");
     }
 }
