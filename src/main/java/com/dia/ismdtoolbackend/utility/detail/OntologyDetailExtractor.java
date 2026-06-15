@@ -60,14 +60,33 @@ public class OntologyDetailExtractor {
         return iri -> iri;
     }
 
+    /**
+     * Local-detail OFN transform. Infers role tags + labels but does NOT derive
+     * {@code skos:inScheme}: local vocabularies are written via the authoritative
+     * upload path, which guarantees an explicit inScheme on every owned concept.
+     */
     public Model applyOFNTransformations(Model rawModel) {
-        log.debug("Applying OFN transformations");
+        return applyOFNTransformations(rawModel, false);
+    }
+
+    /**
+     * NKD-detail OFN transform. Same as the local transform PLUS {@code skos:inScheme}
+     * derivation, since NKD data is out of our control and often arrives without one.
+     */
+    public Model applyOFNTransformationsForNkd(Model rawModel) {
+        return applyOFNTransformations(rawModel, true);
+    }
+
+    private Model applyOFNTransformations(Model rawModel, boolean deriveInScheme) {
+        log.debug("Applying OFN transformations (deriveInScheme={})", deriveInScheme);
         // Normalize before filtering: NKD-published concepts often carry only
         // generic types (slovníky:pojem + owl:Class/ObjectProperty/DatatypeProperty),
         // all of which TurtleFilterUtil treats as "vocabulary noise" and would
         // strip. Inferring the role tags (skos:Concept, slovníky:třída/vztah/
         // vlastnost) here keeps real concepts past the filter.
-        int normalized = OFNTypeNormalizer.normalize(rawModel);
+        int normalized = deriveInScheme
+                ? OFNTypeNormalizer.normalizeForNkd(rawModel)
+                : OFNTypeNormalizer.normalizeForLocalDetail(rawModel);
         if (normalized > 0) {
             log.debug("Inferred OFN role tags on {} resources before filtering", normalized);
         }

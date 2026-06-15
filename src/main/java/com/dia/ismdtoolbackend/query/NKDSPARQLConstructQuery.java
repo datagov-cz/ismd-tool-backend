@@ -17,9 +17,14 @@ public class NKDSPARQLConstructQuery {
     public static String buildResolutionConstructQuery(List<String> conceptIris) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+        pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+        pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
         pss.append("CONSTRUCT { ");
         pss.append("  ?concept skos:inScheme ?scheme . ");
         pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+        pss.append("  ?concept rdf:type ?type . ");
+        pss.append("  ?concept rdfs:domain ?domain . ");
+        pss.append("  ?concept rdfs:range ?range . ");
         pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
         pss.append("} WHERE { VALUES ?concept { ");
         for (String iri : conceptIris) {
@@ -29,6 +34,9 @@ public class NKDSPARQLConstructQuery {
         pss.append("} ?concept skos:inScheme ?scheme . ");
         pss.append("FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
         pss.append("OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+        pss.append("OPTIONAL { ?concept rdf:type ?type . } ");
+        pss.append("OPTIONAL { ?concept rdfs:domain ?domain . } ");
+        pss.append("OPTIONAL { ?concept rdfs:range ?range . } ");
         pss.append("OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } ");
         pss.append("}");
         return pss.toString();

@@ -90,7 +90,6 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
         when(relationshipConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(relationshipConceptEditModel.getExactMatch()).thenReturn(null);
         when(relationshipConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(relationshipConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, relationshipConceptEditModel, model, null);

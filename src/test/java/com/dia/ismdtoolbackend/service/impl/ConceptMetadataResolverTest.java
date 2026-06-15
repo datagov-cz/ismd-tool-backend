@@ -90,6 +90,19 @@ class ConceptMetadataResolverTest {
         return e;
     }
 
+    /** ISMD relationship DTO carrying iri-only domain/range stubs, as projected from the graph. */
+    private static ResolvedConceptDto relationshipWithStubs(String iri, String domainIri, String rangeIri) {
+        return ResolvedConceptDto.builder()
+                .iri(iri)
+                .conceptName(Map.of("cs", "Vztah"))
+                .ontologyIri("https://data.gov.cz/zdroj/slovnik/local")
+                .ontologyName(Map.of("cs", "Lokální slovník"))
+                .source(SearchSource.ISMD)
+                .resolvedDomain(domainIri == null ? null : ResolvedConceptDto.builder().iri(domainIri).build())
+                .resolvedRange(rangeIri == null ? null : ResolvedConceptDto.builder().iri(rangeIri).build())
+                .build();
+    }
+
     @Nested
     @DisplayName("Input sanitisation")
     class InputSanitisation {
@@ -272,6 +285,106 @@ class ConceptMetadataResolverTest {
             Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1, NKD_IRI));
 
             assertThat(out).containsOnlyKeys(ISMD_IRI_1);
+        }
+    }
+
+    @Nested
+    @DisplayName("Relationship domain/range expansion")
+    class RelationshipDomainRange {
+
+        private static final String REL_IRI = "https://data.gov.cz/zdroj/slovnik/local/pojem/rel";
+        private static final String DOMAIN_IRI = "https://data.gov.cz/zdroj/slovnik/local/pojem/trida-a";
+        private static final String RANGE_IRI = "https://data.gov.cz/zdroj/slovnik/local/pojem/trida-b";
+
+        @Test
+        @DisplayName("relationship stubs are expanded into fully-resolved domain/range DTOs")
+        void stubsExpanded() {
+            // First hop: the relationship itself (carries stubs). Second hop: its domain+range targets.
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, RANGE_IRI))));
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(DOMAIN_IRI, RANGE_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(
+                            DOMAIN_IRI, ismdDto(DOMAIN_IRI),
+                            RANGE_IRI, ismdDto(RANGE_IRI))));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(REL_IRI));
+
+            ResolvedConceptDto rel = out.get(REL_IRI);
+            assertThat(rel.resolvedDomain()).isNotNull();
+            assertThat(rel.resolvedDomain().iri()).isEqualTo(DOMAIN_IRI);
+            assertThat(rel.resolvedDomain().conceptName()).isNotNull();
+            assertThat(rel.resolvedDomain().source()).isEqualTo(SearchSource.ISMD);
+            assertThat(rel.resolvedRange()).isNotNull();
+            assertThat(rel.resolvedRange().iri()).isEqualTo(RANGE_IRI);
+        }
+
+        @Test
+        @DisplayName("slugged relationship keeps domain/range — slug enrichment must not strip stubs before expansion")
+        void sluggedRelationshipKeepsDomainRange() {
+            // Production case: the relationship has a Postgres slug row, so enrichWithSlugs
+            // rebuilds its DTO. That rebuild must carry the domain/range stubs forward, or
+            // resolveDomainRangeStubs finds nothing to expand and the FE sees no targets.
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, RANGE_IRI))));
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(DOMAIN_IRI, RANGE_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(
+                            DOMAIN_IRI, ismdDto(DOMAIN_IRI),
+                            RANGE_IRI, ismdDto(RANGE_IRI))));
+            // The relationship itself has a slug; its domain/range targets resolve without one.
+            when(conceptMetadataRepository.findByConceptIriIn(anyList()))
+                    .thenReturn(List.of(entity(REL_IRI, "rel-slug")));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(REL_IRI));
+
+            ResolvedConceptDto rel = out.get(REL_IRI);
+            assertThat(rel.conceptSlug()).isEqualTo("rel-slug");
+            assertThat(rel.resolvedDomain()).as("domain must survive slug enrichment").isNotNull();
+            assertThat(rel.resolvedDomain().iri()).isEqualTo(DOMAIN_IRI);
+            assertThat(rel.resolvedDomain().conceptName()).isNotNull();
+            assertThat(rel.resolvedRange()).as("range must survive slug enrichment").isNotNull();
+            assertThat(rel.resolvedRange().iri()).isEqualTo(RANGE_IRI);
+        }
+
+        @Test
+        @DisplayName("relationship with an unresolvable range → range dropped to null, domain kept")
+        void unresolvableRangeDropped() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, RANGE_IRI))));
+            // Second hop: only the domain resolves; range is unknown to both ISMD and NKD.
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(DOMAIN_IRI, RANGE_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(DOMAIN_IRI, ismdDto(DOMAIN_IRI))));
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(RANGE_IRI))).thenReturn(Map.of());
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(REL_IRI));
+
+            ResolvedConceptDto rel = out.get(REL_IRI);
+            assertThat(rel.resolvedDomain()).isNotNull();
+            assertThat(rel.resolvedDomain().iri()).isEqualTo(DOMAIN_IRI);
+            assertThat(rel.resolvedRange()).isNull();
+        }
+
+        @Test
+        @DisplayName("the cached relationship DTO is fully resolved, not a stub")
+        void cachesFinishedDto() {
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, null))));
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(DOMAIN_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(DOMAIN_IRI, ismdDto(DOMAIN_IRI))));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            resolver.resolveAll(List.of(REL_IRI));
+
+            ArgumentCaptor<ResolvedConceptDto> relCache = ArgumentCaptor.forClass(ResolvedConceptDto.class);
+            verify(cache).put(eq(REL_IRI), relCache.capture());
+            assertThat(relCache.getValue().resolvedDomain().conceptName())
+                    .as("cached relationship must hold a resolved domain, not an iri-only stub")
+                    .isNotNull();
         }
     }
 

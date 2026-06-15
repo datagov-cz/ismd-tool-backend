@@ -121,7 +121,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -196,7 +195,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -267,7 +265,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                 .thenReturn(List.of(new DigitalObjectModel("Doc 2", "Popis 2", "https://example.com/doc2")));
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -328,7 +325,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
@@ -378,7 +374,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
@@ -429,7 +424,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -483,7 +477,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -532,7 +525,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -584,7 +576,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);

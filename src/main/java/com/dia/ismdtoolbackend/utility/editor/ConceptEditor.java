@@ -32,7 +32,6 @@ public class ConceptEditor {
     private static final String AIS = "agendaSystemCode";
     private static final String IS_PUBLIC = "isPublic";
     private static final String IN_TEZAURUS = "inTezaurus";
-    private static final String NAMESPACE = "namespace";
 
     private final URIGenerator uriGenerator = new URIGenerator();
 
@@ -78,8 +77,7 @@ public class ConceptEditor {
         boolean committed = false;
         try {
             if (nameChanged && !conceptIri.equals(newConceptIRI)) {
-                Set<Property> predicatesToExclude = buildPredicatesToExclude(editModel, model);
-                renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd, predicatesToExclude);
+                renameConceptIRI(model, conceptIri, newConceptIRI, statementsToRemove, statementsToAdd);
             }
 
             switch (editModel.getConceptTypeEnum()) {
@@ -184,7 +182,6 @@ public class ConceptEditor {
         updateNonLegalSources(context.newConcept, editModel, context.oldConcept, model, toRemove, toAdd);
         updateExactMatch(context.newConcept, editModel.getExactMatch(), context.oldConcept, model, toRemove, toAdd);
         updateBooleanProperty(context.newConcept, IN_TEZAURUS, editModel.getInTezaurus(), context.oldConcept, model, toRemove, toAdd);
-        updateStringProperty(context.newConcept, NAMESPACE, editModel.getNamespace(), context.oldConcept, model, toRemove, toAdd);
     }
 
     private void updateNameModel(Resource newConcept, NameModel nameModel, Resource oldConcept,
@@ -294,25 +291,25 @@ public class ConceptEditor {
                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (altNameModel == null) return;
 
-        Map<String, String> oldAltNamesWithLang = getPropertyValuesWithLanguage(oldConcept);
+        Map<String, String> oldAltNamesByLang = getAllPropertyValuesWithLanguage(oldConcept, SKOS.altLabel);
 
-        Map<String, String> newAltNamesWithLang = new HashMap<>();
+        Map<String, String> newAltNamesByLang = new HashMap<>();
         if (altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
             for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
                 if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                         ? entry.getKey()
                         : DEFAULT_LANG;
-                    newAltNamesWithLang.put(entry.getValue().trim(), languageTag);
+                    newAltNamesByLang.put(languageTag, entry.getValue().trim());
                 }
             }
         }
 
-        if (!oldAltNamesWithLang.equals(newAltNamesWithLang)) {
+        if (!oldAltNamesByLang.equals(newAltNamesByLang)) {
             removeAllByPredicate(newConcept, SKOS.altLabel, toRemove, toAdd);
-            for (Map.Entry<String, String> entry : newAltNamesWithLang.entrySet()) {
+            for (Map.Entry<String, String> entry : newAltNamesByLang.entrySet()) {
                 toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
-                        model.createLiteral(entry.getKey(), entry.getValue())));
+                        model.createLiteral(entry.getValue(), entry.getKey())));
             }
         }
     }
@@ -385,17 +382,17 @@ public class ConceptEditor {
         Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
         Resource topType = model.getResource(OFN_NAMESPACE + TOP);
 
-        boolean oldHasTSP = newConcept.hasProperty(RDF.type, tspType);
-        boolean oldHasTOP = newConcept.hasProperty(RDF.type, topType);
+        boolean oldHasTSP = oldConcept.hasProperty(RDF.type, tspType);
+        boolean oldHasTOP = oldConcept.hasProperty(RDF.type, topType);
 
         boolean newHasTSP = newType.toLowerCase().contains("subjekt");
         boolean newHasTOP = newType.toLowerCase().contains("objekt");
 
         if (oldHasTSP && !newHasTSP) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, tspType));
+            removeTypeStatement(newConcept, oldConcept, tspType, model, toRemove, toAdd);
         }
         if (oldHasTOP && !newHasTOP) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, topType));
+            removeTypeStatement(newConcept, oldConcept, topType, model, toRemove, toAdd);
         }
         if (!oldHasTSP && newHasTSP) {
             toAdd.add(model.createStatement(newConcept, RDF.type, tspType));
@@ -403,6 +400,21 @@ public class ConceptEditor {
         if (!oldHasTOP && newHasTOP) {
             toAdd.add(model.createStatement(newConcept, RDF.type, topType));
         }
+    }
+
+    /**
+     * Removes a specific {@code rdf:type} value from the concept. Stages removal
+     * of the statement under the old IRI (still present in the model) AND strips
+     * any copy of it staged under the new IRI by {@code renameConceptIRI} — so a
+     * type that's being dropped does not survive a rename via the copy-all pass.
+     */
+    private void removeTypeStatement(Resource newConcept, Resource oldConcept, Resource typeValue,
+                                     Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        toRemove.add(model.createStatement(oldConcept, RDF.type, typeValue));
+        toAdd.removeIf(stmt ->
+                stmt.getSubject().equals(newConcept) &&
+                        stmt.getPredicate().equals(RDF.type) &&
+                        stmt.getObject().equals(typeValue));
     }
 
     private void updateAgenda(Resource newConcept, String agendaCode, Resource oldConcept,
@@ -750,200 +762,38 @@ public class ConceptEditor {
         return UtilityMethods.isValidUrl(url.trim());
     }
 
+    /**
+     * Relocates every triple touching {@code oldIRI} onto {@code newIRI},
+     * copying ALL predicates unconditionally. The field updaters run afterwards
+     * against {@code newConcept}; because the data is now present under the new
+     * IRI, their remove-by-predicate + write-if-changed logic mutates only the
+     * fields the edit actually changes, and leaves unchanged characteristics in
+     * place. Copying everything (rather than excluding edited predicates) is what
+     * prevents an unchanged field from being deleted-but-never-rewritten.
+     */
     private void renameConceptIRI(Model model, String oldIRI, String newIRI,
-                                   Set<Statement> toRemove, Set<Statement> toAdd,
-                                   Set<Property> excludePredicates) {
+                                   Set<Statement> toRemove, Set<Statement> toAdd) {
         Resource oldConcept = model.getResource(oldIRI);
+        Resource newConcept = model.getResource(newIRI);
 
         StmtIterator iter = model.listStatements(oldConcept, null, (RDFNode) null);
         while (iter.hasNext()) {
             Statement stmt = iter.next();
-            Property predicate = stmt.getPredicate();
-
-            if (excludePredicates.contains(predicate)) {
-                toRemove.add(stmt);
-                continue;
-            }
-
             toRemove.add(stmt);
-            toAdd.add(model.createStatement(
-                    model.getResource(newIRI),
-                    predicate,
-                    stmt.getObject()
-            ));
+            toAdd.add(model.createStatement(newConcept, stmt.getPredicate(), stmt.getObject()));
         }
 
         iter = model.listStatements(null, null, oldConcept);
         while (iter.hasNext()) {
             Statement stmt = iter.next();
             toRemove.add(stmt);
-            toAdd.add(model.createStatement(
-                    stmt.getSubject(),
-                    stmt.getPredicate(),
-                    model.getResource(newIRI)
-            ));
-        }
-    }
-
-    private Set<Property> buildPredicatesToExclude(ConceptEditModel editModel, Model model) {
-        Set<Property> predicates = new HashSet<>();
-
-        if (editModel.getNameModel() != null) predicates.add(SKOS.prefLabel);
-        if (editModel.getDefinitionModel() != null) predicates.add(SKOS.definition);
-        if (editModel.getAltNameModel() != null) predicates.add(SKOS.altLabel);
-        if (editModel.getDescriptionModel() != null) {
-            predicates.add(model.createProperty("http://purl.org/dc/terms/description"));
-        }
-        if (editModel.getExactMatch() != null) {
-            predicates.add(model.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch"));
-        }
-        if (editModel.getDefiningLegalSource() != null || editModel.getRelatedLegalSource() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI));
-            predicates.add(model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI));
-        }
-        if (editModel.getDefiningNonLegalSource() != null || editModel.getRelatedNonLegalSource() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + DEFINUJICI_NELEGISLATIVNI_ZDROJ));
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + SOUVISEJICI_NELEGISLATIVNI_ZDROJ));
-        }
-        if (editModel.getInTezaurus() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + IN_TEZAURUS));
-        }
-        if (editModel.getNamespace() != null) {
-            predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + NAMESPACE));
-        }
-
-        switch (editModel.getConceptTypeEnum()) {
-            case TRIDA -> {
-                ClassConceptEditModel classModel = (ClassConceptEditModel) editModel;
-                if (classModel.getType() != null) {
-                    predicates.add(RDF.type);
-                }
-                if (classModel.getBroaderConcept() != null) {
-                    predicates.add(RDFS.subClassOf);
-                    predicates.add(model.createProperty(uriGenerator.getEffectiveNamespace() + "nadřazená-třída"));
-                }
-                addCommonConceptPredicates(predicates, classModel, model);
-            }
-            case VLASTNOST -> {
-                PropertyConceptEditModel propModel = (PropertyConceptEditModel) editModel;
-                if (propModel.getDomain() != null) predicates.add(RDFS.domain);
-                if (propModel.getDataType() != null) predicates.add(RDFS.range);
-                if (propModel.getSuperProperty() != null) predicates.add(RDFS.subPropertyOf);
-                addCommonConceptPredicates(predicates, propModel, model);
-            }
-            case VZTAH -> {
-                RelationshipConceptEditModel relModel = (RelationshipConceptEditModel) editModel;
-                if (relModel.getDomain() != null) predicates.add(RDFS.domain);
-                if (relModel.getRange() != null) predicates.add(RDFS.range);
-                if (relModel.getSuperRelation() != null) predicates.add(RDFS.subPropertyOf);
-                addCommonConceptPredicates(predicates, relModel, model);
-            }
-        }
-
-        return predicates;
-    }
-
-    private void addCommonConceptPredicates(Set<Property> predicates, ClassConceptEditModel editModel, Model model) {
-        if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG));
-        }
-        if (editModel.getIsPublic() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
-        }
-        if (editModel.getAgendaCode() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA));
-        }
-        if (editModel.getAgendaSystemCode() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS));
-        }
-        if (editModel.getContentType() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + TYP_OBSAHU));
-        }
-        if (editModel.getAcquisitionMethod() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI));
-        }
-        if (editModel.getSharingMethod() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
-        }
-        if (editModel.getPrivacyProvisions() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
-        }
-    }
-
-    private void addCommonConceptPredicates(Set<Property> predicates, PropertyConceptEditModel editModel, Model model) {
-        if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG));
-        }
-        if (editModel.getIsPublic() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
-        }
-        if (editModel.getAgendaCode() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA));
-        }
-        if (editModel.getAgendaSystemCode() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS));
-        }
-        if (editModel.getContentType() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + TYP_OBSAHU));
-        }
-        if (editModel.getAcquisitionMethod() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI));
-        }
-        if (editModel.getSharingMethod() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
-        }
-        if (editModel.getPrivacyProvisions() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
-        }
-    }
-
-    private void addCommonConceptPredicates(Set<Property> predicates, RelationshipConceptEditModel editModel, Model model) {
-        if (editModel.getIsInPPDF() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG));
-        }
-        if (editModel.getIsPublic() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE_VS + JE_VEREJNY));
-        }
-        if (editModel.getAgendaCode() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA));
-        }
-        if (editModel.getAgendaSystemCode() != null) {
-            predicates.add(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AIS));
-        }
-        if (editModel.getContentType() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + TYP_OBSAHU));
-        }
-        if (editModel.getAcquisitionMethod() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_ZISKANI));
-        }
-        if (editModel.getSharingMethod() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI));
-        }
-        if (editModel.getPrivacyProvisions() != null) {
-            predicates.add(model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST));
+            toAdd.add(model.createStatement(stmt.getSubject(), stmt.getPredicate(), newConcept));
         }
     }
 
     private String getPropertyValue(Resource resource, Property property) {
         Statement stmt = resource.getProperty(property);
         return stmt != null && stmt.getObject().isLiteral() ? stmt.getObject().asLiteral().getString() : null;
-    }
-
-    private Map<String, String> getPropertyValuesWithLanguage(Resource resource) {
-        Map<String, String> valuesWithLang = new HashMap<>();
-        StmtIterator iter = resource.listProperties(SKOS.altLabel);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getObject().isLiteral()) {
-                Literal literal = stmt.getObject().asLiteral();
-                String value = literal.getString();
-                String lang = literal.getLanguage() != null && !literal.getLanguage().isEmpty()
-                    ? literal.getLanguage()
-                    : DEFAULT_LANG;
-                valuesWithLang.put(value, lang);
-            }
-        }
-        return valuesWithLang;
     }
 
     private Map<String, String> getAllPropertyValuesWithLanguage(Resource resource, Property property) {
@@ -1057,10 +907,10 @@ public class ConceptEditor {
         Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
         if (oldConcept.hasProperty(RDF.type, verejnyLegal)) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, verejnyLegal));
+            removeTypeStatement(newConcept, oldConcept, verejnyLegal, model, toRemove, toAdd);
         }
         if (oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
-            toRemove.add(model.createStatement(oldConcept, RDF.type, neverejnyLegal));
+            removeTypeStatement(newConcept, oldConcept, neverejnyLegal, model, toRemove, toAdd);
         }
         boolean hasNonEmptyProvisions = privacyProvisions != null &&
                 privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());

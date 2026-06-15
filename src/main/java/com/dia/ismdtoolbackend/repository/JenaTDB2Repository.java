@@ -47,6 +47,8 @@ import static com.dia.constants.VocabularyConstants.VZTAH;
 @Getter
 public class JenaTDB2Repository {
 
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+
     private final HttpClient fusekiHttpClient;
     private final Semaphore fusekiSemaphore;
     private final int fusekiSemaphoreTimeout;
@@ -749,9 +751,14 @@ public class JenaTDB2Repository {
                 conn -> {
                     ParameterizedSparqlString pss = new ParameterizedSparqlString();
                     pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
                     pss.append("CONSTRUCT { ");
                     pss.append("  ?concept skos:inScheme ?scheme . ");
                     pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+                    pss.append("  ?concept rdf:type ?type . ");
+                    pss.append("  ?concept rdfs:domain ?domain . ");
+                    pss.append("  ?concept rdfs:range ?range . ");
                     pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
                     pss.append("} WHERE { VALUES ?concept { ");
                     for (String iri : safeConceptIris) {
@@ -762,6 +769,9 @@ public class JenaTDB2Repository {
                     pss.append("  ?concept skos:inScheme ?scheme . ");
                     pss.append("  FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
                     pss.append("  OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+                    pss.append("  OPTIONAL { ?concept rdf:type ?type . } ");
+                    pss.append("  OPTIONAL { ?concept rdfs:domain ?domain . } ");
+                    pss.append("  OPTIONAL { ?concept rdfs:range ?range . } ");
                     pss.append("  OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } ");
                     pss.append("} }");
                     try (QueryExecution qExec = conn.query(pss.asQuery())) {
@@ -787,6 +797,13 @@ public class JenaTDB2Repository {
         }
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
         Property prefLabel = model.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel");
+        Property rdfType = model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+        Property rdfsDomain = model.createProperty("http://www.w3.org/2000/01/rdf-schema#domain");
+        Property rdfsRange = model.createProperty("http://www.w3.org/2000/01/rdf-schema#range");
+        // A relationship is typed by the OFN role IRI (…/vztah) in ISMD-authored
+        // graphs, but published NKD vocabularies type relationships only as
+        // owl:ObjectProperty. Accept either — a hit on one is enough.
+        Set<String> relationshipTypeIris = Set.of(OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
 
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         StmtIterator inSchemeStmts = model.listStatements(null, inScheme, (RDFNode) null);
@@ -804,18 +821,56 @@ public class JenaTDB2Repository {
                 Resource scheme = stmt.getObject().asResource();
                 Map<String, String> conceptLabels = collectMultilingual(concept, prefLabel);
                 Map<String, String> schemeLabels = collectMultilingual(scheme, prefLabel);
+
+                // Domain/range are only meaningful for relationships; carry the raw
+                // target IRIs as iri-only stub DTOs for the resolver's second hop to
+                // expand. Stubs never reach the cache or the wire — the resolver
+                // replaces them with fully-resolved DTOs (or null) before caching.
+                ResolvedConceptDto domainStub = null;
+                ResolvedConceptDto rangeStub = null;
+                if (hasAnyType(concept, rdfType, relationshipTypeIris)) {
+                    domainStub = resourceStub(concept, rdfsDomain);
+                    rangeStub = resourceStub(concept, rdfsRange);
+                }
+
                 out.put(conceptIri, ResolvedConceptDto.builder()
                         .iri(conceptIri)
                         .conceptName(conceptLabels.isEmpty() ? null : conceptLabels)
                         .ontologyIri(scheme.getURI())
                         .ontologyName(schemeLabels.isEmpty() ? null : schemeLabels)
                         .source(source)
+                        .resolvedDomain(domainStub)
+                        .resolvedRange(rangeStub)
                         .build());
             }
         } finally {
             inSchemeStmts.close();
         }
         return out;
+    }
+
+    private static boolean hasAnyType(Resource concept, Property rdfType, Set<String> typeIris) {
+        StmtIterator types = concept.listProperties(rdfType);
+        try {
+            while (types.hasNext()) {
+                RDFNode node = types.next().getObject();
+                if (node.isURIResource() && typeIris.contains(node.asResource().getURI())) {
+                    return true;
+                }
+            }
+        } finally {
+            types.close();
+        }
+        return false;
+    }
+
+    /** Returns an iri-only {@link ResolvedConceptDto} stub for the URI object of {@code property}, or null. */
+    private static ResolvedConceptDto resourceStub(Resource concept, Property property) {
+        Statement stmt = concept.getProperty(property);
+        if (stmt == null || !stmt.getObject().isURIResource()) {
+            return null;
+        }
+        return ResolvedConceptDto.builder().iri(stmt.getObject().asResource().getURI()).build();
     }
 
     private static Map<String, String> collectMultilingual(Resource subject, Property property) {
@@ -907,7 +962,7 @@ public class JenaTDB2Repository {
         return switch (type) {
             case TRIDA -> "http://www.w3.org/2002/07/owl#Class";
             case VLASTNOST -> "http://www.w3.org/2002/07/owl#DatatypeProperty";
-            case VZTAH -> "http://www.w3.org/2002/07/owl#ObjectProperty";
+            case VZTAH -> OWL_OBJECT_PROPERTY;
         };
     }
 }
