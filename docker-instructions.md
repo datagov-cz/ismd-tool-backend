@@ -36,6 +36,13 @@ Run everything in Docker — no JDK required.
 2. **By default, all images are pulled from GHCR** (backend, fuseki, etc.).
    First run pulls ~a few hundred MB; subsequent runs are instant.
 
+> **Apple Silicon (arm64) note:** the pre-built backend image is published
+> multi-arch (amd64 + arm64) as of the multi-arch CI change. If you are on an
+> older image tag that predates it and `up` fails with
+> `no matching manifest for linux/arm64`, build the image from local source
+> instead (see "Build the backend image from local source" below). The Fuseki
+> image is amd64-only and runs under emulation on Apple Silicon — fine for dev.
+
 #### Start (default — pull from GHCR)
 
 **Windows (PowerShell):**

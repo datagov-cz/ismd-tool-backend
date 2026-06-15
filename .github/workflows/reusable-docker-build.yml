@@ -92,8 +92,20 @@ jobs:
             PUSH_FLAG="--push"
           fi
 
+          # Publish multi-arch so Apple Silicon (arm64) devs can pull the
+          # pre-built image directly. amd64 covers CI/prod x86 hosts.
+          # Note: --platform with multiple arches requires --push (a local
+          # --load can only hold a single platform), so build-only validation
+          # runs amd64-only.
+          if [ "${{ inputs.push }}" = "true" ]; then
+            PLATFORM_FLAG="--platform linux/amd64,linux/arm64"
+          else
+            PLATFORM_FLAG="--platform linux/amd64"
+          fi
+
           docker buildx build \
             -f Dockerfile \
+            $PLATFORM_FLAG \
             --secret id=github_token,env=GITHUB_TOKEN \
             --build-arg GITHUB_ACTOR="${{ github.actor }}" \
             -t "$IMAGE_TAG" \
