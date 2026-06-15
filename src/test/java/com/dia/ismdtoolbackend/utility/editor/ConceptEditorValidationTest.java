@@ -16,6 +16,7 @@ import java.util.List;
 import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -136,5 +137,62 @@ class ConceptEditorValidationTest {
         m.setInTezaurus(Boolean.TRUE);
         ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, m, model, null);
         assertNotNull(result);
+    }
+
+    // ---- domain rules folded in from the (previously unwired) *EditModel.validateSpecificFields ----
+
+    @Test
+    void rejectsPrivacyPublicConflict() {
+        ClassConceptEditModel m = baseModel();
+        m.setIsPublic(Boolean.TRUE);
+        m.setPrivacyProvisions(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187"));
+        ConceptValidationException ex = editExpectingRejection(m);
+        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
+    }
+
+    @Test
+    void rejectsInvalidCodeListDatasetUrl() {
+        ClassConceptEditModel m = baseModel();
+        m.setCodeListDataset("https://not-nkod.example/dataset/x");
+        ConceptValidationException ex = editExpectingRejection(m);
+        assertTrue(ex.getMessage().contains("NKOD"), ex.getMessage());
+    }
+
+    @Test
+    void rejectsGovernanceValueNotInAllowlist() {
+        ClassConceptEditModel m = baseModel();
+        m.setSharingMethod(List.of("not-a-real-sharing-method"));
+        ConceptValidationException ex = editExpectingRejection(m);
+        assertTrue(ex.getMessage().contains("způsob sdílení"), ex.getMessage());
+    }
+
+    @Test
+    void acceptsValidGovernanceValues() {
+        ClassConceptEditModel m = baseModel();
+        m.setSharingMethod(List.of("nesdílené"));
+        m.setAcquisitionMethod("vlastní");
+        m.setContentType("provozní");
+        ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, m, model, null);
+        assertNotNull(result);
+    }
+
+    @Test
+    void privacyPublicConflict_appliesToRelationshipToo() {
+        // Verify the rule resolves per-type (Vztah, masculine suffix).
+        Model relModel = ModelFactory.createDefaultModel();
+        String relIri = DEFAULT_NS + "validated-rel";
+        Resource r = relModel.createResource(relIri);
+        r.addProperty(SKOS.prefLabel, relModel.createLiteral("Vztah", "cs"));
+        r.addProperty(RDF.type, relModel.getResource(OFN_NAMESPACE + VZTAH));
+
+        com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel m =
+                new com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel();
+        m.setConceptType("VZTAH");
+        m.setIsPublic(Boolean.TRUE);
+        m.setPrivacyProvisions(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187"));
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
+                conceptEditor.editConcept(relIri, m, relModel, null));
+        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
     }
 }

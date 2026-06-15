@@ -261,7 +261,7 @@ class ConceptEditorFieldEdgeCasesTest {
         seedClass(iri);
         Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
         ClassConceptEditModel m = classModel();
-        m.setCodeListDataset("https://data.gov.cz/dataset/ciselnik-1");
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-1");
 
         editor.editConcept(iri, m, model, null);
 

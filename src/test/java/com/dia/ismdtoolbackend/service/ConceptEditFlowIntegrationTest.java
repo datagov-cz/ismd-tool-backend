@@ -67,7 +67,6 @@ class ConceptEditFlowIntegrationTest {
     @Mock private ReferencedConceptsEnricher referencedConceptsEnricher;
 
     private ConceptServiceImpl conceptService;
-    private Model model;
 
     private static final Long CONCEPT_ID = 1L;
     private static final String CONCEPT_IRI = "http://example.org/pojem/test-concept";
@@ -85,7 +84,7 @@ class ConceptEditFlowIntegrationTest {
                 commentRepository, nkdSparqlClient, deviationComparator,
                 rppSnapshotHolder, referencedConceptsEnricher);
 
-        model = ModelFactory.createDefaultModel();
+        Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);
         concept.addProperty(SKOS.prefLabel, model.createLiteral("Test Concept", "cs"));
         concept.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));

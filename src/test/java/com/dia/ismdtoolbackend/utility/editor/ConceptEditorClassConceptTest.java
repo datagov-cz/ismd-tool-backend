@@ -110,9 +110,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getType()).thenReturn("subjekt");
         when(classConceptEditModel.getAgendaCode()).thenReturn("");
         when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn("obsah");
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani");
-        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("sdileni"));
+        when(classConceptEditModel.getContentType()).thenReturn("provozní");
+        when(classConceptEditModel.getAcquisitionMethod()).thenReturn("vlastní");
+        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("nesdílené"));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(List.of("https://example.com/new-broader"));
@@ -702,7 +702,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
         stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("value-1", "value-2"));
+        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("nesdílené", "veřejně přístupné"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 
@@ -785,22 +785,24 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
     // A11d – Data classification: public but has provisions
     @Test
-    void editConcept_ShouldNotAddVerejnyUdaj_WhenIsPublicTrueButHasProvisions() {
+    void editConcept_ShouldReject_WhenIsPublicTrueButHasProvisions() {
+        // isPublic=true together with privacy provisions is a contradiction and is
+        // now rejected up front by validation (400) — before reaching the editor.
         String conceptIri = DEFAULT_NS + "class-a11d";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a11d", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        long sizeBefore = model.size();
 
         stubAllClassFieldsNull(classConceptEditModel);
         when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.TRUE);
         when(classConceptEditModel.getPrivacyProvisions())
                 .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
 
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Resource verejny = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        assertFalse(updated.hasProperty(RDF.type, verejny));
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
+                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null));
+        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
+        assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
     }
 
     // A12 – inTezaurus boolean update

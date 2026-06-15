@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptValidationUtil;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
@@ -63,7 +64,63 @@ class ConceptEditValidator {
         // property, relationship) — they can each be public/non-public.
         validateEliList("privacyProvisions", privacyProvisionsOf(editModel), problems);
 
+        // Domain rules previously declared on the *EditModel classes
+        // (validateSpecificFields) but never invoked in the live flow. Folded in
+        // here so they actually run on edit. The models stay pure data classes;
+        // ConceptValidationUtil remains the single source of truth for the rules.
+        validateDomainRules(editModel, problems);
+
         return problems;
+    }
+
+    /** Per-type bundle of the governance/privacy fields the domain rules check. */
+    private record GovernanceBundle(List<String> privacyProvisions, Boolean isPublic,
+                                    String codeListDataset, List<String> sharingMethod,
+                                    String acquisitionMethod, String contentType,
+                                    String entityName, String genderSuffix) {}
+
+    private GovernanceBundle governanceOf(ConceptEditModel editModel) {
+        if (editModel instanceof ClassConceptEditModel c) {
+            return new GovernanceBundle(c.getPrivacyProvisions(), c.getIsPublic(), c.getCodeListDataset(),
+                    c.getSharingMethod(), c.getAcquisitionMethod(), c.getContentType(), "Třída", "á");
+        }
+        if (editModel instanceof PropertyConceptEditModel p) {
+            return new GovernanceBundle(p.getPrivacyProvisions(), p.getIsPublic(), p.getCodeListDataset(),
+                    p.getSharingMethod(), p.getAcquisitionMethod(), p.getContentType(), "Vlastnost", "á");
+        }
+        if (editModel instanceof RelationshipConceptEditModel r) {
+            return new GovernanceBundle(r.getPrivacyProvisions(), r.getIsPublic(), r.getCodeListDataset(),
+                    r.getSharingMethod(), r.getAcquisitionMethod(), r.getContentType(), "Vztah", "ý");
+        }
+        return null;
+    }
+
+    /**
+     * Runs the {@link ConceptValidationUtil} domain rules (privacy/public conflict,
+     * NKOD code-list URL, governance-value allowlist) and folds any violation into
+     * the collected problems as an {@link InvalidInput}, so the whole edit is
+     * rejected atomically with one 400 rather than throwing per-rule.
+     */
+    private void validateDomainRules(ConceptEditModel editModel, List<InvalidInput> problems) {
+        GovernanceBundle g = governanceOf(editModel);
+        if (g == null) return;
+
+        record Check(String field, Runnable rule) {}
+        List<Check> checks = List.of(
+                new Check("isPublic", () -> ConceptValidationUtil.validatePrivacyPublicConflict(
+                        g.privacyProvisions(), g.isPublic(), g.entityName(), g.genderSuffix())),
+                new Check("codeListDataset", () -> ConceptValidationUtil.validateCodeListDataset(g.codeListDataset())),
+                new Check("governance", () -> ConceptValidationUtil.validateGovernanceFields(
+                        g.sharingMethod(), g.acquisitionMethod(), g.contentType()))
+        );
+
+        for (Check check : checks) {
+            try {
+                check.rule().run();
+            } catch (RuntimeException e) {
+                problems.add(new InvalidInput(check.field(), null, e.getMessage()));
+            }
+        }
     }
 
     private List<String> privacyProvisionsOf(ConceptEditModel editModel) {
