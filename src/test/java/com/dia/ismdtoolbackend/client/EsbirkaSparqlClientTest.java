@@ -248,6 +248,49 @@ class EsbirkaSparqlClientTest {
     }
 
     @Test
+    void fetchFragments_lastSegmentWithoutUnderscore_usesSegmentAsKind() {
+        // parseKindFromIri returns the whole last segment when it contains no underscore
+        // (e.g. a "poznamkypodcarou" container or a bare "frag" leaf).
+        String basePath = VERSION_IRI + "/dokument/norma";
+        String json = ("""
+                {
+                  "head": { "vars": ["fragment", "parent", "citace", "order"] },
+                  "results": { "bindings": [
+                    """ +
+                fragmentRow(basePath + "/poznamkypodcarou", basePath, "Poznámky", "FFFF") + ",\n" +
+                fragmentRow(basePath + "/frag",             basePath, "Frag",     "FFFE") +
+                """
+                  ] }
+                }
+                """);
+        stubSparql(json);
+        List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
+        assertEquals(2, out.size());
+        assertEquals("poznamkypodcarou", out.get(0).getKind());
+        assertEquals("frag", out.get(1).getKind());
+    }
+
+    @Test
+    void fetchFragments_iriEndingInSlash_kindIsUnknown() {
+        // Defensive branch: an IRI whose last char is '/' has no parseable last segment.
+        String basePath = VERSION_IRI + "/dokument/norma";
+        String json = ("""
+                {
+                  "head": { "vars": ["fragment", "parent", "citace", "order"] },
+                  "results": { "bindings": [
+                    """ +
+                fragmentRow(basePath + "/trailing/", basePath, "Trailing", "FFFD") +
+                """
+                  ] }
+                }
+                """);
+        stubSparql(json);
+        List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
+        assertEquals(1, out.size());
+        assertEquals("unknown", out.get(0).getKind());
+    }
+
+    @Test
     void fetchFragments_skipsRowMissingParent() {
         String json = """
                 {
@@ -267,6 +310,117 @@ class EsbirkaSparqlClientTest {
         List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals("§ 2", out.get(0).getCitation());
+    }
+
+    // --- fetchVersionContent (obsah body mapping) ---------------------------
+
+    @Test
+    void fetchVersionContent_mapsBodyHtmlAndNullForStructuralFragments() {
+        // A textual fragment (par) carries an obsah HTML body; a structural fragment
+        // (cast) carries none — the OPTIONAL obsah join leaves it unbound, and the
+        // mapper must surface that as a null bodyHtml rather than dropping the row.
+        String basePath = VERSION_IRI + "/dokument/norma";
+        String json = ("""
+                {
+                  "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
+                  "results": { "bindings": [
+                    """ +
+                contentRow(basePath + "/cast_1", basePath, "Část 1", "6AC0", null) + ",\n" +
+                contentRow(basePath + "/cast_1/par_1", basePath + "/cast_1", "§ 1", "6AC1",
+                        "<var>§ 1</var> Tělo paragrafu.") +
+                """
+                  ] }
+                }
+                """);
+        stubSparql(json);
+
+        List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
+        assertEquals(2, out.size());
+
+        FragmentModel structural = out.get(0);
+        assertEquals("cast", structural.getKind());
+        assertNull(structural.getBodyHtml(), "structural fragment must have null bodyHtml");
+
+        FragmentModel textual = out.get(1);
+        assertEquals("par", textual.getKind());
+        assertEquals("<var>§ 1</var> Tělo paragrafu.", textual.getBodyHtml());
+        assertEquals(basePath + "/cast_1", textual.getParentIri());
+        assertEquals("6AC1", textual.getOrder());
+    }
+
+    @Test
+    void fetchVersionContent_skipsRowMissingParent() {
+        // Same iri/parent guard as the lean fragment path: a row without a parent edge
+        // is dropped (it cannot be placed in the tree), even when it carries an obsah body.
+        String basePath = VERSION_IRI + "/dokument/norma";
+        String json = ("""
+                {
+                  "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
+                  "results": { "bindings": [
+                    { "fragment": {"type":"uri","value":"%1$s/par_1"},
+                      "citace":   {"type":"literal","value":"§ 1"},
+                      "order":    {"type":"literal","value":"6AC0"},
+                      "obsah":    {"type":"literal","value":"<var>orphan</var>"} },
+                    """ +
+                contentRow(basePath + "/par_2", basePath, "§ 2", "6AC1", "<var>§ 2</var>") +
+                """
+                  ] }
+                }
+                """).formatted(basePath);
+        stubSparql(json);
+
+        List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
+        assertEquals(1, out.size());
+        assertEquals("§ 2", out.get(0).getCitation());
+        assertEquals("<var>§ 2</var>", out.get(0).getBodyHtml());
+    }
+
+    @Test
+    void fetchVersionContent_emptyResultSet() {
+        stubSparql("""
+                {
+                  "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
+                  "results": { "bindings": [] }
+                }
+                """);
+        assertEquals(0, client.fetchVersionContent(VERSION_IRI).size());
+    }
+
+    // --- findLawByNumberYear ------------------------------------------------
+
+    @Test
+    void findLawByNumberYear_happyPath_mapsFirstRow() {
+        String json = """
+                {
+                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
+                  "results": { "bindings": [
+                    { "akt":     {"type":"uri","value":"%s"},
+                      "citace":  {"type":"literal","value":"49/1997 Sb."},
+                      "cislo":   {"type":"literal","value":"49"},
+                      "rok":     {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#gYear","value":"1997"},
+                      "sbirka":  {"type":"literal","value":"sb"} }
+                  ] }
+                }
+                """.formatted(LAW_IRI);
+        stubSparql(json);
+
+        Optional<LawModel> out = client.findLawByNumberYear("49", 1997);
+        assertTrue(out.isPresent());
+        assertEquals(LAW_IRI, out.get().getIri());
+        assertEquals("49/1997 Sb.", out.get().getCitace());
+        assertEquals("49", out.get().getCislo());
+        assertEquals(Integer.valueOf(1997), out.get().getRok());
+    }
+
+    @Test
+    void findLawByNumberYear_noMatch_returnsEmptyOptional() {
+        stubSparql("""
+                {
+                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
+                  "results": { "bindings": [] }
+                }
+                """);
+        assertTrue(client.findLawByNumberYear("999", 1997).isEmpty());
     }
 
     // --- resolveFragment ----------------------------------------------------
@@ -401,6 +555,23 @@ class EsbirkaSparqlClientTest {
                   "parent":   {"type":"uri","value":"%s"},
                   "citace":   {"type":"literal","value":"%s"},
                   "order":    {"type":"literal","value":"%s"} }""".formatted(fragmentIri, parentIri, citace, order);
+    }
+
+    /**
+     * A whole-version content row. A null {@code obsah} omits the binding entirely —
+     * modelling an unbound OPTIONAL (structural fragment with no text body), which the
+     * mapper must surface as a null bodyHtml.
+     */
+    private static String contentRow(String fragmentIri, String parentIri, String citace,
+                                     String order, String obsah) {
+        String obsahBinding = obsah == null ? ""
+                : ",\n                  \"obsah\": {\"type\":\"literal\",\"value\":\"%s\"}".formatted(obsah);
+        return """
+                { "fragment": {"type":"uri","value":"%s"},
+                  "parent":   {"type":"uri","value":"%s"},
+                  "citace":   {"type":"literal","value":"%s"},
+                  "order":    {"type":"literal","value":"%s"}%s }"""
+                .formatted(fragmentIri, parentIri, citace, order, obsahBinding);
     }
 
     private static void stubSparql(String body) {
