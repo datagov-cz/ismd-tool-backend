@@ -27,6 +27,7 @@ import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -503,6 +504,27 @@ class ConceptServiceImplTest {
 
         assertTrue(exception.getMessage().contains("Nepodařilo se upravit pojem"));
         verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any());
+    }
+
+    @Test
+    void editConcept_ValidationException_propagatesUnwrappedAs400() {
+        // A ConceptValidationException from the editor (invalid input) must NOT be
+        // re-wrapped into OntologyException — that would turn the 400 into a 500.
+        ConceptEditModel editModel = createValidConceptEditModel();
+
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenThrow(new ConceptValidationException("Neplatné hodnoty v úpravě pojmu: exactMatch"));
+
+        ConceptValidationException exception = assertThrows(ConceptValidationException.class,
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
+
+        assertTrue(exception.getMessage().contains("Neplatné hodnoty"));
+        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any());
+        verify(conceptMetadataRepository, never()).save(any());
     }
 
     @Test
