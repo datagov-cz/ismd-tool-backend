@@ -49,6 +49,19 @@ public class JenaTDB2Repository {
 
     private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
 
+    /**
+     * The single source of truth for "is this concept OWNED by the scheme it declares".
+     * A concept is owned if it carries {@code skos:inScheme ?scheme} AND its IRI is a
+     * string prefix-match of that scheme. This is the same gate the live resolver
+     * ({@link #fetchConceptResolutions}) and the upload write-gate
+     * ({@code OFNTypeNormalizer.isOwnedConcept}) use; the PG↔TDB2 reconciler MUST use the
+     * exact same predicate or it would invent (and, with auto-repair, delete) phantom
+     * orphans. Bind {@code ?concept} before interpolating. See
+     * {@code pg_tdb2_dual_write_consistency} / the reconciler plan §6.
+     */
+    public static final String OWNED_CONCEPT_PATTERN =
+            " ?concept skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ";
+
     private final HttpClient fusekiHttpClient;
     private final Semaphore fusekiSemaphore;
     private final int fusekiSemaphoreTimeout;
@@ -366,6 +379,77 @@ public class JenaTDB2Repository {
                     boolean hasData = conn.queryAsk(pss.toString());
                     log.debug("Graph '{}' has data: {}", graphName, hasData);
                     return hasData;
+                });
+    }
+
+    /**
+     * Enumerates every named graph that holds at least one triple. Used by the PG↔TDB2
+     * consistency reconciler to discover what graphs exist in Fuseki before comparing
+     * against the Postgres ontology rows. Like all reads here, this THROWS
+     * {@code JenaTDB2Exception} on a Fuseki connection failure (never silently returns an
+     * empty list), so the reconciler can abort a run rather than mistake an outage for
+     * "TDB2 is empty".
+     */
+    public List<String> listNamedGraphs() {
+        return executor.execute(
+                "listing named graphs",
+                "Failed to list named graphs",
+                conn -> {
+                    List<String> graphs = new ArrayList<>();
+                    String sparql = "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }";
+                    try (QueryExecution qExec = conn.query(sparql)) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            Resource g = rs.next().getResource("g");
+                            if (g != null && g.isURIResource()) {
+                                graphs.add(g.getURI());
+                            }
+                        }
+                    }
+                    log.debug("Enumerated {} named graph(s) in Fuseki", graphs.size());
+                    return graphs;
+                });
+    }
+
+    /**
+     * Returns the IRIs of concepts OWNED by {@code graphName} — i.e. subjects carrying
+     * {@code skos:inScheme ?scheme} with {@code STRSTARTS(conceptIri, scheme)} — within that
+     * named graph. Uses the shared {@link #OWNED_CONCEPT_PATTERN} so the reconciler's notion
+     * of "owned" is byte-identical to the resolver's.
+     *
+     * <p>By construction this EXCLUDES (a) referenced/external concepts, which appear only as
+     * triple objects and never carry an owning {@code inScheme} (e.g. an NKD {@code adresa}
+     * reference), and (b) "excluded" concepts the user declined to normalize, which have no
+     * {@code inScheme} at all. So a reconciler RDF→PG sweep over this set never false-flags
+     * either as an orphan. THROWS on Fuseki failure.
+     */
+    public List<String> listOwnedConceptIrisInGraph(String graphName) {
+        if (!SparqlIriValidator.isSafeHttpIri(graphName)) {
+            log.warn("Skipping listOwnedConceptIrisInGraph for unsafe graph IRI");
+            return List.of();
+        }
+        return executor.execute(
+                "listing owned concept IRIs in graph " + graphName,
+                "Failed to list owned concepts in graph",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("SELECT DISTINCT ?concept WHERE { GRAPH ?g { ");
+                    pss.append(OWNED_CONCEPT_PATTERN);
+                    pss.append("} }");
+                    pss.setIri("g", graphName);
+                    List<String> iris = new ArrayList<>();
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            Resource c = rs.next().getResource("concept");
+                            if (c != null && c.isURIResource()) {
+                                iris.add(c.getURI());
+                            }
+                        }
+                    }
+                    log.debug("Graph '{}' has {} owned concept subject(s)", graphName, iris.size());
+                    return iris;
                 });
     }
 
@@ -766,8 +850,7 @@ public class JenaTDB2Repository {
                         pss.append(" ");
                     }
                     pss.append("} GRAPH ?g { ");
-                    pss.append("  ?concept skos:inScheme ?scheme . ");
-                    pss.append("  FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
+                    pss.append(OWNED_CONCEPT_PATTERN);
                     pss.append("  OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
                     pss.append("  OPTIONAL { ?concept rdf:type ?type . } ");
                     pss.append("  OPTIONAL { ?concept rdfs:domain ?domain . } ");
