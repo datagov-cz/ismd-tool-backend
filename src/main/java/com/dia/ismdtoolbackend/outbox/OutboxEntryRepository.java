@@ -58,6 +58,15 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
             """)
     boolean existsEarlierUnappliedForAggregate(@Param("aggregateIri") String aggregateIri, @Param("seq") long seq);
 
+    /**
+     * Next value of the {@code outbox_seq} sequence — the monotonic per-row ordering key, assigned
+     * by {@link OutboxWriter} at enqueue time (decoupled from the PK). Runs in the caller's
+     * transaction; the sequence advances regardless of whether that transaction commits (sequences
+     * are non-transactional), which is fine — {@code seq} only needs to be monotonic, not gapless.
+     */
+    @Query(value = "SELECT nextval('ismd_schema.outbox_seq')", nativeQuery = true)
+    long nextSeq();
+
     long countByStatus(OutboxStatus status);
 
     List<OutboxEntry> findByStatusOrderBySeqAsc(OutboxStatus status);
