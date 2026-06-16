@@ -18,6 +18,9 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
+import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
@@ -52,6 +55,9 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptDeviationComparator deviationComparator;
     private final RppSnapshotHolder rppSnapshotHolder;
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
+    private final OutboxConfig outboxConfig;
+    private final OutboxWriter outboxWriter;
+    private final OutboxRelayTrigger outboxRelayTrigger;
 
     @Override
     @Transactional
@@ -71,8 +77,19 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         String ontologyGraphName = createModel.getOntologyGraphName();
-        saveConceptToTDB2(conceptResource, ontologyGraphName);
 
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the concept's triples (empty remove set), committed atomically
+            // with the metadata below. No rollback compensator needed — if the PG tx fails, the
+            // outbox row rolls back with it, so nothing reaches TDB2.
+            outboxWriter.enqueueUpsert(ontologyGraphName, conceptUri, java.util.Set.of(),
+                    conceptResource.getModel().listStatements().toSet());
+            ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return conceptMetadataMapper.toDto(savedEntity);
+        }
+
+        saveConceptToTDB2(conceptResource, ontologyGraphName);
         return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
     }
 
@@ -102,6 +119,15 @@ public class ConceptServiceImpl implements ConceptService {
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
+            // atomically with the PG metadata delete below.
+            outboxWriter.enqueueDeleteConcepts(graphName, conceptUri, relatedConceptUris);
+            conceptMetadataRepository.deleteAll(relatedConceptEntities);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return;
+        }
+
         jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);
         conceptMetadataRepository.deleteAll(relatedConceptEntities);
     }
@@ -119,9 +145,27 @@ public class ConceptServiceImpl implements ConceptService {
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
         ConceptEditor.EditResult editResult = performConceptEdit(metadata.getConceptIri(), conceptEditModel, model, graphName);
+
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the editor's exact change sets (NOT a whole-graph PUT), committed
+            // atomically with the metadata update below.
+            //
+            // Aggregate key = the PRE-EDIT IRI (metadata.getConceptIri() before it's mutated below),
+            // NOT the new IRI. A createConcept keys on the concept's IRI; this concept's pre-edit IRI
+            // equals that same IRI, so a create and a subsequent rename share an aggregate and the
+            // per-aggregate ordering gate relates them (the rename's DELETE of old-IRI triples can
+            // never apply before the create's INSERT of them). Keying on the NEW IRI would make them
+            // different aggregates and reopen the create→rename inversion (review #4 / M1).
+            String aggregateIri = metadata.getConceptIri();
+            outboxWriter.enqueueUpsert(graphName, aggregateIri,
+                    editResult.statementsToRemove, editResult.statementsToAdd);
+            updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+        }
+
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
-
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
     }
 

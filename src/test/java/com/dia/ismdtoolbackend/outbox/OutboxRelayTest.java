@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.sys.JenaSystem;
@@ -117,6 +118,39 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
 
     private OutboxStatus statusOf(Long id) {
         return txTemplate.execute(tx -> repository.findById(id).orElseThrow().getStatus());
+    }
+
+    // Builds a `A --hasDigitalObject--> _:b --{rdf:type, schemaUrl}--> ...` structure, mirroring the
+    // editor's one-level blank-node shape (digital object / code list).
+    private static final String HAS_DIGITAL_OBJECT = "https://example.org/ns/hasDigitalObject";
+    private static final String SCHEMA_URL = "https://example.org/ns/schemaUrl";
+    private static final String DIGITAL_OBJECT_TYPE = "https://example.org/ns/DigitalObject";
+
+    private Set<Statement> digitalObjectAdd(String schemaUrl) {
+        Model m = ModelFactory.createDefaultModel();
+        Resource concept = m.createResource(A);
+        Resource bnode = m.createResource(); // blank node, exactly as the editor produces
+        m.add(concept, m.createProperty(HAS_DIGITAL_OBJECT), bnode);
+        m.add(bnode, org.apache.jena.vocabulary.RDF.type, m.createResource(DIGITAL_OBJECT_TYPE));
+        m.add(bnode, m.createProperty(SCHEMA_URL), m.createResource(schemaUrl));
+        return m.listStatements().toSet();
+    }
+
+    private long blankChildCount() {
+        // Count distinct blank nodes hung off concept A via hasDigitalObject.
+        Model g = tdb2.dataset().getNamedModel(GRAPH);
+        return g.listStatements(g.getResource(A), g.getProperty(HAS_DIGITAL_OBJECT), (RDFNode) null)
+                .toList().stream().map(Statement::getObject).filter(RDFNode::isAnon).distinct().count();
+    }
+
+    private boolean blankChildWithSchemaUrlExists(String schemaUrl) {
+        Model g = tdb2.dataset().getNamedModel(GRAPH);
+        return g.listStatements(g.getResource(A), g.getProperty(HAS_DIGITAL_OBJECT), (RDFNode) null)
+                .toList().stream()
+                .map(Statement::getObject)
+                .filter(RDFNode::isAnon)
+                .map(RDFNode::asResource)
+                .anyMatch(bn -> bn.hasProperty(g.getProperty(SCHEMA_URL), g.getResource(schemaUrl)));
     }
 
     // ---- tests ----
@@ -300,35 +334,53 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
         assertThat(statusOf(bad.getId())).isEqualTo(OutboxStatus.FAILED);
     }
 
+    // T7 blank-node support: a `concept -> _:b -> leaves` structure (digital object / code list shape)
+    // is applied via the subgraph-delta path, not rejected. Asserts the blank substructure lands.
     @Test
-    void blankNode_isRejected_rowGoesToFailed() {
-        config.setMaxAttempts(1);
-        Model m = ModelFactory.createDefaultModel();
-        Resource subj = m.createResource(A);
-        Resource bnode = m.createResource(); // blank node object
-        Statement withBnode = m.createStatement(subj, m.createProperty(PREF_LABEL), bnode);
+    void blankNodeStructure_isApplied_viaSubgraphDelta() {
+        OutboxEntry row = save(upsert(A, Set.of(), digitalObjectAdd("https://schema.example/x")));
+        int applied = drain();
 
-        OutboxEntry row = save(upsert(A, Set.of(), Set.of(withBnode)));
-        drain();
-
-        // applyConceptDelta rejects blank nodes (DELETE/INSERT DATA cannot apply them); the relay
-        // treats this as a PERMANENT failure — straight to FAILED, dataset untouched, no crash.
-        assertThat(statusOf(row.getId())).isEqualTo(OutboxStatus.FAILED);
-        assertThat(tdb2.dataset().getNamedModel(GRAPH).isEmpty()).isTrue();
+        assertThat(applied).isEqualTo(1);
+        assertThat(statusOf(row.getId())).isEqualTo(OutboxStatus.DONE);
+        // The concept has the edge to a blank node, which carries the schema URL.
+        assertThat(blankChildWithSchemaUrlExists("https://schema.example/x")).isTrue();
     }
 
-    // F6 — a blank node in the DELETE set (not just the insert set) is equally rejected.
+    // Idempotent re-apply of a blank-node delta must NOT duplicate the blank child: the pattern
+    // delete clears the prior copy before re-insert, netting exactly one.
     @Test
-    void blankNodeInDeleteSet_isRejected_rowGoesToFailed() {
-        config.setMaxAttempts(1);
-        Model m = ModelFactory.createDefaultModel();
-        Statement bnodeRemove = m.createStatement(
-                m.createResource(A), m.createProperty(PREF_LABEL), m.createResource()); // blank object
+    void blankNodeStructure_reapply_doesNotDuplicate() {
+        OutboxEntry row = save(upsert(A, Set.of(), digitalObjectAdd("https://schema.example/x")));
+        drain();
+        long childrenAfterFirst = blankChildCount();
 
-        OutboxEntry row = save(upsert(A, Set.of(bnodeRemove), Set.of()));
+        txTemplate.executeWithoutResult(tx -> {
+            OutboxEntry r = repository.findById(row.getId()).orElseThrow();
+            r.setStatus(OutboxStatus.PENDING);
+            repository.save(r);
+        });
         drain();
 
-        assertThat(statusOf(row.getId())).isEqualTo(OutboxStatus.FAILED);
+        assertThat(blankChildCount()).isEqualTo(childrenAfterFirst); // no duplication
+        assertThat(childrenAfterFirst).isEqualTo(1);
+    }
+
+    // Replacing a blank-node structure: the OLD blank child is removed (pattern delete) and the NEW
+    // one inserted — proving the path also clears pre-existing store blank nodes it can't name.
+    @Test
+    void blankNodeStructure_replace_removesOldChild() {
+        save(upsert(A, Set.of(), digitalObjectAdd("https://old.example/x")));
+        drain();
+        assertThat(blankChildWithSchemaUrlExists("https://old.example/x")).isTrue();
+
+        // A second edit that (in the editor) would clear the old digital object and add a new one.
+        // The remove set references the old structure (blank); the add set is the new structure.
+        save(upsert(A, digitalObjectAdd("https://old.example/x"), digitalObjectAdd("https://new.example/y")));
+        drain();
+
+        assertThat(blankChildWithSchemaUrlExists("https://old.example/x")).isFalse();
+        assertThat(blankChildWithSchemaUrlExists("https://new.example/y")).isTrue();
     }
 
     private OutboxEntry deleteConcepts(String aggregate, List<String> targetIris) {

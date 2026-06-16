@@ -74,6 +74,10 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
 
     List<OutboxEntry> findByStatusOrderBySeqAsc(OutboxStatus status);
 
+    /** Oldest {@code created_at} among PENDING rows — the queue's "head age" for the status endpoint. */
+    @Query("SELECT MIN(e.createdAt) FROM OutboxEntry e WHERE e.status = com.dia.ismdtoolbackend.outbox.OutboxStatus.PENDING")
+    Instant oldestPendingCreatedAt();
+
     /** Retention prune — drop DONE rows older than {@code cutoff}. Returns the number removed. */
     @Modifying
     @Query("DELETE FROM OutboxEntry e WHERE e.status = com.dia.ismdtoolbackend.outbox.OutboxStatus.DONE AND e.completedAt < :cutoff")

@@ -28,6 +28,7 @@ import org.apache.jena.sparql.core.Quad;
 import org.apache.jena.sparql.modify.request.QuadDataAcc;
 import org.apache.jena.sparql.modify.request.UpdateDataDelete;
 import org.apache.jena.sparql.modify.request.UpdateDataInsert;
+import org.apache.jena.update.UpdateFactory;
 import org.apache.jena.update.UpdateRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
@@ -355,58 +356,134 @@ public class JenaTDB2Repository {
     }
 
     /**
-     * Applies a concept-scoped delta to a graph: remove the {@code removeModel} triples, then add
-     * the {@code addModel} triples, as ONE SPARQL update request ({@code DELETE DATA; INSERT DATA})
-     * — Fuseki's single-request atomic unit. Used by the outbox relay to apply an
-     * {@code UPSERT_CONCEPT} row.
+     * Applies a concept-scoped delta to a graph: remove the {@code removeModel} triples, add the
+     * {@code addModel} triples, as ONE SPARQL update request — Fuseki's single-request atomic unit.
+     * Used by the outbox relay to apply an {@code UPSERT_CONCEPT} row. {@code conceptIri} is the
+     * concept the delta is rooted at (the outbox row's aggregate).
      *
-     * <p>Touches ONLY the exact triples in the two models (NOT a whole-graph replace), so concurrent
-     * deltas to different concepts in the same graph don't clobber each other. {@code DELETE DATA}
-     * is idempotent (removing an already-absent triple is a no-op) and so is re-adding an existing
-     * triple, so the relay can safely re-apply on retry.
+     * <p><b>Two strategies, picked by whether the delta touches blank nodes:</b>
+     * <ul>
+     *   <li><b>No blank nodes (the common case — labels, definitions, field edits, renames):</b>
+     *       identity-based {@code DELETE DATA; INSERT DATA} of exactly the changed triples. Minimal
+     *       diff, so concurrent deltas to <em>different</em> concepts in one graph never collide.</li>
+     *   <li><b>Blank nodes present (digital objects, code lists):</b> blank nodes can't be matched by
+     *       identity across the serialize/parse boundary ({@code DELETE DATA} treats a bnode label as
+     *       fresh, matching nothing). So we (a) {@code DELETE DATA} the non-blank removed triples,
+     *       (b) {@code DELETE} the concept's one-hop blank substructures by PATTERN, rooted at the
+     *       concept, and (c) {@code INSERT DATA} the new model (fresh bnodes are fine on insert). The
+     *       pattern delete is bounded to {@code <concept> ?p ?bn . ?bn ?q ?o} with {@code isBlank(?bn)}
+     *       — one hop, blank-only — so it can never reach another concept's data. (Verified: the
+     *       editor/creator only ever produce one-level blank structures; no lists/nesting.)</li>
+     * </ul>
      *
-     * <p><b>Blank nodes are unsupported by design.</b> {@code DELETE DATA}/{@code INSERT DATA} cannot
-     * match or stably write blank nodes; concept payloads are IRI/literal only. A blank node in
-     * either model is rejected loudly rather than silently mis-applied.
+     * <p><b>Idempotent on re-apply</b> in both strategies: identity DELETE/INSERT DATA re-runs are
+     * no-ops; the pattern path deletes ALL the concept's blank children before re-inserting, so a
+     * double-apply nets exactly one copy (this is why the blank path deletes by pattern, not by the
+     * just-inserted bnode identity).
      */
-    public void applyConceptDelta(String graphName, Model removeModel, Model addModel) {
+    public void applyConceptDelta(String conceptIri, String graphName, Model removeModel, Model addModel) {
         Node graph = NodeFactory.createURI(graphName);
+        boolean removeHasBlank = hasBlankNode(removeModel);
+        boolean addHasBlank = hasBlankNode(addModel);
+
         UpdateRequest request = new UpdateRequest();
-        if (removeModel != null && !removeModel.isEmpty()) {
-            request.add(new UpdateDataDelete(quadData(graph, removeModel)));
+
+        // (a) Always: identity-delete the non-blank removed triples.
+        QuadDataAcc removeNonBlank = quadDataNonBlank(graph, removeModel);
+        if (!removeNonBlank.getQuads().isEmpty()) {
+            request.add(new UpdateDataDelete(removeNonBlank));
         }
+        // (b) If either side involves blank nodes, pattern-delete the concept's one-hop blank
+        //     substructures (clears the OLD bnode structures that DATA-delete can't match, AND any
+        //     previously-inserted copy on a re-apply).
+        if (removeHasBlank || addHasBlank) {
+            blankSubstructureDelete(graphName, conceptIri).getOperations().forEach(request::add);
+        }
+        // (c) Insert the additions (blank nodes minted fresh — valid on insert).
         if (addModel != null && !addModel.isEmpty()) {
-            request.add(new UpdateDataInsert(quadData(graph, addModel)));
+            request.add(new UpdateDataInsert(quadDataAll(graph, addModel)));
         }
+
         if (request.getOperations().isEmpty()) {
-            log.debug("applyConceptDelta no-op (empty delta) for graph {}", graphName);
+            log.debug("applyConceptDelta no-op (empty delta) for concept {} in graph {}", conceptIri, graphName);
             return;
         }
         executor.executeVoid(
-                "applying concept delta to graph " + graphName,
+                "applying concept delta for " + conceptIri + " to graph " + graphName,
                 "Nepodařilo se aplikovat změnu pojmu do TDB2",
                 conn -> conn.update(request));
     }
 
-    /** Builds a quad-data accumulator (all quads in {@code graph}) from a model, rejecting blank nodes. */
-    private QuadDataAcc quadData(Node graph, Model model) {
-        QuadDataAcc acc = new QuadDataAcc();
+    private boolean hasBlankNode(Model model) {
+        if (model == null || model.isEmpty()) {
+            return false;
+        }
         StmtIterator it = model.listStatements();
         try {
             while (it.hasNext()) {
                 Statement stmt = it.next();
-                Node s = stmt.getSubject().asNode();
-                Node o = stmt.getObject().asNode();
-                if (s.isBlank() || o.isBlank()) {
-                    throw new IllegalArgumentException(
-                            "Blank nodes are not supported in outbox concept deltas: " + stmt);
+                if (stmt.getSubject().isAnon() || stmt.getObject().isAnon()) {
+                    return true;
                 }
-                acc.addQuad(Quad.create(graph, s, stmt.getPredicate().asNode(), o));
+            }
+        } finally {
+            it.close();
+        }
+        return false;
+    }
+
+    /** Quads for the model's NON-blank triples only (blank ones are handled by the pattern delete). */
+    private QuadDataAcc quadDataNonBlank(Node graph, Model model) {
+        QuadDataAcc acc = new QuadDataAcc();
+        if (model == null) {
+            return acc;
+        }
+        StmtIterator it = model.listStatements();
+        try {
+            while (it.hasNext()) {
+                Statement stmt = it.next();
+                if (stmt.getSubject().isAnon() || stmt.getObject().isAnon()) {
+                    continue;
+                }
+                acc.addQuad(Quad.create(graph, stmt.getSubject().asNode(),
+                        stmt.getPredicate().asNode(), stmt.getObject().asNode()));
             }
         } finally {
             it.close();
         }
         return acc;
+    }
+
+    /** Quads for ALL triples in the model (used for INSERT DATA, where blank nodes are valid). */
+    private QuadDataAcc quadDataAll(Node graph, Model model) {
+        QuadDataAcc acc = new QuadDataAcc();
+        StmtIterator it = model.listStatements();
+        try {
+            while (it.hasNext()) {
+                Statement stmt = it.next();
+                acc.addQuad(Quad.create(graph, stmt.getSubject().asNode(),
+                        stmt.getPredicate().asNode(), stmt.getObject().asNode()));
+            }
+        } finally {
+            it.close();
+        }
+        return acc;
+    }
+
+    /**
+     * A {@code DELETE { GRAPH g { ?bn ?q ?o } } WHERE { GRAPH g { &lt;concept&gt; ?p ?bn . ?bn ?q ?o .
+     * FILTER isBlank(?bn) } }} — removes the concept's one-hop blank substructures (and the edges to
+     * them) without naming the blank nodes. Bounded to nodes directly hung off the concept, so it
+     * never reaches another concept.
+     */
+    private UpdateRequest blankSubstructureDelete(String graphName, String conceptIri) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText(
+                "DELETE { GRAPH ?g { ?concept ?p ?bn . ?bn ?q ?o } } " +
+                "WHERE  { GRAPH ?g { ?concept ?p ?bn . ?bn ?q ?o . FILTER(isBlank(?bn)) } }");
+        pss.setIri("g", graphName);
+        pss.setIri("concept", conceptIri);
+        return UpdateFactory.create(pss.toString());
     }
 
     public void deleteGraph(String graphName) {
