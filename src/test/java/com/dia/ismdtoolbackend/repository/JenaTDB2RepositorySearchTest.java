@@ -47,7 +47,7 @@ class JenaTDB2RepositorySearchTest {
         }
 
         @Override
-        RDFConnection createConnection() {
+        protected RDFConnection createConnection() {
             if (createConnectionError != null) throw createConnectionError;
             return mockConn;
         }

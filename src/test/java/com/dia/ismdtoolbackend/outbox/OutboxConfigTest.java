@@ -31,7 +31,6 @@ class OutboxConfigTest {
             assertThat(config.getMaxAttempts()).isEqualTo(10);
             assertThat(config.getBatchSize()).isEqualTo(100);
             assertThat(config.getDoneRetention()).isEqualTo(Duration.ofDays(7));
-            assertThat(config.getParallelAggregates()).isEqualTo(4);
         });
     }
 
@@ -42,8 +41,7 @@ class OutboxConfigTest {
                 "outbox.relay-cron=0 */5 * * * *",
                 "outbox.max-attempts=3",
                 "outbox.batch-size=50",
-                "outbox.done-retention=PT1H",
-                "outbox.parallel-aggregates=8"
+                "outbox.done-retention=PT1H"
         ).run(ctx -> {
             OutboxConfig config = ctx.getBean(OutboxConfig.class);
             assertThat(config.isEnabled()).isTrue();
@@ -51,7 +49,6 @@ class OutboxConfigTest {
             assertThat(config.getMaxAttempts()).isEqualTo(3);
             assertThat(config.getBatchSize()).isEqualTo(50);
             assertThat(config.getDoneRetention()).isEqualTo(Duration.ofHours(1));
-            assertThat(config.getParallelAggregates()).isEqualTo(8);
         });
     }
 }

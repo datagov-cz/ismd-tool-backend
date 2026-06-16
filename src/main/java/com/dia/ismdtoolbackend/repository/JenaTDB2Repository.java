@@ -22,6 +22,13 @@ import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.rdfconnection.RDFConnectionRemote;
+import org.apache.jena.graph.Node;
+import org.apache.jena.graph.NodeFactory;
+import org.apache.jena.sparql.core.Quad;
+import org.apache.jena.sparql.modify.request.QuadDataAcc;
+import org.apache.jena.sparql.modify.request.UpdateDataDelete;
+import org.apache.jena.sparql.modify.request.UpdateDataInsert;
+import org.apache.jena.update.UpdateRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Repository;
@@ -101,7 +108,9 @@ public class JenaTDB2Repository {
         this.textIndexAvailable = available;
     }
 
-    RDFConnection createConnection() {
+    // protected so test subclasses in other packages (e.g. an in-memory-dataset-backed repo for the
+    // outbox relay tests) can override the connection source.
+    protected RDFConnection createConnection() {
         return RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
                 .queryEndpoint("sparql")
@@ -343,6 +352,61 @@ public class JenaTDB2Repository {
                     log.info("Model size: {} statements", model.size());
                     conn.put(graphName, model);
                 });
+    }
+
+    /**
+     * Applies a concept-scoped delta to a graph: remove the {@code removeModel} triples, then add
+     * the {@code addModel} triples, as ONE SPARQL update request ({@code DELETE DATA; INSERT DATA})
+     * — Fuseki's single-request atomic unit. Used by the outbox relay to apply an
+     * {@code UPSERT_CONCEPT} row.
+     *
+     * <p>Touches ONLY the exact triples in the two models (NOT a whole-graph replace), so concurrent
+     * deltas to different concepts in the same graph don't clobber each other. {@code DELETE DATA}
+     * is idempotent (removing an already-absent triple is a no-op) and so is re-adding an existing
+     * triple, so the relay can safely re-apply on retry.
+     *
+     * <p><b>Blank nodes are unsupported by design.</b> {@code DELETE DATA}/{@code INSERT DATA} cannot
+     * match or stably write blank nodes; concept payloads are IRI/literal only. A blank node in
+     * either model is rejected loudly rather than silently mis-applied.
+     */
+    public void applyConceptDelta(String graphName, Model removeModel, Model addModel) {
+        Node graph = NodeFactory.createURI(graphName);
+        UpdateRequest request = new UpdateRequest();
+        if (removeModel != null && !removeModel.isEmpty()) {
+            request.add(new UpdateDataDelete(quadData(graph, removeModel)));
+        }
+        if (addModel != null && !addModel.isEmpty()) {
+            request.add(new UpdateDataInsert(quadData(graph, addModel)));
+        }
+        if (request.getOperations().isEmpty()) {
+            log.debug("applyConceptDelta no-op (empty delta) for graph {}", graphName);
+            return;
+        }
+        executor.executeVoid(
+                "applying concept delta to graph " + graphName,
+                "Nepodařilo se aplikovat změnu pojmu do TDB2",
+                conn -> conn.update(request));
+    }
+
+    /** Builds a quad-data accumulator (all quads in {@code graph}) from a model, rejecting blank nodes. */
+    private QuadDataAcc quadData(Node graph, Model model) {
+        QuadDataAcc acc = new QuadDataAcc();
+        StmtIterator it = model.listStatements();
+        try {
+            while (it.hasNext()) {
+                Statement stmt = it.next();
+                Node s = stmt.getSubject().asNode();
+                Node o = stmt.getObject().asNode();
+                if (s.isBlank() || o.isBlank()) {
+                    throw new IllegalArgumentException(
+                            "Blank nodes are not supported in outbox concept deltas: " + stmt);
+                }
+                acc.addQuad(Quad.create(graph, s, stmt.getPredicate().asNode(), o));
+            }
+        } finally {
+            it.close();
+        }
+        return acc;
     }
 
     public void deleteGraph(String graphName) {
