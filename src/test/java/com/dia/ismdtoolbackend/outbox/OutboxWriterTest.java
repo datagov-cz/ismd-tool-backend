@@ -164,4 +164,18 @@ class OutboxWriterTest extends PostgresIntegrationTestBase {
 
         assertThat(repository.count()).isZero();
     }
+
+    /**
+     * Calling the writer with NO active transaction must fail loudly — otherwise the row would
+     * auto-commit independently of the (absent) business change, silently breaking atomicity. This
+     * method has no ambient tx (class is NOT_SUPPORTED) and does not wrap the call in txTemplate.
+     */
+    @Test
+    void enqueueWithoutActiveTransaction_failsLoudly() {
+        assertThatThrownBy(() -> writer.enqueueDeleteGraph(GRAPH))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("active transaction");
+
+        assertThat(repository.count()).isZero();
+    }
 }

@@ -6,7 +6,6 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
@@ -17,6 +16,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,15 +75,46 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
         repository.save(pending("https://x/pojem/a", "https://g", 11L));
         repository.save(pending("https://x/pojem/b", "https://g", 12L));
 
-        // Earlier pending exists for the same graph below seq 12 → DELETE_GRAPH barrier holds.
-        assertThat(repository.existsEarlierPendingForGraph("https://g", 12L)).isTrue();
-        assertThat(repository.existsEarlierPendingForGraph("https://g", 10L)).isFalse();
+        // Earlier unapplied exists for the same graph below seq 12 → DELETE_GRAPH barrier holds.
+        assertThat(repository.existsEarlierUnappliedForGraph("https://g", 12L)).isTrue();
+        assertThat(repository.existsEarlierUnappliedForGraph("https://g", 10L)).isFalse();
 
         // Aggregate 'a' has an earlier unapplied row below seq 11.
         assertThat(repository.existsEarlierUnappliedForAggregate("https://x/pojem/a", 11L)).isTrue();
         assertThat(repository.existsEarlierUnappliedForAggregate("https://x/pojem/b", 12L)).isFalse();
 
         assertThat(repository.countByStatus(OutboxStatus.PENDING)).isEqualTo(3);
+    }
+
+    // H1 regression: a FAILED earlier row must STILL block (both the graph barrier and the
+    // aggregate guard use <> DONE, not = PENDING) — otherwise a DELETE_GRAPH could drop the graph
+    // while a failed-and-unapplied edit to one of its concepts is outstanding, losing it silently.
+    @Test
+    void failedEarlierRow_stillBlocks_graphAndAggregate() {
+        OutboxEntry failed = pending("https://x/pojem/a", "https://g", 20L);
+        failed.setStatus(OutboxStatus.FAILED);
+        repository.save(failed);
+        repository.save(pending("https://x/pojem/a", "https://g", 21L)); // later DELETE_GRAPH candidate, same graph/agg
+
+        assertThat(repository.existsEarlierUnappliedForGraph("https://g", 21L)).isTrue();
+        assertThat(repository.existsEarlierUnappliedForAggregate("https://x/pojem/a", 21L)).isTrue();
+
+        // Once the earlier row is DONE, the barrier/guard clears.
+        failed.setStatus(OutboxStatus.DONE);
+        repository.save(failed);
+        assertThat(repository.existsEarlierUnappliedForGraph("https://g", 21L)).isFalse();
+        assertThat(repository.existsEarlierUnappliedForAggregate("https://x/pojem/a", 21L)).isFalse();
+    }
+
+    // C1 regression: the claim must honour batchSize, not return the whole PENDING set (which would
+    // defeat batching and SKIP-LOCKED multi-instance parallelism).
+    @Test
+    void claimPendingBatch_honoursBatchSize() {
+        IntStream.range(0, 10).forEach(i ->
+                repository.save(pending("https://x/pojem/" + i, "https://g", 1000L + i)));
+
+        assertThat(repository.claimPendingBatch(3)).hasSize(3);
+        assertThat(repository.claimPendingBatch(100)).hasSize(10); // fewer rows than the cap → all
     }
 
     @Test
@@ -121,13 +152,13 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
             // Open TX #1 that claims+holds row id1 (lowest seq); while it's held, TX #2 (separate
             // thread, own connection) claims and must skip the locked row.
             txTemplate.executeWithoutResult(tx1 -> {
-                List<OutboxEntry> firstClaim = repository.claimPendingBatch(PageRequest.of(0, 1));
+                List<OutboxEntry> firstClaim = repository.claimPendingBatch(1);
                 assertThat(firstClaim).hasSize(1);
                 assertThat(firstClaim.get(0).getId()).isEqualTo(id1);
 
                 CompletableFuture<List<Long>> other = CompletableFuture.supplyAsync(() ->
                         txTemplate.execute(tx2 ->
-                                repository.claimPendingBatch(PageRequest.of(0, 10)).stream()
+                                repository.claimPendingBatch(10).stream()
                                         .map(OutboxEntry::getId).toList()));
                 claimedWhileLocked.set(other.join());
             });

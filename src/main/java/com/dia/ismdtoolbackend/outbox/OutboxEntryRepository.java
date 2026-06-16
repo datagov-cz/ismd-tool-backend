@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.outbox;
 
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -26,24 +25,28 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
             SELECT * FROM ismd_schema.outbox_entry
             WHERE status = 'PENDING'
             ORDER BY seq
+            FETCH FIRST :batchSize ROWS ONLY
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
-    List<OutboxEntry> claimPendingBatch(Pageable pageable);
+    List<OutboxEntry> claimPendingBatch(@Param("batchSize") int batchSize);
 
     /** Oldest pending row (lowest {@code seq}) for one graph — the relay's per-graph head. */
     List<OutboxEntry> findByGraphNameAndStatusOrderBySeqAsc(String graphName, OutboxStatus status);
 
     /**
-     * True if any row for {@code graphName} with {@code seq} below {@code seq} is still PENDING —
-     * the {@code DELETE_GRAPH} barrier: a graph delete must not apply while an earlier concept
-     * mutation in that graph is unprocessed.
+     * True if any row for {@code graphName} with {@code seq} below {@code seq} is NOT yet applied
+     * (status &lt;&gt; DONE) — the {@code DELETE_GRAPH} barrier: a graph delete must not apply while
+     * an earlier mutation in that graph is unprocessed. Uses {@code <> DONE} (not {@code = PENDING})
+     * so a FAILED earlier row ALSO blocks the delete — otherwise the graph would be dropped while a
+     * failed-and-unapplied edit to one of its concepts is still outstanding, losing that edit
+     * silently. Symmetric with {@link #existsEarlierUnappliedForAggregate}.
      */
     @Query("""
             SELECT COUNT(e) > 0 FROM OutboxEntry e
-            WHERE e.graphName = :graphName AND e.status = com.dia.ismdtoolbackend.outbox.OutboxStatus.PENDING
+            WHERE e.graphName = :graphName AND e.status <> com.dia.ismdtoolbackend.outbox.OutboxStatus.DONE
               AND e.seq < :seq
             """)
-    boolean existsEarlierPendingForGraph(@Param("graphName") String graphName, @Param("seq") long seq);
+    boolean existsEarlierUnappliedForGraph(@Param("graphName") String graphName, @Param("seq") long seq);
 
     /**
      * True if the aggregate has a PENDING row with a lower {@code seq} than {@code seq} — strict

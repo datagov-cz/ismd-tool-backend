@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Statement;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.Assert;
 
 import java.time.Instant;
 import java.util.List;
@@ -72,6 +74,12 @@ public class OutboxWriter {
     }
 
     private OutboxEntry persist(OutboxEntry entry) {
+        // Enforce the atomicity invariant: this MUST run inside the caller's transaction so the row
+        // commits with the metadata change. With no active tx, repository.save() would auto-commit
+        // the row independently — a silent atomicity hole. Fail loudly instead.
+        Assert.state(TransactionSynchronizationManager.isActualTransactionActive(),
+                "OutboxWriter must be called within an active transaction (the caller's business "
+                        + "tx) so the outbox row commits atomically with the metadata change.");
         OutboxEntry saved = repository.save(entry);
         log.debug("Outbox enqueued: op={} aggregate={} graph={} seq={}",
                 saved.getOperation(), saved.getAggregateIri(), saved.getGraphName(), saved.getSeq());
