@@ -36,7 +36,7 @@ class JenaTDB2RepositoryReconcilerReadsTest {
         }
 
         @Override
-        RDFConnection createConnection() {
+        protected RDFConnection createConnection() {
             return mockConn;
         }
     }

@@ -38,7 +38,4 @@ public class OutboxConfig {
 
     /** Retention for {@code DONE} rows before the prune removes them (they double as a write-path audit trail). */
     private Duration doneRetention = Duration.ofDays(7);
-
-    /** Max aggregates drained concurrently in one relay pass (rows for one aggregate always stay strictly ordered). */
-    private int parallelAggregates = 4;
 }
