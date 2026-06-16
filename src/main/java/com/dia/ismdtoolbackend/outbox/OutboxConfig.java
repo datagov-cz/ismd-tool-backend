@@ -38,4 +38,7 @@ public class OutboxConfig {
 
     /** Retention for {@code DONE} rows before the prune removes them (they double as a write-path audit trail). */
     private Duration doneRetention = Duration.ofDays(7);
+
+    /** Cron for the {@code DONE}-row retention prune (Spring 6-field). Default daily at 03:30. */
+    private String pruneCron = "0 30 3 * * *";
 }

@@ -1,0 +1,24 @@
+databaseChangeLog:
+  # Index for the relay's per-aggregate ordering gate (existsEarlierUnappliedForAggregate):
+  # filters aggregate_iri = ? AND status <> DONE AND seq < ?, run for every claimed row. Without
+  # this, that gate degrades to a growing seq-scan as DONE rows accumulate. (status<>DONE is not
+  # indexable directly, so lead with aggregate_iri + seq; PG filters status from the heap.)
+  - changeSet:
+      id: 008-outbox-aggregate-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_outbox_aggregate_seq
+                schemaName: ismd_schema
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: outbox_entry
+            indexName: idx_outbox_aggregate_seq
+            columns:
+              - column:
+                  name: aggregate_iri
+              - column:
+                  name: seq

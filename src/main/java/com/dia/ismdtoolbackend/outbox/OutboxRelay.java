@@ -106,6 +106,17 @@ public class OutboxRelay {
                 // Retrying can't help — fail the row immediately so it stops blocking after review.
                 recordPermanentFailure(row, e);
                 haltedAggregates.add(aggregate);
+            } catch (RuntimeException e) {
+                // Any OTHER unexpected runtime — e.g. a RiotException from parsing a corrupt
+                // delete/insert_triples payload, or a QueryParseException building the update —
+                // is thrown INSIDE apply() but BEFORE the executor wraps it as JenaTDB2Exception,
+                // so it would otherwise escape drainOnce() and roll back the whole REQUIRES_NEW pass
+                // (losing earlier rows' DONE marks) while never reaching the FAILED path — a silent
+                // queue wedge. Treat it as a permanent bad-payload failure: fail the row so it is
+                // visible via /api/admin/outbox/failed and stops poisoning the batch. Retrying a
+                // corrupt payload can't help.
+                recordPermanentFailure(row, e);
+                haltedAggregates.add(aggregate);
             }
             // Flush the status change NOW so the next row's gate query (existsEarlier*) sees this
             // row's new state. Do NOT rely on Hibernate's default autoflush-before-query: a later

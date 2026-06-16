@@ -1,7 +1,9 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -9,6 +11,22 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadataEntity, Long> {
+
+    /**
+     * Fetch a concept's metadata row with a {@code SELECT … FOR UPDATE} row lock.
+     * <p>
+     * Used on the outbox edit/delete path to serialize concurrent writes to the SAME concept:
+     * the relay's per-aggregate ordering is correct only if two outbox rows for one aggregate are
+     * never enqueued concurrently (a lower {@code seq} could otherwise commit after a higher one,
+     * inverting their apply order — the relay's gate query is an unlocked SELECT and can't see a
+     * concurrent drain's in-flight row). Locking this row at the top of an outbox-path edit/delete
+     * makes a second concurrent edit of the same concept block until the first commits, so their
+     * outbox rows are enqueued (and ordered) strictly one after the other. This converts the
+     * "single-threaded edit-per-concept" assumption into a structural guarantee.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM ConceptMetadataEntity c WHERE c.id = :id")
+    Optional<ConceptMetadataEntity> findWithLockById(@Param("id") Long id);
 
     @Query(value = """
             SELECT * FROM ismd_schema.concepts c

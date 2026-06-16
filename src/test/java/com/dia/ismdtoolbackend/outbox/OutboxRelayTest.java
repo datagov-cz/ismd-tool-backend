@@ -334,6 +334,33 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
         assertThat(statusOf(bad.getId())).isEqualTo(OutboxStatus.FAILED);
     }
 
+    // Review #4 CRITICAL — a corrupt N-Triples payload throws a RiotException INSIDE apply() (before
+    // the executor wraps it as JenaTDB2Exception), and RiotException is neither JenaTDB2Exception nor
+    // IllegalArgumentException. Without the catch-all RuntimeException clause it would escape the
+    // REQUIRES_NEW drain pass, rolling back the whole batch (incl. an earlier row's DONE) and never
+    // marking the bad row FAILED — a silent queue wedge. This asserts: bad row → FAILED, an earlier
+    // DIFFERENT-aggregate row in the SAME batch → DONE (so the pass did NOT roll back).
+    @Test
+    void corruptTriplesPayload_failsRowNotPass_earlierRowStaysDone() {
+        config.setMaxAttempts(1);
+        save(upsert(A, Set.of(), Set.of(triple(A, "Alpha")))); // good, lower seq
+        OutboxEntry bad = new OutboxEntry();
+        bad.setGraphName(GRAPH);
+        bad.setAggregateIri(B); // different aggregate so it's processed in the same pass
+        bad.setOperation(OutboxOperation.UPSERT_CONCEPT);
+        bad.setInsertTriples("this is not valid n-triples <<<"); // RiotException on parse
+        bad.setStatus(OutboxStatus.PENDING);
+        bad.setCreatedAt(Instant.now());
+        bad.setSeq(repository.nextSeq());
+        save(bad);
+
+        drain(); // must NOT throw out of the pass
+
+        assertThat(graphHas(A, "Alpha")).isTrue(); // earlier good row applied and stayed committed
+        assertThat(repository.countByStatus(OutboxStatus.DONE)).isEqualTo(1);
+        assertThat(statusOf(bad.getId())).isEqualTo(OutboxStatus.FAILED); // bad row failed, didn't wedge
+    }
+
     // T7 blank-node support: a `concept -> _:b -> leaves` structure (digital object / code list shape)
     // is applied via the subgraph-delta path, not rejected. Asserts the blank substructure lands.
     @Test
