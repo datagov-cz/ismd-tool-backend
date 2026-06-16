@@ -96,7 +96,12 @@ public class ConceptServiceImpl implements ConceptService {
     @Override
     @Transactional
     public void deleteConcept(Long conceptId) {
-        Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findById(conceptId);
+        // On the outbox path, take a row lock FIRST (see ConceptMetadataRepository.findWithLockById)
+        // so a concurrent edit/delete of the same concept can't enqueue an out-of-order same-aggregate
+        // outbox row. Direct path keeps the plain findById (byte-for-byte unchanged when flag off).
+        Optional<ConceptMetadataEntity> conceptMetadataOpt = outboxConfig.isEnabled()
+                ? conceptMetadataRepository.findWithLockById(conceptId)
+                : conceptMetadataRepository.findById(conceptId);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptId {} not found", conceptId);
             throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
@@ -138,7 +143,11 @@ public class ConceptServiceImpl implements ConceptService {
         log.info("Editing concept: ID={}, type={}",
                 conceptId, conceptEditModel.getConceptType());
 
-        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId);
+        // On the outbox path, take a row lock FIRST so two concurrent edits of the same concept are
+        // serialized — see ConceptMetadataRepository.findWithLockById. The lock must be the first DB
+        // read of the critical section (read graph → compute delta → enqueue), so it spans the whole
+        // window in which a concurrent edit could enqueue an out-of-order same-aggregate outbox row.
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
         String graphName = metadata.getGraphName();
 
         Model model = fetchAndValidateGraph(graphName);
@@ -322,7 +331,13 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {
-        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findById(conceptId);
+        return fetchAndValidateMetadata(conceptId, false);
+    }
+
+    private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId, boolean lock) {
+        Optional<ConceptMetadataEntity> metadataOpt = lock
+                ? conceptMetadataRepository.findWithLockById(conceptId)
+                : conceptMetadataRepository.findById(conceptId);
         if (metadataOpt.isEmpty()) {
             log.error("Concept metadata not found for ID: {}", conceptId);
             throw new OntologyException("Metadata pojmu s ID " + conceptId + " nebyla nalezena.");
