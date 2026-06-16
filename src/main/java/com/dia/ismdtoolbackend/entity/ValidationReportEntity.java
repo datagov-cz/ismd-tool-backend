@@ -31,9 +31,6 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "ontology_metadata_id")
     private Long ontologyMetadataId;
 
-    // columnDefinition pins timestamptz so Hibernate's Instant→TIMESTAMP_UTC expectation matches
-    // the TIMESTAMP WITH TIME ZONE column on real Postgres (ddl-auto=validate); without it the app
-    // fails to boot against Postgres — H2 in the test profile silently tolerated the mismatch.
     @Column(name = "timestamp", columnDefinition = "timestamptz")
     private Instant timestamp;
 
