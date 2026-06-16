@@ -68,6 +68,9 @@ public class OntologyServiceImpl implements OntologyService {
     private final OntologyEditor ontologyEditor;
     private final OntologyDetailExtractor detailExtractor;
     private final PublishedResourceUtil deviationChecker;
+    private final com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
+    private final com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
+    private final com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
 
     @Override
     @Transactional
@@ -88,6 +91,15 @@ public class OntologyServiceImpl implements OntologyService {
         if (!jenaTDB2Repository.graphHasData(graphName)) {
             log.error("Ontology model is empty.");
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+        }
+
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the graph deletion, committed atomically with the PG metadata
+            // delete below.
+            outboxWriter.enqueueDeleteGraph(graphName);
+            ontologyMetadataRepository.deleteById(ontologyId);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return;
         }
 
         jenaTDB2Repository.deleteGraph(graphName);

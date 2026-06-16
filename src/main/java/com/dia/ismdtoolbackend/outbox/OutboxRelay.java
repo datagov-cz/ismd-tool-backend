@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -56,9 +57,14 @@ public class OutboxRelay {
 
     /**
      * Runs one drain pass. Returns the number of rows successfully applied (marked DONE) this pass.
-     * Transactional: the claimed rows stay row-locked until this method commits.
+     *
+     * <p>{@code REQUIRES_NEW}: a drain is always its own unit of work, independent of any caller's
+     * transaction. This matters for the after-commit nudge — it runs inside the just-committed
+     * transaction's {@code afterCommit} synchronization, where a default {@code REQUIRED} would find
+     * the completing tx still bound and fail to start a fresh one ({@code TransactionRequiredException}).
+     * A new tx also keeps the claim's row locks scoped to exactly this pass.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int drainOnce() {
         List<OutboxEntry> batch = repository.claimPendingBatch(config.getBatchSize());
         if (batch.isEmpty()) {
@@ -85,6 +91,7 @@ public class OutboxRelay {
                 haltedAggregates.add(aggregate);
                 continue;
             }
+            row.setClaimedAt(Instant.now()); // record the last apply attempt (observability / T8 status)
             try {
                 apply(row);
                 row.setStatus(OutboxStatus.DONE);
@@ -113,6 +120,7 @@ public class OutboxRelay {
     private void apply(OutboxEntry row) {
         switch (row.getOperation()) {
             case UPSERT_CONCEPT -> jenaTDB2Repository.applyConceptDelta(
+                    row.getAggregateIri(),
                     row.getGraphName(),
                     OutboxTriples.parse(row.getDeleteTriples()),
                     OutboxTriples.parse(row.getInsertTriples()));

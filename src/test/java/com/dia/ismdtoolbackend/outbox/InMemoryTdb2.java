@@ -55,9 +55,9 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
     }
 
     @Override
-    public void applyConceptDelta(String graphName, Model removeModel, Model addModel) {
+    public void applyConceptDelta(String conceptIri, String graphName, Model removeModel, Model addModel) {
         throwIfFailing(graphName);
-        super.applyConceptDelta(graphName, removeModel, addModel);
+        super.applyConceptDelta(conceptIri, graphName, removeModel, addModel);
     }
 
     @Override

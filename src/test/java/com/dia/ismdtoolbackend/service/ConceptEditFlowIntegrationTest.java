@@ -65,6 +65,9 @@ class ConceptEditFlowIntegrationTest {
     @Mock private ConceptDeviationComparator deviationComparator;
     @Mock private RppSnapshotHolder rppSnapshotHolder;
     @Mock private ReferencedConceptsEnricher referencedConceptsEnricher;
+    @Mock private com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
+    @Mock private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
+    @Mock private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
 
     private ConceptServiceImpl conceptService;
 
@@ -82,7 +85,8 @@ class ConceptEditFlowIntegrationTest {
                 conceptMetadataRepository, ontologyMetadataRepository, conceptMetadataMapper,
                 conceptCreator, realEditor, jenaTDB2Repository, detailExtractor,
                 commentRepository, nkdSparqlClient, deviationComparator,
-                rppSnapshotHolder, referencedConceptsEnricher);
+                rppSnapshotHolder, referencedConceptsEnricher,
+                outboxConfig, outboxWriter, outboxRelayTrigger);
 
         Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);
