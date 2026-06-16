@@ -34,6 +34,10 @@
         <jacoco.line.minimum>0.55</jacoco.line.minimum>
         <jacoco.branch.minimum>0.45</jacoco.branch.minimum>
         <jacoco.complexity.minimum>0.45</jacoco.complexity.minimum>
+        <!-- Override Spring Boot 3.5.4's managed Testcontainers (1.21.3), which can't handshake
+             with Docker Engine 29.x (docker-java bug, testcontainers-java #11235/#11422). 1.21.4
+             is the same-train fix. -->
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
     <dependencies>
         <dependency>
@@ -84,6 +88,24 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers: real Postgres for JPA/Liquibase integration tests (e.g. outbox
+             FOR UPDATE SKIP LOCKED, partial indexes) that H2 PG-compat mode can't honour.
+             Versions managed by the Spring Boot dependencies BOM. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
