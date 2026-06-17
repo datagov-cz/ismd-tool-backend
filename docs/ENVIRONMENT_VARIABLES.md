@@ -84,8 +84,8 @@ While Keycloak is primarily configured via `application-*.properties`, you can o
 
 Two opt-in mechanisms keep the Postgres metadata and the TDB2/Fuseki RDF in sync. Both are
 **disabled by default**, so these variables only matter once you enable them per environment. Full
-documentation: [`docs/pg-tdb2-consistency.md`](docs/pg-tdb2-consistency.md) (Czech:
-[`docs/pg-tdb2-consistency.cs.md`](docs/pg-tdb2-consistency.cs.md)).
+documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
+[`docs/pg-tdb2-consistency.cs.md`](PG_TDB2_CONSISTENCY_CS)).
 
 ### Outbox (write-path durability)
 

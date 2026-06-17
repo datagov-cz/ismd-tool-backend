@@ -1,7 +1,7 @@
 # PG ↔ TDB2 Consistency: Outbox & Reconciler
 
 > Status: both features ship **dark** (disabled by default). Enabling either is an opt-in,
-> per-environment decision. Czech version: [`pg-tdb2-consistency.cs.md`](./pg-tdb2-consistency.cs.md).
+> per-environment decision. Czech version: [`PG_TDB2_CONSISTENCY_CS.md`](./docs/PG_TDB2_CONSISTENCY_CS.md).
 
 ## What problem this solves
 
@@ -159,8 +159,7 @@ concepts whose `inScheme` points at a scheme their IRI doesn't prefix-match.
 | `RDF_NOT_OWNED_RESOLVABLE` | PG IRI has triples but isn't ownership-resolvable (e.g. lost `inScheme`) | Report-only; *not emitted yet* |
 
 > **Detection-only today.** No category is repaired. Only `RDF_ORPHAN` is *ever* auto-repairable, and
-> only after the repair-safety machinery (quarantine, pre-delete audit, distributed lock) is built —
-> see [Roadmap](#roadmap--out-of-scope-today).
+> only after the repair-safety machinery (quarantine, pre-delete audit, distributed lock) is built.
 
 ## Configuration
 
@@ -291,7 +290,7 @@ the reconciler could try to repair a row the relay is about to apply.
 
 ## Roadmap / out of scope today
 
-- **Outbox:** enable in production, watch for a week, then remove the now-dead direct-write branches
+- **Outbox:** enable in deployed environment, watch for a week, then remove the now-dead direct-write branches
   and the create-path `rollbackTDB2Data` compensator (keep the upload path's cleanup).
 - **Reconciler auto-repair:** gated on quarantine (age-before-delete), pre-delete audit dump,
   persisted run/candidate tables, a distributed lock if multi-instance, and closing the

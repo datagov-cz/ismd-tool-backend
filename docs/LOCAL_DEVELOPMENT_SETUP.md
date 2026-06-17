@@ -997,9 +997,9 @@ logging.level.org.hibernate=INFO
 
 ### Project-Specific Documentation
 
-- [Database Schema Documentation](./DATABASE_SCHEMA.md)
-- [Jena TDB2 RDF Schema Documentation](./JENA_TDB2_RDF_SCHEMA.md)
-- [README](./README.md)
+- [Database Schema Documentation](DATABASE_SCHEMA.md)
+- [Jena TDB2 RDF Schema Documentation](JENA_TDB2_RDF_SCHEMA.md)
+- [README](../README.md)
 
 ### Support
 
