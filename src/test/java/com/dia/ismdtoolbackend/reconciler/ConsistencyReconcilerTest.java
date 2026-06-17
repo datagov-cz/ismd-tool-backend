@@ -234,6 +234,40 @@ class ConsistencyReconcilerTest {
     }
 
     @Test
+    void crossGraphOwnership_ownedInDeclaredGraphPlusAnother_noMismatch() {
+        // A4/R4 guard: a concept owned in its declared graph AND legitimately appearing as an
+        // owned subject in another graph must NOT be flagged IRI_GRAPH_MISMATCH — its declared
+        // graph is among the found set.
+        String otherGraph = "https://slovník.gov.cz/other";
+        String iri = GRAPH + "/pojem/shared";
+        when(jenaTDB2Repository.listNamedGraphs()).thenReturn(List.of(GRAPH, otherGraph));
+        when(jenaTDB2Repository.listOwnedConceptIrisInGraph(GRAPH)).thenReturn(List.of(iri));
+        when(jenaTDB2Repository.listOwnedConceptIrisInGraph(otherGraph)).thenReturn(List.of(iri));
+        // PG declares GRAPH, which is one of the two it's owned-resolvable in → consistent.
+        stubPg(List.of(pgConcept(iri, GRAPH, "shared", true)), List.of(GRAPH, otherGraph));
+
+        ReconciliationReport r = reconciler.reconcile("TEST");
+
+        assertEquals(0, r.totalMismatches(), "Owned in declared graph (plus another) is not a mismatch");
+    }
+
+    @Test
+    void nullGraphName_butResolvableIri_flaggedNotSilentlyConsistent() {
+        // A4: a PG row whose IRI IS owned-resolvable but whose graphName is null must surface as a
+        // finding, not short-circuit to "consistent".
+        String iri = GRAPH + "/pojem/nogr";
+        when(jenaTDB2Repository.listNamedGraphs()).thenReturn(List.of(GRAPH));
+        when(jenaTDB2Repository.listOwnedConceptIrisInGraph(GRAPH)).thenReturn(List.of(iri));
+        stubPg(List.of(pgConcept(iri, null, "nogr", true)), List.of(GRAPH));
+
+        ReconciliationReport r = reconciler.reconcile("TEST");
+
+        assertEquals(1, count(r, MismatchCategory.IRI_GRAPH_MISMATCH),
+                "Null graphName with a resolvable IRI is a data-quality finding");
+        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF));
+    }
+
+    @Test
     void report_countsByCategory_includesAllCategoriesWithZeros() {
         ReconciliationReport r = reconciler.reconcile("TEST");
         Map<MismatchCategory, Integer> counts = r.countsByCategory();

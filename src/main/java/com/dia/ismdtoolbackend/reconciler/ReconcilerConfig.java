@@ -27,4 +27,13 @@ public class ReconcilerConfig {
 
     /** Cron expression for the scheduled run (Spring 6-field). Default 03:00 daily. */
     private String cron = "0 0 3 * * *";
+
+    /**
+     * Safety cap on how many PG concept rows a single run will materialize. The snapshot does an
+     * unpaginated {@code findAll()} into heap; on a very large table that can OOM mid-run and
+     * produce no findings and no record (silent failure). When the live count exceeds this, the
+     * run aborts loudly with a clear message instead. {@code 0} disables the cap (unlimited).
+     * Default is generous — raise it (or page the reads) if a legitimate dataset trips it.
+     */
+    private int maxConcepts = 200_000;
 }
