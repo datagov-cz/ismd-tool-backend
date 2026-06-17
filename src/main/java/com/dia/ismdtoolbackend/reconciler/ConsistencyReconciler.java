@@ -93,8 +93,11 @@ public class ConsistencyReconciler {
             for (Map.Entry<String, Set<String>> e : ownedIriToGraphs.entrySet()) {
                 String iri = e.getKey();
                 if (!pgByIri.containsKey(iri)) {
-                    // The IRI is owned in (usually one) graph; attribute it to that graph.
-                    String g = e.getValue().iterator().next();
+                    // The IRI is owned in (usually exactly one) graph. Pick deterministically —
+                    // a HashSet iteration order would make the attributed graph (and therefore
+                    // rename-pair matching, which keys on graph) vary run-to-run for the rare
+                    // multi-graph case. Sort so the same input always yields the same finding.
+                    String g = e.getValue().stream().sorted().findFirst().orElseThrow();
                     rdfOrphans.add(new RawOrphan(iri, g));
                 }
             }
@@ -106,7 +109,14 @@ public class ConsistencyReconciler {
                 Set<String> foundGraphs = ownedIriToGraphs.get(c.getConceptIri());
                 if (foundGraphs == null) {
                     pgMissing.add(new RawMissing(c));
-                } else if (c.getGraphName() != null && !foundGraphs.contains(c.getGraphName())) {
+                } else if (c.getGraphName() == null) {
+                    // The IRI is owned-resolvable in TDB2 but the PG row has no graphName at all —
+                    // incomplete metadata. Without the null branch this short-circuits to "consistent",
+                    // hiding a real data-quality defect. Report-only (PG-authority can't pick a graph for it).
+                    mismatches.add(Mismatch.of(MismatchCategory.IRI_GRAPH_MISMATCH, null,
+                            c.getConceptIri(),
+                            "PG row has null graphName but the IRI is owned-resolvable in " + foundGraphs));
+                } else if (!foundGraphs.contains(c.getGraphName())) {
                     mismatches.add(Mismatch.of(MismatchCategory.IRI_GRAPH_MISMATCH, c.getGraphName(),
                             c.getConceptIri(),
                             "Owned-resolvable in " + foundGraphs + " but PG graphName is " + c.getGraphName()));
@@ -131,7 +141,7 @@ public class ConsistencyReconciler {
             for (RawMissing m : pgMissing) {
                 mismatches.add(Mismatch.of(MismatchCategory.PG_MISSING_RDF, m.concept().getGraphName(),
                         m.concept().getConceptIri(),
-                        "PG row not owned-resolvable in its graph (failed delete, failed create, or lost inScheme)"));
+                        "PG row with no owned-resolvable RDF in ANY graph (failed delete, failed create, or lost inScheme)"));
             }
 
             ReconciliationReport report = new ReconciliationReport(
