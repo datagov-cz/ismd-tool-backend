@@ -144,8 +144,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     /**
      * Assemble the whole-version HTML body server-side from the fragment tree.
      *
-     * <p>Each fragment is wrapped in a {@code <section>} carrying its ELI path and kind as data
-     * attributes (FE hooks for deep-linking / styling); the fragment's own {@code bodyHtml}
+     * <p>Each fragment is wrapped in a {@code <section>} carrying its ELI path, full IRI and kind
+     * as data attributes ({@code data-eli} path + {@code data-iri} full IRI — FE hooks for
+     * deep-linking / navigation / styling); the fragment's own {@code bodyHtml}
      * (null for structural fragments) precedes its children, so the output is a nested,
      * document-ordered tree. Order is the tree's order — the server-side {@code ORDER BY ?order}
      * preserved by {@link #assembleTree}.
@@ -161,6 +162,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     private static void appendFragmentHtml(StringBuilder sb, FragmentDto node) {
         sb.append("<section data-eli=\"")
                 .append(HtmlUtils.htmlEscape(nullToEmpty(node.getEliPath())))
+                .append("\" data-iri=\"")
+                .append(HtmlUtils.htmlEscape(nullToEmpty(node.getIri())))
                 .append("\" data-kind=\"")
                 .append(HtmlUtils.htmlEscape(nullToEmpty(node.getKind())))
                 .append("\">");
