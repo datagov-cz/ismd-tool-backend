@@ -159,6 +159,7 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {

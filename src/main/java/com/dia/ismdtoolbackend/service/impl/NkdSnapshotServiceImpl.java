@@ -11,11 +11,11 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.Dev
 import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.utility.published.NkdSnapshotMaterializer;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Statement;
@@ -46,12 +46,13 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
     public NkdConceptSnapshotEntity createOrRefreshSnapshot(ConceptMetadataEntity owner, String nkdIri,
                                                             String linkType, OwnerChangeSet ownerChangeSet) {
         // C3: enforcement lives here, not in ConceptEditValidator (which is dependency-free/sync).
+        // OntologyValidationException → HTTP 400 (the contractual reject); OntologyException would be 500.
         if (!SnapshotLinkType.isAllowed(linkType)) {
-            throw new OntologyException("Link to a published NKD concept is allowed only for "
+            throw new OntologyValidationException("Link to a published NKD concept is allowed only for "
                     + java.util.Arrays.toString(SnapshotLinkType.values()) + ", not '" + linkType + "'.");
         }
         if (!SparqlIriValidator.isSafeHttpIri(nkdIri)) {
-            throw new OntologyException("Unsafe NKD IRI for snapshot: " + nkdIri);
+            throw new OntologyValidationException("Unsafe NKD IRI for snapshot: " + nkdIri);
         }
 
         String graphName = owner.getGraphName();
@@ -92,11 +93,17 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         ownerChangeSet.toRemove.addAll(materializer.parse(snapshot.getMaterializedTriples()));
         ownerChangeSet.toAdd.addAll(newTriples);
 
+        Instant now = Instant.now();
         snapshot.setGraphName(graphName);
         snapshot.setLinkPredicate(linkType);
         snapshot.setSnapshot(publishedOpt.get().detail());
         snapshot.setMaterializedTriples(materializer.toNTriples(newTriples));
-        snapshot.setSnapshotAt(Instant.now());
+        snapshot.setSnapshotAt(now);
+        // The snapshot detail IS the live NKD detail captured just now, so deviation is NO_DEVIATION by
+        // construction — seed the cache here and skip the redundant re-fetch a separate evaluateDeviation
+        // would make (MAJOR-3: avoid a 3rd NKD round-trip per target on the warm path).
+        snapshot.setLastDeviationStatus(DeviationStatus.NO_DEVIATION);
+        snapshot.setLastCheckedAt(now);
 
         NkdConceptSnapshotEntity saved = snapshotRepository.save(snapshot);
         log.debug("Snapshotted NKD copy {} for owner {} ({} triples)", nkdIri, owner.getConceptIri(), newTriples.size());

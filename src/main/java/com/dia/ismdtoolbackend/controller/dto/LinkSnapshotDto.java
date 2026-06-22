@@ -15,14 +15,14 @@ import java.time.Instant;
 import java.util.List;
 
 /**
- * One tracked "local copy" of a published NKD concept that the viewed concept links to, surfaced on
- * the concept detail. Returned in {@code GetConceptDto.linkSnapshots} and as the body of the
- * local-copy UPDATE endpoint.
+ * One tracked "local copy" of a published NKD concept that a concept links to, surfaced on the
+ * ontology detail in {@code GetOntologyDto.linkSnapshots} (a map keyed by owner
+ * concept IRI), and returned as the body of the local-copy UPDATE endpoint. (Not on concept detail.)
  *
- * <p><strong>Deviation semantics (the easy-to-get-wrong part).</strong> {@link #deviation} reuses
+ * <p>Deviation semantics (the easy-to-get-wrong part). {@link #deviation} reuses
  * {@link PublishedConceptDeviationModel} unchanged, but for a {@link SnapshotOrigin#LINK_TARGET}
- * snapshot each {@code PropertyDeviation}'s {@code localValue} is the <em>stored local copy</em> and
- * {@code publishedValue} is <em>live NKD</em> — NOT "the user's own value". The FE must relabel the
+ * snapshot each {@code PropertyDeviation}'s {@code localValue} is the stored local copy and
+ * {@code publishedValue} is live NKD — NOT "the user's own value". The FE must relabel the
  * columns keyed on {@link #origin} (e.g. "lokální kopie" / "NKD") rather than the SELF_PUBLISHED
  * labels ("vaše hodnota" / "publikováno"). The backend keeps a single comparison type; the FE owns
  * the label switch.

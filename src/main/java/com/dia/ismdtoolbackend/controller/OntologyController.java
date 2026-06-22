@@ -93,7 +93,13 @@ public class OntologyController {
 
         // Post-commit, NKD-independent: warm NKD local-copy snapshots for any published-concept links
         // off the request thread. If NKD is down the graph stays cold and first detail-view heals it.
-        nkdSnapshotWarmer.warmGraph(savedOntology.getGraphName());
+        // Guarded: a saturated executor (TaskRejectedException) must never fail an already-committed upload.
+        try {
+            nkdSnapshotWarmer.warmGraph(savedOntology.getGraphName());
+        } catch (Exception e) {
+            log.warn("Could not trigger NKD snapshot warming for uploaded graph {}: {}",
+                    savedOntology.getGraphName(), e.getMessage());
+        }
 
         return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
     }

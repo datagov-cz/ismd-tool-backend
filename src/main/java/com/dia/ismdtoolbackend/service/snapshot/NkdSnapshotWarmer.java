@@ -1,20 +1,15 @@
 package com.dia.ismdtoolbackend.service.snapshot;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SnapshotLinkType;
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
-import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
-import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.service.NkdSnapshotService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotOwnerWarmer.Target;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
@@ -23,7 +18,6 @@ import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -37,11 +31,15 @@ import java.util.Set;
  * (ontology detail) never block on NKD. Single warmer behind two triggers — cold/stale ontology
  * detail and post-commit upload.
  *
+ * <p>Orchestrator only — no transaction here. Detection (graph read) and the batch
+ * published-check are non-transactional; each owner is then snapshotted+flushed in its own
+ * {@code REQUIRES_NEW} transaction by {@link NkdSnapshotOwnerWarmer}. That isolation is deliberate
+ * (see {@link NkdSnapshotOwnerWarmer}): it prevents one poisoned target from rolling back the whole
+ * graph's batch via the Spring rollback-only trap, and keeps each owner's row-writes + outbox enqueue
+ * atomic (C1).
+ *
  * <p>Per the C4 constraint, callers only <em>trigger</em> this; it runs on its own thread (the
- * {@code snapshotExecutor}) in its own transaction, so {@code OutboxWriter}'s active-tx assertion
- * holds and concurrent warms of the same graph each commit independently (the unique constraint on
- * {@code (owning_concept_id, nkd_iri)} makes a double-create a no-op on the loser — caught and
- * logged, not fatal).
+ * {@code snapshotExecutor}).
  */
 @Component
 @Slf4j
@@ -51,19 +49,15 @@ public class NkdSnapshotWarmer {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final NkdSparqlClient nkdSparqlClient;
-    private final NkdSnapshotService nkdSnapshotService;
-    private final OutboxConfig outboxConfig;
-    private final OutboxWriter outboxWriter;
-    private final OutboxRelayTrigger outboxRelayTrigger;
+    private final NkdSnapshotOwnerWarmer ownerWarmer;
 
     /**
      * Detect each owner concept's external (non-owned) link-targets among the allowed predicates,
-     * batch-verify which are published in NKD, and snapshot the published ones — one owner-keyed
-     * outbox flush per concept (C1). Best-effort: NKD/Fuseki failures leave the graph cold for the
-     * next read to retry. Runs async on {@code snapshotExecutor}.
+     * batch-verify which are published in NKD, and snapshot the published ones — one isolated
+     * {@code REQUIRES_NEW} transaction per owner. Best-effort: NKD/Fuseki failures leave the graph
+     * cold for the next read to retry. Runs async on {@code snapshotExecutor}.
      */
     @Async("snapshotExecutor")
-    @Transactional
     public void warmGraph(String graphName) {
         try {
             warmGraphInternal(graphName);
@@ -85,16 +79,20 @@ public class NkdSnapshotWarmer {
 
         Model model = jenaTDB2Repository.fetchGraph(graphName);
 
-        // 1. Collect candidate (owner, target, linkType) triples — external targets only.
-        List<LinkCandidate> candidates = new ArrayList<>();
+        // 1. Collect candidate (owner, target, linkType) — external targets only.
+        Map<Long, ConceptMetadataEntity> ownerById = new LinkedHashMap<>();
+        Map<Long, List<LinkCandidate>> candidatesByOwner = new LinkedHashMap<>();
         Set<String> allTargets = new HashSet<>();
         for (ConceptMetadataEntity owner : owners) {
-            for (LinkCandidate c : externalLinkTargets(owner, model)) {
-                candidates.add(c);
-                allTargets.add(c.targetIri());
+            List<LinkCandidate> ownerCandidates = externalLinkTargets(owner, model);
+            if (ownerCandidates.isEmpty()) {
+                continue;
             }
+            ownerById.put(owner.getId(), owner);
+            candidatesByOwner.put(owner.getId(), ownerCandidates);
+            ownerCandidates.forEach(c -> allTargets.add(c.targetIri()));
         }
-        if (candidates.isEmpty()) {
+        if (allTargets.isEmpty()) {
             return;
         }
 
@@ -105,57 +103,34 @@ public class NkdSnapshotWarmer {
             return;
         }
 
-        // 3. Snapshot per published target, flushing one owner-keyed upsert per owner concept (C1).
-        Map<Long, OwnerChangeSet> changeSetsByOwner = new LinkedHashMap<>();
-        Map<Long, ConceptMetadataEntity> ownerById = new LinkedHashMap<>();
-        for (LinkCandidate c : candidates) {
-            if (!published.contains(c.targetIri())) {
-                continue;
-            }
-            ownerById.putIfAbsent(c.owner().getId(), c.owner());
-            OwnerChangeSet cs = changeSetsByOwner.computeIfAbsent(c.owner().getId(), k -> new OwnerChangeSet());
-            try {
-                NkdConceptSnapshotEntity snapshot =
-                        nkdSnapshotService.createOrRefreshSnapshot(c.owner(), c.targetIri(), c.linkType().value(), cs);
-                if (snapshot != null) {
-                    nkdSnapshotService.evaluateDeviation(snapshot);
-                }
-            } catch (Exception e) {
-                // Per-target failure (e.g. concurrent warm hit the unique constraint) — skip, non-fatal.
-                log.debug("Skipped snapshot for owner {} -> {}: {}",
-                        c.owner().getConceptIri(), c.targetIri(), e.getMessage());
-            }
-        }
-
-        // 4. Flush each owner's accumulated copy triples as ONE owner-keyed outbox upsert.
-        boolean anyEnqueued = false;
-        for (Map.Entry<Long, OwnerChangeSet> entry : changeSetsByOwner.entrySet()) {
-            OwnerChangeSet cs = entry.getValue();
-            if (cs.toRemove.isEmpty() && cs.toAdd.isEmpty()) {
+        // 3. Per owner: snapshot its published targets + flush, in its OWN transaction (isolated).
+        int warmedOwners = 0;
+        for (Map.Entry<Long, List<LinkCandidate>> entry : candidatesByOwner.entrySet()) {
+            List<Target> targets = entry.getValue().stream()
+                    .filter(c -> published.contains(c.targetIri()))
+                    .map(c -> new Target(c.targetIri(), c.linkType().value()))
+                    .toList();
+            if (targets.isEmpty()) {
                 continue;
             }
             ConceptMetadataEntity owner = ownerById.get(entry.getKey());
-            if (outboxConfig.isEnabled()) {
-                outboxWriter.enqueueUpsert(graphName, owner.getConceptIri(), cs.toRemove, cs.toAdd);
-                anyEnqueued = true;
-            } else {
-                // outbox-disabled fallback: direct concept-scoped delta (same shape the outbox relay applies).
-                Model removeModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toRemove));
-                Model addModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toAdd));
-                jenaTDB2Repository.applyConceptDelta(owner.getConceptIri(), graphName, removeModel, addModel);
+            try {
+                if (ownerWarmer.warmOwner(graphName, owner, targets)) {
+                    warmedOwners++;
+                }
+            } catch (Exception e) {
+                // The owner's REQUIRES_NEW tx already rolled back in isolation — losing only this owner,
+                // not the batch. Skip and let a later read retry it.
+                log.debug("Skipped warming owner {} in {}: {}", owner.getConceptIri(), graphName, e.getMessage());
             }
         }
-        if (anyEnqueued) {
-            outboxRelayTrigger.nudgeAfterCommit();
-        }
-        log.info("Warmed NKD snapshots for graph {} ({} owner(s) materialized)", graphName, changeSetsByOwner.size());
+        log.info("Warmed NKD snapshots for graph {} ({} owner(s) materialized)", graphName, warmedOwners);
     }
 
     /** The external (non-owned) link-targets of one owner concept, with their logical link type. */
     private List<LinkCandidate> externalLinkTargets(ConceptMetadataEntity owner, Model model) {
-        String ownerIri = owner.getConceptIri();
         String graphScheme = owner.getGraphName();
-        Resource ownerRes = model.getResource(ownerIri);
+        Resource ownerRes = model.getResource(owner.getConceptIri());
         List<LinkCandidate> out = new ArrayList<>();
 
         // subClassOf / subPropertyOf — meaning depends on the owner's concept type.

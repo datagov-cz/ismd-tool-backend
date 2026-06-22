@@ -12,7 +12,7 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.Dev
 import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.utility.published.NkdSnapshotMaterializer;
-import org.apache.jena.ontology.OntologyException;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
@@ -78,7 +78,7 @@ class NkdSnapshotServiceImplTest {
     void createOrRefresh_rejectsDisallowedLinkPredicate() {
         OwnerChangeSet cs = new OwnerChangeSet();
         assertThatThrownBy(() -> service.createOrRefreshSnapshot(owner, NKD_IRI, "domain", cs))
-                .isInstanceOf(OntologyException.class)
+                .isInstanceOf(OntologyValidationException.class)   // → HTTP 400, not 500
                 .hasMessageContaining("domain");
 
         // Nothing fetched, nothing enqueued.
