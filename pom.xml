@@ -28,7 +28,7 @@
     </scm>
     <properties>
         <java.version>17</java.version>
-        <ismd-validator-common.version>1.0.14</ismd-validator-common.version>
+        <ismd-validator-common.version>1.0.16</ismd-validator-common.version>
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
         <jacoco.line.minimum>0.55</jacoco.line.minimum>
