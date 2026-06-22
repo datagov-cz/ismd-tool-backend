@@ -23,6 +23,7 @@ public interface ConceptMetadataMapper {
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "comments", ignore = true)
+    @Mapping(target = "ontologySlug", source = "ontologyMetadata.slug")
     ConceptMetadataModel toDto(ConceptMetadataEntity entity);
 
     default CommentModel commentEntityToModel(CommentEntity entity) {

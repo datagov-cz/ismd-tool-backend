@@ -19,6 +19,7 @@ public class ConceptMetadataModel {
     private ConceptType conceptType;
     private String conceptIri;
     private String graphName;
+    private String ontologySlug;
     private String conceptName;
     private UserModel user;
     private Boolean isPublished;
