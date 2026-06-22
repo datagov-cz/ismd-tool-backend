@@ -30,9 +30,6 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
             """, nativeQuery = true)
     List<OutboxEntry> claimPendingBatch(@Param("batchSize") int batchSize);
 
-    /** Oldest pending row (lowest {@code seq}) for one graph — the relay's per-graph head. */
-    List<OutboxEntry> findByGraphNameAndStatusOrderBySeqAsc(String graphName, OutboxStatus status);
-
     /**
      * True if any row for {@code graphName} with {@code seq} below {@code seq} is NOT yet applied
      * (status &lt;&gt; DONE) — the {@code DELETE_GRAPH} barrier: a graph delete must not apply while
