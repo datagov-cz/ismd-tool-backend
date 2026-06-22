@@ -100,6 +100,12 @@ public class PublishedConceptDeviationModel {
         HAS_DEVIATIONS,
         ENDPOINT_UNAVAILABLE,
         CONCEPT_NOT_FOUND_IN_NKD,
-        QUERY_ERROR
+        QUERY_ERROR,
+        /**
+         * A LINK_TARGET snapshot whose deviation has not been evaluated yet (cold load) or is being
+         * (re-)evaluated by the async warmer (cold/stale ontology-detail load). FE shows a spinner and
+         * re-fetches; {@code availableActions} is empty while pending.
+         */
+        PENDING
     }
 }

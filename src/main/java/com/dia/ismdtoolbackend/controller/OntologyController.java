@@ -67,6 +67,7 @@ public class OntologyController {
     private final ValidationConfig validationConfig;
     private final NkdDetailService nkdDetailService;
     private final ConceptMetadataResolver conceptMetadataResolver;
+    private final com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
 
     @Operation(
             summary = "Nahrání slovníku ze souboru",
@@ -89,6 +90,10 @@ public class OntologyController {
         OntologyMetadataModel savedOntology = ontologyUploadService.uploadFromFile(
                 file, securityUser.getUserId(), normalizeMode, conceptsToNormalize);
         log.info("Ontology upload successful: {}", savedOntology.getGraphName());
+
+        // Post-commit, NKD-independent: warm NKD local-copy snapshots for any published-concept links
+        // off the request thread. If NKD is down the graph stays cold and first detail-view heals it.
+        nkdSnapshotWarmer.warmGraph(savedOntology.getGraphName());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
     }

@@ -71,6 +71,9 @@ public class OntologyServiceImpl implements OntologyService {
     private final com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
     private final com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
     private final com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
+    private final com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository nkdSnapshotRepository;
+    private final com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
+    private final com.dia.ismdtoolbackend.config.NkdConfig nkdConfig;
 
     @Override
     @Transactional
@@ -205,7 +208,43 @@ public class OntologyServiceImpl implements OntologyService {
         Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);
         result.setPublishedConceptDeviations(conceptDeviations);
 
+        surfaceLinkSnapshots(result, graphName);
+
         return result;
+    }
+
+    /**
+     * Builds {@code linkSnapshots} from cached snapshot rows (no NKD call — the snapshot row IS the
+     * cache) and triggers the async warmer when cold/stale. The read never writes; the warmer runs on
+     * its own thread/transaction (C4). Never let snapshot surfacing break ontology detail.
+     */
+    private void surfaceLinkSnapshots(GetOntologyDto result, String graphName) {
+        try {
+            List<com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity> rows =
+                    nkdSnapshotRepository.findByGraphName(graphName);
+
+            com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler.Result assembled =
+                    com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler.assemble(
+                            rows, nkdConfig.getSnapshot().getDeviationTtl(), java.time.Instant.now());
+
+            if (!assembled.byOwnerConcept().isEmpty()) {
+                result.setLinkSnapshots(assembled.byOwnerConcept());
+            }
+
+            // Warm when a row is cold/stale, OR when there are no rows yet (true cold start — the
+            // graph may have NKD links never snapshotted). Warm path is async; detail returns now.
+            //
+            // Accepted tradeoff: an ontology whose external links are NOT published in NKD has zero
+            // rows forever, so it re-scans on every detail load. The scan is in-memory only — the NKD
+            // batch call is gated behind finding external candidates — so a truly link-free ontology
+            // pays nothing across the wire. A per-graph "last warmed" marker (skip re-scan within TTL)
+            // is the steady-state optimization, deferred as a follow-up.
+            if (assembled.needsWarming() || rows.isEmpty()) {
+                nkdSnapshotWarmer.warmGraph(graphName);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to surface NKD link snapshots for graph {}: {}", graphName, e.getMessage(), e);
+        }
     }
 
     @Override
