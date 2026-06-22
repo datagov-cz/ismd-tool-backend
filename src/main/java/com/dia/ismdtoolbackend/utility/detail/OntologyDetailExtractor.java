@@ -140,7 +140,7 @@ public class OntologyDetailExtractor {
         Map<String, String> descriptionMap = extractMultilingualDescription(structure.getVocabularyResource());
 
         return OntologyDetailModel.builder()
-                .context(CONTEXT_JSONLD)
+                .context(CONTEXT)
                 .iri(structure.getOntologyIRI())
                 .types(structure.getVocabularyTypes())
                 .name(createMultilingualMap(structure.getModelName()))
