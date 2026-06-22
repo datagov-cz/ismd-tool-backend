@@ -1,0 +1,93 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-create-nkd-concept-snapshots
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: nkd_concept_snapshots
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: nkd_concept_snapshots
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: owning_concept_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              # Czech / percent-encoded NKD IRIs exceed 255.
+              - column:
+                  name: nkd_iri
+                  type: VARCHAR(1024)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: graph_name
+                  type: VARCHAR(1024)
+              - column:
+                  name: origin
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: link_predicate
+                  type: VARCHAR(1024)
+              - column:
+                  name: snapshot_json
+                  type: TEXT
+              # Exact N-Triples last materialized (M1) — the delete-set source of truth.
+              - column:
+                  name: materialized_triples
+                  type: TEXT
+              - column:
+                  name: last_deviation_status
+                  type: VARCHAR(50)
+              - column:
+                  name: snapshot_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: last_checked_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: nkd_concept_snapshots
+            columnNames: owning_concept_id, nkd_iri
+            constraintName: uq_nkd_snapshot_owner_iri
+        # NOT db-cascade: NkdSnapshotService cascades removal so Fuseki triples are cleaned in the
+        # same boundary (the owner concept's outbox aggregate, C1).
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: nkd_concept_snapshots
+            baseColumnNames: owning_concept_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: concepts
+            referencedColumnNames: id
+            constraintName: fk_nkd_snapshot_owning_concept
+        # The C2 refcount (countByGraphNameAndNkdIri) and the ontology-delete graph sweep.
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: nkd_concept_snapshots
+            indexName: idx_nkd_snapshot_graph_iri
+            columns:
+              - column:
+                  name: graph_name
+              - column:
+                  name: nkd_iri
