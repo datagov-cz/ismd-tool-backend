@@ -26,13 +26,15 @@ import java.util.Set;
  *
  * <p>Two invariants, both keeping the reconciler from treating the copy as an owned concept:
  * <ul>
- *   <li><strong>Never owned.</strong> The materialized subject keeps NKD's own {@code skos:inScheme}
- *       (a foreign scheme); {@link #assertNotOwnedBy} fails if any subject's {@code inScheme}
- *       prefix-matches the owner's scheme.</li>
+ *   <li><strong>Never owned.</strong> The materialized subject carries <em>no</em> {@code skos:inScheme}.
+ *       Stripping inScheme means the pattern's required triple is absent, so the copy is never enumerated as owned.</li>
  *   <li><strong>Provenance.</strong> A single {@link #NKD_SNAPSHOT_OF} marker triple
  *       ({@code <nkdIri> ismd:nkdSnapshotOf <ownerIri>}) distinguishes the copy from an owned concept
  *       and round-trips with the set so it is cleaned up alongside it.</li>
  * </ul>
+ * The stored {@code snapshotJson} (the deviation-comparison payload) is built independently from
+ * {@code fetchPublishedConceptWithScheme().detail()}, so dropping inScheme from the materialized RDF
+ * does not affect deviation detection.
  */
 @Component
 @Slf4j
@@ -65,7 +67,21 @@ public class NkdSnapshotMaterializer {
             return new HashSet<>();
         }
 
-        Set<Statement> statements = new HashSet<>(rawNkdModel.listStatements().toSet());
+        // Drop NKD's own skos:inScheme: a concept always prefix-matches its own scheme, so keeping it
+        // would make the copy satisfy the reconciler's OWNED_CONCEPT_PATTERN and get flagged RDF_ORPHAN
+        // (auto-repairable → deleted). With no inScheme triple, the pattern can never match the copy.
+        Set<Statement> statements = new HashSet<>();
+        StmtIterator rawIt = rawNkdModel.listStatements();
+        try {
+            while (rawIt.hasNext()) {
+                Statement s = rawIt.next();
+                if (!SKOS_IN_SCHEME.equals(s.getPredicate().getURI())) {
+                    statements.add(s);
+                }
+            }
+        } finally {
+            rawIt.close();
+        }
 
         // Origin marker: <nkdIri> ismd:nkdSnapshotOf <ownerIri>.
         Resource subject = rawNkdModel.getResource(nkdIri);
@@ -81,9 +97,10 @@ public class NkdSnapshotMaterializer {
     }
 
     /**
-     * Fails if any materialized {@code skos:inScheme} subject's IRI prefix-matches the owner's scheme —
-     * the condition under which the reconciler would enumerate the copy as an owned concept. Foreign NKD
-     * subjects never match a local owner scheme; a subject minted under the owner's scheme is caught.
+     * Defense-in-depth: after {@link #materialize} strips inScheme, the copy carries no
+     * {@code skos:inScheme} at all, so this loop normally finds nothing. It still fails loudly if an
+     * inScheme triple somehow survived AND its subject prefix-matches the owner's scheme — this would satisfy
+     * reconciler orphan condition and, if auto-repair configured, delete, justifying in-depth defense
      */
     void assertNotOwnedBy(Collection<Statement> statements, String ownerScheme, String nkdIri) {
         if (ownerScheme == null || ownerScheme.isBlank()) {
