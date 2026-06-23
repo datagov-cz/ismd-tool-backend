@@ -76,6 +76,16 @@ class OntologyServiceImplTest {
     @Mock
     private PublishedResourceUtil deviationChecker;
 
+    // OutboxConfig mock isEnabled() defaults to false → existing tests exercise the direct path.
+    @Mock
+    private com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
+
+    @Mock
+    private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
+
+    @Mock
+    private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
+
     @InjectMocks
     private OntologyServiceImpl ontologyService;
 

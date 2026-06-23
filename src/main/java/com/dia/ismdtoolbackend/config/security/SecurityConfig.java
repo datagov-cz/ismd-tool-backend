@@ -211,6 +211,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
+                        // Admin-only PG↔TDB2 reconciler. Role check is enforced by
+                        // @PreAuthorize("hasRole('ADMIN')") on the controller; this matcher
+                        // only lets the request reach it (otherwise denyAll() 403s first).
+                        .requestMatchers("/api/admin/reconciler/**").authenticated()
+                        // Admin-only PG↔TDB2 outbox observability/recovery. Same pattern: the role
+                        // is enforced by @PreAuthorize on the controller; this only lets the request
+                        // reach it (otherwise denyAll() 403s first).
+                        .requestMatchers("/api/admin/outbox/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 // CSRF disabled: auth is stateless Bearer-JWT only (no cookie/session

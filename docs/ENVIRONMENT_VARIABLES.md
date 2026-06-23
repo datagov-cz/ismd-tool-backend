@@ -80,6 +80,38 @@ While Keycloak is primarily configured via `application-*.properties`, you can o
 - **Description**: Database password
 - **Example**: `secure_password_here`
 
+## PG ↔ TDB2 Consistency: Outbox & Reconciler
+
+Two opt-in mechanisms keep the Postgres metadata and the TDB2/Fuseki RDF in sync. Both are
+**disabled by default**, so these variables only matter once you enable them per environment. Full
+documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
+[`docs/pg-tdb2-consistency.cs.md`](PG_TDB2_CONSISTENCY_CS)).
+
+### Outbox (write-path durability)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OUTBOX_ENABLED` | `false` | Master switch. `false` keeps the legacy direct TDB2 write (no behavior change). |
+| `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Backstop relay drain schedule (Spring 6-field cron). |
+| `OUTBOX_MAX_ATTEMPTS` | `10` | Apply attempts before a row is marked FAILED. |
+| `OUTBOX_BATCH_SIZE` | `100` | Max rows claimed per relay drain pass. |
+| `OUTBOX_DONE_RETENTION` | `P7D` | Retention for DONE rows (ISO-8601 duration) before pruning. |
+| `OUTBOX_PRUNE_CRON` | `0 30 3 * * *` | DONE-row prune schedule (Spring 6-field cron). |
+
+### Reconciler (consistency detection)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RECONCILER_ENABLED` | `false` | Master switch for the **scheduled** run. The admin endpoint works regardless. |
+| `RECONCILER_CRON` | `0 0 3 * * *` | Scheduled-run schedule (Spring 6-field cron). |
+| `RECONCILER_MAX_CONCEPTS` | `200000` | Safety cap: abort a run rather than OOM if PG concept rows exceed this. `0` = unlimited. |
+
+### Related — connection pool
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HIKARI_MAX_POOL_SIZE` | `20` | Max Hikari pool size (dev/production). The outbox after-commit nudge briefly holds ~2 connections per writer, so size with headroom. |
+
 ## Security Best Practices
 
 1. ⚠️ **NEVER commit environment variable values to git**

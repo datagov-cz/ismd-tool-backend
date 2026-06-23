@@ -92,6 +92,17 @@ class ConceptServiceImplTest {
     @Mock
     private ReferencedConceptsEnricher referencedConceptsEnricher;
 
+    // Outbox deps: the OutboxConfig mock's isEnabled() defaults to false, so these tests exercise
+    // the existing DIRECT write path unchanged (the outbox path is covered by the outbox tests).
+    @Mock
+    private com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
+
+    @Mock
+    private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
+
+    @Mock
+    private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
+
     @InjectMocks
     private ConceptServiceImpl conceptService;
 
@@ -287,6 +298,167 @@ class ConceptServiceImplTest {
 
         verify(jenaTDB2Repository).deleteConceptsFromGraph(testConceptIris, TEST_GRAPH_NAME);
         verify(conceptMetadataRepository).deleteAll(conceptEntities);
+    }
+
+    // ========== T7 outbox wiring (flag ON) ==========
+
+    @Test
+    void deleteConcept_outboxEnabled_enqueuesInsteadOfDirectDelete() {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        // Outbox path takes the pessimistic lock finder (HIGH review fix), not plain findById.
+        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
+        when(jenaTDB2Repository.conceptNotFoundInGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(false);
+        when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+
+        conceptService.deleteConcept(TEST_CONCEPT_ID);
+
+        // Outbox path: enqueue + PG delete + nudge; NO direct TDB2 delete.
+        verify(outboxWriter).enqueueDeleteConcepts(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anyList());
+        verify(conceptMetadataRepository).deleteAll(anyList());
+        verify(outboxRelayTrigger).nudgeAfterCommit();
+        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
+    }
+
+    @Test
+    void editConcept_outboxEnabled_enqueuesChangeSetsInsteadOfDirectPut() {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        ConceptEditModel editModel = createValidConceptEditModel();
+        // The graph must be non-empty and contain the concept (fetchAndValidateGraph / validateConceptInGraph).
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        org.apache.jena.rdf.model.Statement add = testModel.createStatement(
+                testModel.createResource(TEST_CONCEPT_IRI),
+                testModel.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                "New");
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of(add));
+
+        // Outbox path takes the pessimistic lock finder (HIGH review fix), not plain findById.
+        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        // Outbox path: enqueue the editor's change sets, nudge, and NO direct whole-graph PUT.
+        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
+        verify(outboxRelayTrigger).nudgeAfterCommit();
+        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any());
+    }
+
+    // Review #4: on a RENAME the outbox row must key on the PRE-EDIT (old) IRI, not the new one, so
+    // it shares an aggregate with the concept's create/prior rows and the ordering gate relates them.
+    @Test
+    void editConcept_outboxEnabled_rename_aggregateIsPreEditIri() {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        String newIri = "http://example.org/pojem/renamed-concept";
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        ConceptEditor.EditResult renameResult = new ConceptEditor.EditResult(
+                newIri, true, java.util.Set.of(), java.util.Set.of()); // iriChanged=true
+
+        // Outbox path takes the pessimistic lock finder (HIGH review fix), not plain findById.
+        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenReturn(renameResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        // Aggregate = OLD IRI (TEST_CONCEPT_IRI), NOT the new one — this is the #4 fix.
+        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
+        verify(outboxWriter, never()).enqueueUpsert(anyString(), eq(newIri), anySet(), anySet());
+    }
+
+    // Review #4 HIGH — the outbox edit path must take the PESSIMISTIC row lock (findWithLockById),
+    // not plain findById, so two concurrent edits of the same concept are serialized and cannot
+    // enqueue out-of-order same-aggregate outbox rows.
+    @Test
+    void editConcept_outboxEnabled_takesPessimisticLock() {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
+        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(conceptMetadataRepository).findWithLockById(TEST_CONCEPT_ID);
+        verify(conceptMetadataRepository, never()).findById(TEST_CONCEPT_ID);
+    }
+
+    // Review #4 HIGH — same guarantee for the outbox delete path.
+    @Test
+    void deleteConcept_outboxEnabled_takesPessimisticLock() {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
+        when(jenaTDB2Repository.conceptNotFoundInGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(false);
+        when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+
+        conceptService.deleteConcept(TEST_CONCEPT_ID);
+
+        verify(conceptMetadataRepository).findWithLockById(TEST_CONCEPT_ID);
+        verify(conceptMetadataRepository, never()).findById(TEST_CONCEPT_ID);
+    }
+
+    // Conversely, with the flag OFF the direct path must keep plain findById (no lock) — byte-for-byte
+    // unchanged behavior, so the lock can never affect production until outbox is enabled.
+    @Test
+    void editConcept_outboxDisabled_usesPlainFindByIdNoLock() {
+        when(outboxConfig.isEnabled()).thenReturn(false);
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(conceptMetadataRepository).findById(TEST_CONCEPT_ID);
+        verify(conceptMetadataRepository, never()).findWithLockById(TEST_CONCEPT_ID);
+    }
+
+    @Test
+    void createConcept_outboxEnabled_enqueuesConceptTriplesAndNudges() {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        // The concept's triples come from the created resource's model.
+        testResource.addProperty(testModel.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"), "C");
+
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
+        when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
+        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
+        when(conceptMetadataRepository.save(any())).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(any())).thenReturn(new ConceptMetadataModel());
+
+        conceptService.createConcept(createModel, TEST_USER_ID);
+
+        // Outbox path: enqueue (empty remove set, the concept's triples) keyed on the concept IRI;
+        // nudge; NO direct saveConcept to TDB2.
+        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
+        verify(outboxRelayTrigger).nudgeAfterCommit();
+        verify(jenaTDB2Repository, never()).saveConcept(any(), anyString());
     }
 
     @Test

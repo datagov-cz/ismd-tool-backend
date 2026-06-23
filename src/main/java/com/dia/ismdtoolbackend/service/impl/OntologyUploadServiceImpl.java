@@ -158,11 +158,18 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             // 3. Resolve which missing concepts to normalize from the user's decision.
             Set<String> conceptsToStamp = resolveConceptsToNormalize(missingInScheme, normalizeMode, conceptsToNormalize);
 
-            // 4. Normalize OFN types/labels + add inScheme only for the chosen concepts.
+            // 4a. Normalize OFN types/labels + add inScheme only for the chosen concepts.
             int normalizedCount = OFNTypeNormalizer.normalize(finalModel, graphName, conceptsToStamp);
             if (normalizedCount > 0) {
                 log.info("Normalized OFN types on {} resources", normalizedCount);
             }
+
+            // 4b. Prune owned-namespace concepts the user EXCLUDED (no inScheme → no PG
+            //     row) that nothing else references, so they don't leak into TDB2 as
+            //     subjects with no metadata row. Still-referenced excluded concepts are
+            //     kept as inert context (no dangling edges). This makes the upload path
+            //     honour "no PG row ⇒ no owned RDF", which the PG↔TDB2 reconciler relies on.
+            OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(finalModel, graphName);
 
             // 5. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
             try {

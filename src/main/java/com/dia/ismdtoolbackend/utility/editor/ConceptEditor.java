@@ -103,7 +103,7 @@ public class ConceptEditor {
                 committed = true;
             }
 
-            return new EditResult(newConceptIRI, nameChanged, statementsToRemove.size() + statementsToAdd.size());
+            return new EditResult(newConceptIRI, nameChanged, statementsToRemove, statementsToAdd);
 
         } catch (Exception e) {
             log.error("Failed to edit concept: {}", conceptIri, e);
@@ -195,11 +195,40 @@ public class ConceptEditor {
         public final String newConceptIRI;
         public final boolean iriChanged;
         public final int changesCount;
+        /**
+         * The exact triples the edit removed and added. These are the change sets the editor
+         * computes internally (see {@link ConceptEditor#editConcept}); surfaced here so the
+         * outbox write path can enqueue a concept-scoped {@code DELETE/INSERT} delta instead of a
+         * whole-graph replace — which is what makes concurrent edits to different concepts in one
+         * graph safe under an async relay. For a rename, {@code statementsToRemove} covers the old
+         * IRI's outgoing AND incoming edges and {@code statementsToAdd} their relocations onto the
+         * new IRI. Empty (not null) when no triples changed.
+         */
+        public final Set<Statement> statementsToRemove;
+        public final Set<Statement> statementsToAdd;
 
+        /**
+         * Back-compat constructor (no change sets) — used by tests that build an {@code EditResult}
+         * directly. Real edits go through {@link #EditResult(String, boolean, Set, Set)}.
+         */
         public EditResult(String newConceptIRI, boolean iriChanged, int changesCount) {
+            this(newConceptIRI, iriChanged, changesCount, Set.of(), Set.of());
+        }
+
+        public EditResult(String newConceptIRI, boolean iriChanged,
+                          Set<Statement> statementsToRemove, Set<Statement> statementsToAdd) {
+            this(newConceptIRI, iriChanged,
+                    statementsToRemove.size() + statementsToAdd.size(),
+                    statementsToRemove, statementsToAdd);
+        }
+
+        private EditResult(String newConceptIRI, boolean iriChanged, int changesCount,
+                           Set<Statement> statementsToRemove, Set<Statement> statementsToAdd) {
             this.newConceptIRI = newConceptIRI;
             this.iriChanged = iriChanged;
             this.changesCount = changesCount;
+            this.statementsToRemove = Set.copyOf(statementsToRemove);
+            this.statementsToAdd = Set.copyOf(statementsToAdd);
         }
     }
 }

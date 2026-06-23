@@ -31,7 +31,7 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "ontology_metadata_id")
     private Long ontologyMetadataId;
 
-    @Column(name = "timestamp")
+    @Column(name = "timestamp", columnDefinition = "timestamptz")
     private Instant timestamp;
 
     @Column(name = "results_json", columnDefinition = "text")
