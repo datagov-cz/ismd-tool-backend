@@ -9,8 +9,7 @@ import java.util.Optional;
  * — the <em>logical link type</em>, not a raw RDF predicate IRI (broaderClass alone writes two RDF
  * predicates, so a 1:1 IRI map would be wrong).
  *
- * <p>Per spec, only these four are allowed; {@code domain}/{@code range}/related are excluded
- * (see {@code .planning/nkd-local-copy-snapshot-PLAN.md}).
+ * <p>Only these four are allowed; {@code domain}/{@code range}/related are excluded.
  */
 public enum SnapshotLinkType {
 

@@ -31,7 +31,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * See {@link NkdSnapshotEndpointService}. Owns the owner-keyed outbox flush (C1) for the UPDATE/REMOVE
+ * See {@link NkdSnapshotEndpointService}. Owns the owner-keyed outbox flush for the UPDATE/REMOVE
  * endpoints, mirroring {@code NkdSnapshotOwnerWarmer}'s flush pattern.
  */
 @Service
@@ -105,7 +105,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
         return snapshot;
     }
 
-    /** Flush the owner change set as ONE owner-keyed aggregate (C1): outbox upsert, or direct delta off. */
+    /** Flush the owner change set as one owner-keyed aggregate: outbox upsert, or direct delta when off. */
     private void flush(String graphName, String ownerIri, OwnerChangeSet cs) {
         if (cs.toRemove.isEmpty() && cs.toAdd.isEmpty()) {
             return;

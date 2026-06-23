@@ -61,11 +61,14 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         Optional<NkdConceptSnapshotEntity> existingOpt =
                 snapshotRepository.findByOwningConceptIdAndNkdIri(owner.getId(), nkdIri);
 
+        // Outage (unreachable) vs confirmed-absent (reachable, returns nothing) are different: an outage
+        // must leave the existing snapshot intact and not roll back the edit, whereas a confirmed-absent
+        // concept means the link target is gone upstream and the tracked copy should be removed.
         Optional<NkdSparqlClient.PublishedConcept> publishedOpt;
         try {
             publishedOpt = nkdSparqlClient.fetchPublishedConceptWithScheme(nkdIri);
         } catch (SparqlEndpointUnavailableException e) {
-            log.warn("NKD unavailable while snapshotting {} — skipping (existing snapshot left intact): {}",
+            log.warn("NKD unavailable while snapshotting {} — skipping, existing snapshot kept: {}",
                     nkdIri, e.getMessage());
             return existingOpt.orElse(null);
         }

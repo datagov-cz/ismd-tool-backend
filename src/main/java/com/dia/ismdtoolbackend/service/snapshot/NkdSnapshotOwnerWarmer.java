@@ -22,13 +22,11 @@ import java.util.List;
  * NKD link-targets and flushes its single owner-keyed outbox upsert — all in one
  * {@code REQUIRES_NEW} transaction.
  *
- * <p>Why its own bean + {@code REQUIRES_NEW}: a per-target failure (e.g. the unique-constraint race
- * two concurrent warms hit) throws out of the inner {@code @Transactional} service calls, which marks
- * the current transaction rollback-only — catching it does NOT clear that flag. If all owners
- * shared one transaction, one poisoned target would silently roll back the entire graph's warm batch
- * at commit ({@code UnexpectedRollbackException}). Isolating each owner in its own transaction means a
- * failure loses only that owner; the rest commit. It also keeps the row-writes and the single
- * {@code enqueueUpsert} atomic (C1) within that owner's transaction.
+ * <p>Why its own bean + {@code REQUIRES_NEW}: a per-target failure (e.g. the unique-constraint race two
+ * concurrent warms hit) marks the current transaction rollback-only, and catching it does not clear that
+ * flag — so a shared transaction would let one poisoned target roll back the whole graph's batch at
+ * commit. Isolating each owner means a failure loses only that owner; the rest commit. It also keeps the
+ * owner's row-writes and its single {@code enqueueUpsert} atomic.
  */
 @Component
 @Slf4j

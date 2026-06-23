@@ -91,7 +91,7 @@ class NkdSnapshotMaterializerTest {
 
         assertThatThrownBy(() -> materializer.materialize(m, ownedSubject, OWNER_IRI, OWNER_SCHEME))
                 .isInstanceOf(OntologyException.class)
-                .hasMessageContaining("RDF_ORPHAN");
+                .hasMessageContaining("treat it as owned");
     }
 
     @Test

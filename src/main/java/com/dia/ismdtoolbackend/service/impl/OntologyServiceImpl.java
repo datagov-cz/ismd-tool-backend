@@ -222,8 +222,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     /**
      * Builds {@code linkSnapshots} from cached snapshot rows (no NKD call — the snapshot row IS the
-     * cache) and triggers the async warmer when cold/stale. The read never writes; the warmer runs on
-     * its own thread/transaction (C4). Never let snapshot surfacing break ontology detail.
+     * cache) and triggers the async warmer when cold/stale. The read never writes; the warmer runs on its
+     * own thread/transaction. Never lets snapshot surfacing break ontology detail.
      */
     private void surfaceLinkSnapshots(GetOntologyDto result, String graphName) {
         try {

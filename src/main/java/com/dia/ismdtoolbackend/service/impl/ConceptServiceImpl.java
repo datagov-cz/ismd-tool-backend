@@ -136,11 +136,10 @@ public class ConceptServiceImpl implements ConceptService {
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
-        // NKD local-copy cascade: delete the PG snapshot rows owned by the concepts being removed,
-        // and get back the NKD IRIs whose materialized copy is now orphaned (this batch held its last
-        // referrers). Appending those nkdIris to the delete-URI list lets the existing concept-delete
-        // sweep remove the orphaned copy subjects too — safe precisely because they are last-referrer
-        // (no other owner's `?s ?p ?nkd` link remains to be harmed).
+        // NKD local-copy cascade: drop the snapshot rows for the deleted concepts and get back the NKD
+        // IRIs whose copy is now orphaned (this batch held its last referrers). Appending them to the
+        // delete-URI list lets the existing sweep remove the orphaned copy subjects too — safe only
+        // because they are last-referrer, so no surviving owner's link is harmed.
         List<Long> deletedConceptIds = relatedConceptEntities.stream()
                 .map(ConceptMetadataEntity::getId)
                 .toList();
@@ -176,23 +175,18 @@ public class ConceptServiceImpl implements ConceptService {
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
-        // Aggregate key = the PRE-EDIT IRI, captured BEFORE the reconcile below mutates metadata's IRI.
-        // A createConcept keys on the concept's IRI; this concept's pre-edit IRI equals that same IRI, so
-        // a create and a subsequent rename share an aggregate and the per-aggregate ordering gate relates
-        // them (the rename's DELETE of old-IRI triples can never apply before the create's INSERT of them).
-        // Keying on the NEW IRI would make them different aggregates and reopen the create→rename inversion.
+        // Aggregate key = the PRE-EDIT IRI, captured before the reconcile mutates metadata's IRI. A create
+        // and a later rename then share an aggregate, so the per-aggregate ordering gate relates them
+        // (the rename's DELETE can never apply before the create's INSERT). Keying on the new IRI would
+        // split them into separate aggregates and reopen that inversion.
         String aggregateIri = metadata.getConceptIri();
 
         ConceptEditor.EditResult editResult = performConceptEdit(aggregateIri, conceptEditModel, model, graphName);
 
-        // NKD local-copy reconcile: detect this concept's links to published NKD concepts in the POST-edit
-        // model and produce the materialized-copy delta, so the link triple and the copy land in ONE
-        // owner-keyed aggregate (aggregateIri above). Must run before either flush. The snapshot service
-        // reads owner.getConceptIri()/graphName, so metadata's IRI is moved to the post-edit value here (it
-        // would be set by updateMetadataFromEditResult below anyway) — the copy + provenance then reference
-        // the IRI actually present in the post-edit graph. In-tx + synchronous. reconcileNkdLinks returns
-        // its OWN mutable change set (EditResult's sets are immutable copies — can't be folded into); we
-        // UNION it with the editor's sets for the flush so both ride one aggregate.
+        // Reconcile NKD links and union the resulting copy delta with the editor's, so the link and the
+        // copy ride one owner-keyed aggregate. The snapshot service reads owner.getConceptIri(), so the
+        // metadata IRI is set to its post-edit value first. reconcileNkdLinks returns its own mutable set
+        // (EditResult's are immutable copies), which we merge — re-using EditResult's sets would throw.
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
         }
@@ -203,19 +197,15 @@ public class ConceptServiceImpl implements ConceptService {
         toAdd.addAll(snapshotDelta.toAdd);
 
         if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the combined change sets (editor + snapshot copy), committed atomically
-            // with the metadata update below.
             outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
             updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
             outboxRelayTrigger.nudgeAfterCommit();
             return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
         }
 
-        // Direct (outbox-disabled) path: ConceptEditor already applied ITS edit to `model`, but the snapshot
-        // copy triples are not yet in `model`. Apply the combined delta here so the copy lands in TDB2 in
-        // the same write as the link (C1 for the legacy path). Idempotent: re-removing the editor's
-        // already-removed triples and re-adding its already-added ones are no-ops; only the snapshot triples
-        // actually change `model`.
+        // Direct (outbox-disabled) path: the editor already applied its delta to `model`, but the snapshot
+        // copy triples are not yet in it. Apply the combined delta so the copy reaches TDB2 in the same
+        // write as the link. Idempotent — re-applying the editor's own triples is a no-op.
         model.remove(new ArrayList<>(toRemove));
         model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
@@ -408,17 +398,14 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     /**
-     * Reconciles this concept's links to published NKD concepts against its local-copy snapshots,
-     * returning the materialized-copy delta (a fresh mutable {@link OwnerChangeSet}) for the caller to
-     * merge into the owner aggregate's flush. Operates on the POST-edit {@code model} (and {@code owner}'s
-     * post-edit IRI); called inside the edit transaction, before the flush.
-     * <p>
-     * Returns its OWN change set rather than mutating {@code editResult}'s, because {@code EditResult}
-     * exposes its sets as immutable ({@code Set.copyOf}) — folding into them throws
-     * {@code UnsupportedOperationException}. The caller combines this delta with the editor's.
-     * <p>
-     * Best-effort: a transient NKD outage on the snapshot fetch never rolls back the edit (the service
-     * catches the unavailability and skips). Only a deterministic confirmed-published domain/range hit throws.
+     * Reconciles this concept's links to published NKD concepts against its local-copy snapshots and
+     * returns the materialized-copy delta as a fresh mutable {@link OwnerChangeSet} for the caller to
+     * merge into the owner aggregate's flush. Operates on the post-edit {@code model} and owner IRI,
+     * inside the edit transaction.
+     *
+     * <p>Returns its own change set rather than mutating {@code EditResult}'s, whose sets are immutable
+     * copies. Best-effort: a transient NKD outage never rolls back the edit (the service skips); only a
+     * confirmed-published domain/range link throws (HTTP 400).
      */
     private OwnerChangeSet reconcileNkdLinks(ConceptMetadataEntity owner, Model model) {
         String ownerIri = owner.getConceptIri();

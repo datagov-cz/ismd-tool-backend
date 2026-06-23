@@ -4,10 +4,10 @@ import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 
 /**
  * Backs the user-driven NKD local-copy endpoints (UPDATE / REMOVE) on {@code ConceptController}. The
- * implementation owns the owner-keyed outbox flush — the outbox-agnostic {@link NkdSnapshotService}
- * only fills a change set; this service builds it, flushes one {@code enqueueUpsert} keyed on the
- * <em>owner</em> concept's IRI (C1), and assembles the response DTO. It is also the home of the
- * upstream-NKD-deletion cascade (an UPDATE that finds the concept gone removes the link + copy).
+ * implementation owns the owner-keyed outbox flush — the outbox-agnostic {@link NkdSnapshotService} only
+ * fills a change set; this service builds it, flushes one {@code enqueueUpsert} keyed on the owner
+ * concept's IRI, and assembles the response DTO. An UPDATE that finds the concept gone from NKD also
+ * removes the link + copy.
  */
 public interface NkdSnapshotEndpointService {
 

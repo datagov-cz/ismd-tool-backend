@@ -21,9 +21,9 @@ public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSn
     List<NkdConceptSnapshotEntity> findByNkdIri(String nkdIri);
 
     /**
-     * How many concepts in a graph link the same NKD IRI — the C2 refcount. The shared materialized
-     * copy may be removed only when this drops to its last referrer, otherwise removing one link
-     * would strip the triples other concepts still need.
+     * How many concepts in a graph link the same NKD IRI — the refcount guarding shared-copy removal.
+     * The materialized copy may be dropped only when this reaches its last referrer; otherwise removing
+     * one link would strip triples other concepts still need.
      */
     long countByGraphNameAndNkdIri(String graphName, String nkdIri);
 }

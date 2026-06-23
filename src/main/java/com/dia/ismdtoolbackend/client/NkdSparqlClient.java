@@ -104,8 +104,8 @@ public class NkdSparqlClient {
      * callers that need the source triples themselves (the snapshot materializer, which copies the
      * external concept's RDF into the owner graph).
      *
-     * <p><strong>Bounded (m6):</strong> {@link NKDSPARQLConstructQuery#buildConstructQuery} pulls only
-     * the one concept's triples plus one level of blank-node expansion — never a whole-ontology tree.
+     * <p>Bounded: {@link NKDSPARQLConstructQuery#buildConstructQuery} pulls only the one concept's
+     * triples plus one level of blank-node expansion — never a whole-ontology tree.
      *
      * <p>Lenient: an NKD outage / absent concept degrades to {@link Optional#empty()} rather than
      * throwing, so the best-effort snapshot fetch never rolls back the owning edit.

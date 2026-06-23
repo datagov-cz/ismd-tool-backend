@@ -15,16 +15,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Single source of truth for "which of a concept's outgoing edges point at an external
- * (non-owned) concept, and through which relation". Shared by the async warmer (which snapshots the
- * allowed targets) and the synchronous edit hook (which also needs the C3-forbidden domain/range
- * targets to reject).
- * <p>
- * "External" = the object IRI is not prefixed by the owner graph's scheme &mdash; the same
- * {@code OWNED_CONCEPT_PATTERN} prefix rule the reconciler uses. A self-link (owned object) is never
- * a snapshot/copy candidate.
- * <p>
- * Stateless; detection is over an in-memory {@link Model} only &mdash; no I/O.
+ * Single source of truth for which of a concept's outgoing edges point at an external (non-owned)
+ * concept, and through which relation. Shared by the async warmer (which snapshots the allowed targets)
+ * and the edit hook (which also needs the forbidden domain/range targets to reject).
+ *
+ * <p>"External" = the object IRI is not prefixed by the owner graph's scheme. Stateless; detection is
+ * over an in-memory {@link Model} only — no I/O.
  */
 @Component
 public class NkdLinkDetector {

@@ -41,6 +41,12 @@ public class ConceptMetadataEntity {
     @Column(name = "user_id")
     private String userId;
 
+    /**
+     * Whether this concept's own IRI exists in NKD (set at upload when an uploaded concept shares an NKD
+     * IRI). Drives visibility/search and the self-published deviation path (local RDF vs live NKD at the
+     * same IRI). Distinct from a {@code NkdConceptSnapshotEntity}, which tracks a copy of a <em>different</em>,
+     * externally-owned NKD concept this one links to; that feature leaves this flag untouched.
+     */
     @Column(name = "is_published")
     private Boolean isPublished;
 

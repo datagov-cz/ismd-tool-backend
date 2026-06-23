@@ -19,18 +19,13 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 
 /**
- * A tracked "local copy" of a published NKD concept that an owning local concept links to.
+ * A tracked "local copy" of a published NKD concept that an owning local concept links to. One row per
+ * (owning concept, NKD IRI) link, holding the snapshotted NKD detail (for deviation comparison) and the
+ * exact triple set materialized into the owner's graph.
  *
- * <p>One row per (owning concept, NKD IRI) link. The row holds the snapshotted NKD concept detail
- * (for deviation comparison) and the exact RDF triple set materialized into the owner's graph (the
- * source of truth for removing/replacing those triples). See
- * {@code .planning/nkd-local-copy-snapshot-PLAN.md}.
- *
- * <p><strong>Read-mostly.</strong> Writes happen only through {@code NkdSnapshotService}; the
- * materialized triples reach TDB2 via the <em>owning concept's</em> outbox aggregate (C1), never a
- * direct write from here.
- *
- * <p><strong>Scope:</strong> {@link SnapshotOrigin#LINK_TARGET} rows only this round (m7).
+ * <p>Written only through {@code NkdSnapshotService}; materialized triples reach TDB2 via the owning
+ * concept's outbox aggregate, never a direct write from here. Only {@link SnapshotOrigin#LINK_TARGET}
+ * rows are currently produced.
  */
 @Entity
 @Table(
@@ -81,9 +76,9 @@ public class NkdConceptSnapshotEntity {
     private String snapshotJson;
 
     /**
-     * The exact N-Triples set last materialized into the owner graph (M1). This — NOT
-     * {@link #snapshotJson}, which is lossy — is the source of truth for the delete-set when
-     * re-materializing or removing the copy, so NKD drift never leaves stale triples behind.
+     * The exact N-Triples set last materialized into the owner graph — the source of truth for the
+     * delete-set when re-materializing or removing the copy (NOT {@link #snapshotJson}, which is lossy),
+     * so NKD drift never leaves stale triples behind.
      */
     @Column(name = "materialized_triples", columnDefinition = "text")
     private String materializedTriples;
