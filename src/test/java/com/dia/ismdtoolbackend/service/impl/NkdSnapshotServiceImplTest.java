@@ -161,6 +161,32 @@ class NkdSnapshotServiceImplTest {
         assertThat(cs.toRemove).anyMatch(s -> s.getSubject().getURI().equals(NKD_IRI));
     }
 
+    @Test
+    void createOrRefresh_nkdOutage_skipsAndKeepsExisting_noThrow_noRemoval() {
+        // NKD UNAVAILABLE (not confirmed-absent): the strict fetch throws. Must skip — NOT remove the
+        // existing snapshot (that would delete a valid copy on a transient blip) and NOT propagate (the
+        // edit hook runs this in its tx; a throw would roll back a valid edit).
+        NkdConceptSnapshotEntity existing = new NkdConceptSnapshotEntity();
+        existing.setOwningConcept(owner);
+        existing.setNkdIri(NKD_IRI);
+        existing.setGraphName(OWNER_GRAPH);
+        existing.setLinkPredicate(SnapshotLinkType.BROADER_CLASS.value());
+
+        when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.of(existing));
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException(
+                        "NKD", "down", null));
+
+        OwnerChangeSet cs = new OwnerChangeSet();
+        NkdConceptSnapshotEntity result =
+                service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+
+        assertThat(result).isSameAs(existing);       // returns the untouched existing snapshot
+        verify(snapshotRepository, never()).delete(any());
+        assertThat(cs.toRemove).isEmpty();
+        assertThat(cs.toAdd).isEmpty();
+    }
+
     /** Owner's outgoing triples: a subClassOf link + the namespaced hierarchy prop, both → nkdIri. */
     private Set<Statement> ownerOutgoingToNkd() {
         Model m = ModelFactory.createDefaultModel();

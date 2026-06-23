@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.utility.published.NkdSnapshotMaterializer;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
@@ -60,14 +61,15 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         Optional<NkdConceptSnapshotEntity> existingOpt =
                 snapshotRepository.findByOwningConceptIdAndNkdIri(owner.getId(), nkdIri);
 
-        // Best-effort NKD fetch (detail for the deviation baseline + raw triples for materialization).
-        Optional<NkdSparqlClient.PublishedConcept> publishedOpt =
-                nkdSparqlClient.fetchPublishedConceptWithScheme(nkdIri);
+        Optional<NkdSparqlClient.PublishedConcept> publishedOpt;
+        try {
+            publishedOpt = nkdSparqlClient.fetchPublishedConceptWithScheme(nkdIri);
+        } catch (SparqlEndpointUnavailableException e) {
+            log.warn("NKD unavailable while snapshotting {} — skipping (existing snapshot left intact): {}",
+                    nkdIri, e.getMessage());
+            return existingOpt.orElse(null);
+        }
         if (publishedOpt.isEmpty()) {
-            // Upstream gone (or unreachable): if we already tracked it, drop the snapshot + its copy
-            // (the owner's dangling link triple is removed by the edit's own change set / the unlink
-            // endpoint — create/refresh has no owner-graph view to enumerate it). If we never tracked
-            // it, nothing to do.
             existingOpt.ifPresent(snapshot -> removeSnapshotCopyAndRow(snapshot, ownerChangeSet));
             log.info("NKD has no concept {} — no snapshot created (existing removed if any)", nkdIri);
             return null;
@@ -79,7 +81,6 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
             return existingOpt.orElse(null);
         }
 
-        // Materialize (pure) — owner scheme is the graph IRI (ConceptCreator writes inScheme = graph).
         Set<Statement> newTriples = materializer.materialize(rawOpt.get(), nkdIri, owner.getConceptIri(), graphName);
 
         NkdConceptSnapshotEntity snapshot = existingOpt.orElseGet(() -> {

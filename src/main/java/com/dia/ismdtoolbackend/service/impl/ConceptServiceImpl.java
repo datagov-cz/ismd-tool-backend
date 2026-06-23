@@ -185,28 +185,39 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptEditor.EditResult editResult = performConceptEdit(aggregateIri, conceptEditModel, model, graphName);
 
-        // NKD local-copy reconcile: detect this concept's links to published NKD concepts in the
-        // POST-edit model and fold the materialized-copy delta into editResult's change sets, so the link
-        // triple and the copy land in ONE owner-keyed aggregate (aggregateIri above). Must run before either
-        // flush path. The snapshot service reads owner.getConceptIri()/graphName, so metadata's IRI is moved
-        // to the post-edit value here (it would be set by updateMetadataFromEditResult below anyway) — the
-        // materialized copy + provenance then reference the IRI actually present in the post-edit graph.
-        // In-tx + synchronous (the user explicitly changed the link). Best-effort NKD fetch never rolls back the edit.
+        // NKD local-copy reconcile: detect this concept's links to published NKD concepts in the POST-edit
+        // model and produce the materialized-copy delta, so the link triple and the copy land in ONE
+        // owner-keyed aggregate (aggregateIri above). Must run before either flush. The snapshot service
+        // reads owner.getConceptIri()/graphName, so metadata's IRI is moved to the post-edit value here (it
+        // would be set by updateMetadataFromEditResult below anyway) — the copy + provenance then reference
+        // the IRI actually present in the post-edit graph. In-tx + synchronous. reconcileNkdLinks returns
+        // its OWN mutable change set (EditResult's sets are immutable copies — can't be folded into); we
+        // UNION it with the editor's sets for the flush so both ride one aggregate.
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
         }
-        reconcileNkdLinks(metadata, editResult, model);
+        OwnerChangeSet snapshotDelta = reconcileNkdLinks(metadata, model);
+        Set<Statement> toRemove = new HashSet<>(editResult.statementsToRemove);
+        toRemove.addAll(snapshotDelta.toRemove);
+        Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
+        toAdd.addAll(snapshotDelta.toAdd);
 
         if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the editor's exact change sets (NOT a whole-graph PUT), committed
-            // atomically with the metadata update below.
-            outboxWriter.enqueueUpsert(graphName, aggregateIri,
-                    editResult.statementsToRemove, editResult.statementsToAdd);
+            // Outbox path: enqueue the combined change sets (editor + snapshot copy), committed atomically
+            // with the metadata update below.
+            outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
             updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
             outboxRelayTrigger.nudgeAfterCommit();
             return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
         }
 
+        // Direct (outbox-disabled) path: ConceptEditor already applied ITS edit to `model`, but the snapshot
+        // copy triples are not yet in `model`. Apply the combined delta here so the copy lands in TDB2 in
+        // the same write as the link (C1 for the legacy path). Idempotent: re-removing the editor's
+        // already-removed triples and re-adding its already-added ones are no-ops; only the snapshot triples
+        // actually change `model`.
+        model.remove(new ArrayList<>(toRemove));
+        model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
@@ -397,19 +408,22 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     /**
-     * Reconciles this concept's links to published NKD concepts against its local-copy snapshots, folding
-     * the materialized-copy delta into {@code editResult}'s change sets so it rides the owner aggregate.
-     * Operates on the POST-edit {@code model} (and {@code owner}'s post-edit IRI); called inside the edit
-     * transaction, before the flush.
+     * Reconciles this concept's links to published NKD concepts against its local-copy snapshots,
+     * returning the materialized-copy delta (a fresh mutable {@link OwnerChangeSet}) for the caller to
+     * merge into the owner aggregate's flush. Operates on the POST-edit {@code model} (and {@code owner}'s
+     * post-edit IRI); called inside the edit transaction, before the flush.
      * <p>
-     * Best-effort: a transient NKD failure on the snapshot fetch never rolls back the edit (the service
-     * swallows an empty fetch). Only a deterministic confirmed-published domain/range hit throws.
+     * Returns its OWN change set rather than mutating {@code editResult}'s, because {@code EditResult}
+     * exposes its sets as immutable ({@code Set.copyOf}) — folding into them throws
+     * {@code UnsupportedOperationException}. The caller combines this delta with the editor's.
+     * <p>
+     * Best-effort: a transient NKD outage on the snapshot fetch never rolls back the edit (the service
+     * catches the unavailability and skips). Only a deterministic confirmed-published domain/range hit throws.
      */
-    private void reconcileNkdLinks(ConceptMetadataEntity owner, ConceptEditor.EditResult editResult, Model model) {
+    private OwnerChangeSet reconcileNkdLinks(ConceptMetadataEntity owner, Model model) {
         String ownerIri = owner.getConceptIri();
         String graphScheme = owner.getGraphName();
-        OwnerChangeSet ownerChangeSet =
-                OwnerChangeSet.of(editResult.statementsToRemove, editResult.statementsToAdd);
+        OwnerChangeSet ownerChangeSet = new OwnerChangeSet();
 
         List<String> domainRangeTargets =
                 nkdLinkDetector.forbiddenDomainRangeTargets(ownerIri, graphScheme, model);
@@ -441,6 +455,7 @@ public class ConceptServiceImpl implements ConceptService {
             nkdSnapshotService.createOrRefreshSnapshot(
                     owner, target.targetIri(), target.linkType().value(), ownerChangeSet);
         }
+        return ownerChangeSet;
     }
 
     /** The owner concept's current outgoing statements in {@code model} (for unlink triple removal). */

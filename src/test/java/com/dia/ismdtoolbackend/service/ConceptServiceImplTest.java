@@ -447,6 +447,45 @@ class ConceptServiceImplTest {
     }
 
     @Test
+    void editConcept_outboxDisabled_snapshotTriplesWrittenToTDB2() {
+        // Adversarial-review fix A: on the DIRECT (outbox-disabled) path, the materialized copy triples
+        // that reconcile folds into editResult must reach TDB2 — not just the PG row. Otherwise the snapshot
+        // row claims a copy that isn't in the graph (silent C1 violation on the legacy path).
+        when(outboxConfig.isEnabled()).thenReturn(false);
+        testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = createValidConceptEditModel();
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, new java.util.HashSet<>(), new java.util.HashSet<>());
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
+
+        // Mock the snapshot service to contribute a sentinel materialized-copy triple into the change set,
+        // exactly as the real createOrRefreshSnapshot would.
+        org.apache.jena.rdf.model.Statement copyTriple = testModel.createStatement(
+                testModel.createResource(NKD_SUPERCLASS),
+                org.apache.jena.vocabulary.RDFS.label,
+                testModel.createLiteral("NKD copy"));
+        doAnswer(inv -> {
+            com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet cs = inv.getArgument(3);
+            cs.toAdd.add(copyTriple);
+            return null;
+        }).when(nkdSnapshotService).createOrRefreshSnapshot(any(), eq(NKD_SUPERCLASS), anyString(), any());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        // The model saved to TDB2 must contain the materialized copy triple.
+        ArgumentCaptor<Model> saved = ArgumentCaptor.forClass(Model.class);
+        verify(jenaTDB2Repository).putOntologyModel(eq(TEST_GRAPH_NAME), saved.capture());
+        assertTrue(saved.getValue().contains(copyTriple),
+                "direct path must write the materialized copy triple to TDB2");
+    }
+
+    @Test
     void editConcept_ownedSuperclass_notSnapshotted() {
         // subClassOf an OWNED concept (same graph scheme) → not external → never snapshotted.
         String ownedParent = TEST_GRAPH_NAME + "/pojem/local-parent";
