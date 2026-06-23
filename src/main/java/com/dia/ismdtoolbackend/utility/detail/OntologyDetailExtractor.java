@@ -140,7 +140,7 @@ public class OntologyDetailExtractor {
         Map<String, String> descriptionMap = extractMultilingualDescription(structure.getVocabularyResource());
 
         return OntologyDetailModel.builder()
-                .context(CONTEXT_JSONLD)
+                .context(CONTEXT)
                 .iri(structure.getOntologyIRI())
                 .types(structure.getVocabularyTypes())
                 .name(createMultilingualMap(structure.getModelName()))
@@ -383,8 +383,8 @@ public class OntologyDetailExtractor {
                 .broaderClasses((List<String>) conceptMap.get(NADRAZENA_TRIDA))
                 .broaderRelations((List<String>) conceptMap.get(NADRAZENY_VZTAH))
                 .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
-                .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
-                .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
+                .definingLegalSources(nullToEmpty((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
+                .relatedLegalSources(nullToEmpty((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
                 .definingLegalSourcesResolved(buildResolvedSources(
                         (List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
                 .relatedLegalSourcesResolved(buildResolvedSources(
@@ -399,7 +399,7 @@ public class OntologyDetailExtractor {
                 .isPpdf((Boolean) conceptMap.get(JE_PPDF))
                 .ais(extractStringFromValue(conceptMap.get(AIS)))
                 .agenda(extractStringFromValue(conceptMap.get(AGENDA)))
-                .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
+                .privacyProvisions(nullToEmpty((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .privacyProvisionsResolved(buildResolvedSources((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .conceptProperties(properties)
                 .conceptRelationships(relationships)
@@ -408,7 +408,7 @@ public class OntologyDetailExtractor {
 
     static List<NonLegalSourceDto> buildNonLegalSources(List<Map<String, Object>> rawSources) {
         if (rawSources == null || rawSources.isEmpty()) {
-            return null;
+            return List.of();
         }
         List<NonLegalSourceDto> out = new ArrayList<>(rawSources.size());
         for (Map<String, Object> src : rawSources) {
@@ -423,7 +423,11 @@ public class OntologyDetailExtractor {
                     .url(asString(src.get("url")))
                     .build());
         }
-        return out.isEmpty() ? null : out;
+        return out;
+    }
+
+    private static <T> List<T> nullToEmpty(List<T> list) {
+        return list == null ? List.of() : list;
     }
 
     private static String asString(Object value) {
@@ -495,9 +499,9 @@ public class OntologyDetailExtractor {
 
     /**
      * Build parse-only resolved-source DTOs for the concept-detail response.
-     * Returns {@code null} when the input is null/empty so {@code @JsonInclude(NON_NULL)}
-     * omits the field. Never calls SPARQL — fragment URLs are flagged
-     * {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
+     * Returns an empty list (never null) when the input is null/empty, so the
+     * field always serializes as {@code []}. Never calls SPARQL — fragment URLs
+     * are flagged {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
      */
     /**
      * Read {@code rdfs:range} from a property {@code Resource} and emit it in
@@ -534,7 +538,7 @@ public class OntologyDetailExtractor {
     }
 
     static List<ResolvedLegalSourceDto> buildResolvedSources(List<String> urls) {
-        if (urls == null || urls.isEmpty()) return null;
+        if (urls == null || urls.isEmpty()) return List.of();
         List<ResolvedLegalSourceDto> out = new ArrayList<>(urls.size());
         for (String url : urls) {
             out.add(parseUrlToPendingDto(url));

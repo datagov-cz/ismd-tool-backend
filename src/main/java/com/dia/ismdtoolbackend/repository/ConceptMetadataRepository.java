@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -103,6 +104,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     List<ConceptMetadataEntity> findByConceptIriIn(List<String> conceptIris);
 
+    @EntityGraph(attributePaths = "ontologyMetadata")
     Optional<ConceptMetadataEntity> findBySlug(String slug);
 
     List<ConceptMetadataEntity> findByGraphName(String graphName);

@@ -6,7 +6,7 @@ import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Import;
 
@@ -34,7 +34,7 @@ class EsbirkaFragmentResolutionCacheTest {
     private static final String LAW_IRI =
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361";
 
-    @MockBean
+    @MockitoBean
     private EsbirkaSparqlClient client;
 
     @Autowired

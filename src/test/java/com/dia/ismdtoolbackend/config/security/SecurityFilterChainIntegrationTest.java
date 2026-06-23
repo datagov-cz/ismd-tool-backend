@@ -6,7 +6,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -214,6 +215,7 @@ class SecurityFilterChainIntegrationTest {
     @WithMockSecurityUser
     void unmatchedEndpoint_deniedEvenWithAuth() throws Exception {
         mockMvc.perform(get("/api/nonexistent")
+                        .with(testSecurityContext())
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
     }
