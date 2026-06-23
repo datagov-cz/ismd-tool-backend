@@ -11,7 +11,6 @@ import org.apache.jena.rdf.model.Resource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -39,7 +38,10 @@ class NkdSnapshotWarmerTest {
     @Mock private NkdSparqlClient nkdSparqlClient;
     @Mock private NkdSnapshotOwnerWarmer ownerWarmer;
 
-    @InjectMocks private NkdSnapshotWarmer warmer;
+    // Real detector — stateless, pure; exercises the actual external-link detection against the test graph.
+    private final NkdLinkDetector linkDetector = new NkdLinkDetector();
+
+    private NkdSnapshotWarmer warmer;
 
     // Owner concept IRI → its subClassOf target (test-local; not on the entity).
     private final Map<ConceptMetadataEntity, String> targetByOwner = new java.util.LinkedHashMap<>();
@@ -57,6 +59,8 @@ class NkdSnapshotWarmerTest {
     @BeforeEach
     void setUp() {
         targetByOwner.clear();
+        warmer = new NkdSnapshotWarmer(conceptMetadataRepository, jenaTDB2Repository,
+                nkdSparqlClient, ownerWarmer, linkDetector);
     }
 
     /** Build a graph model with each owner subClassOf its target. */

@@ -38,6 +38,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -102,6 +103,16 @@ class ConceptServiceImplTest {
 
     @Mock
     private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
+
+    @Mock
+    private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
+
+    // Real detector (stateless, pure). On these unit tests the edited concept has no external NKD link
+    // triples, so detection returns empty and reconcileNkdLinks is a no-op — the mocked snapshot service
+    // is never called. A mock would return null lists and NPE inside the reconcile.
+    @Spy
+    private com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector nkdLinkDetector =
+            new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
 
     @InjectMocks
     private ConceptServiceImpl conceptService;
@@ -396,6 +407,103 @@ class ConceptServiceImplTest {
 
         verify(conceptMetadataRepository).findWithLockById(TEST_CONCEPT_ID);
         verify(conceptMetadataRepository, never()).findById(TEST_CONCEPT_ID);
+    }
+
+    // ========== Step 8: NKD local-copy reconcile on edit (reconcileNkdLinks) ==========
+
+    private static final String NKD_SUPERCLASS = "https://slovník.gov.cz/agendový/104/pojem/nadrazena";
+    private static final org.apache.jena.rdf.model.Property SUBCLASS_OF = org.apache.jena.vocabulary.RDFS.subClassOf;
+    private static final org.apache.jena.rdf.model.Property RDFS_DOMAIN = org.apache.jena.vocabulary.RDFS.domain;
+
+    /** Stage an outbox-path edit whose POST-edit model is {@code testModel} (which the test pre-populates). */
+    private ConceptEditModel stageEdit(boolean iriChanged, String newIri) {
+        when(outboxConfig.isEnabled()).thenReturn(true);
+        ConceptEditModel editModel = createValidConceptEditModel();
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                iriChanged ? newIri : TEST_CONCEPT_IRI, iriChanged,
+                new java.util.HashSet<>(), new java.util.HashSet<>());
+        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+        return editModel;
+    }
+
+    @Test
+    void editConcept_linkToPublishedNkdSuperclass_createsSnapshot() {
+        // Post-edit model: this TRIDA concept now has subClassOf → an external (NKD) concept.
+        testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = stageEdit(false, null);
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        // Allowed external broaderClass target → snapshot create/refresh, with the BROADER_CLASS link type.
+        verify(nkdSnapshotService).createOrRefreshSnapshot(
+                eq(testConceptEntity), eq(NKD_SUPERCLASS),
+                eq(com.dia.ismdtoolbackend.enums.SnapshotLinkType.BROADER_CLASS.value()), any());
+    }
+
+    @Test
+    void editConcept_ownedSuperclass_notSnapshotted() {
+        // subClassOf an OWNED concept (same graph scheme) → not external → never snapshotted.
+        String ownedParent = TEST_GRAPH_NAME + "/pojem/local-parent";
+        testModel.add(testResource, SUBCLASS_OF, testModel.createResource(ownedParent));
+        ConceptEditModel editModel = stageEdit(false, null);
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void editConcept_domainPointsAtPublishedNkd_rejectedAs400() {
+        // C3: rdfs:domain → a CONFIRMED-published NKD concept is invalid input → OntologyValidationException (400).
+        testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = stageEdit(false, null);
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(java.util.List.of(NKD_SUPERCLASS));
+
+        assertThrows(com.dia.ismdtoolbackend.exception.OntologyValidationException.class,
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
+
+        // Atomic reject: no snapshot, no enqueue.
+        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+        verify(outboxWriter, never()).enqueueUpsert(anyString(), anyString(), anySet(), anySet());
+    }
+
+    @Test
+    void editConcept_domainPointsAtNkd_nkdOutage_failsOpen() {
+        // C3 fail-OPEN: NKD published-check throws (outage) → enforcement skipped, edit commits.
+        testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = stageEdit(false, null);
+        when(nkdSparqlClient.getPublishedResourcesList(anyList()))
+                .thenThrow(new RuntimeException("NKD down"));
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);   // must NOT throw
+
+        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
+    }
+
+    @Test
+    void editConcept_droppedLink_removesSnapshot() {
+        // Existing snapshot for an NKD IRI that is NO LONGER linked in the post-edit model → unlink + remove.
+        // A benign triple keeps the graph non-empty (validateConceptInGraph) but is NOT a subClassOf link.
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        ConceptEditModel editModel = stageEdit(false, null);   // testModel has NO subClassOf triple now
+        com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity stale =
+                new com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity();
+        stale.setNkdIri(NKD_SUPERCLASS);
+        stale.setGraphName(TEST_GRAPH_NAME);
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of(stale));
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(nkdSnapshotService).removeSnapshotAndLink(eq(stale), anySet(), any());
+        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
     }
 
     // Review #4 HIGH — same guarantee for the outbox delete path.

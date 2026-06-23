@@ -44,11 +44,10 @@ databaseChangeLog:
                   type: VARCHAR(1024)
               - column:
                   name: snapshot_json
-                  type: TEXT
-              # Exact N-Triples last materialized (M1) — the delete-set source of truth.
+                  type: VARCHAR
               - column:
                   name: materialized_triples
-                  type: TEXT
+                  type: VARCHAR
               - column:
                   name: last_deviation_status
                   type: VARCHAR(50)
@@ -71,8 +70,6 @@ databaseChangeLog:
             tableName: nkd_concept_snapshots
             columnNames: owning_concept_id, nkd_iri
             constraintName: uq_nkd_snapshot_owner_iri
-        # NOT db-cascade: NkdSnapshotService cascades removal so Fuseki triples are cleaned in the
-        # same boundary (the owner concept's outbox aggregate, C1).
         - addForeignKeyConstraint:
             baseTableSchemaName: ismd_schema
             baseTableName: nkd_concept_snapshots
@@ -81,7 +78,6 @@ databaseChangeLog:
             referencedTableName: concepts
             referencedColumnNames: id
             constraintName: fk_nkd_snapshot_owning_concept
-        # The C2 refcount (countByGraphNameAndNkdIri) and the ontology-delete graph sweep.
         - createIndex:
             schemaName: ismd_schema
             tableName: nkd_concept_snapshots

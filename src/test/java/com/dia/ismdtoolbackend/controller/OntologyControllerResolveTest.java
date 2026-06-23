@@ -71,6 +71,7 @@ class OntologyControllerResolveTest {
     @MockitoBean private ValidationConfig validationConfig;
     @MockitoBean private NkdDetailService nkdDetailService;
     @MockitoBean private ConceptMetadataResolver conceptMetadataResolver;
+    @MockitoBean private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
