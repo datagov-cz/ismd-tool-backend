@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
@@ -11,11 +12,17 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
@@ -43,13 +50,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(controllers = ConceptController.class,
     excludeAutoConfiguration = {
-        org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration.class
+        JpaRepositoriesAutoConfiguration.class,
+        HibernateJpaAutoConfiguration.class,
+        OAuth2ClientAutoConfiguration.class,
+        OAuth2ClientWebSecurityAutoConfiguration.class,
+        OAuth2ResourceServerAutoConfiguration.class
     })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
+@Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
 @ActiveProfiles("junit")
 class ConceptControllerTest {
 
@@ -58,6 +65,9 @@ class ConceptControllerTest {
 
     @MockitoBean
     private ConceptService conceptService;
+
+    @MockitoBean
+    private NkdSnapshotEndpointService nkdSnapshotEndpointService;
 
     @BeforeEach
     void setUp() {
@@ -760,5 +770,73 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.conceptMetadata.conceptType").value("VLASTNOST"))
                 .andExpect(jsonPath("$.data.conceptDetail.iri").value("http://example.org/PropertyConcept"));
+    }
+
+    // ========== NKD local-copy endpoints (UPDATE / REMOVE) ==========
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void updateLocalCopy_returnsRefreshedSnapshotDto() throws Exception {
+        TestOntologySecurityService.setAllowModify(true);
+        com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto dto =
+                com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto.builder()
+                        .snapshotId(7L)
+                        .owningConceptId(1L)
+                        .origin(com.dia.ismdtoolbackend.enums.SnapshotOrigin.LINK_TARGET)
+                        .status(com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel
+                                .DeviationStatus.NO_DEVIATION)
+                        .build();
+        when(nkdSnapshotEndpointService.updateSnapshot(1L, 7L)).thenReturn(dto);
+
+        mockMvc.perform(post("/api/concept/{conceptId}/localcopy/{snapshotId}/update", 1L, 7L))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.snapshotId").value(7))
+                .andExpect(jsonPath("$.data.origin").value("LINK_TARGET"))
+                .andExpect(jsonPath("$.data.status").value("NO_DEVIATION"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "other")
+    void updateLocalCopy_notOwner_forbidden() throws Exception {
+        TestOntologySecurityService.setAllowModify(false);   // canModifyConcept → false
+
+        mockMvc.perform(post("/api/concept/{conceptId}/localcopy/{snapshotId}/update", 1L, 7L))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void updateLocalCopy_snapshotNotFound_badRequest() throws Exception {
+        TestOntologySecurityService.setAllowModify(true);
+        doThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException(
+                "Lokální kopie s id 7 nebyla nalezena."))
+                .when(nkdSnapshotEndpointService).updateSnapshot(1L, 7L);
+
+        mockMvc.perform(post("/api/concept/{conceptId}/localcopy/{snapshotId}/update", 1L, 7L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("nebyla nalezena")));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void removeLocalCopy_success() throws Exception {
+        TestOntologySecurityService.setAllowModify(true);
+        doNothing().when(nkdSnapshotEndpointService).removeSnapshot(1L, 7L);
+
+        mockMvc.perform(delete("/api/concept/{conceptId}/localcopy/{snapshotId}", 1L, 7L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value(containsString("odstraněna")));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "other")
+    void removeLocalCopy_notOwner_forbidden() throws Exception {
+        TestOntologySecurityService.setAllowModify(false);
+
+        mockMvc.perform(delete("/api/concept/{conceptId}/localcopy/{snapshotId}", 1L, 7L))
+                .andExpect(status().isForbidden());
     }
 }

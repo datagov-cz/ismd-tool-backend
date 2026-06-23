@@ -49,6 +49,30 @@ public final class LinkSnapshotAssembler {
         return checked != null && checked.isAfter(now.minus(ttl));
     }
 
+    /**
+     * Builds a single DTO for a row whose deviation was JUST evaluated live (the UPDATE endpoint). Unlike
+     * {@link #toDto}, the full per-field {@code deviation} block and a non-cached {@code status} are carried.
+     */
+    public static LinkSnapshotDto fromFreshDeviation(NkdConceptSnapshotEntity s,
+                                                     PublishedConceptDeviationModel deviation) {
+        DeviationStatus status = deviation != null ? deviation.getStatus() : DeviationStatus.PENDING;
+        return LinkSnapshotDto.builder()
+                .snapshotId(s.getId())
+                .owningConceptId(s.getOwningConcept().getId())
+                .linkPredicate(SnapshotLinkType.fromValue(s.getLinkPredicate()).orElse(null))
+                .origin(s.getOrigin())
+                .nkdConcept(NkdConceptRefDto.builder()
+                        .iri(s.getNkdIri())
+                        .label(labelOf(s.getSnapshot()))
+                        .build())
+                .snapshotAt(s.getSnapshotAt())
+                .lastCheckedAt(s.getLastCheckedAt())
+                .status(status)
+                .deviation(deviation)
+                .availableActions(actionsFor(status))
+                .build();
+    }
+
     private static LinkSnapshotDto toDto(NkdConceptSnapshotEntity s, boolean fresh) {
         // Cold/stale → PENDING (warmer in flight); fresh → the cached deviation status.
         DeviationStatus status = fresh && s.getLastDeviationStatus() != null

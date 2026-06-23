@@ -3,6 +3,8 @@ package com.dia.ismdtoolbackend.controller;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
+import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -26,6 +28,7 @@ import java.util.List;
 public class ConceptController {
 
     private final ConceptService conceptService;
+    private final NkdSnapshotEndpointService nkdSnapshotEndpointService;
 
     @Operation(
             summary = "Vytvoření nového pojmu",
@@ -108,5 +111,43 @@ public class ConceptController {
 
         GetConceptDto conceptDto = conceptService.getConceptDetail(slug);
         return ResponseEntity.ok().body(ApiResponseDto.success(conceptDto, "Detail pojmu byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Aktualizace lokální kopie NKD pojmu",
+            description = "Znovu načte propojený publikovaný pojem z NKD, obnoví lokální kopii a vrátí přepočítanou odchylku. "
+                    + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @PostMapping("/{conceptId}/localcopy/{snapshotId}/update")
+    @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
+    public ResponseEntity<ApiResponseDto<LinkSnapshotDto>> updateLocalCopy(
+            @PathVariable Long conceptId,
+            @PathVariable Long snapshotId,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Local-copy update requested, conceptId: {}, snapshotId: {}, userId: {}",
+                conceptId, snapshotId, securityUser.getUserId());
+
+        LinkSnapshotDto refreshed = nkdSnapshotEndpointService.updateSnapshot(conceptId, snapshotId);
+        return ResponseEntity.ok().body(ApiResponseDto.success(refreshed, "Lokální kopie byla aktualizována."));
+    }
+
+    @Operation(
+            summary = "Odstranění lokální kopie NKD pojmu",
+            description = "Zruší propojení na publikovaný pojem v NKD a odstraní jeho lokální kopii. "
+                    + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @DeleteMapping("/{conceptId}/localcopy/{snapshotId}")
+    @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
+    public ResponseEntity<ApiResponseDto<Void>> removeLocalCopy(
+            @PathVariable Long conceptId,
+            @PathVariable Long snapshotId,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Local-copy remove requested, conceptId: {}, snapshotId: {}, userId: {}",
+                conceptId, snapshotId, securityUser.getUserId());
+
+        nkdSnapshotEndpointService.removeSnapshot(conceptId, snapshotId);
+        return ResponseEntity.ok(ApiResponseDto.success("Lokální kopie byla odstraněna."));
     }
 }
