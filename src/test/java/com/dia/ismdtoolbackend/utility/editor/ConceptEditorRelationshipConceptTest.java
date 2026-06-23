@@ -79,9 +79,9 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
         when(relationshipConceptEditModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
         when(relationshipConceptEditModel.getAgendaCode()).thenReturn(null);
         when(relationshipConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(relationshipConceptEditModel.getContentType()).thenReturn("novy-obsah-rel");
-        when(relationshipConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani-rel");
-        when(relationshipConceptEditModel.getSharingMethod()).thenReturn(List.of("sdileni-rel"));
+        when(relationshipConceptEditModel.getContentType()).thenReturn("identifikační");
+        when(relationshipConceptEditModel.getAcquisitionMethod()).thenReturn("jiných agend");
+        when(relationshipConceptEditModel.getSharingMethod()).thenReturn(List.of("poskytované na žádost"));
         when(relationshipConceptEditModel.getIsPublic()).thenReturn(null);
 
         when(relationshipConceptEditModel.getDefiningLegalSource()).thenReturn(null);

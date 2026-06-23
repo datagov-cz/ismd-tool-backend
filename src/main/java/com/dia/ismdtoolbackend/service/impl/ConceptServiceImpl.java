@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -308,6 +309,12 @@ public class ConceptServiceImpl implements ConceptService {
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
+        } catch (ConceptValidationException e) {
+            // Invalid user input → propagate unwrapped so it surfaces as HTTP 400
+            // (GlobalExceptionHandler maps ConceptValidationException to BAD_REQUEST).
+            // Wrapping in OntologyException here would turn it into a 500.
+            log.warn("Concept edit rejected — invalid input: {}", e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
             throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
