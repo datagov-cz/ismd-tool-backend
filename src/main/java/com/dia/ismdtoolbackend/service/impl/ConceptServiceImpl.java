@@ -136,6 +136,17 @@ public class ConceptServiceImpl implements ConceptService {
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
+        // NKD local-copy cascade: delete the PG snapshot rows owned by the concepts being removed,
+        // and get back the NKD IRIs whose materialized copy is now orphaned (this batch held its last
+        // referrers). Appending those nkdIris to the delete-URI list lets the existing concept-delete
+        // sweep remove the orphaned copy subjects too — safe precisely because they are last-referrer
+        // (no other owner's `?s ?p ?nkd` link remains to be harmed).
+        List<Long> deletedConceptIds = relatedConceptEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        List<String> orphanedNkdCopies = nkdSnapshotService.cascadeConceptDeletion(deletedConceptIds, graphName);
+        relatedConceptUris.addAll(orphanedNkdCopies);
+
         if (outboxConfig.isEnabled()) {
             // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
             // atomically with the PG metadata delete below.

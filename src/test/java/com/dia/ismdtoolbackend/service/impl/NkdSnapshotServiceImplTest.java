@@ -32,6 +32,7 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -257,5 +258,75 @@ class NkdSnapshotServiceImplTest {
         NkdConceptSnapshotEntity snap = new NkdConceptSnapshotEntity();
         when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(snap));
         assertThat(service.findForConcept(17L)).containsExactly(snap);
+    }
+
+    // ========== Phase 10: deletion cascades ==========
+
+    private NkdConceptSnapshotEntity rowFor(String nkdIri) {
+        NkdConceptSnapshotEntity s = new NkdConceptSnapshotEntity();
+        s.setNkdIri(nkdIri);
+        s.setGraphName(OWNER_GRAPH);
+        return s;
+    }
+
+    @Test
+    void cascadeConceptDeletion_lastReferrer_reportsOrphanedCopy() {
+        NkdConceptSnapshotEntity row = rowFor(NKD_IRI);
+        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(row));
+        // Live count == 1 (only this concept refers it) → orphaned after delete.
+        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(1L);
+
+        List<String> orphaned = service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
+
+        assertThat(orphaned).containsExactly(NKD_IRI);
+        verify(snapshotRepository).deleteAll(List.of(row));
+    }
+
+    @Test
+    void cascadeConceptDeletion_sharedWithSurvivor_keepsCopy_C2() {
+        NkdConceptSnapshotEntity row = rowFor(NKD_IRI);
+        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(row));
+        // Live count == 2 (another, non-deleted concept also refers it) → copy must survive.
+        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(2L);
+
+        List<String> orphaned = service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
+
+        assertThat(orphaned).isEmpty();
+        verify(snapshotRepository).deleteAll(List.of(row));
+    }
+
+    @Test
+    void cascadeConceptDeletion_sharedAcrossBatch_bothDeleted_orphansCopy_C2() {
+        // Two concepts in the SAME delete batch both link NKD_IRI → live count 2, batch drops 2 → orphaned.
+        NkdConceptSnapshotEntity rowA = rowFor(NKD_IRI);
+        NkdConceptSnapshotEntity rowB = rowFor(NKD_IRI);
+        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(rowA));
+        when(snapshotRepository.findByOwningConceptId(18L)).thenReturn(List.of(rowB));
+        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(2L);
+
+        List<String> orphaned = service.cascadeConceptDeletion(List.of(17L, 18L), OWNER_GRAPH);
+
+        // The whole batch held the last two referrers → copy is orphaned despite live count > 1.
+        assertThat(orphaned).containsExactly(NKD_IRI);
+    }
+
+    @Test
+    void cascadeConceptDeletion_noSnapshots_returnsEmpty() {
+        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of());
+        assertThat(service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH)).isEmpty();
+        verify(snapshotRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    void cascadeGraphDeletion_deletesAllRowsForGraph_noCopyRemoval() {
+        NkdConceptSnapshotEntity r1 = rowFor(NKD_IRI);
+        NkdConceptSnapshotEntity r2 = rowFor("https://slovník.gov.cz/agendový/104/pojem/jine");
+        when(snapshotRepository.findByGraphName(OWNER_GRAPH)).thenReturn(List.of(r1, r2));
+
+        service.cascadeGraphDeletion(OWNER_GRAPH);
+
+        verify(snapshotRepository).deleteAll(List.of(r1, r2));
+        // No refcount / copy-triple bookkeeping — DELETE_GRAPH sweeps the whole graph.
+        verify(snapshotRepository, never()).countByGraphNameAndNkdIri(anyString(), anyString());
     }
 }

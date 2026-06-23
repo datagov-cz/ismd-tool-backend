@@ -73,6 +73,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
     private final com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository nkdSnapshotRepository;
     private final com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
+    private final com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
     private final com.dia.ismdtoolbackend.config.NkdConfig nkdConfig;
 
     @Override
@@ -95,6 +96,11 @@ public class OntologyServiceImpl implements OntologyService {
             log.error("Ontology model is empty.");
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        // NKD local-copy cascade: drop the PG snapshot rows for this graph. The materialized copy
+        // triples need no explicit removal — DELETE_GRAPH (or deleteGraph) sweeps the whole named graph,
+        // copies included. FK is not db-cascade, so the rows must go explicitly.
+        nkdSnapshotService.cascadeGraphDeletion(graphName);
 
         if (outboxConfig.isEnabled()) {
             // Outbox path: enqueue the graph deletion, committed atomically with the PG metadata
