@@ -99,21 +99,31 @@ public class OntologyDetailModel {
         @JsonProperty("nadřazená-vlastnost")
         private List<String> broaderProperties;
 
+        // Source lists are always serialized — empty array, never null/absent —
+        // so the FE has a stable contract (see OntologyDetailExtractor.nullToEmpty
+        // / buildResolvedSources / buildNonLegalSources). Overrides the class-level
+        // @JsonInclude(NON_NULL).
+        @JsonInclude()
         @JsonProperty("definující-ustanovení-právního-předpisu")
         private List<String> definingLegalSources;
 
+        @JsonInclude()
         @JsonProperty("související-ustanovení-právního-předpisu")
         private List<String> relatedLegalSources;
 
+        @JsonInclude()
         @JsonProperty("definující-ustanovení-právního-předpisu-resolved")
         private List<ResolvedLegalSourceDto> definingLegalSourcesResolved;
 
+        @JsonInclude()
         @JsonProperty("související-ustanovení-právního-předpisu-resolved")
         private List<ResolvedLegalSourceDto> relatedLegalSourcesResolved;
 
+        @JsonInclude()
         @JsonProperty("definující-nelegislativní-zdroj")
         private List<NonLegalSourceDto> definingNonLegalSources;
 
+        @JsonInclude()
         @JsonProperty("související-nelegislativní-zdroj")
         private List<NonLegalSourceDto> relatedNonLegalSources;
 
@@ -141,9 +151,11 @@ public class OntologyDetailModel {
         @JsonProperty("agenda-resolved")
         private RppAgenda agendaResolved;
 
+        @JsonInclude()
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
         private List<String> privacyProvisions;
 
+        @JsonInclude()
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje-resolved")
         private List<ResolvedLegalSourceDto> privacyProvisionsResolved;
 

@@ -350,6 +350,12 @@ class EsbirkaServiceImplTest {
         // Structural cast_1 contributes a wrapper but no body literal of its own.
         assertTrue(body.contains("data-kind=\"cast\""), "structural node still wrapped");
         assertTrue(body.contains("data-kind=\"odst\""));
+        // Each section also carries the full fragment IRI in data-iri (FE navigation hook)
+        // alongside the domain-stripped data-eli path.
+        assertTrue(body.contains("data-iri=\"" + par1 + "\""),
+                "section must expose the full fragment IRI in data-iri");
+        assertTrue(body.contains("data-eli=\"/eli/cz/sb/2006/187/2026-04-01/dokument/norma/cast_1/par_1\""),
+                "data-eli still carries the domain-stripped path");
         // Nesting: odst_1's section is INSIDE par_1's section (no closing </section> between
         // the §1 body and the (1) body — the odst opens before §1's section closes).
         int par1Body = body.indexOf("<p>§ 1</p>");

@@ -18,12 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -45,16 +40,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Authentication is provided via @WithMockSecurityUser annotation.
  * Authorization checks (@PreAuthorize) are mocked via OntologySecurityService.
  * <p>
- * Note: @MockBean is deprecated in Spring Boot 3.4+ but remains the recommended
- * approach for @WebMvcTest until a clear migration path is provided.
+ * Note: @MockitoBean replaces Spring Boot's deprecated @MockBean in these MVC
+ * slice tests.
  */
 @WebMvcTest(controllers = ConceptController.class,
     excludeAutoConfiguration = {
-        JpaRepositoriesAutoConfiguration.class,
-        HibernateJpaAutoConfiguration.class,
-        OAuth2ClientAutoConfiguration.class,
-        OAuth2ClientWebSecurityAutoConfiguration.class,
-        OAuth2ResourceServerAutoConfiguration.class
+        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
+        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
+        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
+        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
+        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
     })
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
 @ActiveProfiles("junit")

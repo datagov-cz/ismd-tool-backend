@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -121,6 +122,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
 
     List<ConceptMetadataEntity> findByConceptIriIn(List<String> conceptIris);
 
+    @EntityGraph(attributePaths = "ontologyMetadata")
     Optional<ConceptMetadataEntity> findBySlug(String slug);
 
     List<ConceptMetadataEntity> findByGraphName(String graphName);

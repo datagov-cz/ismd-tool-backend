@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.config.security;
 
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.MockMvcBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -9,6 +10,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.testSecurityContext;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 /**
  * Test security configuration that replaces production OAuth2 setup.
@@ -41,5 +45,10 @@ public class TestSecurityConfig {
                 );
 
         return http.build();
+    }
+
+    @Bean
+    public MockMvcBuilderCustomizer testSecurityContextMockMvcBuilderCustomizer() {
+        return builder -> builder.defaultRequest(get("/").with(testSecurityContext()));
     }
 }

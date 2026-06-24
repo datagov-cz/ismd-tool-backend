@@ -175,10 +175,12 @@ public class ConceptServiceImpl implements ConceptService {
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
-        // Aggregate key = the PRE-EDIT IRI, captured before the reconcile mutates metadata's IRI. A create
-        // and a later rename then share an aggregate, so the per-aggregate ordering gate relates them
-        // (the rename's DELETE can never apply before the create's INSERT). Keying on the new IRI would
-        // split them into separate aggregates and reopen that inversion.
+        // Aggregate key = the PRE-EDIT IRI (metadata.getConceptIri() before the reconcile mutates it),
+        // NOT the new IRI. A createConcept keys on the concept's IRI; this concept's pre-edit IRI equals
+        // that same IRI, so a create and a subsequent rename share an aggregate and the per-aggregate
+        // ordering gate relates them (the rename's DELETE of old-IRI triples can never apply before the
+        // create's INSERT of them). Keying on the NEW IRI would make them different aggregates and reopen
+        // the create→rename inversion (review #4 / M1).
         String aggregateIri = metadata.getConceptIri();
 
         ConceptEditor.EditResult editResult = performConceptEdit(aggregateIri, conceptEditModel, model, graphName);
@@ -197,6 +199,8 @@ public class ConceptServiceImpl implements ConceptService {
         toAdd.addAll(snapshotDelta.toAdd);
 
         if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a
+            // whole-graph PUT, committed atomically with the metadata update below.
             outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
             updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
             outboxRelayTrigger.nudgeAfterCommit();
