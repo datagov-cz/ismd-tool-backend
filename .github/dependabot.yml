@@ -11,5 +11,30 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Scheduled version-update PRs open against dev for review before reaching main.
+    # NOTE: security updates always target the default branch and ignore this.
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
     registries:
       - validator-packages
+    # One grouped PR per run instead of a separate PR per dependency.
+    groups:
+      maven-dependencies:
+        patterns:
+          - "*"
+
+  # Watches action versions pinned in .github/workflows/ (actions/checkout, etc.).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      github-actions:
+        patterns:
+          - "*"
