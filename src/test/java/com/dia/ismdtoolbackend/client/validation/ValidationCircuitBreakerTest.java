@@ -43,13 +43,36 @@ class ValidationCircuitBreakerTest {
     }
 
     @Test
-    void halfOpenTrialClosesOnSuccess() {
-        // Zero cooldown → the breaker is immediately past cooldown, so the next call is a trial.
-        ValidationCircuitBreaker breaker = new ValidationCircuitBreaker("v", 1, 0);
+    void halfOpenTrialClosesOnSuccess() throws InterruptedException {
+        // Small but non-zero cooldown so the breaker is genuinely OPEN, then expires into a trial.
+        ValidationCircuitBreaker breaker = new ValidationCircuitBreaker("v", 1, 50);
         assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        // cooldown is 0 → not "open" by the time check; a successful trial closes it.
-        assertEquals("ok", breaker.call(() -> "ok"));
-        assertFalse(breaker.isOpen());
+        assertTrue(breaker.isOpen(), "breaker is open during cooldown");
+
+        // While open, a call fast-fails without running the action.
+        boolean[] ran = {false};
+        assertThrows(ValidationServiceUnavailableException.class,
+                () -> breaker.call(() -> { ran[0] = true; return "x"; }));
+        assertFalse(ran[0], "open breaker fast-fails");
+
+        Thread.sleep(70); // past cooldown → next call is the half-open trial
+        assertEquals("ok", breaker.call(() -> "ok"), "trial call runs and succeeds");
+        assertFalse(breaker.isOpen(), "successful trial closes the breaker");
+    }
+
+    @Test
+    void halfOpenTrialFailureReopens() throws InterruptedException {
+        ValidationCircuitBreaker breaker = new ValidationCircuitBreaker("v", 1, 50);
+        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
+        assertTrue(breaker.isOpen());
+
+        Thread.sleep(70); // past cooldown → trial allowed
+        // Trial fails → breaker re-opens for another cooldown window.
+        boolean[] ran = {false};
+        assertThrows(ValidationServiceUnavailableException.class,
+                () -> breaker.call(() -> { ran[0] = true; throw down(); }));
+        assertTrue(ran[0], "the trial call actually ran");
+        assertTrue(breaker.isOpen(), "failed trial re-opens the breaker");
     }
 
     @Test
