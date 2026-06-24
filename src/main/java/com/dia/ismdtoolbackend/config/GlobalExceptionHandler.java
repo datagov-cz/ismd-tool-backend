@@ -224,6 +224,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponseDto.error(e.getEndpointLabel() + " data nejsou momentálně dostupná."));
     }
 
+    @ExceptionHandler(ValidationServiceUnavailableException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleValidationServiceUnavailable(ValidationServiceUnavailableException e) {
+        log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponseDto.error(e.getEndpointLabel() + " není momentálně dostupná."));
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.warn("Type mismatch for parameter '{}': value='{}'", e.getName(), e.getValue());

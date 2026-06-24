@@ -855,7 +855,7 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void testValidateOntology_ServiceUnavailable() throws Exception {
+    void testValidateOntology_ServiceUnavailable_returns503() throws Exception {
         String slug = "test-ontology";
 
         OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
@@ -866,8 +866,37 @@ class OntologyControllerTest {
         TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        // Validator down → client throws the unavailable exception → 503.
         when(validationClient.requestValidation(anyString(), anyString()))
-                .thenReturn(java.util.Optional.empty());
+                .thenThrow(new com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException(
+                        "Validační služba", "validator unreachable"));
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Validační služba není momentálně dostupná."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_ValidatorRejectedInput_returns400WithValidatorMessage() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        ontologyMetadata.setSlug(slug);
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("bad ttl");
+        // Validator answered with a 4xx → client throws a rejection carrying the validator's message → 400.
+        when(validationClient.requestValidation(anyString(), anyString()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException(
+                        "Invalid TTL syntax: line 3"));
 
         mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -875,7 +904,7 @@ class OntologyControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Validace se nezdařila - validační služba nevrátila odpověď."));
+                .andExpect(jsonPath("$.message").value("Invalid TTL syntax: line 3"));
     }
 
     @Test

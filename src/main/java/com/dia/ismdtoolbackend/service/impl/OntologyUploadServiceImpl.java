@@ -14,6 +14,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
@@ -47,6 +48,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -219,24 +221,37 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 log.warn("Ontology metadata not found for graph name: {}", iri);
                 return;
             }
+            OntologyMetadataEntity ontology = ontologyOpt.get();
 
-            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyMetadataId(ontologyOpt.get().getId());
+            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyMetadataId(ontology.getId());
             validationReportOpt.ifPresent(validationReportRepository::delete);
 
-            Optional<ValidationReport> report = validationClient.requestValidation(ontologyContent, iri);
+            // Advisory (lenient): a validator outage must never block upload. An empty result
+            // means the validator was unavailable — record SKIPPED_UNAVAILABLE so the FE can
+            // surface it and offer a manual re-validation; the ontology is ingested regardless.
+            Optional<ValidationReport> report = validationClient.requestValidationLenient(ontologyContent, iri);
             if (report.isPresent()) {
                 ValidationReportEntity validationReportEntity = new ValidationReportEntity();
                 validationReportEntity.setId(report.get().getId());
                 validationReportEntity.setTimestamp(report.get().getTimestamp());
-                validationReportEntity.setOntologyMetadataId(ontologyOpt.get().getId());
-                validationReportEntity.setGetOntologyIri(ontologyOpt.get().getGraphName());
+                validationReportEntity.setOntologyMetadataId(ontology.getId());
+                validationReportEntity.setGetOntologyIri(ontology.getGraphName());
                 String validationResults = validationReportEntity.convertResultsToJson(report.get().getResults());
                 validationReportEntity.setResultsJson(validationResults);
                 validationReportRepository.save(validationReportEntity);
+                markValidationStatus(ontology, OntologyValidationStatus.VALIDATED);
+            } else {
+                markValidationStatus(ontology, OntologyValidationStatus.SKIPPED_UNAVAILABLE);
             }
         } catch (Exception e) {
             log.warn("Validation failed for ontology {}: {}", iri, e.getMessage(), e);
         }
+    }
+
+    private void markValidationStatus(OntologyMetadataEntity ontology, OntologyValidationStatus status) {
+        ontology.setLastValidationStatus(status);
+        ontology.setLastValidationAt(Instant.now());
+        ontologyMetadataRepository.save(ontology);
     }
 
     private String determineGraphName(OntModel model) {
