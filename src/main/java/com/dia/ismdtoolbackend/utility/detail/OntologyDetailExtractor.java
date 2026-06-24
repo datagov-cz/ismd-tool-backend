@@ -238,7 +238,10 @@ public class OntologyDetailExtractor {
                 Object domainObj = conceptMap.get(DEFINICNI_OBOR);
                 String domain = domainObj instanceof String ? (String) domainObj : null;
 
-                if (conceptIri.equals(domain)) {
+                Object rangeObj = conceptMap.get(OBOR_HODNOT);
+                String range = rangeObj instanceof String ? (String) rangeObj : null;
+
+                if (conceptIri.equals(domain) || conceptIri.equals(range)) {
                     ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
 
                     Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), relationshipIri, NAZEV);
@@ -263,14 +266,13 @@ public class OntologyDetailExtractor {
         Resource conceptResource = ontModel.getResource(conceptIri);
         Resource vztahType = ontModel.getResource(OFN_NAMESPACE + VZTAH);
 
-        ResIterator relationshipIterator = ontModel.listSubjectsWithProperty(
-            org.apache.jena.vocabulary.RDFS.domain,
-            conceptResource
-        );
+        Set<Resource> relationshipResources = new LinkedHashSet<>();
+        ontModel.listSubjectsWithProperty(org.apache.jena.vocabulary.RDFS.domain, conceptResource)
+                .forEachRemaining(relationshipResources::add);
+        ontModel.listSubjectsWithProperty(org.apache.jena.vocabulary.RDFS.range, conceptResource)
+                .forEachRemaining(relationshipResources::add);
 
-        while (relationshipIterator.hasNext()) {
-            Resource relationshipResource = relationshipIterator.next();
-
+        for (Resource relationshipResource : relationshipResources) {
             if (relationshipResource.hasProperty(ResourceFactory.createProperty(
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "type"), vztahType)) {
 

@@ -235,6 +235,28 @@ class OntologyDetailExtractorRangeResolutionTest {
                 .isEqualTo(new DataTypeDto("Literal", "Text"));
     }
 
+    /**
+     * The {@code bydlí-na} relationship has domain=osoba, range=adresa. The RANGE class
+     * (adresa) must list that relationship — regression for the bug where a class only
+     * surfaced relationships where it was the domain. Exercises the ConceptData (JSON) path.
+     */
+    @Test
+    void conceptDataPath_rangeClass_listsRelationshipWhereItIsRange() {
+        Model model = buildModel();
+
+        OntologyDetailModel detail = extractor.extractOntologyDetail(
+                model, OntologyDetailExtractor.iriResolver());
+
+        OntologyDetailModel.ConceptDetailModel rangeClass = detail.getConcepts().stream()
+                .filter(c -> OTHER_CLASS_IRI.equals(c.getIri()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("range class concept not extracted"));
+
+        assertThat(rangeClass.getConceptRelationships())
+                .as("the range class must list the relationship whose range is it")
+                .anySatisfy(r -> assertThat(r.getIri()).isEqualTo(REL_IRI));
+    }
+
     // ── helpers ──
 
     private OntologyDetailModel.ConceptDetailModel getClassConcept(OntologyDetailModel detail) {
