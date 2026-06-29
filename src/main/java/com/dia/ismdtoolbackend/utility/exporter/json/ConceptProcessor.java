@@ -367,19 +367,11 @@ public class ConceptProcessor {
 
     private void addSourceProperty(Resource concept, Map<String, Object> conceptObj, OntModel ontModel, String propertyName, String jsonFieldName) {
         String fullPropertyUri = OFN_NAMESPACE + propertyName;
-        log.debug("addSourceProperty - Checking for property: {}", fullPropertyUri);
-        log.debug("  propertyName: {}, jsonFieldName: {}", propertyName, jsonFieldName);
-
         Property ofnProperty = ontModel.getProperty(fullPropertyUri);
 
-        boolean hasProperty = concept.hasProperty(ofnProperty);
-        log.debug("  Concept has property: {}", hasProperty);
-
-        if (hasProperty) {
-            log.debug("  Adding resource array property to JSON with field name: {}", jsonFieldName);
+        if (concept.hasProperty(ofnProperty)) {
+            log.debug("Adding source property {} to concept {}", jsonFieldName, concept.getURI());
             addResourceArrayProperty(concept, ofnProperty, jsonFieldName, conceptObj);
-        } else {
-            log.debug("  Property not found on concept: {}", concept.getURI());
         }
     }
 

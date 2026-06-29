@@ -62,12 +62,6 @@ public class NkdSparqlClient {
         this.detailExtractor = detailExtractor;
     }
 
-    // Distinct key prefixes: fetchPublishedConcept and fetchPublishedConceptWithScheme share one
-    // cache but return different value types for the same IRI, so prefixing prevents a collision
-    // (a ClassCastException on the cross-type read). The in-class call below
-    // (fetchPublishedConcept -> fetchPublishedConceptWithScheme) bypasses the proxy on the inner
-    // method, but that only runs on an outer cache MISS, so the outer @Cacheable still serves all
-    // repeat calls — no double network fetch.
     @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'concept:' + #conceptIri")
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
         return fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
@@ -150,17 +144,12 @@ public class NkdSparqlClient {
         return resultModel;
     }
 
-    // Cached: the deviation check and listAllOntologies both call this per-IRI. The raw variant
-    // (fetchPublishedOntologyRaw) is intentionally left uncached — it returns a mutable Jena Model
-    // consumed by the download/serialization path, which must not share a cached instance.
     @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontology:' + #ontologyIri")
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
             Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);
-            OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel,
+            return detailExtractor.extractOntologyDetail(processedModel,
                     OntologyDetailExtractor.iriResolver());
-            log.debug("Successfully extracted published ontology detail from NKD: {}", ontologyIri);
-            return ontologyDetail;
         });
     }
 
