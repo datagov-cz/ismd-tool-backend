@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.net.http.HttpClient;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
@@ -45,7 +46,7 @@ class RppSparqlClientTest {
     @BeforeEach
     void setUp() {
         wm.resetAll();
-        client = new RppSparqlClient();
+        client = new RppSparqlClient(HttpClient.newHttpClient());
         ReflectionTestUtils.setField(client, "rppEndpoint", wm.baseUrl() + "/sparql");
         ReflectionTestUtils.setField(client, "rppSparqlTimeout", 2000);
     }

@@ -11,14 +11,17 @@ import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
+import org.springframework.cache.annotation.Cacheable;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.net.http.HttpClient;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -34,19 +37,38 @@ public class NkdSparqlClient {
      */
     public static final String NKD_LABEL = "NKD";
 
+    /**
+     * Caffeine cache for NKD-published concept/ontology projections used by the deviation
+     * checks (concept detail fires one of these per published concept). The cached value is
+     * the NKD-published representation, which changes only when NKD republishes — NOT when a
+     * local ISMD copy is edited — so local ISMD mutations intentionally do NOT evict this
+     * cache; the cache's write TTL ({@code CacheConfig}) is the sole freshness mechanism.
+     * Registered/sized in {@code CacheConfig}.
+     */
+    public static final String PUBLISHED_RESOURCE_CACHE = "nkdPublishedResource";
+
     private final int maxConcurrentRequests;
     private final HttpSparqlExecutor executor;
     private final OntologyDetailExtractor detailExtractor;
 
-    public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor) {
+    public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor,
+                           @Qualifier("externalSparqlHttpClient") HttpClient externalSparqlHttpClient) {
         this.maxConcurrentRequests = config.getSparql().getMaxConcurrentRequests();
         this.executor = new HttpSparqlExecutor(
                 NKD_LABEL,
                 config.getSparql().getEndpoint(),
-                config.getSparql().getTimeout());
+                config.getSparql().getTimeout(),
+                externalSparqlHttpClient);
         this.detailExtractor = detailExtractor;
     }
 
+    // Distinct key prefixes: fetchPublishedConcept and fetchPublishedConceptWithScheme share one
+    // cache but return different value types for the same IRI, so prefixing prevents a collision
+    // (a ClassCastException on the cross-type read). The in-class call below
+    // (fetchPublishedConcept -> fetchPublishedConceptWithScheme) bypasses the proxy on the inner
+    // method, but that only runs on an outer cache MISS, so the outer @Cacheable still serves all
+    // repeat calls — no double network fetch.
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'concept:' + #conceptIri")
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
         return fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
     }
@@ -54,6 +76,7 @@ public class NkdSparqlClient {
     /**
      * Concept fetch that also surfaces the {@code skos:inScheme} target
      */
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'conceptWithScheme:' + #conceptIri")
     public Optional<PublishedConcept> fetchPublishedConceptWithScheme(String conceptIri) {
         log.debug("Fetching published concept from NKD: {}", conceptIri);
         String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
@@ -127,6 +150,10 @@ public class NkdSparqlClient {
         return resultModel;
     }
 
+    // Cached: the deviation check and listAllOntologies both call this per-IRI. The raw variant
+    // (fetchPublishedOntologyRaw) is intentionally left uncached — it returns a mutable Jena Model
+    // consumed by the download/serialization path, which must not share a cached instance.
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontology:' + #ontologyIri")
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
             Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);

@@ -11,9 +11,11 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.http.HttpClient;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +37,12 @@ public class EsbirkaSparqlClient {
 
     @Value("${esbirka.sparql.timeout:10000}")
     private int sparqlTimeout;
+
+    private final HttpClient httpClient;
+
+    public EsbirkaSparqlClient(@Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
 
     @PostConstruct
     void warnIfEndpointMissing() {
@@ -105,7 +113,8 @@ public class EsbirkaSparqlClient {
         // Built per call so test reflection (`setField(client, "endpoint", ...)`)
         // continues to flow through. The executor is a ~24-byte wrapper around two
         // strings and an int — allocation cost is negligible compared to the SPARQL roundtrip.
-        return new HttpSparqlExecutor(ESBIRKA_LABEL, endpoint, sparqlTimeout);
+        // The shared, pooled HttpClient is reused across these lightweight wrappers.
+        return new HttpSparqlExecutor(ESBIRKA_LABEL, endpoint, sparqlTimeout, httpClient);
     }
 
     private List<LawModel> mapLawRows(ResultSet rs) {
