@@ -88,6 +88,10 @@ class OntologyUploadServiceImplTest {
                 jenaTDB2Repository,
                 publishedResourceUtil
         );
+        // In production `self` is the Spring proxy (so @Transactional applies through the async
+        // lambda). In this unit test there is no proxy — point it at the instance itself so the
+        // delegation to saveValidationOutcome runs the real method directly.
+        ReflectionTestUtils.setField(ontologyUploadService, "self", ontologyUploadService);
         ReflectionTestUtils.setField(ontologyUploadService, "maxFileSizeConfig", "10MB");
         ReflectionTestUtils.setField(ontologyUploadService, "rdfParsingTimeoutSeconds", 60);
     }

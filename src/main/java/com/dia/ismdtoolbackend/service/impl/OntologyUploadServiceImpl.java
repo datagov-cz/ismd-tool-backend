@@ -28,8 +28,10 @@ import com.dia.utility.UtilityMethods;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.util.unit.DataSize;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
@@ -72,6 +74,18 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     private final ValidationReportRepository validationReportRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final PublishedResourceUtil deviationChecker;
+
+    /**
+     * Self-reference to the Spring proxy. The async validation runs from a {@code runAsync} lambda,
+     * which captures {@code this} directly — a plain call to {@code saveValidationOutcome} would
+     * bypass the proxy and its {@code @Transactional} would be inert. Calling through the proxy
+     * makes the report-save + status-mark a single atomic unit. {@code @Lazy} field injection (not
+     * a constructor arg) resolves to a lazy proxy AFTER construction, breaking the self-cycle that
+     * a {@code final} constructor parameter would otherwise form.
+     */
+    @Lazy
+    @Autowired
+    private OntologyUploadServiceImpl self;
 
     @Value("${spring.servlet.multipart.max-file-size:10MB}")
     private String maxFileSizeConfig;
@@ -202,7 +216,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
             String ontologyContent = convertOntModelToTtl(finalModel);
             CompletableFuture.runAsync(() ->
-                    requestAndSaveValidationReport(ontologyContent, graphName)
+                    self.requestAndSaveValidationReport(ontologyContent, graphName)
             ).exceptionally(ex -> {
                 log.error("Async validation failed for ontology: {}", graphName, ex);
                 return null;
@@ -214,37 +228,54 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
+    /**
+     * Advisory post-upload validation: calls the validator (lenient — a validator outage must never
+     * block ingest) and then persists the outcome. The HTTP call is deliberately OUTSIDE any DB
+     * transaction so a slow/hung validator never holds a pooled connection; only the persistence is
+     * transactional, via {@link #saveValidationOutcome} through the proxy ({@link #self}).
+     */
     public void requestAndSaveValidationReport(String ontologyContent, String iri) {
+        // Lenient client swallows outages/rejections and returns empty — never throws here.
+        Optional<ValidationReport> report = validationClient.requestValidationLenient(ontologyContent, iri);
         try {
-            Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphName(iri);
-            if (ontologyOpt.isEmpty()) {
-                log.warn("Ontology metadata not found for graph name: {}", iri);
-                return;
-            }
-            OntologyMetadataEntity ontology = ontologyOpt.get();
-
-            Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyMetadataId(ontology.getId());
-            validationReportOpt.ifPresent(validationReportRepository::delete);
-
-            // Advisory (lenient): a validator outage must never block upload. An empty result
-            // means the validator was unavailable — record SKIPPED_UNAVAILABLE so the FE can
-            // surface it and offer a manual re-validation; the ontology is ingested regardless.
-            Optional<ValidationReport> report = validationClient.requestValidationLenient(ontologyContent, iri);
-            if (report.isPresent()) {
-                ValidationReportEntity validationReportEntity = new ValidationReportEntity();
-                validationReportEntity.setId(report.get().getId());
-                validationReportEntity.setTimestamp(report.get().getTimestamp());
-                validationReportEntity.setOntologyMetadataId(ontology.getId());
-                validationReportEntity.setGetOntologyIri(ontology.getGraphName());
-                String validationResults = validationReportEntity.convertResultsToJson(report.get().getResults());
-                validationReportEntity.setResultsJson(validationResults);
-                validationReportRepository.save(validationReportEntity);
-                markValidationStatus(ontology, OntologyValidationStatus.VALIDATED);
-            } else {
-                markValidationStatus(ontology, OntologyValidationStatus.SKIPPED_UNAVAILABLE);
-            }
+            self.saveValidationOutcome(iri, report.orElse(null));
         } catch (Exception e) {
-            log.warn("Validation failed for ontology {}: {}", iri, e.getMessage(), e);
+            log.warn("Persisting validation outcome failed for ontology {}: {}", iri, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Atomically persists the validation outcome: deletes any prior report, saves the new one (if
+     * the validator answered), and marks {@code last_validation_status}. {@code @Transactional} so
+     * the whole sequence commits or rolls back together — never a saved report without a status, or
+     * a status without its report. {@code report == null} means the validator was unavailable →
+     * {@code SKIPPED_UNAVAILABLE} (the ontology is ingested regardless). Public + invoked via the
+     * proxy ({@link #self}) so the annotation is honoured from the async lambda.
+     */
+    @Transactional
+    public void saveValidationOutcome(String iri, ValidationReport report) {
+        Optional<OntologyMetadataEntity> ontologyOpt = ontologyMetadataRepository.findByGraphName(iri);
+        if (ontologyOpt.isEmpty()) {
+            log.warn("Ontology metadata not found for graph name: {}", iri);
+            return;
+        }
+        OntologyMetadataEntity ontology = ontologyOpt.get();
+
+        Optional<ValidationReportEntity> validationReportOpt = validationReportRepository.findByOntologyMetadataId(ontology.getId());
+        validationReportOpt.ifPresent(validationReportRepository::delete);
+
+        if (report != null) {
+            ValidationReportEntity validationReportEntity = new ValidationReportEntity();
+            validationReportEntity.setId(report.getId());
+            validationReportEntity.setTimestamp(report.getTimestamp());
+            validationReportEntity.setOntologyMetadataId(ontology.getId());
+            validationReportEntity.setGetOntologyIri(ontology.getGraphName());
+            String validationResults = validationReportEntity.convertResultsToJson(report.getResults());
+            validationReportEntity.setResultsJson(validationResults);
+            validationReportRepository.save(validationReportEntity);
+            markValidationStatus(ontology, OntologyValidationStatus.VALIDATED);
+        } else {
+            markValidationStatus(ontology, OntologyValidationStatus.SKIPPED_UNAVAILABLE);
         }
     }
 

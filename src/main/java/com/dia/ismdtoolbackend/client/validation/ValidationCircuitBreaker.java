@@ -54,6 +54,15 @@ public final class ValidationCircuitBreaker {
                 throw new ValidationServiceUnavailableException(endpointLabel,
                         endpointLabel + " circuit breaker open (last failure " + elapsed + "ms ago)");
             }
+            // Cooldown expired → half-open. Elect exactly ONE trial caller: the thread that
+            // wins this CAS advances openedAt to now (so any concurrent threads see a fresh
+            // open window and fast-fail above), then runs the single trial. Losers fall through
+            // to the fast-fail on their next read. Without this, every thread that crossed the
+            // cooldown boundary would hit a possibly-still-dead validator at once.
+            if (!openedAt.compareAndSet(openSince, System.currentTimeMillis())) {
+                throw new ValidationServiceUnavailableException(endpointLabel,
+                        endpointLabel + " circuit breaker open (trial in progress)");
+            }
         }
         try {
             T result = action.get();
