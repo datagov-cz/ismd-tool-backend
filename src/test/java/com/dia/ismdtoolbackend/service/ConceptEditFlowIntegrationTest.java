@@ -68,6 +68,7 @@ class ConceptEditFlowIntegrationTest {
     @Mock private com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
     @Mock private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
     @Mock private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
+    @Mock private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
 
     private ConceptServiceImpl conceptService;
 
@@ -81,12 +82,17 @@ class ConceptEditFlowIntegrationTest {
     void setUp() {
         // Real editor — the whole point of this test.
         ConceptEditor realEditor = new ConceptEditor();
+        // Real detector — stateless, pure; on these test models (no external NKD links) allowedTargets is
+        // empty so reconcileNkdLinks is a no-op and never calls the (mocked) snapshot service.
+        com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector linkDetector =
+                new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
         conceptService = new ConceptServiceImpl(
                 conceptMetadataRepository, ontologyMetadataRepository, conceptMetadataMapper,
                 conceptCreator, realEditor, jenaTDB2Repository, detailExtractor,
                 commentRepository, nkdSparqlClient, deviationComparator,
                 rppSnapshotHolder, referencedConceptsEnricher,
-                outboxConfig, outboxWriter, outboxRelayTrigger);
+                outboxConfig, outboxWriter, outboxRelayTrigger,
+                nkdSnapshotService, linkDetector);
 
         Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);

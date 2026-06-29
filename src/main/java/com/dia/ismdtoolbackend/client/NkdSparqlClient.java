@@ -98,6 +98,35 @@ public class NkdSparqlClient {
      */
     public record PublishedConcept(OntologyDetailModel.ConceptDetailModel detail, String ontologyIri) {}
 
+    /**
+     * Raw NKD concept model — the same single-concept CONSTRUCT as
+     * {@link #fetchPublishedConceptWithScheme} but returned <em>before</em> OFN extraction, for
+     * callers that need the source triples themselves (the snapshot materializer, which copies the
+     * external concept's RDF into the owner graph).
+     *
+     * <p>Bounded: {@link NKDSPARQLConstructQuery#buildConstructQuery} pulls only the one concept's
+     * triples plus one level of blank-node expansion — never a whole-ontology tree.
+     *
+     * <p>Lenient: an NKD outage / absent concept degrades to {@link Optional#empty()} rather than
+     * throwing, so the best-effort snapshot fetch never rolls back the owning edit.
+     */
+    public Optional<Model> fetchPublishedConceptRaw(String conceptIri) {
+        if (!SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            log.warn("Refusing raw NKD concept fetch for unsafe IRI: {}", conceptIri);
+            return Optional.empty();
+        }
+        log.debug("Fetching raw NKD concept model: {}", conceptIri);
+        String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
+        Optional<Model> resultModel =
+                executor.constructLenient("NKD raw concept fetch for " + conceptIri, query);
+        if (resultModel.isEmpty()) {
+            log.info("No data found for concept in NKD (raw): {}", conceptIri);
+            return Optional.empty();
+        }
+        log.debug("Fetched {} raw triples from NKD for concept: {}", resultModel.get().size(), conceptIri);
+        return resultModel;
+    }
+
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
             Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);

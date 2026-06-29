@@ -13,6 +13,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,7 @@ public class OntologyDetailModel {
 
     @Data
     @Builder
+    @Jacksonized
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ConceptDetailModel {
 

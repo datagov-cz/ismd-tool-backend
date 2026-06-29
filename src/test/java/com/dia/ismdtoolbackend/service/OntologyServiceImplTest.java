@@ -11,7 +11,11 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
+import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
@@ -78,13 +82,16 @@ class OntologyServiceImplTest {
 
     // OutboxConfig mock isEnabled() defaults to false → existing tests exercise the direct path.
     @Mock
-    private com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
+    private OutboxConfig outboxConfig;
 
     @Mock
-    private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
+    private OutboxWriter outboxWriter;
 
     @Mock
-    private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
+    private OutboxRelayTrigger outboxRelayTrigger;
+
+    @Mock
+    private NkdSnapshotService nkdSnapshotService;
 
     @InjectMocks
     private OntologyServiceImpl ontologyService;
@@ -474,8 +481,7 @@ class OntologyServiceImplTest {
     }
 
     private OntologyEditModel createValidOntologyEditModel() {
-        OntologyEditModel model = new OntologyEditModel();
-        return model;
+        return new OntologyEditModel();
     }
 
     private Model createModelWithOntologyData() {
