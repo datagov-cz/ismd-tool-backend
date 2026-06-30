@@ -1,10 +1,14 @@
 package com.dia.ismdtoolbackend.utility.sparql;
 
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
+
+import java.net.HttpURLConnection;
 
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -62,8 +66,7 @@ public final class FusekiSparqlExecutor {
         try (RDFConnection conn = connectionFactory.get()) {
             return operation.apply(conn);
         } catch (QueryExceptionHTTP | HttpException e) {
-            log.error("Fuseki HTTP error during {}: {}", operationLabel, e.getMessage());
-            throw new JenaTDB2Exception(userFacingErrorMessage, e);
+            throw mapHttpFailure(operationLabel, userFacingErrorMessage, e);
         } catch (JenaTDB2Exception e) {
             // Operation already wrapped its own failure (e.g. via a nested executor call);
             // pass through so the inner message survives.
@@ -101,5 +104,44 @@ public final class FusekiSparqlExecutor {
                     semaphoreTimeoutMs, semaphore.availablePermits());
             throw new JenaTDB2Exception("Fuseki server is busy, try again later");
         }
+    }
+
+    /**
+     * Translate a Jena HTTP failure into the right domain exception so the status code
+     * survives to the frontend instead of collapsing into a blanket HTTP 500:
+     * <ul>
+     *   <li><b>404</b> — the graph genuinely isn't there → {@link OntologyNotFoundException} (HTTP 404).</li>
+     *   <li><b>502/503/504</b> and connection-level failures (status {@code <= 0}, how Jena
+     *       reports a dropped/reset connection) — Fuseki is unreachable, not the data missing →
+     *       {@link SparqlEndpointUnavailableException} (HTTP 503), which the outbox treats as transient.</li>
+     *   <li>everything else → {@link JenaTDB2Exception} (HTTP 500), the original behaviour.</li>
+     * </ul>
+     */
+    private RuntimeException mapHttpFailure(String operationLabel, String userFacingErrorMessage, Exception e) {
+        int status = statusCodeOf(e);
+        if (status == HttpURLConnection.HTTP_NOT_FOUND) {
+            log.info("Fuseki returned 404 (graph not found) during {}: {}", operationLabel, e.getMessage());
+            return new OntologyNotFoundException("Slovník nebyl nalezen.", e);
+        }
+        if (status <= 0
+                || status == HttpURLConnection.HTTP_BAD_GATEWAY
+                || status == HttpURLConnection.HTTP_UNAVAILABLE
+                || status == HttpURLConnection.HTTP_GATEWAY_TIMEOUT) {
+            log.error("Fuseki unavailable (status {}) during {}: {}", status, operationLabel, e.getMessage());
+            return new SparqlEndpointUnavailableException("Fuseki", userFacingErrorMessage, e);
+        }
+        log.error("Fuseki HTTP error (status {}) during {}: {}", status, operationLabel, e.getMessage());
+        return new JenaTDB2Exception(userFacingErrorMessage, e);
+    }
+
+    /** Both {@link HttpException} and {@link QueryExceptionHTTP} expose {@code getStatusCode()}, with no common supertype. */
+    private static int statusCodeOf(Exception e) {
+        if (e instanceof HttpException he) {
+            return he.getStatusCode();
+        }
+        if (e instanceof QueryExceptionHTTP qe) {
+            return qe.getStatusCode();
+        }
+        return 0;
     }
 }
