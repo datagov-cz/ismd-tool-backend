@@ -78,6 +78,8 @@ class EsbirkaServiceImplResolveTest {
         assertEquals("§ 2 písm. d)", dto.getFragmentCitation());
         assertNull(dto.getFragmentBodyHtml(),
                 "structural fragments without obsah must surface as null bodyHtml (not blank, not error)");
+        assertNull(dto.getFragmentBody(),
+                "null bodyHtml must yield null fragmentBody (mirrors the nullable contract)");
         assertEquals(LocalDate.of(2024, 12, 31), dto.getVersionValidUntil());
         assertTrue(dto.getIsLatestVersion());
         assertTrue(dto.getDisplayLabel().contains("§ 2 písm. d)"),
@@ -96,6 +98,8 @@ class EsbirkaServiceImplResolveTest {
         assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
         assertEquals(body, dto.getFragmentBodyHtml(),
                 "fragmentBodyHtml must be passed verbatim from SPARQL obsah (preserves <var>/<a> tags for FE rendering)");
+        assertEquals("1. Předání bude uskutečněno do čtyřiceti pěti (45) dnů.", dto.getFragmentBody(),
+                "fragmentBody is the same obsah with markup stripped to raw text");
     }
 
     @Test
