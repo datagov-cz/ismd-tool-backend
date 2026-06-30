@@ -8,14 +8,14 @@ name: Trivy Image Scan
 #   main branch -> ghcr.io/datagov-cz/ismd-tool-backend:latest        (deployed to test + prod)
 #
 # Triggers:
-#   * After "Build Docker on Dev"  completes -> scan dev image
+#   * After "Build Dev Branch"  completes -> scan dev image
 #   * After "Build Docker on Main" completes -> scan main image
 #   * Weekly Monday 07:00 UTC               -> scan BOTH (CVE-feed drift)
 #   * Manual dispatch                        -> pick dev/main/both
 
 on:
   workflow_run:
-    workflows: ["Build Docker on Dev", "Build Docker on Main"]
+    workflows: ["Build Dev Branch", "Build Docker on Main"]
     types: [completed]
   schedule:
     - cron: '0 7 * * 1'
@@ -42,7 +42,7 @@ jobs:
   scan-dev:
     name: Scan dev image
     if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build Docker on Dev' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Build Dev Branch' && github.event.workflow_run.conclusion == 'success') ||
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && (inputs.image_variant == 'dev' || inputs.image_variant == 'both'))
     uses: datagov-cz/ismd-infrastructure/.github/workflows/trivy-reusable.yml@dev
