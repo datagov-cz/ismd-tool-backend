@@ -41,6 +41,7 @@ public class ResolvedLegalSourceDto {
 
     private String fragmentCitation;
     private String fragmentBodyHtml;
+    private String fragmentBody;
     private LocalDate versionValidUntil;
     private Boolean isLatestVersion;
 

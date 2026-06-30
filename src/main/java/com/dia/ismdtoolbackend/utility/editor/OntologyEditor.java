@@ -70,6 +70,12 @@ public class OntologyEditor {
 
         boolean committed = false;
         try {
+            boolean iriChanged = nameChanged && !iri.equals(newOntologyIRI);
+            if (iriChanged) {
+                renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
+                updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
+            }
+
             if (editModel.getNameModel() != null) {
                 updateName(existingOntology, editModel.getNameModel(), model, statementsToRemove, statementsToAdd,
                         newOntologyIRI);
@@ -78,11 +84,6 @@ public class OntologyEditor {
             if (editModel.getDescriptionModel() != null) {
                 updateDescription(existingOntology, editModel.getDescriptionModel(), model, statementsToRemove,
                         statementsToAdd, newOntologyIRI);
-            }
-
-            if (nameChanged && !iri.equals(newOntologyIRI)) {
-                renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
-                updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
             }
 
             model.remove(statementsToRemove.toArray(new Statement[0]));
@@ -122,7 +123,7 @@ public class OntologyEditor {
 
         // Name is required: an empty incoming map is a no-op (merged == existing).
         Map<String, String> existing = RdfLangValues.byLanguage(existingOntology, SKOS.prefLabel);
-        applyMergedLangProperty(existingOntology, model.getResource(newOntologyIRI), SKOS.prefLabel,
+        applyMergedLangProperty(model.getResource(newOntologyIRI), SKOS.prefLabel,
                 existing, nameModel.getName(), model, toRemove, toAdd);
     }
 
@@ -131,29 +132,33 @@ public class OntologyEditor {
         if (descModel == null) return;
 
         Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
+        Resource writeOntology = model.getResource(newOntologyIRI);
         Map<String, String> existing = RdfLangValues.byLanguage(existingOntology, descProperty);
         Map<String, String> incoming = descModel.getDescription();
 
-        // An empty/absent incoming map clears the field entirely.
+        // An empty/absent incoming map clears the field entirely. Removal targets the
+        // write IRI so a rename+clear also cancels the stale copy renameOntologyIRI
+        // staged onto the new IRI (the old-IRI live triples are removed by rename).
         if (incoming == null || incoming.isEmpty()) {
             if (!existing.isEmpty()) {
-                RdfLangValues.removeAllByPredicate(existingOntology, descProperty, toRemove, toAdd);
+                RdfLangValues.removeAllByPredicate(writeOntology, descProperty, toRemove, toAdd);
             }
             return;
         }
 
-        applyMergedLangProperty(existingOntology, model.getResource(newOntologyIRI), descProperty,
+        applyMergedLangProperty(writeOntology, descProperty,
                 existing, incoming, model, toRemove, toAdd);
     }
 
     /**
-     * Merges an incoming {@code lang -> value} map into {@code existing} and, if
-     * changed, removes the property from {@code readResource} and rewrites the
-     * merged values onto {@code writeResource}. The read/write split lets an
-     * ontology rename relocate labels onto the new IRI in the same pass. Mirrors
-     * the MERGE semantics used for concept prefLabel/description/definition.
+     * Merges {@code incoming} ({@code lang -> value}, already read from the old IRI)
+     * into {@code existing} and, if changed, removes {@code property} from
+     * {@code writeResource} and rewrites the merged values onto it. Targeting the
+     * write IRI for removal cancels the stale copy of this property that
+     * {@code renameOntologyIRI} stages onto the new IRI on a rename; with no rename
+     * the write IRI == old IRI, so it behaves as a plain remove-then-rewrite.
      */
-    private void applyMergedLangProperty(Resource readResource, Resource writeResource, Property property,
+    private void applyMergedLangProperty(Resource writeResource, Property property,
                                          Map<String, String> existing, Map<String, String> incoming,
                                          Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         Map<String, String> merged = new HashMap<>(existing);
@@ -167,7 +172,7 @@ public class OntologyEditor {
 
         if (existing.equals(merged)) return;
 
-        RdfLangValues.removeAllByPredicate(readResource, property, toRemove, toAdd);
+        RdfLangValues.removeAllByPredicate(writeResource, property, toRemove, toAdd);
         for (Map.Entry<String, String> entry : merged.entrySet()) {
             String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                     ? entry.getKey()
