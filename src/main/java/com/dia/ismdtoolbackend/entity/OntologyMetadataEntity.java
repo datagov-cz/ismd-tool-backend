@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.entity;
 
+import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -9,6 +10,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +37,15 @@ public class OntologyMetadataEntity {
 
     @Column(name = "is_published")
     private Boolean isPublished;
+
+    /** Outcome of the most recent validation; null until the ontology is first validated. */
+    @Column(name = "last_validation_status")
+    @Enumerated(EnumType.STRING)
+    private OntologyValidationStatus lastValidationStatus;
+
+    /** When validation status was last set. */
+    @Column(name = "last_validation_at", columnDefinition = "timestamptz")
+    private Instant lastValidationAt;
 
     @JsonIgnore
     @OneToMany(mappedBy = "ontologyMetadata", cascade = CascadeType.ALL, orphanRemoval = true)

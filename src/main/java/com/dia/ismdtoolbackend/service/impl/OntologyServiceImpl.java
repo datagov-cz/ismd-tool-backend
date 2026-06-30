@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
@@ -301,6 +302,28 @@ public class OntologyServiceImpl implements OntologyService {
         if (model == null) {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
         }
+
+        // name is required and must include a non-blank cs variant
+        Map<String, String> name = model.getNameModel() != null ? model.getNameModel().getName() : null;
+        if (name == null || name.isEmpty()) {
+            throw new OntologyValidationException("Název slovníku je povinný.");
+        }
+        if (isBlank(name.get(DEFAULT_LANG))) {
+            throw new OntologyValidationException("Název slovníku musí obsahovat českou variantu (cs).");
+        }
+
+        // description is optional, but if present it must include a non-blank cs variant
+        Map<String, String> description = model.getDescriptionModel() != null
+                ? model.getDescriptionModel().getDescription() : null;
+        if (description != null && !description.isEmpty()
+                && description.values().stream().anyMatch(v -> !isBlank(v))
+                && isBlank(description.get(DEFAULT_LANG))) {
+            throw new OntologyValidationException("Popis slovníku musí obsahovat českou variantu (cs).");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {

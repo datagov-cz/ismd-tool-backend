@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
@@ -244,6 +245,68 @@ class OntologyServiceImplTest {
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit metadata"));
         verify(jenaTDB2Repository).deleteGraph(anyString());
+    }
+
+    // ========== createOntology required-field validation ==========
+
+    @Test
+    void createOntology_NameMissing_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        createModel.setNameModel(new NameModel());
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Název slovníku je povinný"));
+        verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+    }
+
+    @Test
+    void createOntology_NameMissingCsVariant_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("en", "test-ontology");
+        createModel.getNameModel().setName(nameMap);
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("českou variantu"));
+        verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+    }
+
+    @Test
+    void createOntology_NameCsBlank_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "   ");
+        createModel.getNameModel().setName(nameMap);
+
+        assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+    }
+
+    @Test
+    void createOntology_DescriptionPresentWithoutCs_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("en", "English only description");
+        createModel.getDescriptionModel().setDescription(descMap);
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Popis slovníku"));
+    }
+
+    @Test
+    void createOntology_DescriptionEmpty_Succeeds() throws OntologyException {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        createModel.setDescriptionModel(new DescriptionModel());
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+
+        when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
+
+        assertNotNull(ontologyService.createOntology(createModel, TEST_USER_ID));
     }
 
     // ========== getOntologyDetailModel Tests ==========

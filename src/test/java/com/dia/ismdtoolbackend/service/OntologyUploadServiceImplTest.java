@@ -8,6 +8,8 @@ import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
+import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
+import com.dia.validation.ValidationReport;
 import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
@@ -86,8 +88,51 @@ class OntologyUploadServiceImplTest {
                 jenaTDB2Repository,
                 publishedResourceUtil
         );
+        // In production `self` is the Spring proxy (so @Transactional applies through the async
+        // lambda). In this unit test there is no proxy — point it at the instance itself so the
+        // delegation to saveValidationOutcome runs the real method directly.
+        ReflectionTestUtils.setField(ontologyUploadService, "self", ontologyUploadService);
         ReflectionTestUtils.setField(ontologyUploadService, "maxFileSizeConfig", "10MB");
         ReflectionTestUtils.setField(ontologyUploadService, "rdfParsingTimeoutSeconds", 60);
+    }
+
+    @Test
+    void requestAndSaveValidationReport_validatorReturnsReport_marksValidated() {
+        OntologyMetadataEntity ontology = new OntologyMetadataEntity();
+        ontology.setId(7L);
+        ontology.setGraphName("http://example.org/o");
+        when(ontologyMetadataRepository.findByGraphName("http://example.org/o")).thenReturn(Optional.of(ontology));
+        when(validationReportRepository.findByOntologyMetadataId(7L)).thenReturn(Optional.empty());
+
+        ValidationReport report = mock(ValidationReport.class);
+        when(report.getResults()).thenReturn(Collections.emptyList());
+        when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.of(report));
+
+        ontologyUploadService.requestAndSaveValidationReport("@prefix x: <x> .", "http://example.org/o");
+
+        ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
+        verify(ontologyMetadataRepository).save(captor.capture());
+        assertEquals(OntologyValidationStatus.VALIDATED, captor.getValue().getLastValidationStatus());
+        assertNotNull(captor.getValue().getLastValidationAt());
+    }
+
+    @Test
+    void requestAndSaveValidationReport_validatorUnavailable_marksSkipped() {
+        OntologyMetadataEntity ontology = new OntologyMetadataEntity();
+        ontology.setId(7L);
+        ontology.setGraphName("http://example.org/o");
+        when(ontologyMetadataRepository.findByGraphName("http://example.org/o")).thenReturn(Optional.of(ontology));
+        when(validationReportRepository.findByOntologyMetadataId(7L)).thenReturn(Optional.empty());
+        // Lenient returns empty when the validator was unavailable — ingest proceeds, status flagged.
+        when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.empty());
+
+        ontologyUploadService.requestAndSaveValidationReport("@prefix x: <x> .", "http://example.org/o");
+
+        ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
+        verify(ontologyMetadataRepository).save(captor.capture());
+        assertEquals(OntologyValidationStatus.SKIPPED_UNAVAILABLE, captor.getValue().getLastValidationStatus());
+        assertNotNull(captor.getValue().getLastValidationAt());
+        verify(validationReportRepository, never()).save(any());
     }
 
     @Test

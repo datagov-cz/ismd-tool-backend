@@ -7,7 +7,9 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
@@ -208,6 +210,57 @@ class ConceptServiceImplTest {
 
         assertTrue(exception.getMessage().contains("povinné"));
         verify(conceptCreator, never()).createSingleConcept(any());
+    }
+
+    @Test
+    void createConcept_NameMissing_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        createModel.setNameModel(new NameModel());
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Název pojmu je povinný"));
+        verify(conceptCreator, never()).createSingleConcept(any());
+    }
+
+    @Test
+    void createConcept_NameMissingCsVariant_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("en", "name");
+        createModel.getNameModel().setName(nameMap);
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("českou variantu"));
+    }
+
+    @Test
+    void createConcept_DescriptionPresentWithoutCs_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        DescriptionModel desc = new DescriptionModel();
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("en", "English only");
+        desc.setDescription(descMap);
+        createModel.setDescriptionModel(desc);
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Popis pojmu"));
+    }
+
+    @Test
+    void createConcept_DefinitionPresentWithoutCs_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        DefinitionModel def = new DefinitionModel();
+        Map<String, String> defMap = new HashMap<>();
+        defMap.put("en", "English only");
+        def.setDefinition(defMap);
+        createModel.setDefinitionModel(def);
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Definice pojmu"));
     }
 
     @Test

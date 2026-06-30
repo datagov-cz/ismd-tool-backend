@@ -1,0 +1,25 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-add-ontology-validation-status
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                tableName: ontologies
+                columnName: last_validation_status
+                schemaName: ismd_schema
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: ontologies
+            columns:
+              # Whether the ontology was validated, and if not, why — so the FE can badge an
+              # ontology whose upload-time validation was skipped because the validator was down,
+              # and offer a manual re-validation. Nullable: pre-existing rows have no status.
+              - column:
+                  name: last_validation_status
+                  type: VARCHAR(50)
+              - column:
+                  name: last_validation_at
+                  type: TIMESTAMP WITH TIME ZONE
