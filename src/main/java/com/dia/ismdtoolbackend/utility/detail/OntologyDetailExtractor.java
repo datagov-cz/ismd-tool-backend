@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -143,7 +144,7 @@ public class OntologyDetailExtractor {
                 .context(CONTEXT)
                 .iri(structure.getOntologyIRI())
                 .types(structure.getVocabularyTypes())
-                .name(createMultilingualMap(structure.getModelName()))
+                .name(extractMultilingualName(structure.getVocabularyResource()))
                 .description(descriptionMap)
                 .creationDate(structure.getCreationDate())
                 .modificationDate(structure.getModificationDate())
@@ -464,39 +465,54 @@ public class OntologyDetailExtractor {
         return null;
     }
 
-    private Map<String, String> createMultilingualMap(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return Collections.emptyMap();
-        }
-        Map<String, String> map = new LinkedHashMap<>();
-        map.put(DEFAULT_LANG, value);
-        return map;
-    }
-
-    private Map<String, String> extractMultilingualDescription(Resource vocabularyResource) {
+    /**
+     * Collect all language-tagged literal values of the given {@code properties}
+     * on {@code vocabularyResource} into a {@code lang -> value} map, preserving
+     * every language variant. Untagged literals key under {@code DEFAULT_LANG}.
+     * Properties are read in order and the first non-blank value for a language
+     * wins, so list more authoritative predicates first.
+     *
+     * <p>Shared by the ontology name and description reads — both carry multiple
+     * language variants. The single-language collapse this replaced was why only
+     * the {@code cs} name variant surfaced in the detail response.
+     */
+    private Map<String, String> extractMultilingualValue(Resource vocabularyResource, Property... properties) {
         if (vocabularyResource == null) {
             return Collections.emptyMap();
         }
 
-        Map<String, String> descriptionMap = new LinkedHashMap<>();
-        Property descProperty = ResourceFactory.createProperty(DCT_NS + "description");
-
-        StmtIterator iter = vocabularyResource.listProperties(descProperty);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getObject().isLiteral()) {
-                Literal literal = stmt.getObject().asLiteral();
-                String lang = literal.getLanguage();
-                String value = literal.getString();
-
-                if (value != null && !value.trim().isEmpty()) {
-                    String languageTag = (lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG;
-                    descriptionMap.put(languageTag, value);
+        Map<String, String> valuesByLang = new LinkedHashMap<>();
+        for (Property property : properties) {
+            StmtIterator iter = vocabularyResource.listProperties(property);
+            while (iter.hasNext()) {
+                Statement stmt = iter.next();
+                if (!stmt.getObject().isLiteral()) {
+                    continue;
                 }
+                Literal literal = stmt.getObject().asLiteral();
+                String value = literal.getString();
+                if (value == null || value.trim().isEmpty()) {
+                    continue;
+                }
+                String lang = literal.getLanguage();
+                String languageTag = (lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG;
+                valuesByLang.putIfAbsent(languageTag, value);
             }
         }
 
-        return descriptionMap;
+        return valuesByLang;
+    }
+
+    private Map<String, String> extractMultilingualName(Resource vocabularyResource) {
+        // Same predicates ModelAnalyzer recognises as the vocabulary name; rdfs:label first.
+        return extractMultilingualValue(vocabularyResource,
+                ResourceFactory.createProperty(RDFS.getURI() + "label"),
+                ResourceFactory.createProperty(SKOS_NS + "prefLabel"));
+    }
+
+    private Map<String, String> extractMultilingualDescription(Resource vocabularyResource) {
+        return extractMultilingualValue(vocabularyResource,
+                ResourceFactory.createProperty(DCT_NS + "description"));
     }
 
     /**
