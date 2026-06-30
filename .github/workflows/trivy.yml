@@ -62,7 +62,7 @@ jobs:
       has_app: ${{ steps.probe.outputs.has_app }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: main
           sparse-checkout: pom.xml
