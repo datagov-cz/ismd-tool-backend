@@ -15,6 +15,7 @@ import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
+import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -304,14 +305,15 @@ public class OntologyController {
         log.info("Ontology validation requested, slug: {}, ontologyIRI: {}", slug, ontologyMetadata.getGraphName());
 
         String ttlContent = ontologyService.getTtlContentFromOntology(ontologyMetadata);
+
         Optional<ValidationReport> validationReport = validationClient.requestValidation(ttlContent, ontologyMetadata.getGraphName());
 
         ValidationReport report = validationReport.orElseThrow(() -> {
             log.warn("Validation report not received for ontology: {}", ontologyMetadata.getGraphName());
-            return new OntologyValidationException("Validace se nezdařila - validační služba nevrátila odpověď.");
+            return new ValidationServiceUnavailableException("Validační služba",
+                    "Validační služba nevrátila odpověď.");
         });
-        validationService.saveValidationReport(validationReport.get(), ontologyMetadata, securityUser.getUserId());
-
+        validationService.saveValidationReport(report, ontologyMetadata, securityUser.getUserId());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(report, "Validace proběhla úspěšně."));
     }
