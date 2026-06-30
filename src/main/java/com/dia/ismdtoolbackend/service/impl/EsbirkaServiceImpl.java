@@ -14,6 +14,7 @@ import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
@@ -425,6 +426,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             return baseDtoBuilder(parsed)
                     .fragmentCitation(m.citation())
                     .fragmentBodyHtml(m.bodyHtml())
+                    .fragmentBody(EsbirkaHtmlText.toPlainText(m.bodyHtml()))
                     .versionValidUntil(m.versionValidUntil())
                     .isLatestVersion(m.isLatest())
                     .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, m.citation()))
