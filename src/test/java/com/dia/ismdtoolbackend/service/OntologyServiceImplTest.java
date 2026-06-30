@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
@@ -363,7 +364,7 @@ class OntologyServiceImplTest {
     void getOntologyDetailModel_OntologyNotFound() {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
@@ -374,7 +375,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -575,7 +576,7 @@ class OntologyServiceImplTest {
     void getConceptsByIri_ontologyNotFound_throws() {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
 
-        OntologyException ex = assertThrows(OntologyException.class,
+        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
         assertTrue(ex.getMessage().contains(TEST_GRAPH_NAME));
     }
@@ -586,7 +587,7 @@ class OntologyServiceImplTest {
                 .thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException ex = assertThrows(OntologyException.class,
+        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
         assertTrue(ex.getMessage().toLowerCase().contains("prázdn")
                 || ex.getMessage().toLowerCase().contains("empty"));

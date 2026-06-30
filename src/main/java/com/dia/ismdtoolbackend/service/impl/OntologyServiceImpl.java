@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
@@ -161,7 +162,7 @@ public class OntologyServiceImpl implements OntologyService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologySlug {} not found", ontologySlug);
-            throw new OntologyException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
+            throw new OntologyNotFoundException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
         }
 
         OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
@@ -171,7 +172,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (rawModel.isEmpty()) {
             log.error("Ontology model is empty for graph: {}", graphName);
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
         // OFN transform is expensive (filter + reformat over the full graph);
@@ -219,12 +220,12 @@ public class OntologyServiceImpl implements OntologyService {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIri);
         if (ontologyMetadataOpt.isEmpty()) {
             log.info("ISMD ontology not found for IRI: {}", ontologyIri);
-            throw new OntologyException("Slovník s IRI " + ontologyIri + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s IRI " + ontologyIri + " nebyl nalezen.");
         }
 
         Model rawModel = jenaTDB2Repository.fetchGraph(ontologyIri);
         if (rawModel.isEmpty()) {
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
