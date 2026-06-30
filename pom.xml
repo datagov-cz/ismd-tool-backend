@@ -28,8 +28,8 @@
     </scm>
     <properties>
         <java.version>17</java.version>
-        <ismd-validator-common.version>1.0.16</ismd-validator-common.version>
-        <jena.version>5.4.0</jena.version>
+        <ismd-validator-common.version>1.0.17</ismd-validator-common.version>
+        <jena.version>6.1.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
         <jacoco.line.minimum>0.55</jacoco.line.minimum>
         <jacoco.branch.minimum>0.45</jacoco.branch.minimum>
@@ -200,12 +200,12 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.18.3</version>
+            <version>1.22.2</version>
         </dependency>
         <dependency>
             <groupId>org.wiremock</groupId>
             <artifactId>wiremock-standalone</artifactId>
-            <version>3.9.2</version>
+            <version>3.13.2</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
