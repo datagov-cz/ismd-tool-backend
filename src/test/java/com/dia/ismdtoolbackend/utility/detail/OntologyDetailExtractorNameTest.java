@@ -78,6 +78,32 @@ class OntologyDetailExtractorNameTest {
     }
 
     @Test
+    void extractOntologyDetail_nkdShapeConceptScheme_surfacesAllNameLanguages() {
+        // Mirrors the NKD detail path: a ConceptScheme ontology (skos:prefLabel,
+        // no rdfs:label) with an in-scheme concept, run through the NKD OFN
+        // transform + extract via the iriResolver. Pins that the multilingual
+        // ontology name survives end-to-end on the NKD path, not just locally.
+        Model raw = ModelFactory.createDefaultModel();
+        Resource ontology = raw.createResource(ONTOLOGY_IRI);
+        ontology.addProperty(RDF.type, raw.createResource("http://www.w3.org/2002/07/owl#Ontology"));
+        ontology.addProperty(SKOS.prefLabel, "Slovník", "cs");
+        ontology.addProperty(SKOS.prefLabel, "Vocabulary", "en");
+
+        Resource concept = raw.createResource(ONTOLOGY_IRI + "/pojem/věc");
+        concept.addProperty(RDF.type, raw.createResource("http://www.w3.org/2004/02/skos/core#Concept"));
+        concept.addProperty(SKOS.inScheme, ontology);
+        concept.addProperty(SKOS.prefLabel, "Věc", "cs");
+
+        Model processed = extractor.applyOFNTransformationsForNkd(raw);
+        OntologyDetailModel detail = extractor.extractOntologyDetail(processed, OntologyDetailExtractor.iriResolver());
+
+        assertThat(detail.getName())
+                .containsEntry("cs", "Slovník")
+                .containsEntry("en", "Vocabulary")
+                .hasSize(2);
+    }
+
+    @Test
     void extractOntologyDetail_untaggedLabel_keysUnderDefaultLang() {
         Model model = ModelFactory.createDefaultModel();
         Resource ontology = model.createResource(ONTOLOGY_IRI);
