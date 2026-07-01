@@ -29,16 +29,20 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
     @Query("SELECT c FROM ConceptMetadataEntity c WHERE c.id = :id")
     Optional<ConceptMetadataEntity> findWithLockById(@Param("id") Long id);
 
+    /**
+     * Default (no-source) concept search. Any authenticated caller sees every
+     * concept — published AND unpublished drafts of all users. Anonymous callers
+     * never reach this method (forced to NKD at
+     * {@code SearchServiceImpl.resolveSource}).
+     */
     @Query(value = """
             SELECT * FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
-              AND (c.is_published = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByText(@Param("query") String query,
-                                              @Param("userId") String userId,
                                               @Param("hasGraphFilter") boolean hasGraphFilter,
                                               @Param("graphNames") List<String> graphNames,
                                               @Param("hasTypeFilter") boolean hasTypeFilter,
@@ -72,12 +76,10 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
             SELECT COUNT(*) FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
-              AND (c.is_published = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     long countSearchByText(@Param("query") String query,
-                           @Param("userId") String userId,
                            @Param("hasGraphFilter") boolean hasGraphFilter,
                            @Param("graphNames") List<String> graphNames,
                            @Param("hasTypeFilter") boolean hasTypeFilter,
@@ -108,15 +110,17 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
      * Returns {@code Object[]} pairs {@code [graphName, count]} so callers can
      * fold into a map. Graphs with zero matching concepts are simply absent
      * from the result.
+     * <p>
+     * Counts every concept in the given graphs — published and unpublished alike —
+     * to stay consistent with the default search's all-drafts visibility. Only ever
+     * called for graphs that already appeared as visible ontology hits.
      */
     @Query(value = """
             SELECT c.graph_name, COUNT(*) FROM ismd_schema.concepts c
             WHERE c.graph_name IN (:graphNames)
-              AND (c.is_published = true OR c.user_id = :userId)
             GROUP BY c.graph_name
             """, nativeQuery = true)
-    List<Object[]> countByGraphNameIn(@Param("graphNames") List<String> graphNames,
-                                       @Param("userId") String userId);
+    List<Object[]> countByGraphNameIn(@Param("graphNames") List<String> graphNames);
 
     Optional<ConceptMetadataEntity> findByConceptIri(String conceptIri);
 

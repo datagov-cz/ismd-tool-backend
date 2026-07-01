@@ -129,7 +129,7 @@ public class IsmdSearchProvider implements SearchProvider {
         List<SearchResultDto> paged = results.subList(fromIndex, toIndex);
 
         // Per-ontology concept counts for the page — single batched PG query.
-        populateOntologyConceptCounts(paged, userId);
+        populateOntologyConceptCounts(paged);
 
         // Per-source totals from dedicated count queries (cheap — no LIMIT/OFFSET).
         Integer totalOntologies = SearchProvider.countIfMatches(
@@ -149,7 +149,7 @@ public class IsmdSearchProvider implements SearchProvider {
         return new SearchProviderResult(paged, results.size(), totalOntologies, totalConcepts);
     }
 
-    private void populateOntologyConceptCounts(List<SearchResultDto> paged, String userId) {
+    private void populateOntologyConceptCounts(List<SearchResultDto> paged) {
         List<String> graphNames = paged.stream()
                 .filter(r -> r.getType() == SearchType.ONTOLOGY)
                 .map(SearchResultDto::getIri)
@@ -160,7 +160,7 @@ public class IsmdSearchProvider implements SearchProvider {
 
         Map<String, Integer> counts;
         try {
-            List<Object[]> rows = conceptMetadataRepository.countByGraphNameIn(graphNames, userId);
+            List<Object[]> rows = conceptMetadataRepository.countByGraphNameIn(graphNames);
             counts = new HashMap<>(rows.size() * 2);
             for (Object[] row : rows) {
                 if (row.length >= 2 && row[0] != null && row[1] != null) {
@@ -185,7 +185,7 @@ public class IsmdSearchProvider implements SearchProvider {
         try {
             long count = Boolean.FALSE.equals(publishedFilter)
                     ? ontologyMetadataRepository.countSearchByTextUnpublished(query, userId, isAdmin)
-                    : ontologyMetadataRepository.countSearchByText(query, userId);
+                    : ontologyMetadataRepository.countSearchByText(query);
             return (int) count;
         } catch (RuntimeException e) {
             log.warn("PG ontology total-count failed: {}", e.getMessage());
@@ -207,7 +207,7 @@ public class IsmdSearchProvider implements SearchProvider {
                             query, userId, isAdmin, hasGraphFilter, graphNames,
                             hasTypeFilter, conceptTypeName)
                     : conceptMetadataRepository.countSearchByText(
-                            query, userId, hasGraphFilter, graphNames,
+                            query, hasGraphFilter, graphNames,
                             hasTypeFilter, conceptTypeName);
             return (int) count;
         } catch (RuntimeException e) {
@@ -222,7 +222,7 @@ public class IsmdSearchProvider implements SearchProvider {
         if (Boolean.FALSE.equals(publishedFilter)) {
             entities = ontologyMetadataRepository.searchByTextUnpublished(query, userId, isAdmin);
         } else {
-            entities = ontologyMetadataRepository.searchByText(query, userId);
+            entities = ontologyMetadataRepository.searchByText(query);
         }
 
         return entities.stream()
@@ -313,7 +313,7 @@ public class IsmdSearchProvider implements SearchProvider {
                             query, userId, isAdmin, filter.hasGraphFilter(), filter.graphNames(),
                             hasTypeFilter, conceptTypeName)
                     : conceptMetadataRepository.searchByText(
-                            query, userId, filter.hasGraphFilter(), filter.graphNames(),
+                            query, filter.hasGraphFilter(), filter.graphNames(),
                             hasTypeFilter, conceptTypeName);
             return entities.stream()
                     .map(this::mapConceptEntity)
@@ -704,13 +704,16 @@ public class IsmdSearchProvider implements SearchProvider {
         return null;
     }
 
+    /**
+     * Graph names visible on the default (no-source) search pass: every ontology,
+     * published AND unpublished drafts of all users. Scopes Fuseki text queries so a
+     * concept hit is transitively inside an ontology the caller may see — which, on
+     * this pass, is all of them (anonymous callers never reach ISMD search). The
+     * {@code userId} parameter is retained for signature symmetry with the
+     * unpublished-only path but is no longer needed to narrow visibility.
+     */
     private List<String> getVisibleGraphNames(String userId) {
-        List<OntologyMetadataEntity> ontologies = new ArrayList<>(ontologyMetadataRepository.findAllByIsPublished(true));
-        if (userId != null) {
-            List<OntologyMetadataEntity> userOntologies = ontologyMetadataRepository.findAllByUserIdAndIsPublished(userId, false);
-            ontologies.addAll(userOntologies);
-        }
-        return ontologies.stream()
+        return ontologyMetadataRepository.findAll().stream()
                 .map(OntologyMetadataEntity::getGraphName)
                 .filter(Objects::nonNull)
                 .distinct()
