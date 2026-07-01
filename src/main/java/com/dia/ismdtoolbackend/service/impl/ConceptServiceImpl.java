@@ -196,7 +196,7 @@ public class ConceptServiceImpl implements ConceptService {
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(entity.getConceptIri());
+                    List<CommentEntity> commentEntities = commentRepository.findByConceptMetadataId(entity.getId());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
@@ -241,7 +241,7 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
 
-        List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(conceptIri);
+        List<CommentEntity> commentEntities = commentRepository.findByConceptMetadataId(metadataEntity.getId());
         metadataModel.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
 
         GetConceptDto result = new GetConceptDto();
