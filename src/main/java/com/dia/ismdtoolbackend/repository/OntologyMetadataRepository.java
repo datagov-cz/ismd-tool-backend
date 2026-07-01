@@ -10,13 +10,17 @@ import java.util.Optional;
 
 public interface OntologyMetadataRepository extends JpaRepository<OntologyMetadataEntity, Long> {
 
+    /**
+     * Default (no-source) ontology search. Any authenticated caller sees every
+     * ontology — published AND unpublished drafts of all users. Anonymous callers
+     * never reach this method (they are forced to NKD at
+     * {@code SearchServiceImpl.resolveSource}).
+     */
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-              AND (o.is_published = true OR o.user_id = :userId)
             """, nativeQuery = true)
-    List<OntologyMetadataEntity> searchByText(@Param("query") String query,
-                                               @Param("userId") String userId);
+    List<OntologyMetadataEntity> searchByText(@Param("query") String query);
 
     /**
      * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
@@ -51,10 +55,8 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-              AND (o.is_published = true OR o.user_id = :userId)
             """, nativeQuery = true)
-    long countSearchByText(@Param("query") String query,
-                           @Param("userId") String userId);
+    long countSearchByText(@Param("query") String query);
 
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o

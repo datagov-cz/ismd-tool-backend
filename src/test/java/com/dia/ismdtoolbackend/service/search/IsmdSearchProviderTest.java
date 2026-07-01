@@ -48,7 +48,7 @@ class IsmdSearchProviderTest {
                 "https://example.org/concept/osoba", "osoba", "Osoba",
                 ConceptType.TRIDA, "https://example.org/ontology/1", true);
 
-        when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList(), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("osoba"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of(concept));
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
@@ -74,7 +74,7 @@ class IsmdSearchProviderTest {
         OntologyMetadataEntity ontology = createOntology(
                 "https://example.org/ontology/1", "test-ontology", false);
 
-        when(ontologyMetadataRepository.searchByText("test", "user1"))
+        when(ontologyMetadataRepository.searchByText("test"))
                 .thenReturn(List.of(ontology));
 
         SearchProvider.SearchProviderResult result = createProvider().search(
@@ -97,9 +97,9 @@ class IsmdSearchProviderTest {
                 "https://example.org/concept/osoba", "osoba", "Osoba",
                 ConceptType.TRIDA, "https://example.org/ontology/1", true);
 
-        when(ontologyMetadataRepository.searchByText("osoba", "user1"))
+        when(ontologyMetadataRepository.searchByText("osoba"))
                 .thenReturn(List.of(ontology));
-        when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList(), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("osoba"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of(concept));
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
@@ -116,7 +116,7 @@ class IsmdSearchProviderTest {
     void search_withOntologyIriFilter_passesGraphNamesToConceptQuery() {
         List<String> ontologyIris = List.of("https://example.org/ontology/1");
 
-        when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(true), eq(ontologyIris), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("osoba"), eq(true), eq(ontologyIris), eq(false), isNull()))
                 .thenReturn(List.of());
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
@@ -124,7 +124,7 @@ class IsmdSearchProviderTest {
 
         createProvider().search("osoba", SearchType.CONCEPT, 20, 0, "cs", ontologyIris, null, "user1", false, null);
 
-        verify(conceptMetadataRepository).searchByText("osoba", "user1", true, ontologyIris, false, null);
+        verify(conceptMetadataRepository).searchByText("osoba", true, ontologyIris, false, null);
     }
 
     @Test
@@ -135,9 +135,9 @@ class IsmdSearchProviderTest {
                 "https://example.org/shared-iri", "shared-concept", "Shared",
                 ConceptType.TRIDA, "https://example.org/ontology/1", true);
 
-        when(ontologyMetadataRepository.searchByText("shared", "user1"))
+        when(ontologyMetadataRepository.searchByText("shared"))
                 .thenReturn(List.of(ontology));
-        when(conceptMetadataRepository.searchByText(eq("shared"), eq("user1"), eq(false), anyList(), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("shared"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of(concept));
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
@@ -151,9 +151,9 @@ class IsmdSearchProviderTest {
 
     @Test
     void search_emptyResults_returnsEmpty() {
-        when(ontologyMetadataRepository.searchByText("xyz", "user1"))
+        when(ontologyMetadataRepository.searchByText("xyz"))
                 .thenReturn(List.of());
-        when(conceptMetadataRepository.searchByText(eq("xyz"), eq("user1"), eq(false), anyList(), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("xyz"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of());
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
@@ -172,7 +172,7 @@ class IsmdSearchProviderTest {
         ConceptMetadataEntity concept2 = createConcept("https://example.org/concept/2", "concept-2", "Concept 2", null, null, true);
         ConceptMetadataEntity concept3 = createConcept("https://example.org/concept/3", "concept-3", "Concept 3", null, null, true);
 
-        when(conceptMetadataRepository.searchByText(eq("concept"), eq("user1"), eq(false), anyList(), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("concept"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of(concept1, concept2, concept3));
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
@@ -196,7 +196,7 @@ class IsmdSearchProviderTest {
                 "https://example.org/concept/osoba", "osoba", "Osoba",
                 ConceptType.TRIDA, "https://example.org/ontology/1", true);
 
-        when(conceptMetadataRepository.searchByText(eq("osoba"), eq("user1"), eq(false), anyList(), eq(false), isNull()))
+        when(conceptMetadataRepository.searchByText(eq("osoba"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of(pgConcept));
 
         // Fuseki returns same concept with description
@@ -209,8 +209,7 @@ class IsmdSearchProviderTest {
         fusekiRow.put("types", "http://www.w3.org/2004/02/skos/core#Concept");
 
         OntologyMetadataEntity published = createOntology("https://example.org/ontology/1", "ont1", true);
-        when(ontologyMetadataRepository.findAllByIsPublished(true)).thenReturn(List.of(published));
-        when(ontologyMetadataRepository.findAllByUserIdAndIsPublished("user1", false)).thenReturn(List.of());
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(published));
 
         when(jenaTDB2Repository.searchByText(eq("osoba"), anyList(), anyInt(), any()))
                 .thenReturn(List.of(fusekiRow));
