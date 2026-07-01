@@ -189,7 +189,9 @@ public final class RdfTestModelFactory {
     }
 
     public static void addUstanoveniNeverejnost(Resource concept, OntModel model, String targetIri) {
-        Property prop = model.createProperty(L111_NS + USTANOVENI_LONG);
+        // Mirror the production writers (ConceptCreator / ConceptFieldUpdaters), which
+        // store this provision under OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST.
+        Property prop = model.createProperty(L111_NS + USTANOVENI_NEVEREJNOST);
         concept.addProperty(prop, model.createResource(targetIri));
     }
 

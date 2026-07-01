@@ -437,7 +437,6 @@ public class OntologyDetailExtractor {
         return value instanceof String s ? s : null;
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, String> asMultilingualMap(Object value) {
         if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
             return null;
@@ -520,8 +519,7 @@ public class OntologyDetailExtractor {
      * Returns an empty list (never null) when the input is null/empty, so the
      * field always serializes as {@code []}. Never calls SPARQL — fragment URLs
      * are flagged {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
-     */
-    /**
+     * <p>
      * Read {@code rdfs:range} from a property {@code Resource} and emit it in
      * the same shape {@code ConceptProcessor.addDomainAndRange} writes to the
      * JSON map: abbreviated to {@code xsd:*} when in the XSD namespace, else
