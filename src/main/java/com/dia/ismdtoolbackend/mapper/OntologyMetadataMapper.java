@@ -35,8 +35,8 @@ public interface OntologyMetadataMapper {
         model.setId(entity.getId());
         model.setUserId(entity.getUserId());
         model.setComment(entity.getComment());
-        model.setOntologyIRI(entity.getOntologyIRI());
-        model.setConceptIRI(entity.getConceptIRI());
+        model.setOntologyIRI(entity.getOntologyMetadata() == null ? null : entity.getOntologyMetadata().getGraphName());
+        model.setConceptIRI(entity.getConceptMetadata() == null ? null : entity.getConceptMetadata().getConceptIri());
         model.setPostedTime(entity.getPostedTime());
         return model;
     }

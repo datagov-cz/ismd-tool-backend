@@ -184,7 +184,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
 
-        List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
+        List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(metadataEntity.getId());
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
         List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
@@ -421,7 +421,7 @@ public class OntologyServiceImpl implements OntologyService {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
                     Model graphModel = perGraphModels.get(entity.getGraphName());
                     enrichMetadataFromModel(model, entity, graphModel);
-                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
+                    List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(entity.getId());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })

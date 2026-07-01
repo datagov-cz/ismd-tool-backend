@@ -338,7 +338,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(metadataModel);
-        when(commentRepository.findByOntologyIRI(TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+        when(commentRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(List.of(conceptEntity));
         when(conceptMetadataMapper.toDto(conceptEntity)).thenReturn(conceptModel);
@@ -722,13 +722,16 @@ class OntologyServiceImplTest {
     @Test
     void getAll_enrichesEachEntityWithBatchMetadata() {
         OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
         e1.setGraphName("http://example.org/o/1");
         OntologyMetadataEntity e2 = new OntologyMetadataEntity();
+        e2.setId(2L);
         e2.setGraphName("http://example.org/o/2");
         // Entity with null graphName must be filtered out of the batch fetch but
         // still mapped via the entity stream — its enrichMetadataFromModel call
         // receives a null model.
         OntologyMetadataEntity eNoGraph = new OntologyMetadataEntity();
+        eNoGraph.setId(3L);
         eNoGraph.setGraphName(null);
         when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1, e2, eNoGraph));
 
@@ -744,9 +747,9 @@ class OntologyServiceImplTest {
         when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
 
         CommentEntity comment = new CommentEntity();
-        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of(comment));
-        when(commentRepository.findByOntologyIRI("http://example.org/o/2")).thenReturn(List.of());
-        when(commentRepository.findByOntologyIRI(null)).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of(comment));
+        when(commentRepository.findByOntologyMetadataId(2L)).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(3L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
@@ -761,7 +764,7 @@ class OntologyServiceImplTest {
         // fallback value — what matters is enrichMetadataFromModel was called and returned
         // without throwing).
         assertNotNull(mNoGraph);
-        verify(commentRepository).findByOntologyIRI("http://example.org/o/1");
+        verify(commentRepository).findByOntologyMetadataId(1L);
     }
 
     @Test
@@ -799,6 +802,7 @@ class OntologyServiceImplTest {
     @Test
     void getBySlugs_happyPath_enrichesViaBatchMetadata() {
         OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
         e1.setGraphName("http://example.org/o/1");
         when(ontologyMetadataRepository.findBySlugIn(List.of("slug-1"))).thenReturn(List.of(e1));
 
@@ -808,7 +812,7 @@ class OntologyServiceImplTest {
 
         OntologyMetadataModel m1 = new OntologyMetadataModel();
         when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));
