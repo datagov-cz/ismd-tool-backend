@@ -209,6 +209,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/concept/*/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/concept/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/concept/*/localcopy/*/update").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/concept/*/localcopy/*").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
                         // Admin-only PG↔TDB2 reconciler. Role check is enforced by

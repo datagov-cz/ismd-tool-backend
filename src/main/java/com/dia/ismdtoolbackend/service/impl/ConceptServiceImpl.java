@@ -17,7 +17,12 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
+import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
@@ -29,14 +34,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -58,6 +68,8 @@ public class ConceptServiceImpl implements ConceptService {
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
+    private final NkdSnapshotService nkdSnapshotService;
+    private final NkdLinkDetector nkdLinkDetector;
 
     @Override
     @Transactional
@@ -124,6 +136,16 @@ public class ConceptServiceImpl implements ConceptService {
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
+        // NKD local-copy cascade: drop the snapshot rows for the deleted concepts and get back the NKD
+        // IRIs whose copy is now orphaned (this batch held its last referrers). Appending them to the
+        // delete-URI list lets the existing sweep remove the orphaned copy subjects too — safe only
+        // because they are last-referrer, so no surviving owner's link is harmed.
+        List<Long> deletedConceptIds = relatedConceptEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        List<String> orphanedNkdCopies = nkdSnapshotService.cascadeConceptDeletion(deletedConceptIds, graphName);
+        relatedConceptUris.addAll(orphanedNkdCopies);
+
         if (outboxConfig.isEnabled()) {
             // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
             // atomically with the PG metadata delete below.
@@ -153,26 +175,43 @@ public class ConceptServiceImpl implements ConceptService {
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
-        ConceptEditor.EditResult editResult = performConceptEdit(metadata.getConceptIri(), conceptEditModel, model, graphName);
+        // Aggregate key = the PRE-EDIT IRI (metadata.getConceptIri() before the reconcile mutates it),
+        // NOT the new IRI. A createConcept keys on the concept's IRI; this concept's pre-edit IRI equals
+        // that same IRI, so a create and a subsequent rename share an aggregate and the per-aggregate
+        // ordering gate relates them (the rename's DELETE of old-IRI triples can never apply before the
+        // create's INSERT of them). Keying on the NEW IRI would make them different aggregates and reopen
+        // the create→rename inversion (review #4 / M1).
+        String aggregateIri = metadata.getConceptIri();
+
+        ConceptEditor.EditResult editResult = performConceptEdit(aggregateIri, conceptEditModel, model, graphName);
+
+        // Reconcile NKD links and union the resulting copy delta with the editor's, so the link and the
+        // copy ride one owner-keyed aggregate. The snapshot service reads owner.getConceptIri(), so the
+        // metadata IRI is set to its post-edit value first. reconcileNkdLinks returns its own mutable set
+        // (EditResult's are immutable copies), which we merge — re-using EditResult's sets would throw.
+        if (editResult.iriChanged) {
+            metadata.setConceptIri(editResult.newConceptIRI);
+        }
+        OwnerChangeSet snapshotDelta = reconcileNkdLinks(metadata, model);
+        Set<Statement> toRemove = new HashSet<>(editResult.statementsToRemove);
+        toRemove.addAll(snapshotDelta.toRemove);
+        Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
+        toAdd.addAll(snapshotDelta.toAdd);
 
         if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the editor's exact change sets (NOT a whole-graph PUT), committed
-            // atomically with the metadata update below.
-            //
-            // Aggregate key = the PRE-EDIT IRI (metadata.getConceptIri() before it's mutated below),
-            // NOT the new IRI. A createConcept keys on the concept's IRI; this concept's pre-edit IRI
-            // equals that same IRI, so a create and a subsequent rename share an aggregate and the
-            // per-aggregate ordering gate relates them (the rename's DELETE of old-IRI triples can
-            // never apply before the create's INSERT of them). Keying on the NEW IRI would make them
-            // different aggregates and reopen the create→rename inversion (review #4 / M1).
-            String aggregateIri = metadata.getConceptIri();
-            outboxWriter.enqueueUpsert(graphName, aggregateIri,
-                    editResult.statementsToRemove, editResult.statementsToAdd);
+            // Outbox path: enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a
+            // whole-graph PUT, committed atomically with the metadata update below.
+            outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
             updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
             outboxRelayTrigger.nudgeAfterCommit();
             return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
         }
 
+        // Direct (outbox-disabled) path: the editor already applied its delta to `model`, but the snapshot
+        // copy triples are not yet in it. Apply the combined delta so the copy reaches TDB2 in the same
+        // write as the link. Idempotent — re-applying the editor's own triples is a no-op.
+        model.remove(new ArrayList<>(toRemove));
+        model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
@@ -391,6 +430,80 @@ public class ConceptServiceImpl implements ConceptService {
         if (conceptResource == null || !model.containsResource(conceptResource)) {
             log.error("Concept {} not found in graph {}", conceptIRI, graphName);
             throw new OntologyException("Pojem s IRI " + conceptIRI + " nebyl nalezen ve slovníku.");
+        }
+    }
+
+    /**
+     * Reconciles this concept's links to published NKD concepts against its local-copy snapshots and
+     * returns the materialized-copy delta as a fresh mutable {@link OwnerChangeSet} for the caller to
+     * merge into the owner aggregate's flush. Operates on the post-edit {@code model} and owner IRI,
+     * inside the edit transaction.
+     *
+     * <p>Returns its own change set rather than mutating {@code EditResult}'s, whose sets are immutable
+     * copies. Best-effort: a transient NKD outage never rolls back the edit (the service skips); only a
+     * confirmed-published domain/range link throws (HTTP 400).
+     */
+    private OwnerChangeSet reconcileNkdLinks(ConceptMetadataEntity owner, Model model) {
+        String ownerIri = owner.getConceptIri();
+        String graphScheme = owner.getGraphName();
+        OwnerChangeSet ownerChangeSet = new OwnerChangeSet();
+
+        List<String> domainRangeTargets =
+                nkdLinkDetector.forbiddenDomainRangeTargets(ownerIri, graphScheme, model);
+        if (!domainRangeTargets.isEmpty()) {
+            Set<String> publishedForbidden = publishedAmong(domainRangeTargets);
+            if (!publishedForbidden.isEmpty()) {
+                throw new OntologyValidationException(
+                        "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: "
+                                + publishedForbidden);
+            }
+        }
+
+        List<NkdLinkDetector.LinkTarget> allowed =
+                nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
+        Set<String> currentTargetIris = new HashSet<>();
+        allowed.forEach(t -> currentTargetIris.add(t.targetIri()));
+
+        List<NkdConceptSnapshotEntity> existing = nkdSnapshotService.findForConcept(owner.getId());
+        if (!existing.isEmpty()) {
+            Set<Statement> ownerOutgoing = outgoingStatements(model, ownerIri);
+            for (NkdConceptSnapshotEntity snapshot : existing) {
+                if (!currentTargetIris.contains(snapshot.getNkdIri())) {
+                    nkdSnapshotService.removeSnapshotAndLink(snapshot, ownerOutgoing, ownerChangeSet);
+                }
+            }
+        }
+
+        for (NkdLinkDetector.LinkTarget target : allowed) {
+            nkdSnapshotService.createOrRefreshSnapshot(
+                    owner, target.targetIri(), target.linkType().value(), ownerChangeSet);
+        }
+        return ownerChangeSet;
+    }
+
+    /** The owner concept's current outgoing statements in {@code model} (for unlink triple removal). */
+    private Set<Statement> outgoingStatements(Model model, String ownerIri) {
+        Set<Statement> out = new HashSet<>();
+        Resource ownerRes = model.getResource(ownerIri);
+        StmtIterator it = model.listStatements(ownerRes, null, (RDFNode) null);
+        try {
+            while (it.hasNext()) {
+                out.add(it.next());
+            }
+        } finally {
+            it.close();
+        }
+        return out;
+    }
+
+    /** Best-effort batch "which of these IRIs are published in NKD"; empty set on any failure (fail-open). */
+    private Set<String> publishedAmong(List<String> iris) {
+        try {
+            return new HashSet<>(nkdSparqlClient.getPublishedResourcesList(iris));
+        } catch (Exception e) {
+            log.warn("NKD published-check failed during edit reconcile (fail-open, enforcement skipped): {}",
+                    e.getMessage());
+            return Set.of();
         }
     }
 
