@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,8 +98,11 @@ public class OutboxRelay {
                 row.setStatus(OutboxStatus.DONE);
                 row.setCompletedAt(Instant.now());
                 applied++;
-            } catch (JenaTDB2Exception e) {
+            } catch (JenaTDB2Exception | SparqlEndpointUnavailableException e) {
                 // Transient/store failure — retry until the attempts cap, then FAILED.
+                // SparqlEndpointUnavailableException is how the executor now reports a Fuseki
+                // outage (503/connection drop); like a JenaTDB2Exception it must retry, not
+                // permanent-fail down the generic RuntimeException branch below.
                 recordTransientFailure(row, e);
                 haltedAggregates.add(aggregate); // preserve order: no later row for this aggregate
             } catch (IllegalArgumentException e) {

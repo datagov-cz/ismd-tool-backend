@@ -26,7 +26,6 @@ public class TurtleFormatterUtil {
     private static final String TYP_OBSAHU_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-typ-obsahu-údaje";
     private static final String ZPUSOB_SDILENI_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-způsob-sdílení-údaje";
     private static final String ZPUSOB_ZISKANI_UDAJU = "https://slovník.gov.cz/legislativní/sbírka/360/2023/pojem/má-způsob-získání-údaje";
-    private static final String USTANOVENI_NEVEREJNOST= "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/je-vymezen-ustanovení-stanovujícím-jeho-neveřejnost";
 
     private static final Map<String, String> OFN_PREFIXES = new HashMap<>();
 
@@ -46,7 +45,6 @@ public class TurtleFormatterUtil {
         OFN_PREFIXES.put("typ-obsahu-údajů", TYP_OBSAHU_UDAJU);
         OFN_PREFIXES.put("způsoby-sdílení-údajů", ZPUSOB_SDILENI_UDAJU);
         OFN_PREFIXES.put("způsoby-získání-údajů", ZPUSOB_ZISKANI_UDAJU);
-        OFN_PREFIXES.put("ustanovení-dokládající-neveřejnost-pojmu", USTANOVENI_NEVEREJNOST);
     }
 
     private TurtleFormatterUtil() {}
@@ -71,6 +69,7 @@ public class TurtleFormatterUtil {
 
             transformDescriptionProperties(ofnModel);
             transformConformsToProperties(ofnModel);
+            transformPrivacyProvisionProperties(ofnModel);
             transformSubClassRelationships(ofnModel);
             ensureConceptSchemeFormat(ofnModel);
 
@@ -118,6 +117,35 @@ public class TurtleFormatterUtil {
             model.remove(stmt);
             model.add(stmt.getSubject(), ofnDefinujiciUstanoveni, stmt.getObject());
         }
+    }
+
+    /**
+     * The writers store the privacy provision under the internal property IRI
+     * {@code OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST}
+     * ({@code …/ustanovení-dokládající-neveřejnost-údaje}). The canonical OFN
+     * property IRI, per the JSON-LD context, is
+     * {@code OFN_NAMESPACE_LEGAL + USTANOVENI_LONG}
+     * ({@code …/je-vymezen-ustanovením-stanovujícím-jeho-neveřejnost}), which
+     * renders as {@code l111-2009:je-vymezen-ustanovením-stanovujícím-jeho-neveřejnost}
+     * in the exported Turtle. Rewrite the internal property to the canonical one
+     * on export (mirrors {@link #transformConformsToProperties}).
+     */
+    private static void transformPrivacyProvisionProperties(OntModel model) {
+        Property internal = model.getProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        Property canonical = model.getProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_LONG);
+
+        List<Statement> toReplace = new ArrayList<>();
+        StmtIterator iter = model.listStatements(null, internal, (RDFNode) null);
+        while (iter.hasNext()) {
+            toReplace.add(iter.next());
+        }
+
+        for (Statement stmt : toReplace) {
+            model.remove(stmt);
+            model.add(stmt.getSubject(), canonical, stmt.getObject());
+        }
+
+        log.debug("Rewrote {} privacy-provision statements to canonical OFN property", toReplace.size());
     }
 
     private static void transformSubClassRelationships(OntModel model) {

@@ -1,0 +1,150 @@
+databaseChangeLog:
+  # Relink comments to the OWNING metadata row's stable id instead of the reusable IRI string.
+  # The old string columns (ontologyiri/conceptiri) let a re-created same-slug ontology inherit a
+  # deleted one's comments, because the IRI is deterministically regenerated from the name. Moving
+  # to FKs with ON DELETE CASCADE makes deletion authoritative at the DB and survives concept
+  # IRI-rename. Orphaned comments (IRI resolves to no live row) are purged as part of this change.
+  - changeSet:
+      id: 010-comments-add-metadata-fk-columns
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: comments
+                columnName: ontology_metadata_id
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: comments
+            columns:
+              - column:
+                  name: ontology_metadata_id
+                  type: BIGINT
+              - column:
+                  name: concept_metadata_id
+                  type: BIGINT
+
+  # Backfill: resolve each comment's stored IRI to the owning metadata row.
+  # Ontology comments matched on ontologies.graph_name (= the ontology IRI); concept comments on
+  # concepts.concept_iri. Comments whose IRI no longer resolves keep NULL and are deleted below.
+  - changeSet:
+      id: 010-comments-backfill-ontology-fk
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: comments
+            columnName: ontologyiri
+      changes:
+        # Correlated-subquery form (not UPDATE...FROM) so it runs on both real Postgres and the H2
+        # PostgreSQL-mode datasource the @SpringBootTest suite boots Liquibase against.
+        - sql:
+            sql: >-
+              UPDATE ismd_schema.comments
+              SET ontology_metadata_id =
+                (SELECT o.id FROM ismd_schema.ontologies o WHERE o.graph_name = ontologyiri)
+              WHERE ontologyiri IS NOT NULL
+                AND EXISTS
+                (SELECT 1 FROM ismd_schema.ontologies o WHERE o.graph_name = ontologyiri)
+
+  - changeSet:
+      id: 010-comments-backfill-concept-fk
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: comments
+            columnName: conceptiri
+      changes:
+        - sql:
+            sql: >-
+              UPDATE ismd_schema.comments
+              SET concept_metadata_id =
+                (SELECT cm.id FROM ismd_schema.concepts cm WHERE cm.concept_iri = conceptiri)
+              WHERE conceptiri IS NOT NULL
+                AND EXISTS
+                (SELECT 1 FROM ismd_schema.concepts cm WHERE cm.concept_iri = conceptiri)
+
+  # Orphan cleanup: any comment that resolved to neither an ontology nor a concept is a leftover
+  # from a past delete (or a comment on a never-owned IRI) and would otherwise resurface. Delete it.
+  - changeSet:
+      id: 010-comments-delete-orphans
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: comments
+            columnName: ontologyiri
+      changes:
+        - delete:
+            schemaName: ismd_schema
+            tableName: comments
+            where: ontology_metadata_id IS NULL AND concept_metadata_id IS NULL
+
+  - changeSet:
+      id: 010-comments-add-fk-constraints
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - foreignKeyConstraintExists:
+                schemaName: ismd_schema
+                foreignKeyName: fk_comments_ontology_metadata
+      changes:
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: comments
+            baseColumnNames: ontology_metadata_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: ontologies
+            referencedColumnNames: id
+            constraintName: fk_comments_ontology_metadata
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: comments
+            baseColumnNames: concept_metadata_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: concepts
+            referencedColumnNames: id
+            constraintName: fk_comments_concept_metadata
+            onDelete: CASCADE
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: comments
+            indexName: idx_comments_ontology_metadata_id
+            columns:
+              - column:
+                  name: ontology_metadata_id
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: comments
+            indexName: idx_comments_concept_metadata_id
+            columns:
+              - column:
+                  name: concept_metadata_id
+
+  # Drop the fragile string locators now that the FKs are the source of truth.
+  - changeSet:
+      id: 010-comments-drop-iri-columns
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: comments
+            columnName: ontologyiri
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: comments
+            columnName: ontologyiri
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: comments
+            columnName: conceptiri

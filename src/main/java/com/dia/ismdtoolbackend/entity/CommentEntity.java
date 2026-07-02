@@ -18,7 +18,21 @@ public class CommentEntity {
     private Long id;
     private String comment;
     private String userId;
-    private String ontologyIRI;
-    private String conceptIRI;
+
+    /**
+     * The ontology this comment belongs to. Exactly one of {@code ontologyMetadata} /
+     * {@code conceptMetadata} is set (enforced at post time). Linking by the metadata row's
+     * stable id — rather than the reusable IRI string — is what stops a re-created same-slug
+     * ontology from inheriting a deleted one's comments: the DB-level FK cascade purges them on
+     * delete, and the id survives concept IRI regeneration on rename.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ontology_metadata_id")
+    private OntologyMetadataEntity ontologyMetadata;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "concept_metadata_id")
+    private ConceptMetadataEntity conceptMetadata;
+
     private LocalDateTime postedTime;
 }
