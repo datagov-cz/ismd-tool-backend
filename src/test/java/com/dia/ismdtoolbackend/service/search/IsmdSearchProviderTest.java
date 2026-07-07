@@ -455,7 +455,7 @@ class IsmdSearchProviderTest {
         verify(conceptMetadataRepository, never()).searchByText(
                 anyString(), anyBoolean(), anyList(), anyBoolean(), any());
         verify(conceptMetadataRepository, never()).searchByTextUnpublished(
-                anyString(), anyString(), anyBoolean(), anyBoolean(), anyList(), anyBoolean(), any());
+                anyString(), anyBoolean(), anyList(), anyBoolean(), any());
         verify(jenaTDB2Repository, never()).filterByRelationTypes(anyList(), anyList());
         // Fuseki text search SHOULD still be invoked so labels can match.
         verify(jenaTDB2Repository, atLeastOnce()).searchByText(anyString(), anyList(), anyInt(), any());

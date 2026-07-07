@@ -184,7 +184,7 @@ public class IsmdSearchProvider implements SearchProvider {
                                           boolean isAdmin, Boolean publishedFilter) {
         try {
             long count = Boolean.FALSE.equals(publishedFilter)
-                    ? ontologyMetadataRepository.countSearchByTextUnpublished(query, userId, isAdmin)
+                    ? ontologyMetadataRepository.countSearchByTextUnpublished(query)
                     : ontologyMetadataRepository.countSearchByText(query);
             return (int) count;
         } catch (RuntimeException e) {
@@ -204,7 +204,7 @@ public class IsmdSearchProvider implements SearchProvider {
             String conceptTypeName = roleFilter != null ? roleFilter.name() : null;
             long count = Boolean.FALSE.equals(publishedFilter)
                     ? conceptMetadataRepository.countSearchByTextUnpublished(
-                            query, userId, isAdmin, hasGraphFilter, graphNames,
+                            query, hasGraphFilter, graphNames,
                             hasTypeFilter, conceptTypeName)
                     : conceptMetadataRepository.countSearchByText(
                             query, hasGraphFilter, graphNames,
@@ -220,7 +220,7 @@ public class IsmdSearchProvider implements SearchProvider {
                                                     boolean isAdmin, Boolean publishedFilter) {
         List<OntologyMetadataEntity> entities;
         if (Boolean.FALSE.equals(publishedFilter)) {
-            entities = ontologyMetadataRepository.searchByTextUnpublished(query, userId, isAdmin);
+            entities = ontologyMetadataRepository.searchByTextUnpublished(query);
         } else {
             entities = ontologyMetadataRepository.searchByText(query);
         }
@@ -310,7 +310,7 @@ public class IsmdSearchProvider implements SearchProvider {
         CompletableFuture<List<SearchResultDto>> pgFuture = CompletableFuture.supplyAsync(() -> {
             List<ConceptMetadataEntity> entities = unpublishedOnly
                     ? conceptMetadataRepository.searchByTextUnpublished(
-                            query, userId, isAdmin, filter.hasGraphFilter(), filter.graphNames(),
+                            query, filter.hasGraphFilter(), filter.graphNames(),
                             hasTypeFilter, conceptTypeName)
                     : conceptMetadataRepository.searchByText(
                             query, filter.hasGraphFilter(), filter.graphNames(),
@@ -722,15 +722,19 @@ public class IsmdSearchProvider implements SearchProvider {
 
     /**
      * Graph names visible to the caller when the search is restricted to
-     * {@code is_published = false}. An admin sees every unpublished graph; a
-     * regular user sees only their own. Used to scope Fuseki text queries so
-     * every hit is transitively inside an unpublished ontology.
+     * {@code is_published = false}. Every authenticated caller sees every
+     * unpublished graph regardless of ownership; the {@code userId}/{@code isAdmin}
+     * short-circuit only mirrors the defense-in-depth guard that keeps an
+     * anonymous, non-admin caller from seeing any unpublished rows (they are
+     * already rejected upstream at {@code SearchServiceImpl.resolveSource}). Used
+     * to scope Fuseki text queries so every hit is transitively inside an
+     * unpublished ontology.
      */
     private List<String> getUnpublishedVisibleGraphNames(String userId, boolean isAdmin) {
         if (!isAdmin && userId == null) {
             return List.of();
         }
-        return ontologyMetadataRepository.findVisibleUnpublished(userId, isAdmin).stream()
+        return ontologyMetadataRepository.findAllByIsPublished(false).stream()
                 .map(OntologyMetadataEntity::getGraphName)
                 .filter(Objects::nonNull)
                 .distinct()
