@@ -305,4 +305,49 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         Long v1 = diagramRepository.findById(diagram.getId()).orElseThrow().getVersion();
         assertThat(v1).isGreaterThan(v0);
     }
+
+    // M1: the backing⟺content invariant is enforced on write (entity @PrePersist). A DRAFT carrying a
+    // conceptIri, or an ISMD_CONCEPT missing one / carrying draft content, is rejected before insert.
+    @Test
+    void backingInvariant_isEnforcedOnWrite() {
+        DiagramEntity diagram = diagramFor(ontology("invariant-o"));
+
+        DiagramNodeEntity draftWithIri = new DiagramNodeEntity();
+        draftWithIri.setDiagram(diagram);
+        draftWithIri.setBacking(DiagramNodeBacking.DRAFT);
+        draftWithIri.setConceptIri("https://x/pojem/should-not-be-here");
+        draftWithIri.setPosX(0.0);
+        draftWithIri.setPosY(0.0);
+        assertThatThrownBy(() -> nodeRepository.saveAndFlush(draftWithIri))
+                .isInstanceOf(Exception.class)
+                .hasMessageContaining("DRAFT node must not carry a conceptIri");
+
+        DiagramNodeEntity conceptWithoutIri = new DiagramNodeEntity();
+        conceptWithoutIri.setDiagram(diagram);
+        conceptWithoutIri.setBacking(DiagramNodeBacking.ISMD_CONCEPT);
+        conceptWithoutIri.setPosX(0.0);
+        conceptWithoutIri.setPosY(0.0);
+        assertThatThrownBy(() -> nodeRepository.saveAndFlush(conceptWithoutIri))
+                .isInstanceOf(Exception.class)
+                .hasMessageContaining("ISMD_CONCEPT node must carry a conceptIri");
+    }
+
+    // M2: a serialization failure in setDraftContent throws (no silent NULL-content draft). Modeled with
+    // content Jackson can't serialize — a self-referential map.
+    @Test
+    void setDraftContent_throwsOnSerializationFailure() {
+        DiagramNodeEntity node = new DiagramNodeEntity();
+        java.util.Map<String, String> cyclic = new java.util.HashMap<>();
+        // A raw-typed put to smuggle a non-String value Jackson will choke on for Map<String,String>.
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        java.util.Map raw = cyclic;
+        raw.put("self", cyclic); // cycle → JsonMappingException on write
+        DiagramDraftContent content = new DiagramDraftContent();
+        content.setLabel(cyclic);
+
+        assertThatThrownBy(() -> node.setDraftContent(content))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Failed to serialize draft content");
+        assertThat(node.getDraftJson()).isNull(); // never persisted partial/empty
+    }
 }

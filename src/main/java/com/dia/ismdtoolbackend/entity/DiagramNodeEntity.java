@@ -72,6 +72,35 @@ public class DiagramNodeEntity {
     @Column(name = "draft_json", columnDefinition = "text")
     private String draftJson;
 
+    /**
+     * Enforce the backing ⟺ content invariant on every write.
+     */
+    @PrePersist
+    @PreUpdate
+    private void validateBackingInvariant() {
+        if (backing == null) {
+            throw new IllegalStateException("Diagram node backing must be set");
+        }
+        switch (backing) {
+            case DRAFT -> {
+                if (conceptIri != null) {
+                    throw new IllegalStateException(
+                            "DRAFT node must not carry a conceptIri (id=" + id + ")");
+                }
+            }
+            case ISMD_CONCEPT -> {
+                if (conceptIri == null) {
+                    throw new IllegalStateException(
+                            "ISMD_CONCEPT node must carry a conceptIri (id=" + id + ")");
+                }
+                if (draftJson != null) {
+                    throw new IllegalStateException(
+                            "ISMD_CONCEPT node must not carry draft content (id=" + id + ")");
+                }
+            }
+        }
+    }
+
     private static final ObjectMapper objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -88,7 +117,9 @@ public class DiagramNodeEntity {
         }
     }
 
-    /** Serialize and store the draft content. A null value clears the column. */
+    /**
+     * Serialize and store the draft content. A null value clears the column.
+     */
     public void setDraftContent(DiagramDraftContent content) {
         if (content == null) {
             this.draftJson = null;
@@ -97,8 +128,8 @@ public class DiagramNodeEntity {
         try {
             this.draftJson = objectMapper.writeValueAsString(content);
         } catch (JsonProcessingException e) {
-            log.error("Failed to serialize draft content for diagram node id={}", id, e);
-            this.draftJson = null;
+            throw new IllegalArgumentException(
+                    "Failed to serialize draft content for diagram node id=" + id, e);
         }
     }
 }

@@ -44,3 +44,27 @@ databaseChangeLog:
             columns:
               - column:
                   name: target_node_id
+
+  # DB CHECK for the backing <-> content invariant.
+  - changeSet:
+      id: 012-diagram-nodes-backing-check
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              ADD CONSTRAINT ck_diagram_nodes_backing_content CHECK (
+                (backing = 'DRAFT' AND concept_iri IS NULL)
+                OR (backing = 'ISMD_CONCEPT' AND concept_iri IS NOT NULL AND draft_json IS NULL)
+              )
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              DROP CONSTRAINT ck_diagram_nodes_backing_content
