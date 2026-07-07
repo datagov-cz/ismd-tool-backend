@@ -51,22 +51,18 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
     /**
      * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
      * <p>
-     * Visibility: when {@code isAdmin = true} every unpublished concept is visible;
-     * otherwise only concepts owned by {@code userId}. Anonymous callers have no
-     * rows they can see and should never reach this method.
+     * Every authenticated caller sees every unpublished concept, regardless of
+     * ownership. Anonymous callers are rejected upstream and never reach this method.
      */
     @Query(value = """
             SELECT * FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
               AND c.is_published = false
-              AND (:isAdmin = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByTextUnpublished(@Param("query") String query,
-                                                         @Param("userId") String userId,
-                                                         @Param("isAdmin") boolean isAdmin,
                                                          @Param("hasGraphFilter") boolean hasGraphFilter,
                                                          @Param("graphNames") List<String> graphNames,
                                                          @Param("hasTypeFilter") boolean hasTypeFilter,
@@ -90,13 +86,10 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
               AND c.is_published = false
-              AND (:isAdmin = true OR c.user_id = :userId)
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)
     long countSearchByTextUnpublished(@Param("query") String query,
-                                      @Param("userId") String userId,
-                                      @Param("isAdmin") boolean isAdmin,
                                       @Param("hasGraphFilter") boolean hasGraphFilter,
                                       @Param("graphNames") List<String> graphNames,
                                       @Param("hasTypeFilter") boolean hasTypeFilter,
