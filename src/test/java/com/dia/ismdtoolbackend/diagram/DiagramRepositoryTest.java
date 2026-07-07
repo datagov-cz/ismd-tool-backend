@@ -24,10 +24,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 
+import org.springframework.dao.DataIntegrityViolationException;
+
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Verifies the diagram schema ({@code diagrams} / {@code diagram_nodes} / {@code diagram_edges}) applies
@@ -199,5 +202,107 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         }
         assertThat(edgeRepository.findByDiagramId(diagram.getId()))
                 .hasSize(DiagramEdgeKind.values().length);
+    }
+
+    // H1: two ISMD_CONCEPT nodes referencing the same concept on one diagram are rejected by the
+    // partial-unique index (Postgres-only; the H2 junit profile can't honour partial indexes, so this
+    // assertion is meaningful only here on Testcontainers PG).
+    @Test
+    void duplicateConceptNodeOnSameDiagram_isRejected() {
+        DiagramEntity diagram = diagramFor(ontology("dup-o"));
+        nodeRepository.saveAndFlush(reference(diagram, "https://x/pojem/same", 0, 0));
+
+        assertThatThrownBy(() ->
+                nodeRepository.saveAndFlush(reference(diagram, "https://x/pojem/same", 50, 50)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // H1: the guard is scoped to a diagram and to ISMD_CONCEPT nodes — same IRI on a DIFFERENT diagram
+    // is fine, and multiple drafts (null concept_iri) never collide under the partial index.
+    @Test
+    void sameConceptOnDifferentDiagrams_andManyDrafts_areAllowed() {
+        DiagramEntity d1 = diagramFor(ontology("dup-a"));
+        DiagramEntity d2 = diagramFor(ontology("dup-b"));
+        nodeRepository.saveAndFlush(reference(d1, "https://x/pojem/shared", 0, 0));
+        nodeRepository.saveAndFlush(reference(d2, "https://x/pojem/shared", 0, 0)); // different diagram → ok
+
+        for (int i = 0; i < 3; i++) {
+            DiagramNodeEntity draft = new DiagramNodeEntity();
+            draft.setDiagram(d1);
+            draft.setBacking(DiagramNodeBacking.DRAFT);
+            draft.setPosX((double) i);
+            draft.setPosY(0.0);
+            nodeRepository.saveAndFlush(draft); // null concept_iri, partial index excludes it → ok
+        }
+        assertThat(nodeRepository.findByDiagramId(d1.getId())).hasSize(4);
+    }
+
+    // H2: both cascade FK columns on diagram_edges are indexed (unindexed FKs → seq-scan-per-delete).
+    @Test
+    void edgeEndpointForeignKeyColumnsAreIndexed() {
+        @SuppressWarnings("unchecked")
+        List<String> indexes = em.createNativeQuery(
+                        "SELECT indexname FROM pg_indexes "
+                                + "WHERE schemaname = 'ismd_schema' AND tablename = 'diagram_edges'")
+                .getResultList();
+        assertThat(indexes)
+                .contains("idx_diagram_edges_source_node_id", "idx_diagram_edges_target_node_id");
+    }
+
+    // C2: removeNode() drops the node AND its incident edges in one unit of work — no JPA-vs-DB-cascade
+    // fight, no leftover edges. Exercises a mid-aggregate delete (the case the ontology-cascade test,
+    // which clears the context first, deliberately does not).
+    @Test
+    void removeNode_alsoRemovesIncidentEdges() {
+        DiagramEntity diagram = diagramFor(ontology("removenode-o"));
+        DiagramNodeEntity a = reference(diagram, "https://x/pojem/a", 0, 0);
+        DiagramNodeEntity b = reference(diagram, "https://x/pojem/b", 1, 1);
+        DiagramNodeEntity c = reference(diagram, "https://x/pojem/c", 2, 2);
+        diagram.addNode(a);
+        diagram.addNode(b);
+        diagram.addNode(c);
+        DiagramEdgeEntity ab = new DiagramEdgeEntity();
+        ab.setSourceNode(a);
+        ab.setTargetNode(b);
+        ab.setEdgeKind(DiagramEdgeKind.DOMAIN);
+        diagram.addEdge(ab);
+        DiagramEdgeEntity bc = new DiagramEdgeEntity();
+        bc.setSourceNode(b);
+        bc.setTargetNode(c);
+        bc.setEdgeKind(DiagramEdgeKind.RANGE);
+        diagram.addEdge(bc);
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        // Reload the managed aggregate — removeNode must operate on managed instances for orphanRemoval
+        // to fire (entities use identity equality; a detached instance would silently no-op). This is the
+        // L1 contract the addNode/removeNode helpers exist to keep callers on.
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramNodeEntity managedB = managed.getNodes().stream()
+                .filter(n -> "https://x/pojem/b".equals(n.getConceptIri()))
+                .findFirst().orElseThrow();
+
+        managed.removeNode(managedB);          // b is an endpoint of BOTH edges
+        diagramRepository.saveAndFlush(managed);
+        em.clear();
+
+        assertThat(nodeRepository.findByDiagramId(diagram.getId()))
+                .extracting(DiagramNodeEntity::getConceptIri)
+                .containsExactlyInAnyOrder("https://x/pojem/a", "https://x/pojem/c");
+        assertThat(edgeRepository.findByDiagramId(diagram.getId())).isEmpty(); // both incident edges gone
+    }
+
+    // C1: touch() dirties the diagram row so a save bumps @Version even when only children changed.
+    @Test
+    void touch_bumpsVersionOnSave() {
+        DiagramEntity diagram = diagramRepository.saveAndFlush(diagramFor(ontology("touch-o")));
+        Long v0 = diagram.getVersion();
+
+        diagram.touch();
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        Long v1 = diagramRepository.findById(diagram.getId()).orElseThrow().getVersion();
+        assertThat(v1).isGreaterThan(v0);
     }
 }

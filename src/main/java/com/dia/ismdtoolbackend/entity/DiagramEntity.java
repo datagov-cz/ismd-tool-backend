@@ -23,6 +23,16 @@ import java.util.List;
  *
  * <p>The {@code version} column backs an optimistic lock on the layout save so concurrent editors of the
  * same canvas get a conflict instead of a silent last-write-wins clobber.
+ *
+ * <p><strong>Save-path obligation.</strong> {@code @Version} only bumps when a column of the
+ * {@code diagrams} row itself changes. Node/edge edits touch child tables and do <em>not</em> dirty this
+ * row, so a layout save that only moves nodes would slip past the lock. The save service MUST force the
+ * bump — acquire {@code LockModeType.OPTIMISTIC_FORCE_INCREMENT} on the diagram (or call
+ * {@link #touch()}) whenever it mutates {@code nodes}/{@code edges} — or the optimistic lock protects
+ * only viewport changes.
+ *
+ * <p><strong>Node deletion.</strong> Delete nodes through {@link #removeNode(DiagramNodeEntity)},
+ * never {@code getNodes().remove(...)}.
  */
 @Entity
 @Table(
@@ -81,4 +91,36 @@ public class DiagramEntity {
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    /**
+     * Mark the diagram row dirty so a save bumps {@code @Version} even when only child nodes/edges changed.
+     */
+    public void touch() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * Attach a node to this diagram (both sides of the association). Always add through here so the
+     * collection holds the managed instance.
+     */
+    public void addNode(DiagramNodeEntity node) {
+        node.setDiagram(this);
+        this.nodes.add(node);
+    }
+
+    /** Attach an edge to this diagram (both sides). Endpoints must already be nodes of this diagram. */
+    public void addEdge(DiagramEdgeEntity edge) {
+        edge.setDiagram(this);
+        this.edges.add(edge);
+    }
+
+    /**
+     * Remove a node <em>and every edge incident to it</em> in one unit of work.
+     */
+    public void removeNode(DiagramNodeEntity node) {
+        this.edges.removeIf(e ->
+                e.getSourceNode() != null && e.getSourceNode().equals(node)
+                        || e.getTargetNode() != null && e.getTargetNode().equals(node));
+        this.nodes.remove(node);
+    }
 }
