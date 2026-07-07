@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.net.http.HttpClient;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -56,7 +57,7 @@ class EsbirkaSparqlClientTest {
     @BeforeEach
     void setUp() {
         wm.resetAll();
-        client = new EsbirkaSparqlClient();
+        client = new EsbirkaSparqlClient(HttpClient.newHttpClient());
         ReflectionTestUtils.setField(client, "endpoint", wm.baseUrl() + "/sparql");
         ReflectionTestUtils.setField(client, "sparqlTimeout", 2000);
     }
@@ -208,7 +209,7 @@ class EsbirkaSparqlClientTest {
                 {
                   "head": { "vars": ["fragment", "parent", "citace", "order"] },
                   "results": { "bindings": [
-                    """ +
+                   \s""" +
                 fragmentRow(basePath + "/cast_5",                      basePath,                "Část 5",          "6AC0") + ",\n" +
                 fragmentRow(basePath + "/cast_5/hlava_4",              basePath + "/cast_5",    "Hlava 4",         "6ADA") + ",\n" +
                 fragmentRow(basePath + "/cast_5/hlava_4/dil_3",        basePath + "/cast_5/hlava_4", "Díl 3",      "6ADAD0") + ",\n" +
@@ -256,7 +257,7 @@ class EsbirkaSparqlClientTest {
                 {
                   "head": { "vars": ["fragment", "parent", "citace", "order"] },
                   "results": { "bindings": [
-                    """ +
+                   \s""" +
                 fragmentRow(basePath + "/poznamkypodcarou", basePath, "Poznámky", "FFFF") + ",\n" +
                 fragmentRow(basePath + "/frag",             basePath, "Frag",     "FFFE") +
                 """
@@ -278,7 +279,7 @@ class EsbirkaSparqlClientTest {
                 {
                   "head": { "vars": ["fragment", "parent", "citace", "order"] },
                   "results": { "bindings": [
-                    """ +
+                   \s""" +
                 fragmentRow(basePath + "/trailing/", basePath, "Trailing", "FFFD") +
                 """
                   ] }
@@ -324,7 +325,7 @@ class EsbirkaSparqlClientTest {
                 {
                   "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
                   "results": { "bindings": [
-                    """ +
+                   \s""" +
                 contentRow(basePath + "/cast_1", basePath, "Část 1", "6AC0", null) + ",\n" +
                 contentRow(basePath + "/cast_1/par_1", basePath + "/cast_1", "§ 1", "6AC1",
                         "<var>§ 1</var> Tělo paragrafu.") +
@@ -361,7 +362,7 @@ class EsbirkaSparqlClientTest {
                       "citace":   {"type":"literal","value":"§ 1"},
                       "order":    {"type":"literal","value":"6AC0"},
                       "obsah":    {"type":"literal","value":"<var>orphan</var>"} },
-                    """ +
+                   \s""" +
                 contentRow(basePath + "/par_2", basePath, "§ 2", "6AC1", "<var>§ 2</var>") +
                 """
                   ] }

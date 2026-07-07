@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
+import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -295,33 +296,46 @@ class NkdDetailServiceImplTest {
 
     // ── Ontology list ──────────────────────────────────────────────────
 
+    // Unique fragment of the batched list-item metadata SELECT (no other query has ?descLang).
+    private static final String META_QUERY_MARKER = "?descLang";
+
+    /** Builds one executeSelect result row for the batched list-item metadata query. */
+    private static Map<String, String> metaRow(String iri, String label, String descLang,
+                                               String desc, String cDateTime, String mDateTime) {
+        Map<String, String> row = new java.util.HashMap<>();
+        row.put("ontology", iri);
+        if (label != null) row.put("label", label);
+        if (desc != null) {
+            row.put("desc", desc);
+            if (descLang != null) row.put("descLang", descLang);
+        }
+        if (cDateTime != null) row.put("cDateTime", cDateTime);
+        if (mDateTime != null) row.put("mDateTime", mDateTime);
+        return row;
+    }
+
     @Test
     void getOntologyList_nullInput_returnsEmpty() {
         // Empty/null input is a no-op — don't even check endpoint config so tests
         // and FE empty-cart calls don't fail when NKD is offline.
         GetNkdOntologyListDto result = service.getOntologyList(null);
         assertTrue(result.getOntologies().isEmpty());
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
     void getOntologyList_emptyInput_returnsEmpty() {
         GetNkdOntologyListDto result = service.getOntologyList(List.of());
         assertTrue(result.getOntologies().isEmpty());
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
     void getOntologyList_singleValidIri_mapsAllFields() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        OntologyDetailModel model = OntologyDetailModel.builder()
-                .iri(ONTOLOGY_IRI)
-                .name(Map.of("cs", "Test slovník"))
-                .description(Map.of("cs", "Popis"))
-                .creationDate("2024-01-02")
-                .modificationDate("2024-03-04")
-                .build();
-        when(nkdSparqlClient.fetchPublishedOntology(ONTOLOGY_IRI)).thenReturn(Optional.of(model));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(metaRow(ONTOLOGY_IRI, "Test slovník", "cs", "Popis",
+                        "2024-01-02", "2024-03-04")));
 
         GetNkdOntologyListDto result = service.getOntologyList(List.of(ONTOLOGY_IRI));
 
@@ -340,17 +354,17 @@ class NkdDetailServiceImplTest {
         String iri1 = "https://example.org/ontology/a";
         String iri2 = "https://example.org/ontology/b";
         String iri3 = "https://example.org/ontology/c";
-        when(nkdSparqlClient.fetchPublishedOntology(iri1))
-                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(iri1).build()));
-        when(nkdSparqlClient.fetchPublishedOntology(iri2))
-                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(iri2).build()));
-        when(nkdSparqlClient.fetchPublishedOntology(iri3))
-                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(iri3).build()));
+        // Metadata rows returned out of input order — service must restore input order.
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(
+                        metaRow(iri3, null, null, null, null, null),
+                        metaRow(iri1, null, null, null, null, null),
+                        metaRow(iri2, null, null, null, null, null)));
 
         GetNkdOntologyListDto result = service.getOntologyList(List.of(iri1, iri2, iri3));
 
         assertEquals(List.of(iri1, iri2, iri3),
-                result.getOntologies().stream().map(i -> i.getIri()).toList());
+                result.getOntologies().stream().map(NkdOntologyListItemDto::getIri).toList());
     }
 
     @Test
@@ -358,9 +372,9 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         String missingIri = "https://example.org/ontology/missing";
         String foundIri = "https://example.org/ontology/found";
-        when(nkdSparqlClient.fetchPublishedOntology(missingIri)).thenReturn(Optional.empty());
-        when(nkdSparqlClient.fetchPublishedOntology(foundIri))
-                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(foundIri).build()));
+        // Metadata query returns rows only for the found IRI; missing one is skipped.
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(metaRow(foundIri, null, null, null, null, null)));
 
         GetNkdOntologyListDto result = service.getOntologyList(List.of(missingIri, foundIri));
 
@@ -369,31 +383,28 @@ class NkdDetailServiceImplTest {
     }
 
     @Test
-    void getOntologyList_oneIriSparqlErrors_skippedOthersReturned() {
-        // A single stale FE bookmark mustn't blank the whole "last accessed" tile row.
+    void getOntologyList_metadataQueryErrors_returnsEmptyNotFatal() {
+        // A SPARQL failure on the batched metadata query degrades to an empty list
+        // (every IRI skipped) rather than 500ing the "last accessed" tile row.
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        String erroringIri = "https://example.org/ontology/err";
-        String okIri = "https://example.org/ontology/ok";
-        when(nkdSparqlClient.fetchPublishedOntology(erroringIri))
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
                 .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
-        when(nkdSparqlClient.fetchPublishedOntology(okIri))
-                .thenReturn(Optional.of(OntologyDetailModel.builder().iri(okIri).build()));
 
-        GetNkdOntologyListDto result = service.getOntologyList(List.of(erroringIri, okIri));
+        GetNkdOntologyListDto result = service.getOntologyList(
+                List.of("https://example.org/ontology/ok"));
 
-        assertEquals(1, result.getOntologies().size());
-        assertEquals(okIri, result.getOntologies().get(0).getIri());
+        assertTrue(result.getOntologies().isEmpty());
     }
 
     @Test
     void getOntologyList_invalidIri_failsBatchBeforeAnyFetch() {
-        // Validate up front so a single bad IRI doesn't waste N-1 round-trips.
+        // Validate up front so a single bad IRI doesn't waste a round-trip.
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.getOntologyList(List.of(ONTOLOGY_IRI, "not an iri")));
 
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
@@ -403,7 +414,7 @@ class NkdDetailServiceImplTest {
         assertThrows(NkdEndpointException.class,
                 () -> service.getOntologyList(List.of(ONTOLOGY_IRI)));
 
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
@@ -416,14 +427,15 @@ class NkdDetailServiceImplTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.getOntologyList(tooMany));
 
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+        verify(nkdSparqlClient, org.mockito.Mockito.never()).executeSelect(anyString());
     }
 
     @Test
     void getOntologyList_atLimit_isAccepted() {
-        // 50 must work — exactly at the boundary.
+        // 50 must work — exactly at the boundary, all in ONE batched metadata query.
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
-        when(nkdSparqlClient.fetchPublishedOntology(anyString())).thenReturn(Optional.empty());
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of());
 
         List<String> exactly50 = IntStream.range(0, 50)
                 .mapToObj(i -> "https://example.org/ontology/" + i)
@@ -432,7 +444,9 @@ class NkdDetailServiceImplTest {
         GetNkdOntologyListDto result = service.getOntologyList(exactly50);
 
         assertTrue(result.getOntologies().isEmpty());
-        verify(nkdSparqlClient, org.mockito.Mockito.times(50)).fetchPublishedOntology(anyString());
+        // One batched round-trip for all 50 IRIs, not 50 per-IRI fetches.
+        verify(nkdSparqlClient, org.mockito.Mockito.times(1))
+                .executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER));
     }
 
     // ── List-all (catalog browse) ──────────────────────────────────────
@@ -481,8 +495,9 @@ class NkdDetailServiceImplTest {
         assertEquals(42, result.getOntologyCount());
         assertEquals(42, result.getTotalCount());
         assertEquals(9001, result.getConceptCount());
-        // Empty page must NOT trigger per-IRI fetches or concept-count batch query.
-        verify(nkdSparqlClient, org.mockito.Mockito.never()).fetchPublishedOntology(anyString());
+        // Empty page must NOT trigger the batched metadata query or concept-count batch.
+        verify(nkdSparqlClient, org.mockito.Mockito.never())
+                .executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER));
     }
 
     @Test
@@ -506,15 +521,17 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
                 .thenReturn(List.of(Map.of("total", "7")));
 
-        when(nkdSparqlClient.fetchPublishedOntology(iri1)).thenReturn(Optional.of(
-                OntologyDetailModel.builder().iri(iri1).name(Map.of("cs", "A slovník")).build()));
-        when(nkdSparqlClient.fetchPublishedOntology(iri2)).thenReturn(Optional.of(
-                OntologyDetailModel.builder().iri(iri2).name(Map.of("cs", "B slovník")).build()));
+        // 4. Batched list-item metadata (replaces the per-IRI fetch loop)
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(
+                        metaRow(iri1, "A slovník", null, null, null, null),
+                        metaRow(iri2, "B slovník", null, null, null, null)));
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
 
         assertEquals(2, result.getOntologies().size());
         assertEquals(iri1, result.getOntologies().get(0).getIri());
+        assertEquals(Map.of("cs", "A slovník"), result.getOntologies().get(0).getName());
         assertEquals(7, result.getOntologies().get(0).getConceptCount());
         assertEquals(iri2, result.getOntologies().get(1).getIri());
         // Missing from concept-count batch result → defaulted to 0 (not null).
@@ -523,6 +540,74 @@ class NkdDetailServiceImplTest {
         assertEquals(2, result.getOntologyCount());
         assertEquals(2, result.getTotalCount());
         assertEquals(7, result.getConceptCount());
+    }
+
+    @Test
+    void listAllOntologies_foldsMultiLangDescription_andPrefersDateTimeAndLabel() {
+        // Assembly parity: multiple description rows (one per lang) fold into one map;
+        // rdfs:label wins over skos:prefLabel; čas:datum-a-čas (dateTime) wins over čas:datum.
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        String iri = "https://example.org/ontology/multi";
+
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
+                .thenReturn(List.of(Map.of("ontology", iri)));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
+                .thenReturn(List.of(Map.of("ontology", iri, "cnt", "3")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "1")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "3")));
+
+        // Two description rows (cs + en), both label and prefLabel present (label must win),
+        // both dateTime and date present for creation (dateTime must win).
+        Map<String, String> rowCs = new java.util.HashMap<>();
+        rowCs.put("ontology", iri);
+        rowCs.put("label", "Štítek");        // rdfs:label — wins
+        rowCs.put("prefLabel", "PrefLabel"); // skos:prefLabel — loses
+        rowCs.put("desc", "Český popis");
+        rowCs.put("descLang", "cs");
+        rowCs.put("cDateTime", "2024-01-02T10:00:00");
+        rowCs.put("cDate", "2024-01-02");
+        rowCs.put("mDate", "2024-03-04");    // only date for modification
+        Map<String, String> rowEn = new java.util.HashMap<>();
+        rowEn.put("ontology", iri);
+        rowEn.put("desc", "English description");
+        rowEn.put("descLang", "en");
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(rowCs, rowEn));
+
+        GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
+
+        assertEquals(1, result.getOntologies().size());
+        var item = result.getOntologies().get(0);
+        assertEquals(Map.of("cs", "Štítek"), item.getName());
+        assertEquals(Map.of("cs", "Český popis", "en", "English description"), item.getDescription());
+        assertEquals("2024-01-02T10:00:00", item.getCreationDate());  // dateTime preferred
+        assertEquals("2024-03-04", item.getModificationDate());       // date fallback
+        assertEquals(3, item.getConceptCount());
+    }
+
+    @Test
+    void listAllOntologies_unlabelledOntology_emitsEmptyNameMap() {
+        // No rdfs:label and no skos:prefLabel → name is an empty map (not null, not {cs:null}).
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+        String iri = "https://example.org/ontology/bare";
+
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
+                .thenReturn(List.of(Map.of("ontology", iri)));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
+                .thenReturn(List.of());
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "1")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
+                .thenReturn(List.of(Map.of("total", "0")));
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(metaRow(iri, null, null, null, null, null)));
+
+        GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
+
+        assertEquals(1, result.getOntologies().size());
+        assertTrue(result.getOntologies().get(0).getName().isEmpty());
     }
 
     @Test
@@ -536,15 +621,16 @@ class NkdDetailServiceImplTest {
     }
 
     @Test
-    void listAllOntologies_perOntologyFetchFails_skippedNotFatal() {
-        // A single bad ontology must not blank the whole catalog page.
+    void listAllOntologies_ontologyMissingFromMetadata_skippedNotFatal() {
+        // An ontology that paged in but has no metadata rows (e.g. vanished between the
+        // list query and the metadata query) is skipped, not fatal to the page.
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         String iriOk = "https://example.org/ontology/ok";
-        String iriErr = "https://example.org/ontology/err";
+        String iriGone = "https://example.org/ontology/gone";
 
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("ORDER BY ?orderKey")))
-                .thenReturn(List.of(Map.of("ontology", iriOk), Map.of("ontology", iriErr)));
+                .thenReturn(List.of(Map.of("ontology", iriOk), Map.of("ontology", iriGone)));
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("GROUP BY ?ontology")))
                 .thenReturn(List.of());
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?ontology) AS ?total")))
@@ -552,10 +638,9 @@ class NkdDetailServiceImplTest {
         when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("COUNT(DISTINCT ?concept) AS ?total")))
                 .thenReturn(List.of(Map.of("total", "0")));
 
-        when(nkdSparqlClient.fetchPublishedOntology(iriOk)).thenReturn(Optional.of(
-                OntologyDetailModel.builder().iri(iriOk).build()));
-        when(nkdSparqlClient.fetchPublishedOntology(iriErr))
-                .thenThrow(new QueryExceptionHTTP(503, "Service unavailable"));
+        // Metadata query returns a row only for the OK ontology; the gone one is absent.
+        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains(META_QUERY_MARKER)))
+                .thenReturn(List.of(metaRow(iriOk, null, null, null, null, null)));
 
         GetNkdOntologyListDto result = service.listAllOntologies(20, 0, "cs");
 
@@ -678,7 +763,7 @@ class NkdDetailServiceImplTest {
     void downloadOntology_ttl_serializesViaModelWrite() {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
         when(nkdSparqlClient.fetchPublishedOntologyRaw(ONTOLOGY_IRI))
-                .thenAnswer(inv -> Optional.of(buildSimpleModel(ONTOLOGY_IRI, "Test")));
+                .thenAnswer(inv -> Optional.of(buildSimpleModel()));
 
         byte[] result = service.downloadOntology(ONTOLOGY_IRI, "ttl");
 
@@ -692,11 +777,11 @@ class NkdDetailServiceImplTest {
         assertTrue(new String(result2, java.nio.charset.StandardCharsets.UTF_8).contains(ONTOLOGY_IRI));
     }
 
-    private static Model buildSimpleModel(String iri, String label) {
+    private static Model buildSimpleModel() {
         Model m = ModelFactory.createDefaultModel();
-        m.add(m.createResource(iri),
+        m.add(m.createResource(NkdDetailServiceImplTest.ONTOLOGY_IRI),
                 m.createProperty("http://www.w3.org/2000/01/rdf-schema#label"),
-                m.createLiteral(label, "cs"));
+                m.createLiteral("Test", "cs"));
         return m;
     }
 

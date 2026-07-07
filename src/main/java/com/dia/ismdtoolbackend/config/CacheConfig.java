@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -44,6 +45,12 @@ public class CacheConfig {
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
     static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
 
+    // NKD-published concept/ontology projections behind the deviation checks. NKD published data
+    // is near-immutable, so a 24h write-TTL is the freshness mechanism; local ISMD edits do NOT
+    // evict (the cached value is the NKD side, not the local copy). See NkdSparqlClient.
+    static final long NKD_PUBLISHED_TTL_HOURS = 24;
+    static final long NKD_PUBLISHED_MAX_ENTRIES = 10_000;
+
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager mgr = new CaffeineCacheManager();
@@ -75,6 +82,12 @@ public class CacheConfig {
         mgr.registerCustomCache("conceptMetadataResolution", Caffeine.newBuilder()
                 .expireAfterWrite(CONCEPT_METADATA_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(CONCEPT_METADATA_MAX_ENTRIES)
+                .build());
+
+        // NKD-published deviation projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).
+        mgr.registerCustomCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, Caffeine.newBuilder()
+                .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
                 .build());
 
         return mgr;

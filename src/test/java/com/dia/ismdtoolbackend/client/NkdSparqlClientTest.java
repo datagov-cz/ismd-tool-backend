@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.mockito.ArgumentMatchers;
 
+import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -78,11 +79,12 @@ class NkdSparqlClientTest {
     }
 
     private NkdSparqlClient newClient(OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor);
+        return new NkdSparqlClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor,
+                HttpClient.newHttpClient());
     }
 
     private NkdSparqlClient newUnconfiguredClient(OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(configWithEndpoint(""), extractor);
+        return new NkdSparqlClient(configWithEndpoint(""), extractor, HttpClient.newHttpClient());
     }
 
     private static void stubTurtle(String turtle) {

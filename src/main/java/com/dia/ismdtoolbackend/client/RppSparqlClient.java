@@ -10,9 +10,11 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,6 +35,12 @@ public class RppSparqlClient {
 
     @Value("${rpp.sparql.timeout:10000}")
     private int rppSparqlTimeout;
+
+    private final HttpClient httpClient;
+
+    public RppSparqlClient(@Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
+        this.httpClient = httpClient;
+    }
 
     @PostConstruct
     void warnIfEndpointMissing() {
@@ -55,7 +63,8 @@ public class RppSparqlClient {
 
     private HttpSparqlExecutor executor() {
         // See EsbirkaSparqlClient.executor() for why this is per-call rather than a field.
-        return new HttpSparqlExecutor(RPP_LABEL, rppEndpoint, rppSparqlTimeout);
+        // The shared, pooled HttpClient is reused across these lightweight wrappers.
+        return new HttpSparqlExecutor(RPP_LABEL, rppEndpoint, rppSparqlTimeout, httpClient);
     }
 
     private List<RppAgenda> mapAgendaRows(ResultSet rs) {
@@ -104,5 +113,4 @@ public class RppSparqlClient {
             existing.getAgendaIris().add(agendaIri);
         }
     }
-
 }

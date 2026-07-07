@@ -1,12 +1,14 @@
 package com.dia.ismdtoolbackend.utility.sparql;
 
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 
+import java.net.http.HttpClient;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -29,9 +31,11 @@ import java.util.function.Function;
 @Slf4j
 public final class HttpSparqlExecutor {
 
+    @Getter
     private final String endpointLabel;
     private final String endpointUrl;
     private final int timeoutMs;
+    private final HttpClient httpClient;
 
     /**
      * @param endpointLabel  short human-readable name (e.g. {@code "e-Sbírka"}).
@@ -42,11 +46,31 @@ public final class HttpSparqlExecutor {
      *                       time (Spring {@code @Value} default), in which case calls
      *                       fail fast with a clear "not configured" exception.
      * @param timeoutMs      per-query timeout in milliseconds.
+     * @param httpClient     shared, pooled {@link HttpClient} (see
+     *                       {@code ExternalSparqlConfig}). May be {@code null}, in which
+     *                       case Jena falls back to a per-call client — kept nullable so
+     *                       tests and any legacy caller construct without wiring a client.
      */
-    public HttpSparqlExecutor(String endpointLabel, String endpointUrl, int timeoutMs) {
+    public HttpSparqlExecutor(String endpointLabel, String endpointUrl, int timeoutMs,
+                              HttpClient httpClient) {
         this.endpointLabel = endpointLabel;
         this.endpointUrl = endpointUrl;
         this.timeoutMs = timeoutMs;
+        this.httpClient = httpClient;
+    }
+
+    /**
+     * Convenience constructor without a shared client — Jena builds a per-call client.
+     * Prefer {@link #HttpSparqlExecutor(String, String, int, HttpClient)} in production so
+     * connections are pooled across round-trips.
+     */
+    public HttpSparqlExecutor(String endpointLabel, String endpointUrl, int timeoutMs) {
+        this(endpointLabel, endpointUrl, timeoutMs, null);
+    }
+
+    private QueryExecutionHTTPBuilder service() {
+        QueryExecutionHTTPBuilder builder = QueryExecutionHTTPBuilder.service(endpointUrl);
+        return httpClient != null ? builder.httpClient(httpClient) : builder;
     }
 
     /**
@@ -60,7 +84,7 @@ public final class HttpSparqlExecutor {
                 operationLabel,
                 SparqlEndpointUnavailableException.class,
                 () -> {
-                    try (QueryExecution qe = QueryExecutionHTTPBuilder.service(endpointUrl)
+                    try (QueryExecution qe = service()
                             .query(query)
                             .timeout(timeoutMs, TimeUnit.MILLISECONDS)
                             .build()) {
@@ -80,7 +104,7 @@ public final class HttpSparqlExecutor {
                 operationLabel,
                 SparqlEndpointUnavailableException.class,
                 () -> {
-                    Model model = QueryExecutionHTTPBuilder.service(endpointUrl)
+                    Model model = service()
                             .query(query)
                             .timeout(timeoutMs, TimeUnit.MILLISECONDS)
                             .construct();
@@ -102,7 +126,7 @@ public final class HttpSparqlExecutor {
         return SparqlExceptionMapper.lenient(
                 operationLabel,
                 () -> {
-                    Model model = QueryExecutionHTTPBuilder.service(endpointUrl)
+                    Model model = service()
                             .query(query)
                             .timeout(timeoutMs, TimeUnit.MILLISECONDS)
                             .construct();
@@ -113,10 +137,6 @@ public final class HttpSparqlExecutor {
 
     public boolean isConfigured() {
         return endpointUrl != null && !endpointUrl.trim().isEmpty();
-    }
-
-    public String endpointLabel() {
-        return endpointLabel;
     }
 
     private void requireConfigured() {

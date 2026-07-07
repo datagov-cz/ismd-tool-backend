@@ -4,6 +4,13 @@ import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 
 import java.util.List;
 
+import static com.dia.constants.VocabularyConstants.CAS_NS;
+import static com.dia.constants.VocabularyConstants.DATUM;
+import static com.dia.constants.VocabularyConstants.DATUM_A_CAS;
+import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.constants.VocabularyConstants.OKAMZIK_POSLEDNI_ZMENY;
+import static com.dia.constants.VocabularyConstants.OKAMZIK_VYTVORENI;
+
 /**
  * SPARQL queries for browsing NKD ontologies (no text-search filter).
  * Distinct from {@link NKDSPARQLSearchQuery} which requires a {@code bif:contains}
@@ -85,14 +92,71 @@ public class NKDSPARQLBrowseQuery {
     }
 
     /**
+     * Batched list-item metadata for a fixed page of ontology IRIs — one round-trip
+     * instead of a per-IRI full-graph CONSTRUCT. Returns the exact fields the catalog
+     * list row needs (name, multilingual description, creation/modification dates),
+     * matching the shapes the full OFN extractor produces:
+     *
+     * <ul>
+     *   <li>{@code ?label} = {@code rdfs:label}, {@code ?prefLabel} = {@code skos:prefLabel}
+     *       — caller takes label else prefLabel as the single name value (keyed "cs"), per
+     *       {@code ModelAnalyzer.extractModelName} + {@code createMultilingualMap}.</li>
+     *   <li>{@code ?descLang}/{@code ?desc} = one row per {@code dcterms:description} literal
+     *       (lang tag + value) → caller assembles the multilingual map.</li>
+     *   <li>Dates are a TWO-HOP read through the OFN "okamžik" instant resource: prefer
+     *       {@code čas:datum-a-čas} (dateTime), fall back to {@code čas:datum} (date) —
+     *       matching {@code ModelAnalyzer.extractTemporalValue}.</li>
+     * </ul>
+     *
+     * <p>Ontologies absent from NKD simply produce no rows (caller skips them, matching the
+     * old loop's "vanished between list and fetch" behaviour). Description is multi-valued,
+     * so a single ontology may span several rows.
+     */
+    public static String buildListItemMetadataQuery(List<String> ontologyIris) {
+        StringBuilder values = new StringBuilder();
+        for (String iri : ontologyIris) {
+            if (!SparqlIriValidator.isSafeHttpIri(iri)) {
+                throw new IllegalArgumentException("Unsafe IRI for SPARQL VALUES: " + iri);
+            }
+            values.append("<").append(iri).append("> ");
+        }
+
+        String okamzikVytvoreni = OFN_NAMESPACE + OKAMZIK_VYTVORENI;
+        String okamzikZmeny = OFN_NAMESPACE + OKAMZIK_POSLEDNI_ZMENY;
+        String datumACas = CAS_NS + DATUM_A_CAS;
+        String datum = CAS_NS + DATUM;
+        return PREFIXES + """
+                SELECT ?ontology ?label ?prefLabel ?descLang ?desc ?cDateTime ?cDate ?mDateTime ?mDate WHERE {
+                  VALUES ?ontology { %s}
+                  OPTIONAL { ?ontology rdfs:label ?label }
+                  OPTIONAL { ?ontology skos:prefLabel ?prefLabel }
+                  OPTIONAL {
+                    ?ontology dcterms:description ?desc .
+                    BIND(LANG(?desc) AS ?descLang)
+                  }
+                  OPTIONAL {
+                    ?ontology <%s> ?cInst .
+                    OPTIONAL { ?cInst <%s> ?cDateTime }
+                    OPTIONAL { ?cInst <%s> ?cDate }
+                  }
+                  OPTIONAL {
+                    ?ontology <%s> ?mInst .
+                    OPTIONAL { ?mInst <%s> ?mDateTime }
+                    OPTIONAL { ?mInst <%s> ?mDate }
+                  }
+                }
+                """.formatted(values.toString(),
+                okamzikVytvoreni, datumACas, datum,
+                okamzikZmeny, datumACas, datum);
+    }
+
+    /**
      * Strips anything that isn't a BCP-47-ish lang tag character. Lang tags
      * appear inside a SPARQL string literal in {@code FILTER(LANG(?x) = "…")},
      * so a quote injection would close the literal — keep this strict.
      */
     private static String sanitizeLang(String lang) {
-        if (lang == null) return "cs";
-        String stripped = lang.replaceAll("[^A-Za-z0-9-]", "");
-        return stripped.isEmpty() ? "cs" : stripped;
+        return NKDSPARQLSearchQuery.sanitizeLang(lang);
     }
 
     private NKDSPARQLBrowseQuery() {
