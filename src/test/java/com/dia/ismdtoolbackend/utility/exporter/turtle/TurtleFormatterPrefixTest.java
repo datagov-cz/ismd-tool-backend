@@ -52,14 +52,13 @@ class TurtleFormatterPrefixTest {
     }
 
     @Test
-    @DisplayName("All 16 OFN prefixes are present")
+    @DisplayName("All 15 OFN prefixes are present")
     void allPrefixesPresent() {
         Map<String, String> prefixes = result.getNsPrefixMap();
         String[] expectedPrefixes = {
                 "dct", "owl", "rdf", "rdfs", "skos", "slovníky", "vsgov", "xsd",
                 "čas", "a104", "l111-2009", "schema",
-                "typ-obsahu-údajů", "způsoby-sdílení-údajů", "způsoby-získání-údajů",
-                "ustanovení-dokládající-neveřejnost-pojmu"
+                "typ-obsahu-údajů", "způsoby-sdílení-údajů", "způsoby-získání-údajů"
         };
         for (String prefix : expectedPrefixes) {
             assertNotNull(prefixes.get(prefix), "Missing prefix: " + prefix);

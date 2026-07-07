@@ -7,7 +7,9 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
@@ -208,6 +210,57 @@ class ConceptServiceImplTest {
 
         assertTrue(exception.getMessage().contains("povinné"));
         verify(conceptCreator, never()).createSingleConcept(any());
+    }
+
+    @Test
+    void createConcept_NameMissing_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        createModel.setNameModel(new NameModel());
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Název pojmu je povinný"));
+        verify(conceptCreator, never()).createSingleConcept(any());
+    }
+
+    @Test
+    void createConcept_NameMissingCsVariant_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("en", "name");
+        createModel.getNameModel().setName(nameMap);
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("českou variantu"));
+    }
+
+    @Test
+    void createConcept_DescriptionPresentWithoutCs_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        DescriptionModel desc = new DescriptionModel();
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("en", "English only");
+        desc.setDescription(descMap);
+        createModel.setDescriptionModel(desc);
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Popis pojmu"));
+    }
+
+    @Test
+    void createConcept_DefinitionPresentWithoutCs_Throws() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        DefinitionModel def = new DefinitionModel();
+        Map<String, String> defMap = new HashMap<>();
+        defMap.put("en", "English only");
+        def.setDefinition(defMap);
+        createModel.setDefinitionModel(def);
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Definice pojmu"));
     }
 
     @Test
@@ -942,7 +995,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
@@ -973,7 +1026,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(true);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
         when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI)).thenReturn(Optional.of(publishedDetail));
 
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
@@ -1003,7 +1056,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(true);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
         when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
@@ -1028,7 +1081,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(true);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
         when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI))
                 .thenThrow(new RuntimeException("NKD timeout"));
 
@@ -1058,7 +1111,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(true);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
@@ -1082,14 +1135,14 @@ class ConceptServiceImplTest {
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
 
         CommentEntity comment = new CommentEntity();
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of(comment));
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of(comment));
         when(conceptMetadataMapper.commentEntitiesToModels(List.of(comment)))
                 .thenReturn(new ArrayList<>(List.of()));
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
         assertNotNull(result.getConceptMetadata());
-        verify(commentRepository).findByConceptIRI(TEST_CONCEPT_IRI);
+        verify(commentRepository).findByConceptMetadataId(TEST_CONCEPT_ID);
         verify(conceptMetadataMapper).commentEntitiesToModels(List.of(comment));
     }
 
@@ -1112,7 +1165,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         RppAgenda agenda = mock(RppAgenda.class);
         when(rppSnapshotHolder.findAgendaByIri("https://rpp.example/agenda/A1")).thenReturn(Optional.of(agenda));
@@ -1140,7 +1193,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         RppIsvs isvs = mock(RppIsvs.class);
         when(rppSnapshotHolder.findIsvsByIri("https://rpp.example/isvs/I1")).thenReturn(Optional.of(isvs));
@@ -1167,7 +1220,7 @@ class ConceptServiceImplTest {
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptIRI(TEST_CONCEPT_IRI)).thenReturn(List.of());
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         conceptService.getConceptDetail(TEST_SLUG);
 

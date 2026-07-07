@@ -9,6 +9,8 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
@@ -246,6 +248,68 @@ class OntologyServiceImplTest {
         verify(jenaTDB2Repository).deleteGraph(anyString());
     }
 
+    // ========== createOntology required-field validation ==========
+
+    @Test
+    void createOntology_NameMissing_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        createModel.setNameModel(new NameModel());
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Název slovníku je povinný"));
+        verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+    }
+
+    @Test
+    void createOntology_NameMissingCsVariant_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("en", "test-ontology");
+        createModel.getNameModel().setName(nameMap);
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("českou variantu"));
+        verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+    }
+
+    @Test
+    void createOntology_NameCsBlank_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "   ");
+        createModel.getNameModel().setName(nameMap);
+
+        assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+    }
+
+    @Test
+    void createOntology_DescriptionPresentWithoutCs_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("en", "English only description");
+        createModel.getDescriptionModel().setDescription(descMap);
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Popis slovníku"));
+    }
+
+    @Test
+    void createOntology_DescriptionEmpty_Succeeds() throws OntologyException {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        createModel.setDescriptionModel(new DescriptionModel());
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+
+        when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
+
+        assertNotNull(ontologyService.createOntology(createModel, TEST_USER_ID));
+    }
+
     // ========== getOntologyDetailModel Tests ==========
 
     @Test
@@ -281,7 +345,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(metadataModel);
-        when(commentRepository.findByOntologyIRI(TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+        when(commentRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(List.of(conceptEntity));
         when(conceptMetadataMapper.toDto(conceptEntity)).thenReturn(conceptModel);
@@ -307,7 +371,7 @@ class OntologyServiceImplTest {
     void getOntologyDetailModel_OntologyNotFound() {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
@@ -318,7 +382,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -518,7 +582,7 @@ class OntologyServiceImplTest {
     void getConceptsByIri_ontologyNotFound_throws() {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
 
-        OntologyException ex = assertThrows(OntologyException.class,
+        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
         assertTrue(ex.getMessage().contains(TEST_GRAPH_NAME));
     }
@@ -529,7 +593,7 @@ class OntologyServiceImplTest {
                 .thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException ex = assertThrows(OntologyException.class,
+        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
         assertTrue(ex.getMessage().toLowerCase().contains("prázdn")
                 || ex.getMessage().toLowerCase().contains("empty"));
@@ -664,13 +728,16 @@ class OntologyServiceImplTest {
     @Test
     void getAll_enrichesEachEntityWithBatchMetadata() {
         OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
         e1.setGraphName("http://example.org/o/1");
         OntologyMetadataEntity e2 = new OntologyMetadataEntity();
+        e2.setId(2L);
         e2.setGraphName("http://example.org/o/2");
         // Entity with null graphName must be filtered out of the batch fetch but
         // still mapped via the entity stream — its enrichMetadataFromModel call
         // receives a null model.
         OntologyMetadataEntity eNoGraph = new OntologyMetadataEntity();
+        eNoGraph.setId(3L);
         eNoGraph.setGraphName(null);
         when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1, e2, eNoGraph));
 
@@ -686,9 +753,9 @@ class OntologyServiceImplTest {
         when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
 
         CommentEntity comment = new CommentEntity();
-        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of(comment));
-        when(commentRepository.findByOntologyIRI("http://example.org/o/2")).thenReturn(List.of());
-        when(commentRepository.findByOntologyIRI(null)).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of(comment));
+        when(commentRepository.findByOntologyMetadataId(2L)).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(3L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
@@ -703,7 +770,7 @@ class OntologyServiceImplTest {
         // fallback value — what matters is enrichMetadataFromModel was called and returned
         // without throwing).
         assertNotNull(mNoGraph);
-        verify(commentRepository).findByOntologyIRI("http://example.org/o/1");
+        verify(commentRepository).findByOntologyMetadataId(1L);
     }
 
     @Test
@@ -741,6 +808,7 @@ class OntologyServiceImplTest {
     @Test
     void getBySlugs_happyPath_enrichesViaBatchMetadata() {
         OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
         e1.setGraphName("http://example.org/o/1");
         when(ontologyMetadataRepository.findBySlugIn(List.of("slug-1"))).thenReturn(List.of(e1));
 
@@ -750,7 +818,7 @@ class OntologyServiceImplTest {
 
         OntologyMetadataModel m1 = new OntologyMetadataModel();
         when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));

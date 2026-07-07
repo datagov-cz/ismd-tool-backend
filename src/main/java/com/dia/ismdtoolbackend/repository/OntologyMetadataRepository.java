@@ -10,61 +10,43 @@ import java.util.Optional;
 
 public interface OntologyMetadataRepository extends JpaRepository<OntologyMetadataEntity, Long> {
 
+    /**
+     * Default (no-source) ontology search. Any authenticated caller sees every
+     * ontology — published AND unpublished drafts of all users. Anonymous callers
+     * never reach this method (they are forced to NKD at
+     * {@code SearchServiceImpl.resolveSource}).
+     */
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-              AND (o.is_published = true OR o.user_id = :userId)
             """, nativeQuery = true)
-    List<OntologyMetadataEntity> searchByText(@Param("query") String query,
-                                               @Param("userId") String userId);
+    List<OntologyMetadataEntity> searchByText(@Param("query") String query);
 
     /**
      * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
      * <p>
-     * Visibility: when {@code isAdmin = true} every unpublished ontology is visible;
-     * otherwise only ontologies owned by {@code userId}. Anonymous callers have no
-     * rows they can see and should never reach this method.
+     * Every authenticated caller sees every unpublished ontology, regardless of
+     * ownership. Anonymous callers are rejected upstream and never reach this method.
      */
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
               AND o.is_published = false
-              AND (:isAdmin = true OR o.user_id = :userId)
             """, nativeQuery = true)
-    List<OntologyMetadataEntity> searchByTextUnpublished(@Param("query") String query,
-                                                          @Param("userId") String userId,
-                                                          @Param("isAdmin") boolean isAdmin);
-
-    /**
-     * All unpublished ontologies visible to the caller — admin sees everything,
-     * regular user sees only their own. Used by search to scope Fuseki graph
-     * enumeration when {@code source=UNPUBLISHED}.
-     */
-    @Query(value = """
-            SELECT * FROM ismd_schema.ontologies o
-            WHERE o.is_published = false
-              AND (:isAdmin = true OR o.user_id = :userId)
-            """, nativeQuery = true)
-    List<OntologyMetadataEntity> findVisibleUnpublished(@Param("userId") String userId,
-                                                         @Param("isAdmin") boolean isAdmin);
+    List<OntologyMetadataEntity> searchByTextUnpublished(@Param("query") String query);
 
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-              AND (o.is_published = true OR o.user_id = :userId)
             """, nativeQuery = true)
-    long countSearchByText(@Param("query") String query,
-                           @Param("userId") String userId);
+    long countSearchByText(@Param("query") String query);
 
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
               AND o.is_published = false
-              AND (:isAdmin = true OR o.user_id = :userId)
             """, nativeQuery = true)
-    long countSearchByTextUnpublished(@Param("query") String query,
-                                      @Param("userId") String userId,
-                                      @Param("isAdmin") boolean isAdmin);
+    long countSearchByTextUnpublished(@Param("query") String query);
 
     Optional<OntologyMetadataEntity> findByGraphName(String graphName);
 

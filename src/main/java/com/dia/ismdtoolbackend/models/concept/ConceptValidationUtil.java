@@ -10,8 +10,12 @@ public final class ConceptValidationUtil {
     private static final String NKOD_DATASET_PATTERN = "^https://data\\.gov\\.cz/zdroj/datové-sady/.*$";
 
     private static final Set<String> ALLOWED_GOVERNANCE_VALUES = Set.of(
+            // způsoby-sdílení-údajů
             "veřejně přístupné", "poskytované na žádost", "nesdílené",
+            "zpřístupňované pro výkon agendy",
+            // způsoby-získání-údajů
             "základních registrů", "jiných agend", "vlastní",
+            // typy-obsahu-údajů
             "provozní", "identifikační", "evidenční", "statistické"
     );
 

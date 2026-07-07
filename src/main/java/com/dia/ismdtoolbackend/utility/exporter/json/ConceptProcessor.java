@@ -723,7 +723,10 @@ public class ConceptProcessor {
 
     private void addUstanoveniProperty(Resource concept, Map<String, Object> conceptObj,
                                        OntModel ontModel) {
-        Property suppLegal = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_LONG);
+        // Must match the property IRI the writers (ConceptCreator / ConceptFieldUpdaters)
+        // actually store: OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST. Reading via
+        // USTANOVENI_LONG here silently dropped every privacy provision on detail load.
+        Property suppLegal = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_NEVEREJNOST);
 
         if (concept.hasProperty(suppLegal)) {
             addResourceArrayProperty(concept, suppLegal, USTANOVENI_NEVEREJNOST, conceptObj);
