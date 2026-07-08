@@ -1,0 +1,172 @@
+# Diagramová vrstva: FE / REST kontrakt
+
+> Stav: **kontrakt uzamčen; controller zatím není hotový.** Anglická verze:
+> [`DIAGRAM_LAYER_API.md`](./docs/DIAGRAM_LAYER_API.md). Architektura a zdůvodnění:
+> [`DIAGRAM_LAYER_CS.md`](./docs/DIAGRAM_LAYER_CS.md).
+
+Kontrakt na drátě pro diagramovou funkci: **tence při zápisu, tučně při čtení.** Backend spojí řádky rozvržení s živým obsahem pojmů a aplikuje overlay každého uzlu, takže FE dostane payload, který lze předat téměř přímo do ReactFlow. Tento dokument je integrační referencí pro FE; proč je model takto tvarován, viz [`DIAGRAM_LAYER_CS.md`](./docs/DIAGRAM_LAYER_CS.md).
+
+## REST rozhraní
+
+Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou zabaleny v `ApiResponseDto<T>`. Všechny cesty jsou autentizované (každá musí být v allowlistu SecurityConfig). Tento controller se dotýká *rozvržení + overlaye rozpracovaných úprav*; **Převzít** se v procesu rozvětvuje do stávajících pojmových služeb.
+
+| Sloveso · Cesta | Účel | Tělo → Odpověď |
+|---|---|---|
+| `GET /{ontologySlug}` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Při prvním otevření líně vytvoří prázdný diagram. | → `DiagramDto` (tučný, připravený k vykreslení) |
+| `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, hrany-jako-projekce) *a* overlaye uzlů. Idempotentní úplná náhrada. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` |
+| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole). Nematerializuje se. | `NodeOverlayDto` → uzel |
+| `DELETE /{ontologySlug}/nodes/{nodeId}/overlay` | Zahodit nasazené úpravy uzlu (návrat k živému obsahu). | → uzel |
+| `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` + obnovený `DiagramDto` |
+| `POST /{ontologySlug}/nodes` | Přidat existující pojem na plátno jako uzel (pouze rozvržení). | `AddNodeDto {conceptIri, position}` → uzel |
+| `DELETE /{ontologySlug}/nodes/{nodeId}` | Odebrat uzel **pouze z plátna** — pojem zůstává nedotčen. | → Void |
+| `GET /{ontologySlug}/coverage` | Které pojmy ontologie *nejsou* na plátně („přidat N chybějících"). | → `List<MinimalConceptDto>` |
+
+**Žádný endpoint pro smazání pojmu.** Vytvoření pojmu z plátna volá stávající `POST /api/concept/{slug}/create` (vlastnost/vztah lze vytvořit bez domény), poté `POST …/nodes` k umístění. Odebrání uzlu je pouze plátnové; jediné smazání v RDF, které diagram způsobí, je implicitní, uvnitř op 6, řešené `/materialize`.
+
+**Konvence id uzlu.** `iri:<úplné-iri>` pro každý uzel (všechny uzly odkazují na pojem). ReactFlow vyžaduje jen to, aby `node.id` byl unikátní řetězec; toto schéma je stabilní napříč načteními.
+
+## Čtení — `GET /api/diagram/{ontologySlug}` → 200 · `DiagramDto`
+
+Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval overlay každého uzlu.
+
+```jsonc
+{
+  "ontologySlug": "pracovni-pomer",
+  "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
+
+  "nodes": [
+    {
+      // živý pojem, žádné rozpracované úpravy — obsah z RDF, pozice z PG
+      "id": "iri:https://…/pojem/zamestnanec",
+      "type": "classNode",
+      "position": { "x": 240, "y": 80 },
+      "parentId": null,
+      "data": {
+        "conceptType": "TRIDA",
+        "iri": "https://…/pojem/zamestnanec",
+        "slug": "pracovni-pomer-zamestnanec",       // FE odkazuje na /detail
+        "label": { "cs": "Zaměstnanec", "en": "Employee" },
+        "stale": false,                              // true ⇒ odkazovaný pojem byl smazán
+        "hasPendingEdits": false
+      }
+    },
+    {
+      // živý pojem VZTAH s nasazenou strukturální úpravou — obsah je živý ⊕ overlay
+      "id": "iri:https://…/pojem/je-zamestnan-u",
+      "type": "relationNode",
+      "position": { "x": 520, "y": 210 },
+      "data": {
+        "conceptType": "VZTAH",
+        "iri": "https://…/pojem/je-zamestnan-u",
+        "label": { "cs": "je zaměstnán u" },         // label je pouze živý; NELZE editovat přes overlay
+        "stale": false,
+        "hasPendingEdits": true,
+        "pendingEdit": {                             // strukturální diff, aby FE mohl zobrazit odznak/diff
+          "range": "iri:https://…/pojem/organizace"  // přesměrovaný obor hodnot, dosud ne v RDF
+        }
+      }
+    }
+  ],
+
+  "edges": [
+    {
+      // projekce z (živý ⊕ overlay) oboru hodnot uzlu VZTAHu — odráží nasazené přesměrování
+      "id": "e-201",
+      "source": "iri:https://…/pojem/je-zamestnan-u",
+      "target": "iri:https://…/pojem/organizace",
+      "type": "relationEdge",
+      "sourceHandle": null, "targetHandle": null,
+      "markerEnd": { "type": "arrowclosed" },
+      "data": { "edgeKind": "RANGE", "pending": true }   // pending ⇒ koncový bod pochází z overlaye
+    }
+  ],
+
+  "coverage": { "conceptsNotOnCanvas": 3 },
+  "pendingChangeCount": 1        // řídí akci „Převzít N změn"
+}
+```
+
+## Zápis — Uložit rozvržení: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
+
+Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a pošlete jen to, co se ukládá. Backend zde ignoruje obsah `data` uzlů — toto volání je pouze rozvržení; strukturální úpravy jdou přes overlay endpoint. Hrany jsou projekce; poslání aktuální sady uloží jejich úchyty/pozice, ale směrodatnou hodnotou koncového bodu pro nasazené přesměrování je vždy overlay uzlu (backend při čtení znovu projektuje).
+
+```jsonc
+{
+  "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
+  "nodes": [
+    { "id": "iri:https://…/pojem/zamestnanec",
+      "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false },
+    { "id": "iri:https://…/pojem/je-zamestnan-u",
+      "position": { "x": 520, "y": 210 } }
+  ],
+  "edges": [
+    { "id": "e-201", "source": "iri:https://…/pojem/je-zamestnan-u",
+      "target": "iri:https://…/pojem/organizace", "edgeKind": "RANGE" },
+    // vlastnost třídy je hrana DOMAIN z uzlu vlastnosti k její třídě
+    { "id": "e-202", "source": "iri:https://…/pojem/datum-narozeni",
+      "target": "iri:https://…/pojem/zamestnanec", "edgeKind": "DOMAIN" }
+  ]
+}
+```
+
+`edgeKind` ∈ `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH`.
+
+## Zápis — nasadit strukturální úpravu: `PATCH /api/diagram/{ontologySlug}/nodes/{nodeId}/overlay` · `NodeOverlayDto`
+
+Jen změněná strukturální pole. Uloženo do `pending_edit_json`; do RDF neposláno až do Převzít. Overlay je **pouze strukturální** — žádný `label`/`name`; editace labelu se dělá běžným editorem pojmů, ne diagramem (změna labelu přejmenuje IRI pojmu).
+
+Hierarchie je závislá na typu — pošlete pole odpovídající typu pojmu uzlu:
+
+```jsonc
+// op 1 (přehození směru, VZTAH):          { "domain": "iri:…/A", "range": "iri:…/B" }
+// op 4/5 (rodič/doména vlastnosti):        { "domain": "iri:…/VlastniciTrida" }
+// op 3 (podtřída → ekvivalent, TRIDA):     { "broaderConcept": [], "exactMatch": ["iri:…/B"] }
+// op 2 (otočení): nasazeno na OBA uzly —   A: { "broaderConcept": [ …bez B ] }
+//                                          B: { "broaderConcept": [ …, "iri:…/A" ] }
+// op 6 (vztah → hierarchie, uzel VZTAHu):  { "convertToHierarchy": { "addBroaderOn": "iri:…/A", "broader": "iri:…/B" } }
+```
+
+Referenční pole `DiagramPendingEdit`:
+
+| Pole | Platí pro | Význam |
+|---|---|---|
+| `domain` | VZTAH, VLASTNOST | `rdfs:domain` (IRI) |
+| `range` | VZTAH | `rdfs:range` (IRI) |
+| `broaderConcept` | TRIDA | seznam `subClassOf` (IRI) |
+| `superProperty` | VLASTNOST | seznam `subPropertyOf` (IRI) |
+| `superRelation` | VZTAH | seznam `subPropertyOf` (IRI) |
+| `exactMatch` | libovolné | seznam `skos:exactMatch` (IRI) — „ekvivalent" v op 3 |
+| `convertToHierarchy` | VZTAH | značka op 6: `{ addBroaderOn, broader }` — přidat broader na třídu, poté smazat tento VZTAH |
+
+## Materializace — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
+
+Aplikuje každou nasazenou změnu. Jedna položka na nasazenou **změnu** (změna může zahrnovat dva pojmy). Per-změna částečně-OK; dvoupojmová změna (otočení, vztah→hierarchie) je vše-nebo-nic.
+
+```jsonc
+{
+  "materialized": [
+    { "nodeId": 1042, "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
+  ],
+  "failed": [
+    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "FLIP_HIERARCHY",
+      "error": "VALIDATION", "message": "range must be a class", "status": 400 }
+      // celá změna ponechána nasazená (obě strany nedotčeny); uživatel opraví a spustí Převzít znovu
+  ],
+  "skippedStale": [
+    { "nodeId": 1060, "conceptIri": "https://…/deleted-x" }   // pojem pryč; změnu nelze aplikovat
+  ]
+}
+```
+
+`op` ∈ `SWAP_DIRECTION` · `FLIP_HIERARCHY` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `SET_PROPERTY_DOMAIN` · `CONVERT_TO_HIERARCHY`.
+
+**Chybové případy, které FE řeší:**
+
+- `error: "VALIDATION"` (HTTP 400) — úprava pojmu neprošla validací; overlay ponechán, opravit a zkusit znovu.
+- `error: "STALE_BASE"` (HTTP 409) — podkladový pojem byl od nasazení overlaye editován (běžným `/api/concept`); FE by měl diagram znovu načíst a znovu nasadit.
+- `error: "CASCADE_CONFLICT"` — op 6 (vztah→hierarchie) zablokována, protože doména/obor hodnot jiného pojmu míří na daný VZTAH (jeho smazání by kaskádovalo); zobrazit a nechat uživatele vyřešit.
+- `skippedStale` — odkazovaný pojem již neexistuje; nabídnout odebrat-nebo-znovu-vytvořit.
+
+---
+
+*ISMD Tool · diagramová vrstva · FE / REST kontrakt · tenký zápis / tučné čtení · pouze strukturální overlay · per-změna částečně-OK materializace*

@@ -1,0 +1,100 @@
+# Diagramová vrstva: architektura a návrh
+
+> Stav: **návrh + entitní vrstva hotová; servisní/controller vrstva zatím ne.** Anglická verze:
+> [`DIAGRAM_LAYER.md`](./docs/DIAGRAM_LAYER.md). FE/REST kontrakt: [`DIAGRAM_LAYER_API_CS.md`](./docs/DIAGRAM_LAYER_API_CS.md).
+
+Plátno založené na ReactFlow, které vizuálně zobrazuje a edituje ISMD ontologii — jeden kanonický diagram na ontologii — s modelem perzistence navrženým tak, aby se diagram *nikdy* nemohl tiše stát rozcházející se kopií dat pojmů.
+
+## Jaký problém řešíme
+
+Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovní plochou s vlastním CRUD. Právě tato kombinace vyvolává obavy z „rozcházení" (drift). Tato codebase už podobný problém s „dvě úložiště držící kopie téhož obsahu" řešila: duální zápis PG↔TDB2 bez sdílené transakce, outbox, rekonciliátor, dokumentovaný základ známého šumu (viz [`PG_TDB2_CONSISTENCY_CS.md`](./docs/PG_TDB2_CONSISTENCY_CS.md)). Diagram, který by ukládal vlastní kopii obsahu pojmu, by tento problém — třetí úložiště — otevřel znovu.
+
+## Řídicí princip
+
+> **Obsah, který diagram vlastní, je vždy *rozpracovaná strukturální úprava reálného pojmu*, nikdy volně stojící třetí kopie.** Diagram vlastní tři věci: *rozvržení* (pozice, seskupení, viewport), *odkazy* na reálné pojmy (přes IRI) a **overlay rozpracovaných úprav** — nasazené, nezapsané strukturální změny pojmů, které již existují a již mají IRI. Neexistují žádné uzly bez IRI; každý uzel odpovídá materializovanému pojmu. Overlay je *diff čekající na aplikaci* a explicitní **Převzít (materializace)** ho protlačí přes stávající CRUD `/api/concept` → outbox → RDF, načež se overlay vyprázdní a živý pojem je opět jediným vlastníkem. Samostatné **Uložit** overlay zapíše do Postgresu, aniž by se dotklo RDF.
+
+**Proč to zůstává bezpečné vůči rozcházení.** Overlay obsah pojmu skutečně drží — záměrná, ohraničená výjimka z pravidla „nikdy nevlastní obsah" — ale je bezpečný, protože je:
+
+1. **Diff, ne kopie** — jen *změněná* strukturální pole, navázaná na reálné IRI, nikdy samostatný pojem.
+2. **Explicitně dočasný** — jeho celý smysl je být materializován a vyprázdněn; naplněný overlay je „úkol k provedení", ne zdroj pravdy.
+3. **Jediný vlastník při čtení** — vykreslený obsah je `živý pojem ⊕ overlay`; po materializaci je overlay prázdný a živý pojem je jediným vlastníkem. Žádná synchronizace na pozadí, žádný diagramový rekonciliátor — overlay se rekonciliuje *tím, že je materializován*.
+
+## Tři druhy rozcházení — nebezpečný byl vždy jen jeden
+
+- **🟢 Rozcházení rozvržení — bezpečné, záměrně.** Kde uzel leží, co je uvnitř, viewport. RDF k tomu nemá co říct. Pouze diagramové, nezávislé, nikdy se nesynchronizuje.
+- **🟡 Rozpracované úpravy — záměrné, ohraničené, samoopravné.** Nasazená změna domény/oboru hodnot/hierarchie, dosud nematerializovaná. Obsah vlastněný diagramem, ale navázaný diff, který existuje proto, aby byl materializován, a při Převzít se vyprázdní. Nemůže tiše přetrvat jako stínová pravda: FE ho vykresluje jako „N nezapsaných změn" a Převzít je vědomá akce uživatele.
+- **🔴 Tichá třetí kopie — konstrukčně zakázaná.** Uzel držící *samostatnou* kopii obsahu pojmu, která se rozchází bez vlastníka. Overlay není nikdy samostatný (vždy navázaný na živé IRI) a nikdy trvalý (Převzít ho vyprázdní).
+
+Vše ostatní je **zastaralost**, řešená při čtení: **visící odkaz** (uzel míří na pojem smazaný běžným CRUD → uzel označen `stale`) a **mezera v pokrytí** (nové pojmy dosud nejsou na plátně → diagram je záměrně podmnožinovým pohledem).
+
+## Dvě akce
+
+Plátno vystavuje pro obsah přesně dvě akce dotýkající se backendu:
+
+- **Uložit diagram** — uloží rozvržení *a* nasazené strukturální úpravy dosud neprojektované do slovníku. Pouze Postgres; **nikdy se nedotýká RDF.**
+- **Převzít (materializovat do slovníku)** — aplikuje nasazené úpravy na pojmy slovníku přes stávající CRUD `/api/concept` → outbox → RDF a poté overlay vyprázdní.
+
+## Kam který zápis míří
+
+Vytvoření pojmu a odebrání uzlu jsou okamžité/lokální; **strukturální úpravy se nasazují až do Převzít.** Existuje jen jeden druh uzlu — každý uzel odkazuje na materializovaný pojem.
+
+**Okamžité — nenasazované:**
+
+- **Vytvoření pojmu z plátna** → stávající `POST /api/concept` create → outbox → RDF. Vlastnost nebo vztah lze vytvořit *bez domény* (přesto plně materializované, s reálným IRI); doména se doplní později jako nasazená úprava. (Pozn.: vlastnost vždy dostane `rdfs:range` — výchozí `Literal` — takže skutečně chybět může jen *doména*.)
+- **Odebrání uzlu z plátna** → smaže pouze diagramový řádek. **Pojem zůstává nedotčen.** Diagram nemá akci „smazat pojem".
+
+**Nasazované — Uložit je drží v PG, Převzít je aplikuje do RDF.** Overlay nasazuje přesně tyto strukturální úpravy, vyjádřené jako *cílové hodnoty polí* na dotčených uzlech — nikoli jako log operací:
+
+| # | Akce uživatele | Cílová úprava | Concept-CRUD při Převzít |
+|---|---|---|---|
+| 1 | Přehození směru vztahu | prohodit `domain` ⇄ `range` na VZTAHu | 1 úprava |
+| 2 | Otočení směru hierarchie (B⊐A → A⊐B) | zrušit hierarchický odkaz na A, přidat na B | 2 úpravy — **jedna jednotka, vše nebo nic** |
+| 3 | Změna typu hierarchie (podtřída ⇄ ekvivalent) | vyprázdnit seznam podtříd, naplnit `exactMatch` (nebo obráceně) | 1 úprava |
+| 4 | Změna nadřazené třídy vlastnosti | změnit `domain` (`rdfs:domain`) VLASTNOSTI | 1 úprava |
+| 5 | Doplnění domény u vlastnosti bez domény | vyplnit `domain` VLASTNOSTI | 1 úprava |
+| 6 | Převod vztahu na hierarchii | přidat hierarchický odkaz na cílovou třídu, poté smazat VZTAH | 2 volání — **jedna jednotka, vše nebo nic** |
+| 7 | Odebrání vlastnosti/vztahu *z plátna* | pouze smazání diagramového řádku | žádné (není to RDF změna) |
+
+**Hierarchie je závislá na typu.** „Nadřazený" jsou tři různé predikáty: třída používá `subClassOf` (`broaderConcept`), vlastnost `subPropertyOf` (`superProperty`), vztah `subPropertyOf` (`superRelation`). Overlay nese pole odpovídající typu pojmu uzlu. „Ekvivalent" (op 3) znamená `skos:exactMatch`, nezávislý symetrický predikát — *ne* směrovanou hierarchii a *ne* jediný přepínač „typu hierarchie".
+
+**Jediné smazání v RDF, které diagram může způsobit, je implicitní** — smazání VZTAHu v op 6, a to až poté, co je úspěšně přidána nahrazující hierarchická hrana. Neexistuje samostatná akce „smazat pojem". Op 6 se nabízí jen tehdy, když na `domain`/`range` daného VZTAHu nic nemíří (jinak by jeho smazání tranzitivně kaskádovalo další pojmy); jinak převod vyvolá konflikt.
+
+## Hrany jsou projekce, ne obsah
+
+Vztah (VZTAH) je sám pojmem — uzlem. Jeho `rdfs:domain`/`rdfs:range` jsou pole na tomto uzlu, nasazená v overlayi uzlu. Hrany `DOMAIN`/`RANGE` vedené z uzlu VZTAHu k cílovým třídám jsou *vizuálním vykreslením* těchto polí. Vlastnost třídy (VLASTNOST) je rovněž uzel, spojený se svou vlastnící třídou hranou `DOMAIN` z uzlu vlastnosti k uzlu třídy.
+
+Proto **tažení hrany je úpravou uzlu** (přesměrování konce `RANGE` aktualizuje pole `range` v overlayi uzlu VZTAHu) a **nakreslení nové hrany vztahu je vytvořením pojmu VZTAH** (operace nad uzlem). Hrany nikdy nehromadí vlastní rozpracovaný stav; při čtení se znovu projektují z `živý pojem ⊕ overlay`. Overlay uzlu je jediným zdrojem pravdy pro doménu/obor hodnot/hierarchii.
+
+## PG entitní model
+
+Tři entity ve dvou + jedné tabulkách, podle vzoru `CommentEntity` (FK na `ontologies.id`, čisté PG, žádný outbox). Rozvržení i overlay rozpracovaných úprav žijí zcela v Postgresu.
+
+**`diagrams`** — jeden kanonický diagram na slovník (`@OneToOne` unikátní FK → `OntologyMetadataEntity`, ON DELETE CASCADE), viewport pan/zoom, sloupec `@Version` pro optimistický zámek a kolekce `@OneToMany` uzlů/hran (cascade ALL, orphanRemoval). Agregátní metody `addNode`/`addEdge`/`removeNode` drží volající na spravovaných instancích; `touch()` vynutí posun `@Version` i při změně jen uzlů/hran.
+
+**`diagram_nodes`** — každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro možnou budoucí rozšiřitelnost na NKD), pozice, `collapsed`/`hidden`, `parent_node_id` a `pending_edit_json` — **nullable**; je-li neprázdné, drží strukturální diff overlaye. `pending_edit_json` **koexistuje** s `concept_iri` (je to diff, ne náhrada). Ochrana `@PrePersist`/`@PreUpdate` a Postgres CHECK vynucují, že `concept_iri` je vždy přítomné.
+
+**`diagram_edges`** — koncové body (`source_node_id`/`target_node_id`, oba s indexem na FK a kaskádovým mazáním), `edge_kind` a nullable kotvy úchytů. Pouze koncové body + druh; **žádný obsah**.
+
+Model obsahu overlaye (`DiagramPendingEdit`) je **pouze strukturální**: `domain`, `range`, hierarchické pole podle typu (`broaderConcept` / `superProperty` / `superRelation`), `exactMatch` a značka `convertToHierarchy` pro op 6.
+
+## Sémantika Převzít (materializace)
+
+Materializace se rozvětvuje **v procesu** do stávajících pojmových služeb (ne přes HTTP volání sebe sama), takže znovu využívá stávající validaci a outbox. Pro každý uzel s neprázdným overlayem:
+
+1. Rozliší `concept_iri` uzlu na číselné id pojmu (edit/delete služby klíčují dle id). Chybějící řádek znamená, že pojem byl smazán → hlášeno jako `skippedStale`.
+2. Ověří, že pojem nebyl pod overlayem od jeho nasazení editován (otisk „stale-base" na `updatedAt` pojmu). Pokud se posunul, změna je hlášena jako konflikt, místo aby tiše přepsala mezitimní úpravu.
+3. Sestaví **polem omezenou** úpravu nesoucí jen změněné predikáty a aplikuje ji. Polem omezená je nutná proto, že zobrazovací read model nevystavuje boolean `isPublic` a editační cesta odstraní-a-podmíněně-znovu-přidá veřejnou/neveřejnou klasifikaci — úprava plným snímkem s null `isPublic` by ji tiše zahodila. (Jediný editační pomocník, který zde není null-safe, je odpovídajícím způsobem zpevněn - bude pravděpodoně ošetřeno, aby null-safe byl)
+
+**Granularita:** per-změna, částečně-OK. Změna zahrnující dvě concept-CRUD volání (otočení, vztah→hierarchie) je vše-nebo-nic — druhé volání je podmíněno prvním a overlay se vyprázdní jen při úplném úspěchu; selhání ponechá celou změnu nasazenou a nahlášenou.
+
+## Verzování
+
+Protože diagram nedrží žádný *samostatný* obsah pojmu, „verzování diagramu" zůstává malé. **Historie rozvržení** je čistě PG záležitost (snímky řádků rozvržení) — odloženo; nejprve jedno aktuální rozvržení. **Nasazené úpravy** jsou záměrně dočasné a historii verzí nepotřebují. **Forma verzování pojmů/slovníků** už žije ve stávajícím modelu (RDF, publikováno-vs-koncept, odchylky) a diagram ho zdědí zdarma čtením živého obsahu.
+
+## Export
+
+Export PNG/SVG je záležitostí **frontendu** (`html-to-image` `toPng`/`toSvg` nad viewportem ReactFlow, na straně klienta). Backend nemá pixelově přesný pohled na plátno.
+
+---
+
+*ISMD Tool · diagramová vrstva · každý uzel je materializovaný pojem · nasazené strukturální úpravy jako navázaný dočasný overlay · Uložit (PG) vs. Převzít (RDF) · per-změna vše-nebo-nic · žádné třetí úložiště*
