@@ -36,12 +36,12 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit coverage for the orchestration logic in {@link ConceptMetadataResolver}:
+ * Unit coverage for the orchestration logic in {@link ReferencedConceptResolutionEngine}:
  * cache-first split, ISMD/NKD batching, lenient NKD vs. strict ISMD error
  * propagation, slug enrichment scope, and input sanitisation.
  */
 @ExtendWith(MockitoExtension.class)
-class ConceptMetadataResolverTest {
+class ReferencedConceptResolutionEngineTest {
 
     private static final String ISMD_IRI_1 = "https://data.gov.cz/zdroj/slovnik/local/pojem/a";
     private static final String ISMD_IRI_2 = "https://data.gov.cz/zdroj/slovnik/local/pojem/b";
@@ -55,12 +55,12 @@ class ConceptMetadataResolverTest {
     @Mock private Cache cache;
 
     @InjectMocks
-    private ConceptMetadataResolver resolver;
+    private ReferencedConceptResolutionEngine resolver;
 
     @BeforeEach
     void wireCache() {
         // lenient: not every test needs the cache to be queried (e.g. empty-input early returns)
-        lenient().when(cacheManager.getCache(ConceptMetadataResolver.CACHE_NAME)).thenReturn(cache);
+        lenient().when(cacheManager.getCache(ReferencedConceptResolutionEngine.CACHE_NAME)).thenReturn(cache);
     }
 
     private static ResolvedConceptDto ismdDto(String iri) {
@@ -197,7 +197,7 @@ class ConceptMetadataResolverTest {
         @Test
         @DisplayName("null CacheManager.getCache → still resolves (no NPE)")
         void cacheManagerReturnsNull() {
-            when(cacheManager.getCache(ConceptMetadataResolver.CACHE_NAME)).thenReturn(null);
+            when(cacheManager.getCache(ReferencedConceptResolutionEngine.CACHE_NAME)).thenReturn(null);
             when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
                     .thenReturn(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1)));
             when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
@@ -385,6 +385,94 @@ class ConceptMetadataResolverTest {
             assertThat(relCache.getValue().resolvedDomain().conceptName())
                     .as("cached relationship must hold a resolved domain, not an iri-only stub")
                     .isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("NKD-only gate (source=NKD)")
+    class NkdOnlyGate {
+
+        // Same IRI as ISMD_IRI_1 but requested in NKD context — this is the
+        // doubly-present case: an IRI that lives in both stores. Under the gate it
+        // must resolve NKD-only and never touch ISMD.
+        private static final String NKD_ONLY_CACHE_KEY = "nkd-only::" + ISMD_IRI_1;
+
+        @Test
+        @DisplayName("source=NKD skips ISMD entirely and resolves against NKD only")
+        void nkdOnlySkipsIsmd() {
+            when(cache.get(NKD_ONLY_CACHE_KEY, ResolvedConceptDto.class)).thenReturn(null);
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(Map.of(ISMD_IRI_1, nkdDto(ISMD_IRI_1)));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1), SearchSource.NKD);
+
+            assertThat(out).containsOnlyKeys(ISMD_IRI_1);
+            assertThat(out.get(ISMD_IRI_1).source()).isEqualTo(SearchSource.NKD);
+            verify(nkdSparqlClient).fetchConceptResolutions(List.of(ISMD_IRI_1));
+            // The whole point of the gate: ISMD (and its slug repo) are never consulted.
+            verifyNoInteractions(jenaTDB2Repository, conceptMetadataRepository);
+        }
+
+        @Test
+        @DisplayName("source=NKD caches under a namespaced key so it can't clobber the ISMD-first entry")
+        void nkdOnlyUsesSeparateCacheKey() {
+            when(cache.get(NKD_ONLY_CACHE_KEY, ResolvedConceptDto.class)).thenReturn(null);
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(Map.of(ISMD_IRI_1, nkdDto(ISMD_IRI_1)));
+
+            resolver.resolveAll(List.of(ISMD_IRI_1), SearchSource.NKD);
+
+            verify(cache).put(eq(NKD_ONLY_CACHE_KEY), any(ResolvedConceptDto.class));
+            // Must NOT write the bare-IRI key that the default (ISMD-first) mode owns.
+            verify(cache, never()).put(eq(ISMD_IRI_1), any());
+        }
+
+        @Test
+        @DisplayName("source=NKD reads from the namespaced cache key, not the bare IRI")
+        void nkdOnlyReadsSeparateCacheKey() {
+            ResolvedConceptDto cachedNkd = nkdDto(ISMD_IRI_1);
+            when(cache.get(NKD_ONLY_CACHE_KEY, ResolvedConceptDto.class)).thenReturn(cachedNkd);
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1), SearchSource.NKD);
+
+            assertThat(out).containsEntry(ISMD_IRI_1, cachedNkd);
+            verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, conceptMetadataRepository);
+        }
+
+        @Test
+        @DisplayName("source=NKD expands relationship domain/range against NKD too")
+        void nkdOnlyExpandsStubsViaNkd() {
+            String relIri = "https://slovník.gov.cz/datový/sportovní/pojem/rel";
+            String domainIri = "https://slovník.gov.cz/datový/sportovní/pojem/trida-a";
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(relIri)))
+                    .thenReturn(new HashMap<>(Map.of(relIri, relationshipWithStubs(relIri, domainIri, null))));
+            when(nkdSparqlClient.fetchConceptResolutions(List.of(domainIri)))
+                    .thenReturn(new HashMap<>(Map.of(domainIri, nkdDto(domainIri))));
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(relIri), SearchSource.NKD);
+
+            ResolvedConceptDto rel = out.get(relIri);
+            assertThat(rel.resolvedDomain()).isNotNull();
+            assertThat(rel.resolvedDomain().iri()).isEqualTo(domainIri);
+            assertThat(rel.resolvedDomain().conceptName()).isNotNull();
+            // The stub second hop stayed on NKD — ISMD was never consulted.
+            verifyNoInteractions(jenaTDB2Repository, conceptMetadataRepository);
+        }
+
+        @Test
+        @DisplayName("source=ISMD behaves like the default (ISMD-first) path")
+        void explicitIsmdSourceIsDefaultPath() {
+            when(cache.get(ISMD_IRI_1, ResolvedConceptDto.class)).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(ISMD_IRI_1)))
+                    .thenReturn(new HashMap<>(Map.of(ISMD_IRI_1, ismdDto(ISMD_IRI_1))));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(ISMD_IRI_1), SearchSource.ISMD);
+
+            assertThat(out.get(ISMD_IRI_1).source()).isEqualTo(SearchSource.ISMD);
+            verify(jenaTDB2Repository).fetchConceptResolutions(List.of(ISMD_IRI_1));
+            verify(cache).put(eq(ISMD_IRI_1), any());
         }
     }
 
