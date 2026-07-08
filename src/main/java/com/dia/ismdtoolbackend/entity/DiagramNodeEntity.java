@@ -1,10 +1,12 @@
 package com.dia.ismdtoolbackend.entity;
 
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
-import com.dia.ismdtoolbackend.models.diagram.DiagramDraftContent;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,16 +14,9 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * One node on a diagram canvas — either a reference to a real ISMD concept or a draft sketch.
- *
- * <p>The {@link #backing} decides which: an {@link DiagramNodeBacking#ISMD_CONCEPT} node carries a
- * {@link #conceptIri} and no content (joined live to PG/RDF on read); a {@link DiagramNodeBacking#DRAFT}
- * node carries {@link #draftContent} (its {@code draftJson}) and no IRI. This is the only place the
- * diagram layer holds concept content, and only for drafts.
- *
- * <p>Position and grouping are presentation state; {@code collapsed}/{@code hidden} are the subset of UI
- * flags worth persisting (transient ReactFlow state — {@code selected}, {@code dragging}, {@code measured}
- * — is stripped by the FE and never stored).
+ * One node on a diagram canvas — always references a materialized ISMD concept ({@link #conceptIri}), and
+ * may carry a staged structural overlay ({@link #pendingEditJson}) that coexists with the IRI.
+ * See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Entity
 @Table(name = "diagram_nodes")
@@ -41,12 +36,10 @@ public class DiagramNodeEntity {
 
     @Column(name = "backing", nullable = false)
     @Enumerated(EnumType.STRING)
-    private DiagramNodeBacking backing;
+    private DiagramNodeBacking backing = DiagramNodeBacking.ISMD_CONCEPT;
 
-    /**
-     * The referenced concept's IRI — set for {@link DiagramNodeBacking#ISMD_CONCEPT}, null for drafts.
-     */
-    @Column(name = "concept_iri", length = 1024)
+    /** Referenced concept's IRI — always set. */
+    @Column(name = "concept_iri", length = 1024, nullable = false)
     private String conceptIri;
 
     @Column(name = "pos_x", nullable = false)
@@ -65,71 +58,51 @@ public class DiagramNodeEntity {
     @Column(name = "parent_node_id")
     private Long parentNodeId;
 
-    /**
-     * Serialized {@link DiagramDraftContent} — the draft's concept-shaped content. Set only for
-     * {@link DiagramNodeBacking#DRAFT} nodes; null for concept references.
-     */
-    @Column(name = "draft_json", columnDefinition = "text")
-    private String draftJson;
+    /** Serialized {@link DiagramPendingEdit} overlay; null when the node has no staged edits. */
+    @Column(name = "pending_edit_json", columnDefinition = "text")
+    private String pendingEditJson;
 
-    /**
-     * Enforce the backing ⟺ content invariant on every write.
-     */
     @PrePersist
     @PreUpdate
-    private void validateBackingInvariant() {
+    private void validateNodeInvariant() {
         if (backing == null) {
             throw new IllegalStateException("Diagram node backing must be set");
         }
-        switch (backing) {
-            case DRAFT -> {
-                if (conceptIri != null) {
-                    throw new IllegalStateException(
-                            "DRAFT node must not carry a conceptIri (id=" + id + ")");
-                }
-            }
-            case ISMD_CONCEPT -> {
-                if (conceptIri == null) {
-                    throw new IllegalStateException(
-                            "ISMD_CONCEPT node must carry a conceptIri (id=" + id + ")");
-                }
-                if (draftJson != null) {
-                    throw new IllegalStateException(
-                            "ISMD_CONCEPT node must not carry draft content (id=" + id + ")");
-                }
-            }
+        if (conceptIri == null) {
+            throw new IllegalStateException(
+                    "Diagram node must carry a conceptIri (id=" + id + ")");
         }
     }
 
     private static final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    /** Deserialize the draft content. Returns {@code null} on absent/malformed JSON (logged). */
-    public DiagramDraftContent getDraftContent() {
-        if (draftJson == null || draftJson.isBlank()) {
+    /** Deserialize the overlay; {@code null} on absent/malformed JSON (logged). */
+    public DiagramPendingEdit getPendingEdit() {
+        if (pendingEditJson == null || pendingEditJson.isBlank()) {
             return null;
         }
         try {
-            return objectMapper.readValue(draftJson, DiagramDraftContent.class);
+            return objectMapper.readValue(pendingEditJson, DiagramPendingEdit.class);
         } catch (JsonProcessingException e) {
-            log.error("Failed to deserialize draft JSON for diagram node id={}", id, e);
+            log.error("Failed to deserialize pending-edit JSON for diagram node id={}", id, e);
             return null;
         }
     }
 
-    /**
-     * Serialize and store the draft content. A null value clears the column.
-     */
-    public void setDraftContent(DiagramDraftContent content) {
-        if (content == null) {
-            this.draftJson = null;
+    /** Serialize and store the overlay; a null value clears the column. */
+    public void setPendingEdit(DiagramPendingEdit edit) {
+        if (edit == null) {
+            this.pendingEditJson = null;
             return;
         }
         try {
-            this.draftJson = objectMapper.writeValueAsString(content);
+            this.pendingEditJson = objectMapper.writeValueAsString(edit);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(
-                    "Failed to serialize draft content for diagram node id=" + id, e);
+                    "Failed to serialize pending edit for diagram node id=" + id, e);
         }
     }
 }

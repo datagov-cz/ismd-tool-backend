@@ -5,10 +5,9 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
-import com.dia.ismdtoolbackend.models.diagram.DiagramDraftContent;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
@@ -27,19 +26,13 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Verifies the diagram schema ({@code diagrams} / {@code diagram_nodes} / {@code diagram_edges}) applies
- * under Liquibase + {@code ddl-auto=validate} on REAL Postgres, and that the three entities round-trip —
- * including the draft JSON serialization and the unique-diagram-per-ontology constraint.
- *
- * <p>Scoped {@code @EntityScan} to the diagram entities plus {@link OntologyMetadataEntity} (the FK
- * parent) so strict validation checks only this feature's schema — the pre-existing
- * {@code Instant↔timestamptz} mappings elsewhere are out of scope, same as the outbox test.
+ * Diagram schema applies under Liquibase + {@code ddl-auto=validate} on real Postgres, and the three
+ * entities round-trip. {@code @EntityScan} is scoped so strict validation checks only this feature.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -95,32 +88,40 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         assertThat(diagramRepository.findByOntologyMetadataSlug("pracovni-pomer")).isPresent();
     }
 
+    // Overlay coexists with the IRI, round-trips through the JSON column, and the CHECK permits it.
     @Test
-    void draftNode_serializesContentToJsonColumn() {
-        DiagramEntity diagram = diagramFor(ontology("draft-carrier"));
+    void nodeWithOverlay_roundTripsAndCoexistsWithIri() {
+        DiagramEntity diagram = diagramFor(ontology("overlay-carrier"));
 
-        DiagramNodeEntity draft = new DiagramNodeEntity();
-        draft.setDiagram(diagram);
-        draft.setBacking(DiagramNodeBacking.DRAFT);
-        draft.setPosX(520.0);
-        draft.setPosY(210.0);
-        DiagramDraftContent content = new DiagramDraftContent();
-        content.setConceptType(ConceptType.VZTAH);
-        content.setLabel(Map.of("cs", "je zaměstnán u"));
-        content.setRange("iri:https://x/pojem/organizace");
-        draft.setDraftContent(content);
-        Long id = nodeRepository.save(draft).getId();
+        DiagramNodeEntity node = reference(diagram, "https://x/pojem/je-zamestnan-u", 520.0, 210.0);
+        DiagramPendingEdit edit = new DiagramPendingEdit();
+        edit.setRange("https://x/pojem/organizace");
+        edit.setExactMatch(List.of("https://x/pojem/pracuje-u"));
+        node.setPendingEdit(edit);
+        Long id = nodeRepository.save(node).getId();
 
         em.flush();
         em.clear();
 
         DiagramNodeEntity reloaded = nodeRepository.findById(id).orElseThrow();
-        assertThat(reloaded.getConceptIri()).isNull();
-        assertThat(reloaded.getDraftJson()).contains("je zaměstnán u"); // round-trips UTF-8
-        DiagramDraftContent back = reloaded.getDraftContent();
-        assertThat(back.getConceptType()).isEqualTo(ConceptType.VZTAH);
-        assertThat(back.getLabel()).containsEntry("cs", "je zaměstnán u");
-        assertThat(back.getRange()).isEqualTo("iri:https://x/pojem/organizace");
+        assertThat(reloaded.getConceptIri()).isEqualTo("https://x/pojem/je-zamestnan-u"); // IRI kept
+        assertThat(reloaded.getPendingEditJson()).contains("organizace");                // diff persisted
+        DiagramPendingEdit back = reloaded.getPendingEdit();
+        assertThat(back.getRange()).isEqualTo("https://x/pojem/organizace");
+        assertThat(back.getExactMatch()).containsExactly("https://x/pojem/pracuje-u");
+    }
+
+    // A node with no staged edits is a plain live reference — null overlay, still valid.
+    @Test
+    void nodeWithoutOverlay_isValidAndHasNullOverlay() {
+        DiagramEntity diagram = diagramFor(ontology("no-overlay"));
+        Long id = nodeRepository.save(reference(diagram, "https://x/pojem/plain", 0, 0)).getId();
+        em.flush();
+        em.clear();
+
+        DiagramNodeEntity reloaded = nodeRepository.findById(id).orElseThrow();
+        assertThat(reloaded.getPendingEditJson()).isNull();
+        assertThat(reloaded.getPendingEdit()).isNull();
     }
 
     @Test
@@ -133,7 +134,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         edge.setDiagram(diagram);
         edge.setSourceNode(src);
         edge.setTargetNode(tgt);
-        edge.setEdgeKind(DiagramEdgeKind.DRAFT_LINK);
+        edge.setEdgeKind(DiagramEdgeKind.RANGE);
         edgeRepository.save(edge);
 
         assertThat(edgeRepository.findByDiagramId(diagram.getId())).hasSize(1);
@@ -142,19 +143,12 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
     }
 
     @Test
-    void nodeFindersFilterByBackingAndIri() {
+    void nodeFindersByDiagramAndIri() {
         DiagramEntity diagram = diagramFor(ontology("finders-o"));
         nodeRepository.save(reference(diagram, "https://x/pojem/a", 0, 0));
-        DiagramNodeEntity draft = new DiagramNodeEntity();
-        draft.setDiagram(diagram);
-        draft.setBacking(DiagramNodeBacking.DRAFT);
-        draft.setPosX(1.0);
-        draft.setPosY(1.0);
-        nodeRepository.save(draft);
+        nodeRepository.save(reference(diagram, "https://x/pojem/b", 1, 1));
 
         assertThat(nodeRepository.findByDiagramId(diagram.getId())).hasSize(2);
-        assertThat(nodeRepository.findByDiagramIdAndBacking(diagram.getId(), DiagramNodeBacking.ISMD_CONCEPT))
-                .hasSize(1);
         assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), "https://x/pojem/a"))
                 .isPresent();
     }
@@ -169,7 +163,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         edge.setDiagram(diagram);
         edge.setSourceNode(src);
         edge.setTargetNode(tgt);
-        edge.setEdgeKind(DiagramEdgeKind.DRAFT_LINK);
+        edge.setEdgeKind(DiagramEdgeKind.DOMAIN);
         edgeRepository.save(edge);
         em.flush();
         // Detach everything so the delete exercises the DB-level ON DELETE CASCADE, not JPA's
@@ -187,7 +181,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
     }
 
     @Test
-    void draftLinkAndDerivedKinds_persistAcrossAllEnumValues() {
+    void allEdgeKinds_persist() {
         DiagramEntity diagram = diagramFor(ontology("enum-o"));
         DiagramNodeEntity a = nodeRepository.save(reference(diagram, "https://x/pojem/a", 0, 0));
         DiagramNodeEntity b = nodeRepository.save(reference(diagram, "https://x/pojem/b", 1, 1));
@@ -204,9 +198,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .hasSize(DiagramEdgeKind.values().length);
     }
 
-    // H1: two ISMD_CONCEPT nodes referencing the same concept on one diagram are rejected by the
-    // partial-unique index (Postgres-only; the H2 junit profile can't honour partial indexes, so this
-    // assertion is meaningful only here on Testcontainers PG).
+    // Two nodes referencing the same concept on one diagram are rejected by the (now plain) unique index.
     @Test
     void duplicateConceptNodeOnSameDiagram_isRejected() {
         DiagramEntity diagram = diagramFor(ontology("dup-o"));
@@ -217,24 +209,16 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
-    // H1: the guard is scoped to a diagram and to ISMD_CONCEPT nodes — same IRI on a DIFFERENT diagram
-    // is fine, and multiple drafts (null concept_iri) never collide under the partial index.
+    // The uniqueness guard is scoped to a diagram — the same IRI on a DIFFERENT diagram is fine.
     @Test
-    void sameConceptOnDifferentDiagrams_andManyDrafts_areAllowed() {
+    void sameConceptOnDifferentDiagrams_isAllowed() {
         DiagramEntity d1 = diagramFor(ontology("dup-a"));
         DiagramEntity d2 = diagramFor(ontology("dup-b"));
         nodeRepository.saveAndFlush(reference(d1, "https://x/pojem/shared", 0, 0));
         nodeRepository.saveAndFlush(reference(d2, "https://x/pojem/shared", 0, 0)); // different diagram → ok
 
-        for (int i = 0; i < 3; i++) {
-            DiagramNodeEntity draft = new DiagramNodeEntity();
-            draft.setDiagram(d1);
-            draft.setBacking(DiagramNodeBacking.DRAFT);
-            draft.setPosX((double) i);
-            draft.setPosY(0.0);
-            nodeRepository.saveAndFlush(draft); // null concept_iri, partial index excludes it → ok
-        }
-        assertThat(nodeRepository.findByDiagramId(d1.getId())).hasSize(4);
+        assertThat(nodeRepository.findByDiagramId(d1.getId())).hasSize(1);
+        assertThat(nodeRepository.findByDiagramId(d2.getId())).hasSize(1);
     }
 
     // H2: both cascade FK columns on diagram_edges are indexed (unindexed FKs → seq-scan-per-delete).
@@ -249,9 +233,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .contains("idx_diagram_edges_source_node_id", "idx_diagram_edges_target_node_id");
     }
 
-    // C2: removeNode() drops the node AND its incident edges in one unit of work — no JPA-vs-DB-cascade
-    // fight, no leftover edges. Exercises a mid-aggregate delete (the case the ontology-cascade test,
-    // which clears the context first, deliberately does not).
+    // removeNode() drops the node and its incident edges in one unit of work (mid-aggregate delete).
     @Test
     void removeNode_alsoRemovesIncidentEdges() {
         DiagramEntity diagram = diagramFor(ontology("removenode-o"));
@@ -274,9 +256,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         diagramRepository.saveAndFlush(diagram);
         em.clear();
 
-        // Reload the managed aggregate — removeNode must operate on managed instances for orphanRemoval
-        // to fire (entities use identity equality; a detached instance would silently no-op). This is the
-        // L1 contract the addNode/removeNode helpers exist to keep callers on.
+        // Reload managed — removeNode must operate on managed instances for orphanRemoval to fire.
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
         DiagramNodeEntity managedB = managed.getNodes().stream()
                 .filter(n -> "https://x/pojem/b".equals(n.getConceptIri()))
@@ -290,6 +270,38 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .extracting(DiagramNodeEntity::getConceptIri)
                 .containsExactlyInAnyOrder("https://x/pojem/a", "https://x/pojem/c");
         assertThat(edgeRepository.findByDiagramId(diagram.getId())).isEmpty(); // both incident edges gone
+    }
+
+    // removeNode() nulls the parentNodeId of any child grouped under the removed node.
+    @Test
+    void removeNode_nullsChildrenParent() {
+        DiagramEntity diagram = diagramFor(ontology("parent-o"));
+        DiagramNodeEntity parent = reference(diagram, "https://x/pojem/parent", 0, 0);
+        DiagramNodeEntity child = reference(diagram, "https://x/pojem/child", 1, 1);
+        diagram.addNode(parent);
+        diagram.addNode(child);
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramNodeEntity managedParent = managed.getNodes().stream()
+                .filter(n -> "https://x/pojem/parent".equals(n.getConceptIri())).findFirst().orElseThrow();
+        DiagramNodeEntity managedChild = managed.getNodes().stream()
+                .filter(n -> "https://x/pojem/child".equals(n.getConceptIri())).findFirst().orElseThrow();
+        managedChild.setParentNodeId(managedParent.getId());
+        diagramRepository.saveAndFlush(managed);
+        em.clear();
+
+        DiagramEntity reloaded = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramNodeEntity reParent = reloaded.getNodes().stream()
+                .filter(n -> "https://x/pojem/parent".equals(n.getConceptIri())).findFirst().orElseThrow();
+        reloaded.removeNode(reParent);
+        diagramRepository.saveAndFlush(reloaded);
+        em.clear();
+
+        DiagramNodeEntity reChild = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/child").orElseThrow();
+        assertThat(reChild.getParentNodeId()).isNull();     // parent gone → child detached, not dangling
     }
 
     // C1: touch() dirties the diagram row so a save bumps @Version even when only children changed.
@@ -306,21 +318,10 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         assertThat(v1).isGreaterThan(v0);
     }
 
-    // M1: the backing⟺content invariant is enforced on write (entity @PrePersist). A DRAFT carrying a
-    // conceptIri, or an ISMD_CONCEPT missing one / carrying draft content, is rejected before insert.
+    // @PrePersist rejects a node missing its conceptIri.
     @Test
-    void backingInvariant_isEnforcedOnWrite() {
+    void nodeInvariant_isEnforcedOnWrite() {
         DiagramEntity diagram = diagramFor(ontology("invariant-o"));
-
-        DiagramNodeEntity draftWithIri = new DiagramNodeEntity();
-        draftWithIri.setDiagram(diagram);
-        draftWithIri.setBacking(DiagramNodeBacking.DRAFT);
-        draftWithIri.setConceptIri("https://x/pojem/should-not-be-here");
-        draftWithIri.setPosX(0.0);
-        draftWithIri.setPosY(0.0);
-        assertThatThrownBy(() -> nodeRepository.saveAndFlush(draftWithIri))
-                .isInstanceOf(Exception.class)
-                .hasMessageContaining("DRAFT node must not carry a conceptIri");
 
         DiagramNodeEntity conceptWithoutIri = new DiagramNodeEntity();
         conceptWithoutIri.setDiagram(diagram);
@@ -329,25 +330,23 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         conceptWithoutIri.setPosY(0.0);
         assertThatThrownBy(() -> nodeRepository.saveAndFlush(conceptWithoutIri))
                 .isInstanceOf(Exception.class)
-                .hasMessageContaining("ISMD_CONCEPT node must carry a conceptIri");
+                .hasMessageContaining("must carry a conceptIri");
     }
 
-    // M2: a serialization failure in setDraftContent throws (no silent NULL-content draft). Modeled with
-    // content Jackson can't serialize — a self-referential map.
+    // setPendingEdit throws on a serialization failure (no silent null overlay).
     @Test
-    void setDraftContent_throwsOnSerializationFailure() {
+    void setPendingEdit_throwsOnSerializationFailure() {
         DiagramNodeEntity node = new DiagramNodeEntity();
-        java.util.Map<String, String> cyclic = new java.util.HashMap<>();
-        // A raw-typed put to smuggle a non-String value Jackson will choke on for Map<String,String>.
+        java.util.List<String> cyclic = new java.util.ArrayList<>();
         @SuppressWarnings({"unchecked", "rawtypes"})
-        java.util.Map raw = cyclic;
-        raw.put("self", cyclic); // cycle → JsonMappingException on write
-        DiagramDraftContent content = new DiagramDraftContent();
-        content.setLabel(cyclic);
+        java.util.List raw = cyclic;
+        raw.add(cyclic); // cycle → JsonMappingException on write
+        DiagramPendingEdit edit = new DiagramPendingEdit();
+        edit.setExactMatch(cyclic);
 
-        assertThatThrownBy(() -> node.setDraftContent(content))
+        assertThatThrownBy(() -> node.setPendingEdit(edit))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Failed to serialize draft content");
-        assertThat(node.getDraftJson()).isNull(); // never persisted partial/empty
+                .hasMessageContaining("Failed to serialize pending edit");
+        assertThat(node.getPendingEditJson()).isNull(); // never persisted partial/empty
     }
 }

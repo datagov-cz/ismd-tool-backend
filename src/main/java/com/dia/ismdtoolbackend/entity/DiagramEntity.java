@@ -115,12 +115,20 @@ public class DiagramEntity {
     }
 
     /**
-     * Remove a node <em>and every edge incident to it</em> in one unit of work.
+     * Remove a node, every edge incident to it, and null the {@code parentNodeId} of any children grouped
+     * under it — one unit of work.
      */
     public void removeNode(DiagramNodeEntity node) {
         this.edges.removeIf(e ->
                 e.getSourceNode() != null && e.getSourceNode().equals(node)
                         || e.getTargetNode() != null && e.getTargetNode().equals(node));
+        if (node.getId() != null) {
+            for (DiagramNodeEntity child : this.nodes) {
+                if (node.getId().equals(child.getParentNodeId())) {
+                    child.setParentNodeId(null);
+                }
+            }
+        }
         this.nodes.remove(node);
     }
 }
