@@ -124,7 +124,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String userId,
                                                 NormalizeMode normalizeMode,
                                                 List<String> conceptsToNormalize) throws IOException, OntologyUploadException {

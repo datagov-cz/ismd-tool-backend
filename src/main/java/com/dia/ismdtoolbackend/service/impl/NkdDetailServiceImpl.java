@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -149,7 +150,9 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         });
 
         OntologyDetailModel.ConceptDetailModel detail = published.detail();
-        referencedConceptsEnricher.enrich(detail);
+        // NKD detail context: resolve referenced concepts NKD-only so an IRI that
+        // also exists in ISMD stays in the NKD context the user is viewing.
+        referencedConceptsEnricher.enrich(detail, SearchSource.NKD);
         resolveRppReferences(detail);
 
         // Query param wins (FE supplies it as breadcrumb context); fall back to

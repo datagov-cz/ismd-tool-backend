@@ -19,7 +19,10 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -37,7 +40,7 @@ class ReferencedConceptsEnricherTest {
     private static final String PROPERTY_IRI = "https://slovník.gov.cz/example/pojem/vlastnost";
     private static final String RELATIONSHIP_IRI = "https://slovník.gov.cz/example/pojem/vztah";
 
-    @Mock private ConceptMetadataResolver conceptMetadataResolver;
+    @Mock private ReferencedConceptResolutionEngine resolutionEngine;
 
     @InjectMocks
     private ReferencedConceptsEnricher enricher;
@@ -72,7 +75,7 @@ class ReferencedConceptsEnricherTest {
     @DisplayName("Null detail → no-op, no resolver call")
     void nullDetail() {
         enricher.enrich(null);
-        verifyNoInteractions(conceptMetadataResolver);
+        verifyNoInteractions(resolutionEngine);
     }
 
     @Test
@@ -83,7 +86,7 @@ class ReferencedConceptsEnricherTest {
         enricher.enrich(detail);
 
         assertThat(detail.getReferencedConceptsResolved()).isNull();
-        verifyNoInteractions(conceptMetadataResolver);
+        verifyNoInteractions(resolutionEngine);
     }
 
     @Test
@@ -110,7 +113,7 @@ class ReferencedConceptsEnricherTest {
                 PROPERTY_IRI, dto(PROPERTY_IRI, SearchSource.ISMD),
                 RELATIONSHIP_IRI, dto(RELATIONSHIP_IRI, SearchSource.ISMD));
         ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
-        when(conceptMetadataResolver.resolveAll(captor.capture())).thenReturn(resolved);
+        when(resolutionEngine.resolveAll(captor.capture(), isNull())).thenReturn(resolved);
 
         enricher.enrich(detail);
 
@@ -128,7 +131,7 @@ class ReferencedConceptsEnricherTest {
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .exactMatches(List.of(EXACT_MATCH_IRI, BROADER_CLASS_IRI))
                 .build();
-        when(conceptMetadataResolver.resolveAll(anyList()))
+        when(resolutionEngine.resolveAll(anyList(), any()))
                 .thenReturn(Map.of(EXACT_MATCH_IRI, dto(EXACT_MATCH_IRI, SearchSource.NKD)));
 
         enricher.enrich(detail);
@@ -151,7 +154,7 @@ class ReferencedConceptsEnricherTest {
         enricher.enrich(detail);
 
         // Nothing to resolve → resolver never called
-        verify(conceptMetadataResolver, never()).resolveAll(anyList());
+        verify(resolutionEngine, never()).resolveAll(anyList(), any());
         assertThat(detail.getReferencedConceptsResolved()).isNull();
     }
 
@@ -161,7 +164,7 @@ class ReferencedConceptsEnricherTest {
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .exactMatches(List.of(EXACT_MATCH_IRI))
                 .build();
-        when(conceptMetadataResolver.resolveAll(anyList()))
+        when(resolutionEngine.resolveAll(anyList(), any()))
                 .thenThrow(new SparqlEndpointUnavailableException("ISMD", "boom"));
 
         assertThatThrownBy(() -> enricher.enrich(detail))
@@ -176,10 +179,39 @@ class ReferencedConceptsEnricherTest {
                 .exactMatches(List.of("", "   ", EXACT_MATCH_IRI))
                 .build();
         ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
-        when(conceptMetadataResolver.resolveAll(captor.capture())).thenReturn(Map.of());
+        when(resolutionEngine.resolveAll(captor.capture(), isNull())).thenReturn(Map.of());
 
         enricher.enrich(detail);
 
         assertThat(captor.getValue()).containsExactly(EXACT_MATCH_IRI);
+    }
+
+    @Test
+    @DisplayName("enrich(detail) uses the default (ISMD-first) path — passes null source")
+    void defaultOverloadPassesNullSource() {
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .exactMatches(List.of(EXACT_MATCH_IRI))
+                .build();
+        when(resolutionEngine.resolveAll(anyList(), isNull())).thenReturn(Map.of());
+
+        enricher.enrich(detail);
+
+        verify(resolutionEngine).resolveAll(List.of(EXACT_MATCH_IRI), null);
+    }
+
+    @Test
+    @DisplayName("enrich(detail, NKD) gates the referenced-concept resolution to NKD-only")
+    void nkdSourceGatesResolution() {
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .exactMatches(List.of(EXACT_MATCH_IRI))
+                .build();
+        when(resolutionEngine.resolveAll(anyList(), eq(SearchSource.NKD)))
+                .thenReturn(Map.of(EXACT_MATCH_IRI, dto(EXACT_MATCH_IRI, SearchSource.NKD)));
+
+        enricher.enrich(detail, SearchSource.NKD);
+
+        verify(resolutionEngine).resolveAll(List.of(EXACT_MATCH_IRI), SearchSource.NKD);
+        assertThat(detail.getReferencedConceptsResolved().get(EXACT_MATCH_IRI).source())
+                .isEqualTo(SearchSource.NKD);
     }
 }

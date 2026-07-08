@@ -80,7 +80,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
@@ -119,7 +119,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
@@ -390,7 +390,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
             throw new OntologyException("Data pro úpravu slovníku jsou prázdná");

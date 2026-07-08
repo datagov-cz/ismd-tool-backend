@@ -22,7 +22,6 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
-import com.dia.ismdtoolbackend.service.impl.ConceptMetadataResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -89,9 +88,6 @@ class OntologyControllerTest {
 
     @MockitoBean
     private NkdDetailService nkdDetailService;
-
-    @MockitoBean
-    private ConceptMetadataResolver conceptMetadataResolver;
 
     @MockitoBean
     private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;

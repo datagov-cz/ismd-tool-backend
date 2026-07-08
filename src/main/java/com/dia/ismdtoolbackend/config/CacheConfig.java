@@ -75,7 +75,8 @@ public class CacheConfig {
                 .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
                 .build());
 
-        // Backs the concept-reference resolver (POST /api/ontology/concepts/resolve).
+        // Backs the referenced-concept resolution engine (ReferencedConceptResolutionEngine),
+        // driven inline from the concept-detail flow via ReferencedConceptsEnricher.
         // Per-IRI entries so partially-overlapping detail views share cache hits. 24h
         // TTL is the safety net for NKD-side changes we can't observe; ISMD mutations
         // are invalidated synchronously via @CacheEvict on OntologyServiceImpl.
