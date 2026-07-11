@@ -25,7 +25,7 @@ A diagram is **both** a live picture of a real ISMD ontology **and** a working s
 - **🟡 Pending edits — intentional, bounded, self-healing.** A staged domain/range/hierarchy change not yet materialized. Diagram-owned content, but a keyed diff that exists to be materialized and is cleared on Převzít. It cannot silently persist as a shadow truth: the FE renders it as "N uncommitted changes" and Převzít is a deliberate user action.
 - **🔴 A silent third copy — forbidden by construction.** A node holding a *standalone* copy of concept content that drifts with no owner. The overlay is never standalone (always keyed to a live IRI) and never permanent (Převzít empties it).
 
-Everything else is **staleness**, handled at read time: a **dangling reference** (a node points at a concept deleted via normal CRUD → node marked `stale`) and a **coverage gap** (new concepts not yet on the canvas → the diagram is deliberately a subset view).
+Everything else is **staleness**, handled at read time: a **dangling reference** (a node points at a concept deleted via normal CRUD → node marked `stale`) and a **coverage gap** (new concepts not yet on the canvas → the diagram is deliberately a subset view). Coverage is computed **on the frontend** — it already holds the full ontology concept list and the on-canvas node IRIs, so "which concepts are not on the canvas" is a client-side set-diff, not a server endpoint.
 
 ## The two actions
 
@@ -40,8 +40,8 @@ Creating a concept and removing a node are immediate/local; **structural edits s
 
 **Immediate — not staged:**
 
-- **Create a concept from the canvas** → existing `POST /api/concept` create → outbox → RDF. A property or relationship may be created *without a domain* (still fully materialized, a real IRI); the domain is filled in later as a staged edit. (Note: a property always receives an `rdfs:range` — `Literal` by default — so only the *domain* can genuinely be absent.)
-- **Remove a node from the canvas** → drops the diagram row only. **The concept is untouched.** There is no "delete concept" action on the diagram.
+- **Create a concept from the canvas** → existing `POST /api/concept` create → outbox → RDF. A property or relationship may be created *without a domain* (still fully materialized, a real IRI); the domain is filled in later as a staged edit. (Note: a property always receives an `rdfs:range` — `Literal` by default — so only the *domain* can genuinely be absent.) The FE then places it on the canvas by including it in the next layout save.
+- **Add / remove a node from the canvas** → ride the **layout save** (`PUT …/layout`, an idempotent full-replace): a node present is on the canvas, a node omitted is off it. **The concept is untouched** either way. There is no dedicated add/remove-node endpoint and no "delete concept" action on the diagram.
 
 **Staged — Save keeps them in PG, Převzít applies them to RDF.** The overlay stages exactly these structural edits, expressed as *end-state field values* on the affected node(s) — not an op-log:
 

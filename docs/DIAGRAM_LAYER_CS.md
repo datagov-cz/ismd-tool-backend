@@ -25,7 +25,7 @@ Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovn
 - **🟡 Rozpracované úpravy — záměrné, ohraničené, samoopravné.** Nasazená změna domény/oboru hodnot/hierarchie, dosud nematerializovaná. Obsah vlastněný diagramem, ale navázaný diff, který existuje proto, aby byl materializován, a při Převzít se vyprázdní. Nemůže tiše přetrvat jako stínová pravda: FE ho vykresluje jako „N nezapsaných změn" a Převzít je vědomá akce uživatele.
 - **🔴 Tichá třetí kopie — konstrukčně zakázaná.** Uzel držící *samostatnou* kopii obsahu pojmu, která se rozchází bez vlastníka. Overlay není nikdy samostatný (vždy navázaný na živé IRI) a nikdy trvalý (Převzít ho vyprázdní).
 
-Vše ostatní je **zastaralost**, řešená při čtení: **visící odkaz** (uzel míří na pojem smazaný běžným CRUD → uzel označen `stale`) a **mezera v pokrytí** (nové pojmy dosud nejsou na plátně → diagram je záměrně podmnožinovým pohledem).
+Vše ostatní je **zastaralost**, řešená při čtení: **visící odkaz** (uzel míří na pojem smazaný běžným CRUD → uzel označen `stale`) a **mezera v pokrytí** (nové pojmy dosud nejsou na plátně → diagram je záměrně podmnožinovým pohledem). Pokrytí se počítá **na frontendu** — ten už má úplný seznam pojmů slovníku i IRI uzlů na plátně, takže „které pojmy nejsou na plátně" je množinový rozdíl na straně klienta, ne serverový endpoint.
 
 ## Dvě akce
 
@@ -40,8 +40,8 @@ Vytvoření pojmu a odebrání uzlu jsou okamžité/lokální; **strukturální 
 
 **Okamžité — nenasazované:**
 
-- **Vytvoření pojmu z plátna** → stávající `POST /api/concept` create → outbox → RDF. Vlastnost nebo vztah lze vytvořit *bez domény* (přesto plně materializované, s reálným IRI); doména se doplní později jako nasazená úprava. (Pozn.: vlastnost vždy dostane `rdfs:range` — výchozí `Literal` — takže skutečně chybět může jen *doména*.)
-- **Odebrání uzlu z plátna** → smaže pouze diagramový řádek. **Pojem zůstává nedotčen.** Diagram nemá akci „smazat pojem".
+- **Vytvoření pojmu z plátna** → stávající `POST /api/concept` create → outbox → RDF. Vlastnost nebo vztah lze vytvořit *bez domény* (přesto plně materializované, s reálným IRI); doména se doplní později jako nasazená úprava. (Pozn.: vlastnost vždy dostane `rdfs:range` — výchozí `Literal` — takže skutečně chybět může jen *doména*.) FE jej pak umístí na plátno zahrnutím do dalšího uložení rozvržení.
+- **Přidání / odebrání uzlu z plátna** → jede na **uložení rozvržení** (`PUT …/layout`, idempotentní úplná náhrada): přítomný uzel je na plátně, vynechaný uzel z něj zmizí. **Pojem zůstává v obou případech nedotčen.** Není žádný vyhrazený endpoint pro přidání/odebrání uzlu ani akce „smazat pojem".
 
 **Nasazované — Uložit je drží v PG, Převzít je aplikuje do RDF.** Overlay nasazuje přesně tyto strukturální úpravy, vyjádřené jako *cílové hodnoty polí* na dotčených uzlech — nikoli jako log operací:
 

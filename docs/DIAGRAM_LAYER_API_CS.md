@@ -13,17 +13,15 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 | Sloveso · Cesta | Účel | Tělo → Odpověď |
 |---|---|---|
 | `GET /{ontologySlug}` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Při prvním otevření líně vytvoří prázdný diagram. | → `DiagramDto` (tučný, připravený k vykreslení) |
-| `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, hrany-jako-projekce) *a* overlaye uzlů. Idempotentní úplná náhrada. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` |
-| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole). Nematerializuje se. | `NodeOverlayDto` → uzel |
-| `DELETE /{ontologySlug}/nodes/{nodeId}/overlay` | Zahodit nasazené úpravy uzlu (návrat k živému obsahu). | → uzel |
+| `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, hrany-jako-projekce) *a* overlaye uzlů. Idempotentní úplná náhrada — toto volání **je** členstvím na plátně: přítomný uzel je přidán (dosud neznámé IRI se v odpovědi hydratuje), vynechaný uzel je z plátna odebrán. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
+| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole), nebo ji **zahodit** prázdným tělem (`{}` / null → návrat k živému obsahu). Nematerializuje se. | `NodeOverlayDto` → uzel |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` + obnovený `DiagramDto` |
-| `POST /{ontologySlug}/nodes` | Přidat existující pojem na plátno jako uzel (pouze rozvržení). | `AddNodeDto {conceptIri, position}` → uzel |
-| `DELETE /{ontologySlug}/nodes/{nodeId}` | Odebrat uzel **pouze z plátna** — pojem zůstává nedotčen. | → Void |
-| `GET /{ontologySlug}/coverage` | Které pojmy ontologie *nejsou* na plátně („přidat N chybějících"). | → `List<MinimalConceptDto>` |
 
-**Žádný endpoint pro smazání pojmu.** Vytvoření pojmu z plátna volá stávající `POST /api/concept/{slug}/create` (vlastnost/vztah lze vytvořit bez domény), poté `POST …/nodes` k umístění. Odebrání uzlu je pouze plátnové; jediné smazání v RDF, které diagram způsobí, je implicitní, uvnitř op 6, řešené `/materialize`.
+**Členství na plátně jede na uložení rozvržení.** Není žádný vyhrazený endpoint pro přidání/odebrání uzlu. Protože `PUT …/layout` je idempotentní úplná náhrada, **přidat** = uzel zahrnout (holé `{id, position}` pro pojem dosud ne na plátně; odpověď `DiagramDto` hydratuje jeho label/typ/slug z živého RDF) a **odebrat z plátna** = vynechat. Pojem není v žádném případě dotčen — jediné smazání v RDF, které diagram způsobí, je implicitní, uvnitř op 6, řešené `/materialize`.
 
-**Konvence id uzlu.** `iri:<úplné-iri>` pro každý uzel (všechny uzly odkazují na pojem). ReactFlow vyžaduje jen to, aby `node.id` byl unikátní řetězec; toto schéma je stabilní napříč načteními.
+**Žádný endpoint pro smazání pojmu, žádný coverage endpoint.** Vytvoření pojmu z plátna volá stávající `POST /api/concept/{slug}/create` (vlastnost/vztah lze vytvořit bez domény), poté FE uzel umístí zahrnutím do dalšího `PUT …/layout`. Coverage („které pojmy nejsou na plátně") je **množinový rozdíl na straně klienta** — FE už má úplný seznam pojmů ontologie i IRI uzlů na plátně; žádné volání serveru.
+
+**Konvence id uzlu.** `iri:<úplné-iri>` pro každý uzel (všechny uzly odkazují na pojem). ReactFlow vyžaduje jen to, aby `node.id` byl unikátní řetězec; toto schéma je stabilní napříč načteními a umožňuje `PUT …/layout` přidat uzel podle IRI bez předchozího volání serveru.
 
 ## Čtení — `GET /api/diagram/{ontologySlug}` → 200 · `DiagramDto`
 
@@ -81,7 +79,6 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
     }
   ],
 
-  "coverage": { "conceptsNotOnCanvas": 3 },
   "pendingChangeCount": 1        // řídí akci „Převzít N změn"
 }
 ```
@@ -89,6 +86,8 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
 ## Zápis — Uložit rozvržení: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
 
 Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a pošlete jen to, co se ukládá. Backend zde ignoruje obsah `data` uzlů — toto volání je pouze rozvržení; strukturální úpravy jdou přes overlay endpoint. Hrany jsou projekce; poslání aktuální sady uloží jejich úchyty/pozice, ale směrodatnou hodnotou koncového bodu pro nasazené přesměrování je vždy overlay uzlu (backend při čtení znovu projektuje).
+
+**Toto volání je směrodatné pro členství na plátně.** Pole `nodes[]` je úplná sada — přítomný uzel je zachován (nebo **přidán**, je-li jeho IRI na plátně nové; odpověď `DiagramDto` hydratuje jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen). Přidání uzlu vyžaduje jen `{id, position}`; zbytek backend spojí z živého RDF.
 
 ```jsonc
 {
@@ -114,6 +113,8 @@ Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a po�
 ## Zápis — nasadit strukturální úpravu: `PATCH /api/diagram/{ontologySlug}/nodes/{nodeId}/overlay` · `NodeOverlayDto`
 
 Jen změněná strukturální pole. Uloženo do `pending_edit_json`; do RDF neposláno až do Převzít. Overlay je **pouze strukturální** — žádný `label`/`name`; editace labelu se dělá běžným editorem pojmů, ne diagramem (změna labelu přejmenuje IRI pojmu).
+
+**Zahození = prázdné tělo.** `PATCH` s `{}` (nebo null tělem) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. Jakýkoli neprázdný payload nahradí nasazený diff.
 
 Hierarchie je závislá na typu — pošlete pole odpovídající typu pojmu uzlu:
 

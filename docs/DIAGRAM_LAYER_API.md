@@ -13,17 +13,15 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 | Verb · Path | Purpose | Body → Response |
 |---|---|---|
 | `GET /{ontologySlug}` | Load the canonical diagram, layout joined to live concept content with overlays applied. Lazily provisions an empty diagram on first open. | → `DiagramDto` (fat, render-ready) |
-| `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edges-as-projections) *and* node overlays. Idempotent full-replace. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` |
-| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Stage/update one node's structural edit (end-state fields). Not materialized. | `NodeOverlayDto` → node |
-| `DELETE /{ontologySlug}/nodes/{nodeId}/overlay` | Discard a node's staged edits (revert to live content). | → node |
+| `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edges-as-projections) *and* node overlays. Idempotent full-replace — this call **is** canvas membership: a node present is added (a previously-unseen IRI is hydrated in the response), a node omitted is removed from the canvas. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
+| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Stage/update one node's structural edit (end-state fields), or **discard** it with an empty body (`{}` / null → revert to live content). Not materialized. | `NodeOverlayDto` → node |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Apply each staged change via the existing concept CRUD → outbox → RDF; multi-call changes all-or-nothing; per-change partial-ok. | → `MaterializeResultDto` + refreshed `DiagramDto` |
-| `POST /{ontologySlug}/nodes` | Add an existing concept to the canvas as a node (layout only). | `AddNodeDto {conceptIri, position}` → node |
-| `DELETE /{ontologySlug}/nodes/{nodeId}` | Remove a node **from the canvas only** — the concept is untouched. | → Void |
-| `GET /{ontologySlug}/coverage` | Which ontology concepts are *not* on the canvas ("add N missing"). | → `List<MinimalConceptDto>` |
 
-**No concept-delete endpoint.** Creating a concept from the canvas calls the existing `POST /api/concept/{slug}/create` (a property/relationship may be created without a domain) then `POST …/nodes` to place it. Removing a node is canvas-only; the single RDF delete the diagram causes is implicit, inside op 6, handled by `/materialize`.
+**Canvas membership rides the layout save.** There is no dedicated add/remove-node endpoint. Because `PUT …/layout` is an idempotent full-replace, **add** = include the node (a bare `{id, position}` for a concept not yet on the canvas; the `DiagramDto` response hydrates its label/type/slug from live RDF) and **remove-from-canvas** = omit it. The concept is never touched by either — the single RDF delete the diagram causes is implicit, inside op 6, handled by `/materialize`.
 
-**Node id convention.** `iri:<full-iri>` for every node (all nodes reference a concept). ReactFlow only requires `node.id` be a unique string; this scheme is stable across reloads.
+**No concept-delete endpoint, no coverage endpoint.** Creating a concept from the canvas calls the existing `POST /api/concept/{slug}/create` (a property/relationship may be created without a domain), then the FE places it by including it in the next `PUT …/layout`. Coverage ("which concepts are not on the canvas") is a **client-side set-diff** — the FE already holds the full ontology concept list and the on-canvas node IRIs; no server round-trip.
+
+**Node id convention.** `iri:<full-iri>` for every node (all nodes reference a concept). ReactFlow only requires `node.id` be a unique string; this scheme is stable across reloads and lets `PUT …/layout` add a node by IRI without a prior server round-trip.
 
 ## Read — `GET /api/diagram/{ontologySlug}` → 200 · `DiagramDto`
 
@@ -81,7 +79,6 @@ The backend has already joined layout rows to live concept content and applied e
     }
   ],
 
-  "coverage": { "conceptsNotOnCanvas": 3 },
   "pendingChangeCount": 1        // drives the "Převzít N changes" affordance
 }
 ```
@@ -89,6 +86,8 @@ The backend has already joined layout rows to live concept content and applied e
 ## Write — Save layout: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
 
 Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send only what persists. The backend ignores node `data` content here — this call is layout only; structural edits go through the overlay endpoint. Edges are projections; sending the current set persists their handles/positions, but the authoritative endpoint value for a staged repoint is always the node overlay (the backend re-projects on read).
+
+**This call is authoritative for canvas membership.** The `nodes[]` array is the complete set — a node present is kept (or **added** if its IRI is new to the canvas; the response `DiagramDto` hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
 ```jsonc
 {
@@ -114,6 +113,8 @@ Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send
 ## Write — stage a structural edit: `PATCH /api/diagram/{ontologySlug}/nodes/{nodeId}/overlay` · `NodeOverlayDto`
 
 Only the changed structural fields. Persisted to `pending_edit_json`; not sent to RDF until Převzít. The overlay is **structural-only** — there is no `label`/`name` here; label editing is done through the normal concept editor, not the diagram (a label change renames the concept IRI).
+
+**Discard = an empty body.** A `PATCH` with `{}` (or a null body) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. Any non-empty payload replaces the staged diff.
 
 Hierarchy is type-specific — send the field matching the node's concept type:
 
