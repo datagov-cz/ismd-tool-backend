@@ -27,14 +27,18 @@ public record NodeOverlayDto(
     public record ConvertToHierarchy(String addBroaderOn, String broader) {
     }
 
-    /** True when the body carries no staged change — treated as a discard. */
+    /**
+     * True when the body carries no field at all — a discard. An explicitly-empty list is NOT empty: it is a
+     * meaningful "clear this predicate" (e.g. op 2's flip A-side drops its last {@code broaderConcept}), so
+     * it must stage rather than be discarded. Only an all-null body (or {@code {}}) discards.
+     */
     public boolean isEmpty() {
         return domain == null
                 && range == null
-                && (broaderConcept == null || broaderConcept.isEmpty())
-                && (superProperty == null || superProperty.isEmpty())
-                && (superRelation == null || superRelation.isEmpty())
-                && (exactMatch == null || exactMatch.isEmpty())
+                && broaderConcept == null
+                && superProperty == null
+                && superRelation == null
+                && exactMatch == null
                 && convertToHierarchy == null;
     }
 }

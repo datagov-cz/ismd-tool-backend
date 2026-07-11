@@ -114,7 +114,7 @@ Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send
 
 Only the changed structural fields. Persisted to `pending_edit_json`; not sent to RDF until Převzít. The overlay is **structural-only** — there is no `label`/`name` here; label editing is done through the normal concept editor, not the diagram (a label change renames the concept IRI).
 
-**Discard = an empty body.** A `PATCH` with `{}` (or a null body) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. Any non-empty payload replaces the staged diff.
+**Discard = an all-null body.** A `PATCH` with `{}` (or a body where every field is null) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. Any payload carrying a field replaces the staged diff. **An explicitly-empty list is *not* a discard — it means "clear this predicate"**: e.g. `{ "broaderConcept": [] }` stages "remove all superclasses" (the flip op-2 A-side dropping its last broader), and materializes as a `subClassOf` clear.
 
 Hierarchy is type-specific — send the field matching the node's concept type:
 
@@ -149,9 +149,9 @@ Applies every staged change. One entry per staged **change** (a change may span 
     { "nodeId": 1042, "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
   ],
   "failed": [
-    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "FLIP_HIERARCHY",
+    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "SWAP_DIRECTION",
       "error": "VALIDATION", "message": "range must be a class", "status": 400 }
-      // whole change kept staged (both sides untouched); user fixes and re-runs Převzít
+      // change kept staged; user fixes and re-runs Převzít
   ],
   "skippedStale": [
     { "nodeId": 1060, "conceptIri": "https://…/deleted-x" }   // concept gone; change un-applyable
@@ -159,7 +159,9 @@ Applies every staged change. One entry per staged **change** (a change may span 
 }
 ```
 
-`op` ∈ `SWAP_DIRECTION` · `FLIP_HIERARCHY` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `SET_PROPERTY_DOMAIN` · `CONVERT_TO_HIERARCHY`.
+`op` ∈ `SWAP_DIRECTION` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `CONVERT_TO_HIERARCHY`. (Setting a domainless property's domain and repointing an existing one both report as `CHANGE_PROPERTY_PARENT` — indistinguishable from the overlay.)
+
+**Flip (op 2) materializes as two independent edits.** Reversing a hierarchy (B⊐A → A⊐B) is staged as a `broaderConcept` overlay on *both* nodes; each materializes independently as a `CHANGE_HIERARCHY_TYPE`. There is no atomic two-node flip unit — neither half corrupts RDF on its own, and a half-applied flip is reported per-node in `failed` for the user to re-run. Only `CONVERT_TO_HIERARCHY` (op 6) is a genuinely gated two-call unit.
 
 **Error cases the FE handles:**
 

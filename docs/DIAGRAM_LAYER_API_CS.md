@@ -114,7 +114,7 @@ Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a po�
 
 Jen změněná strukturální pole. Uloženo do `pending_edit_json`; do RDF neposláno až do Převzít. Overlay je **pouze strukturální** — žádný `label`/`name`; editace labelu se dělá běžným editorem pojmů, ne diagramem (změna labelu přejmenuje IRI pojmu).
 
-**Zahození = prázdné tělo.** `PATCH` s `{}` (nebo null tělem) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. Jakýkoli neprázdný payload nahradí nasazený diff.
+**Zahození = tělo se samými null.** `PATCH` s `{}` (nebo tělem, kde je každé pole null) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. Jakýkoli payload nesoucí pole nahradí nasazený diff. **Explicitně prázdný seznam *není* zahození — znamená „vymaž tento predikát"**: např. `{ "broaderConcept": [] }` nasadí „odeber všechny nadtřídy" (A-strana otočení op 2 zahazující svou poslední nadtřídu) a materializuje se jako vymazání `subClassOf`.
 
 Hierarchie je závislá na typu — pošlete pole odpovídající typu pojmu uzlu:
 
@@ -149,9 +149,9 @@ Aplikuje každou nasazenou změnu. Jedna položka na nasazenou **změnu** (změn
     { "nodeId": 1042, "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
   ],
   "failed": [
-    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "FLIP_HIERARCHY",
+    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "SWAP_DIRECTION",
       "error": "VALIDATION", "message": "range must be a class", "status": 400 }
-      // celá změna ponechána nasazená (obě strany nedotčeny); uživatel opraví a spustí Převzít znovu
+      // změna ponechána nasazená; uživatel opraví a spustí Převzít znovu
   ],
   "skippedStale": [
     { "nodeId": 1060, "conceptIri": "https://…/deleted-x" }   // pojem pryč; změnu nelze aplikovat
@@ -159,7 +159,9 @@ Aplikuje každou nasazenou změnu. Jedna položka na nasazenou **změnu** (změn
 }
 ```
 
-`op` ∈ `SWAP_DIRECTION` · `FLIP_HIERARCHY` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `SET_PROPERTY_DOMAIN` · `CONVERT_TO_HIERARCHY`.
+`op` ∈ `SWAP_DIRECTION` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `CONVERT_TO_HIERARCHY`. (Nastavení domény vlastnosti bez domény i přesměrování existující se hlásí jako `CHANGE_PROPERTY_PARENT` — z overlaye nerozlišitelné.)
+
+**Otočení hierarchie (op 2) se materializuje jako dvě nezávislé úpravy.** Obrácení hierarchie (B⊐A → A⊐B) se nasadí jako overlay `broaderConcept` na *oba* uzly; každý se materializuje nezávisle jako `CHANGE_HIERARCHY_TYPE`. Není žádná atomická dvouuzlová jednotka otočení — žádná polovina sama o sobě nepoškodí RDF a částečně aplikované otočení je hlášeno po uzlech v `failed` k opětovnému spuštění. Jediná skutečně gatovaná dvouvolání je `CONVERT_TO_HIERARCHY` (op 6).
 
 **Chybové případy, které FE řeší:**
 

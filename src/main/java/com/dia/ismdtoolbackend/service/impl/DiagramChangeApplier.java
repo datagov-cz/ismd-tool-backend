@@ -1,0 +1,189 @@
+package com.dia.ismdtoolbackend.service.impl;
+
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.DiagramOp;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
+import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.service.ConceptService;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Applies one staged overlay to the ontology in its OWN transaction ({@code REQUIRES_NEW}), so a failing
+ * change rolls back only itself and cannot poison sibling changes in the same Převzít — the per-change
+ * partial-ok guarantee. The overlay-clear commits with this change's transaction; a thrown exception rolls
+ * back both the RDF edit and the clear, leaving the overlay staged. Callers run OUTSIDE a transaction and
+ * translate a thrown exception into a {@code failed} report. See {@code docs/DIAGRAM_LAYER.md}.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DiagramChangeApplier {
+
+    private final ConceptService conceptService;
+    private final ConceptMetadataRepository conceptMetadataRepository;
+    private final DiagramNodeRepository diagramNodeRepository;
+    private final JenaTDB2Repository jenaTDB2Repository;
+
+    /** The classified op plus the outcome, so the caller can report it without re-deriving the op. */
+    public record Outcome(DiagramOp op, Kind kind) {
+        public enum Kind { MATERIALIZED, SKIPPED_STALE }
+    }
+
+    /**
+     * Apply the node's overlay in a fresh transaction and clear it on success. Re-loads the node managed in
+     * this transaction (the caller's instance is from another persistence context). Throws on any failure —
+     * the caller (non-transactional) records it as {@code failed}.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Outcome applyChange(Long nodeId) {
+        DiagramNodeEntity node = diagramNodeRepository.findById(nodeId)
+                .orElseThrow(() -> new EntityNotFoundException("Uzel diagramu " + nodeId + " nebyl nalezen."));
+        DiagramPendingEdit overlay = node.getPendingEdit();
+        if (overlay == null) {
+            // Raced away since the caller snapshotted — nothing to do.
+            return new Outcome(null, Outcome.Kind.MATERIALIZED);
+        }
+
+        DiagramOp op = classify(overlay, node.getConceptIri());
+
+        ConceptMetadataEntity concept =
+                conceptMetadataRepository.findByConceptIri(node.getConceptIri()).orElse(null);
+        if (concept == null) {
+            return new Outcome(op, Outcome.Kind.SKIPPED_STALE);
+        }
+
+        if (isStaleBase(concept, overlay)) {
+            throw new StaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
+        }
+
+        if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
+            applyConvertToHierarchy(overlay, concept);
+        } else {
+            conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
+        }
+        node.setPendingEdit(null);
+        return new Outcome(op, Outcome.Kind.MATERIALIZED);
+    }
+
+    /**
+     * Op 6: guard against a cascading delete, add the broader link on the target class, then delete the
+     * VZTAH. All-or-nothing — the delete is gated on the broader-edit succeeding, and both run in this
+     * change's transaction so a delete failure rolls back the broader-edit too.
+     */
+    private void applyConvertToHierarchy(DiagramPendingEdit overlay, ConceptMetadataEntity vztah) {
+        DiagramPendingEdit.ConvertToHierarchy marker = overlay.getConvertToHierarchy();
+        List<String> related =
+                jenaTDB2Repository.findRelatedConceptUris(vztah.getConceptIri(), vztah.getGraphName());
+        if (related != null && !related.isEmpty()) {
+            throw new CascadeConflictException(
+                    "Vztah nelze převést — jiný pojem na něj odkazuje (smazání by kaskádovalo).");
+        }
+
+        ConceptMetadataEntity targetClass = conceptMetadataRepository.findByConceptIri(marker.getAddBroaderOn())
+                .orElseThrow(() -> new ConceptValidationException(
+                        "Cílová třída " + marker.getAddBroaderOn() + " nebyla nalezena."));
+
+        ClassConceptEditModel addBroader = new ClassConceptEditModel();
+        addBroader.setConceptType(ConceptType.TRIDA.getValue());
+        addBroader.setBroaderConcept(List.of(marker.getBroader()));
+        conceptService.editConcept(targetClass.getId(), addBroader);
+
+        conceptService.deleteConcept(vztah.getId());
+    }
+
+    // ---- op classification ----------------------------------------------------------------------
+
+    /**
+     * Infer the op from the overlay's fields, disambiguated by the referencing concept's type. Op 4 vs 5
+     * (change-parent vs set-domain) are indistinguishable from the overlay alone; both carry only a domain
+     * on a VLASTNOST — reported as {@code CHANGE_PROPERTY_PARENT} (a set-on-empty is a parent change from
+     * "none").
+     */
+    DiagramOp classify(DiagramPendingEdit overlay, String conceptIri) {
+        if (overlay.getConvertToHierarchy() != null) {
+            return DiagramOp.CONVERT_TO_HIERARCHY;
+        }
+        if (overlay.getDomain() != null && overlay.getRange() != null) {
+            return DiagramOp.SWAP_DIRECTION;
+        }
+        if (overlay.getBroaderConcept() != null
+                || overlay.getSuperProperty() != null
+                || overlay.getSuperRelation() != null
+                || overlay.getExactMatch() != null) {
+            return DiagramOp.CHANGE_HIERARCHY_TYPE;
+        }
+        return DiagramOp.CHANGE_PROPERTY_PARENT;
+    }
+
+    // ---- field-scoped edit model ----------------------------------------------------------------
+
+    /** Build an edit carrying only the overlay's changed predicates for this concept type; rest stay null. */
+    private ConceptEditModel buildEdit(DiagramPendingEdit overlay, ConceptType type) {
+        return switch (type) {
+            case TRIDA -> {
+                ClassConceptEditModel m = new ClassConceptEditModel();
+                m.setConceptType(ConceptType.TRIDA.getValue());
+                m.setBroaderConcept(overlay.getBroaderConcept());
+                m.setExactMatch(overlay.getExactMatch());
+                yield m;
+            }
+            case VLASTNOST -> {
+                PropertyConceptEditModel m = new PropertyConceptEditModel();
+                m.setConceptType(ConceptType.VLASTNOST.getValue());
+                m.setDomain(overlay.getDomain());
+                m.setSuperProperty(overlay.getSuperProperty());
+                m.setExactMatch(overlay.getExactMatch());
+                yield m;
+            }
+            case VZTAH -> {
+                RelationshipConceptEditModel m = new RelationshipConceptEditModel();
+                m.setConceptType(ConceptType.VZTAH.getValue());
+                m.setDomain(overlay.getDomain());
+                m.setRange(overlay.getRange());
+                m.setSuperRelation(overlay.getSuperRelation());
+                m.setExactMatch(overlay.getExactMatch());
+                yield m;
+            }
+        };
+    }
+
+    private boolean isStaleBase(ConceptMetadataEntity concept, DiagramPendingEdit overlay) {
+        LocalDateTime staged = overlay.getBaseUpdatedAt();
+        if (staged == null) {
+            return false;
+        }
+        return !Objects.equals(staged, concept.getUpdatedAt());
+    }
+
+    /** The referenced concept moved under the overlay since it was staged (409 STALE_BASE). */
+    public static class StaleBaseException extends RuntimeException {
+        public StaleBaseException(String message) {
+            super(message);
+        }
+    }
+
+    /** Op 6 blocked because deleting the VZTAH would cascade to concepts pointing at it (409). */
+    public static class CascadeConflictException extends RuntimeException {
+        public CascadeConflictException(String message) {
+            super(message);
+        }
+    }
+}
