@@ -175,4 +175,17 @@ public class OntologySecurityService {
 
         return isOwner;
     }
+
+    public boolean canViewResource() {
+        log.debug("Checking credentials not expired for user");
+
+        SecurityUser currentUser = SecurityUtils.getCurrentUser();
+        if (currentUser.isCredentialsNonExpired()) {
+            log.debug("User {} credentials valid", currentUser.getUserId());
+            return true;
+        };
+
+        log.warn("User {} credentials expired", currentUser.getUserId());
+        return false;
+    }
 }

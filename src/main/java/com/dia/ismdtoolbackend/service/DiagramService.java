@@ -2,8 +2,11 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
+
+import java.util.List;
 
 /**
  * The diagram layer's service surface — layout + the pending-edit overlay, plus the Převzít fan-out
@@ -11,6 +14,9 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
  * diff. See {@code docs/DIAGRAM_LAYER.md}.
  */
 public interface DiagramService {
+
+    /** Lightweight list of every diagram (identity + node count), for a diagram picker. */
+    List<DiagramSummaryDto> listAll();
 
     /** Fat read: layout joined to live concept content with each node's overlay applied, edges projected. */
     DiagramDto getDiagram(String ontologySlug);

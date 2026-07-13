@@ -9,7 +9,9 @@ import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchSourceStatus;
 import com.dia.ismdtoolbackend.enums.SearchType;
+import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,7 @@ public class IsmdSearchProvider implements SearchProvider {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final DiagramRepository diagramRepository;
     private final Executor searchExecutor;
     private final long fusekiTimeoutMs;
     private final long pgTimeoutMs;
@@ -50,12 +53,14 @@ public class IsmdSearchProvider implements SearchProvider {
     public IsmdSearchProvider(OntologyMetadataRepository ontologyMetadataRepository,
                               ConceptMetadataRepository conceptMetadataRepository,
                               JenaTDB2Repository jenaTDB2Repository,
+                              DiagramRepository diagramRepository,
                               @Qualifier("searchExecutor") Executor searchExecutor,
                               @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
                               @Value("${search.pg-timeout-ms:10000}") long pgTimeoutMs) {
         this.ontologyMetadataRepository = ontologyMetadataRepository;
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
+        this.diagramRepository = diagramRepository;
         this.searchExecutor = searchExecutor;
         this.fusekiTimeoutMs = fusekiTimeoutMs;
         this.pgTimeoutMs = pgTimeoutMs;
@@ -80,11 +85,34 @@ public class IsmdSearchProvider implements SearchProvider {
         List<SearchResultDto> allResults = new ArrayList<>();
         AtomicBoolean fusekiDegraded = new AtomicBoolean(false);
 
+        // DIAGRAM is its own kind: one row per ontology-with-a-diagram, matched on the
+        // ontology slug, keyed by a synthetic IRI so it never dedup-collides with the
+        // ontology's ONTOLOGY row on a type=null pass. A DIAGRAM-only request skips the
+        // ontology and concept branches entirely (they contribute nothing of that kind).
+        if (type == SearchType.DIAGRAM) {
+            allResults.addAll(searchDiagrams(query));
+
+            List<SearchResultDto> diagramResults = allResults.stream()
+                    .filter(r -> matchesType(r, type))
+                    .toList();
+            int fromIndex = Math.min(offset, diagramResults.size());
+            int toIndex = Math.min(fromIndex + limit, diagramResults.size());
+            List<SearchResultDto> paged = diagramResults.subList(fromIndex, toIndex);
+
+            Integer totalDiagrams = countDiagramMatches(query);
+            return new SearchProviderResult(paged, diagramResults.size(), 0, 0, totalDiagrams);
+        }
+
         // PG ontology list — matches on slug even for empty ontologies where Fuseki
         // has no indexable labels. Role filters (CLASS/PROPERTY/RELATIONSHIP) are
         // concept-only by definition, so they skip the ontology branch entirely.
         if (type == null || type == SearchType.ONTOLOGY) {
             allResults.addAll(searchOntologies(query, userId, isAdmin, publishedFilter));
+        }
+
+        // On a type=null pass diagrams ride along with ontologies and concepts.
+        if (type == null) {
+            allResults.addAll(searchDiagrams(query));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -138,15 +166,19 @@ public class IsmdSearchProvider implements SearchProvider {
         Integer totalConcepts = SearchProvider.countIfMatches(
                 type == null || type.isAnyConcept(),
                 () -> countConceptMatches(query, userId, isAdmin, publishedFilter, ontologyIris, type));
+        // type is null here (DIAGRAM-only returned early; ONTOLOGY/CONCEPT/role never match).
+        Integer totalDiagrams = SearchProvider.countIfMatches(
+                type == null,
+                () -> countDiagramMatches(query));
 
         if (fusekiDegraded.get()) {
             return new SearchProviderResult(paged, results.size(),
-                    totalOntologies, totalConcepts,
+                    totalOntologies, totalConcepts, totalDiagrams,
                     SearchSourceStatus.DEGRADED,
                     "Fuseki unavailable, returning PostgreSQL results only");
         }
 
-        return new SearchProviderResult(paged, results.size(), totalOntologies, totalConcepts);
+        return new SearchProviderResult(paged, results.size(), totalOntologies, totalConcepts, totalDiagrams);
     }
 
     private void populateOntologyConceptCounts(List<SearchResultDto> paged) {
@@ -237,6 +269,40 @@ public class IsmdSearchProvider implements SearchProvider {
                         .lastModified(e.getUpdatedAt() != null ? e.getUpdatedAt().toString() : null)
                         .build())
                 .toList();
+    }
+
+    /**
+     * One DIAGRAM result per ontology that has a diagram and whose slug matches the query. Keyed by a
+     * synthetic {@code graphName + "#diagram"} IRI so a type=null pass keeps it distinct from the
+     * ontology's ONTOLOGY row through dedup.
+     */
+    private List<SearchResultDto> searchDiagrams(String query) {
+        return diagramRepository.searchByOntologyText(query).stream()
+                .map(this::mapDiagramEntity)
+                .toList();
+    }
+
+    private SearchResultDto mapDiagramEntity(DiagramEntity d) {
+        String graphName = d.getOntologyMetadata().getGraphName();
+        return SearchResultDto.builder()
+                .id(d.getId())
+                .iri(graphName != null ? graphName + "#diagram" : null)
+                .slug(d.getOntologyMetadata().getSlug())
+                .label(d.getOntologyMetadata().getSlug())
+                .type(SearchType.DIAGRAM)
+                .source(SearchSource.ISMD)
+                .ontologyIri(graphName)
+                .lastModified(d.getUpdatedAt() != null ? d.getUpdatedAt().toString() : null)
+                .build();
+    }
+
+    private Integer countDiagramMatches(String query) {
+        try {
+            return (int) diagramRepository.countSearchByOntologyText(query);
+        } catch (RuntimeException e) {
+            log.warn("PG diagram total-count failed: {}", e.getMessage());
+            return null;
+        }
     }
 
     private List<SearchResultDto> searchConcepts(String query, String userId,
@@ -632,6 +698,7 @@ public class IsmdSearchProvider implements SearchProvider {
         if (type == null) return true;
         if (type == SearchType.ONTOLOGY) return r.getType() == SearchType.ONTOLOGY;
         if (type == SearchType.CONCEPT) return r.getType() == SearchType.CONCEPT;
+        if (type == SearchType.DIAGRAM) return r.getType() == SearchType.DIAGRAM;
         return r.getType() == SearchType.CONCEPT && r.getConceptType() == type.toConceptType();
     }
 

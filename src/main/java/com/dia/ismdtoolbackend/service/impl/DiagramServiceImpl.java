@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -50,6 +51,24 @@ public class DiagramServiceImpl implements DiagramService {
     private final DiagramMaterializeService materializeService;
     private final DiagramLayoutReconciler layoutReconciler;
     private final DiagramMapper mapper;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DiagramSummaryDto> listAll() {
+        return diagramRepository.findAll().stream()
+                .map(this::toSummary)
+                .toList();
+    }
+
+    private DiagramSummaryDto toSummary(DiagramEntity diagram) {
+        OntologyMetadataEntity ontology = diagram.getOntologyMetadata();
+        return new DiagramSummaryDto(
+                ontology.getSlug(),
+                ontology.getSlug(),
+                ontology.getGraphName(),
+                diagram.getNodes().size(),
+                diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
+    }
 
     // Not readOnly: first open lazy-provisions the diagram row (getOrCreateDiagram INSERTs).
     @Override

@@ -12,7 +12,8 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 
 | Verb · Path | Purpose | Body → Response |
 |---|---|---|
-| `GET /{ontologySlug}` | Load the canonical diagram, layout joined to live concept content with overlays applied. Lazily provisions an empty diagram on first open. | → `DiagramDto` (fat, render-ready) |
+| `GET /all` | Lightweight list of every diagram (identity + node count), e.g. for a diagram picker. Any authenticated user. | → `List<DiagramSummaryDto>` |
+| `GET /{ontologySlug}/detail` | Load the canonical diagram, layout joined to live concept content with overlays applied. Lazily provisions an empty diagram on first open. | → `DiagramDto` (fat, render-ready) |
 | `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edges-as-projections) *and* node overlays. Idempotent full-replace — this call **is** canvas membership: a node present is added (a previously-unseen IRI is hydrated in the response), a node omitted is removed from the canvas. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
 | `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Stage/update one node's structural edit (end-state fields), or **discard** it with an empty body (`{}` / null → revert to live content). Not materialized. | `NodeOverlayDto` → node |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Apply each staged change via the existing concept CRUD → outbox → RDF; multi-call changes all-or-nothing; per-change partial-ok. | → `MaterializeResultDto` + refreshed `DiagramDto` |
@@ -23,7 +24,27 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 
 **Node id convention.** `iri:<full-iri>` for every node (all nodes reference a concept). ReactFlow only requires `node.id` be a unique string; this scheme is stable across reloads and lets `PUT …/layout` add a node by IRI without a prior server round-trip.
 
-## Read — `GET /api/diagram/{ontologySlug}` → 200 · `DiagramDto`
+## Finding diagrams — `GET /api/diagram/all` and `type=DIAGRAM` search
+
+Two ways to surface diagrams to the user:
+
+- **List:** `GET /api/diagram/all` → `List<DiagramSummaryDto>` (`ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`). Any authenticated user; lightweight (no live-content join).
+- **Search:** `GET /api/search?type=DIAGRAM` returns one `SearchResultDto` per ontology that has a diagram (matched on the ontology slug). On a default search (`type` omitted) diagram rows appear alongside `ONTOLOGY`/`CONCEPT` rows; NKD is skipped for `type=DIAGRAM`. `SearchResponseDto.totalDiagrams` carries the total.
+
+**Routing a DIAGRAM search result → diagram detail (bypassing ontology detail).** A DIAGRAM `SearchResultDto` is:
+
+| Field | Value | FE use |
+|---|---|---|
+| `type` | `DIAGRAM` | branch on this |
+| `slug` | the **ontology slug** | **the routing key** → `GET /api/diagram/{slug}/detail` |
+| `iri` | synthetic `{graphName}#diagram` | **dedup-only — do not link on it**; it exists so a `type=null` search doesn't collapse the DIAGRAM row into the ontology's `ONTOLOGY` row |
+| `id` | the diagram row id | not a concept id; not needed for routing |
+| `ontologyIri` | the ontology graph IRI | if you need the ontology identity |
+| `lastModified` | diagram `updatedAt` | |
+
+So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `result.slug`. Never derive a link from `result.iri` for DIAGRAM rows.
+
+## Read — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
 
 The backend has already joined layout rows to live concept content and applied each node's overlay.
 
