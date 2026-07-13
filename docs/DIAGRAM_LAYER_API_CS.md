@@ -12,7 +12,8 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 
 | Sloveso · Cesta | Účel | Tělo → Odpověď |
 |---|---|---|
-| `GET /{ontologySlug}` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Při prvním otevření líně vytvoří prázdný diagram. | → `DiagramDto` (tučný, připravený k vykreslení) |
+| `GET /all` | Odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. Libovolný přihlášený uživatel. | → `List<DiagramSummaryDto>` |
+| `GET /{ontologySlug}/detail` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Při prvním otevření líně vytvoří prázdný diagram. | → `DiagramDto` (tučný, připravený k vykreslení) |
 | `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, hrany-jako-projekce) *a* overlaye uzlů. Idempotentní úplná náhrada — toto volání **je** členstvím na plátně: přítomný uzel je přidán (dosud neznámé IRI se v odpovědi hydratuje), vynechaný uzel je z plátna odebrán. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
 | `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole), nebo ji **zahodit** prázdným tělem (`{}` / null → návrat k živému obsahu). Nematerializuje se. | `NodeOverlayDto` → uzel |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` + obnovený `DiagramDto` |
@@ -23,7 +24,27 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 
 **Konvence id uzlu.** `iri:<úplné-iri>` pro každý uzel (všechny uzly odkazují na pojem). ReactFlow vyžaduje jen to, aby `node.id` byl unikátní řetězec; toto schéma je stabilní napříč načteními a umožňuje `PUT …/layout` přidat uzel podle IRI bez předchozího volání serveru.
 
-## Čtení — `GET /api/diagram/{ontologySlug}` → 200 · `DiagramDto`
+## Hledání diagramů — `GET /api/diagram/all` a hledání `type=DIAGRAM`
+
+Dvě cesty, jak diagramy nabídnout uživateli:
+
+- **Seznam:** `GET /api/diagram/all` → `List<DiagramSummaryDto>` (`ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`). Libovolný přihlášený uživatel; odlehčené (bez spojení s živým obsahem).
+- **Hledání:** `GET /api/search?type=DIAGRAM` vrátí jeden `SearchResultDto` na každý slovník, který má diagram (shoda podle slugu slovníku). Při výchozím hledání (`type` vynechán) se řádky diagramů objeví vedle řádků `ONTOLOGY`/`CONCEPT`; NKD se pro `type=DIAGRAM` přeskočí. `SearchResponseDto.totalDiagrams` nese celkový počet.
+
+**Směrování výsledku hledání DIAGRAM → detail diagramu (obejití detailu slovníku).** `SearchResultDto` typu DIAGRAM je:
+
+| Pole | Hodnota | Použití na FE |
+|---|---|---|
+| `type` | `DIAGRAM` | větvit podle něj |
+| `slug` | **slug slovníku** | **směrovací klíč** → `GET /api/diagram/{slug}/detail` |
+| `iri` | syntetické `{graphName}#diagram` | **jen pro deduplikaci — nelinkovat podle něj**; existuje, aby hledání `type=null` nesloučilo řádek DIAGRAM do řádku `ONTOLOGY` daného slovníku |
+| `id` | id řádku diagramu | není id pojmu; ke směrování není potřeba |
+| `ontologyIri` | IRI grafu slovníku | pokud potřebujete identitu slovníku |
+| `lastModified` | `updatedAt` diagramu | |
+
+Takže: při `result.type === 'DIAGRAM'` přejít rovnou na diagram pomocí `result.slug`. Pro řádky DIAGRAM nikdy neodvozovat odkaz z `result.iri`.
+
+## Čtení — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
 
 Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval overlay každého uzlu.
 
