@@ -8,6 +8,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,7 +18,11 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
@@ -43,6 +48,30 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         log.warn("Constraint violation: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error("Zápis porušuje omezení databáze — pravděpodobně již existuje záznam se stejnou hodnotou."), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ResourceAccessException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceUnavailable(ResourceAccessException e) {
+        log.error("External service unavailable: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponseDto.error("Externí služba není momentálně dostupná."));
+    }
+
+    @ExceptionHandler(RestClientResponseException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceResponse(RestClientResponseException e) {
+        log.warn("External service returned status {}: {}", e.getStatusCode(), e.getMessage());
+        HttpStatusCode status = e.getStatusCode().is5xxServerError()
+                ? HttpStatus.BAD_GATEWAY
+                : e.getStatusCode();
+        return ResponseEntity.status(status)
+                .body(ApiResponseDto.error("Externí služba požadavek odmítla."));
+    }
+
+    @ExceptionHandler(RestClientException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceError(RestClientException e) {
+        log.error("External service call failed: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponseDto.error("Externí služba vrátila neplatnou odpověď."));
     }
 
     @ExceptionHandler(JenaTDB2Exception.class)
@@ -117,6 +146,12 @@ public class GlobalExceptionHandler {
                 .orElse("Neplatná data v požadavku.");
         log.warn("Validation failed: {}", details);
         return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku: " + details), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleHandlerMethodValidation(HandlerMethodValidationException e) {
+        log.warn("Method argument validation failed: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku."), HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(TypeMismatchException.class)
