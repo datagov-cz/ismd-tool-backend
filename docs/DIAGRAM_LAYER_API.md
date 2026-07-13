@@ -48,6 +48,8 @@ So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `resu
 
 The backend has already joined layout rows to live concept content and applied each node's overlay.
 
+**Read authorization (deliberate).** `GET …/all` and `GET …/detail` are gated by `canViewResource()` — **any authenticated user** may read (and lazily provision) any ontology's diagram, matching the codebase-wide read posture where every authenticated caller sees all graphs. Only the write paths (`/layout`, `/overlay`, `/materialize`) are ownership-scoped via `belongsToUserBySlug`.
+
 ```jsonc
 {
   "ontologySlug": "pracovni-pomer",

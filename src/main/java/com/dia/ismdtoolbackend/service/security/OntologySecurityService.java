@@ -183,7 +183,7 @@ public class OntologySecurityService {
         if (currentUser.isCredentialsNonExpired()) {
             log.debug("User {} credentials valid", currentUser.getUserId());
             return true;
-        };
+        }
 
         log.warn("User {} credentials expired", currentUser.getUserId());
         return false;

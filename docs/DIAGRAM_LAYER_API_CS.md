@@ -44,6 +44,10 @@ Dvě cesty, jak diagramy nabídnout uživateli:
 
 Takže: při `result.type === 'DIAGRAM'` přejít rovnou na diagram pomocí `result.slug`. Pro řádky DIAGRAM nikdy neodvozovat odkaz z `result.iri`.
 
+## Autorizace čtení (záměrná)
+
+`GET …/all` i `GET …/detail` jsou chráněny přes `canViewResource()` — **libovolný přihlášený uživatel** může číst (a líně vytvořit) diagram jakéhokoli slovníku, v souladu s celokódovým modelem čtení, kde každý přihlášený volající vidí všechny grafy. Pouze zápisové cesty (`/layout`, `/overlay`, `/materialize`) jsou omezené na vlastníka přes `belongsToUserBySlug`.
+
 ## Čtení — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
 
 Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval overlay každého uzlu.
