@@ -102,6 +102,35 @@ class NKDSPARQLConstructQueryTest {
                 .isFalse();
     }
 
+    // ── Batched publication check ──────────────────────────────────────
+
+    @Test
+    void buildPublicationCheckQuery_returnsSubjectsThatExistInNkd() {
+        Model dataset = buildDataset();
+
+        // A and B exist in the dataset; a third IRI does not.
+        String missingIri = "https://example.org/ontology/1/pojem/missing";
+        Model result = runConstruct(dataset, NKDSPARQLConstructQuery.buildPublicationCheckQuery(
+                java.util.List.of(CONCEPT_IRI_A, CONCEPT_IRI_B, missingIri)));
+
+        assertThat(result.listSubjects().mapWith(Resource::getURI).toList())
+                .containsExactlyInAnyOrder(CONCEPT_IRI_A, CONCEPT_IRI_B)
+                .doesNotContain(missingIri);
+    }
+
+    @Test
+    void buildPublicationCheckQuery_detectsOntologyIri() {
+        Model dataset = buildDataset();
+
+        // The check batches concept IRIs together with the ontology IRI; the ontology
+        // (typed owl:Ontology) must be reported as present too.
+        Model result = runConstruct(dataset, NKDSPARQLConstructQuery.buildPublicationCheckQuery(
+                java.util.List.of(ONTOLOGY_IRI)));
+
+        assertThat(result.listSubjects().mapWith(Resource::getURI).toList())
+                .containsExactly(ONTOLOGY_IRI);
+    }
+
     // ── Dataset builder ────────────────────────────────────────────────
 
     /**

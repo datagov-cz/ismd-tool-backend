@@ -42,6 +42,26 @@ public class NKDSPARQLConstructQuery {
         return pss.toString();
     }
 
+    /**
+     * Batched publication-existence check. For a batch of resource IRIs, CONSTRUCTs one {@code rdf:type} triple
+     * per IRI that exists in NKD. The caller reads back the distinct subjects to learn which of the requested IRIs
+     * are present. One HTTP round-trip replaces the per-IRI {@link #buildConstructQuery(String)} fan-out.
+     * {@code rdf:type} presence is the existence signal because every real NKD resource — concept or ontology scheme —
+     * carries at least one type.
+     */
+    public static String buildPublicationCheckQuery(List<String> resourceIris) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+        pss.append("CONSTRUCT { ?resource rdf:type ?type . } ");
+        pss.append("WHERE { VALUES ?resource { ");
+        for (String iri : resourceIris) {
+            pss.appendIri(iri);
+            pss.append(" ");
+        }
+        pss.append("} ?resource rdf:type ?type . }");
+        return pss.toString();
+    }
+
     public static String buildConstructQuery(String conceptIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.setCommandText("""
