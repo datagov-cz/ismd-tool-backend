@@ -54,6 +54,30 @@ public class OntologyDetailExtractor {
     }
 
     /**
+     * Batch-prefetched variant of {@link #dbSlugResolver()} for the single-concept detail path.
+     * Collects every property/relationship member IRI reachable from {@code conceptIri} in the
+     * model, resolves their slugs in one {@code findByConceptIriIn}, and serves each
+     * {@code apply} from the resulting map.
+     */
+    private Function<String, String> batchSlugResolver(OntModel ontModel, String conceptIri) {
+        Resource conceptResource = ontModel.getResource(conceptIri);
+        Set<String> memberIris = new LinkedHashSet<>();
+        ontModel.listSubjectsWithProperty(RDFS.domain, conceptResource)
+                .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+        ontModel.listSubjectsWithProperty(RDFS.range, conceptResource)
+                .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+
+        if (memberIris.isEmpty()) {
+            return iri -> null;
+        }
+
+        Map<String, String> slugByIri = new HashMap<>();
+        conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(memberIris))
+                .forEach(e -> slugByIri.put(e.getConceptIri(), e.getSlug()));
+        return slugByIri::get;
+    }
+
+    /**
      * Resolver that returns the IRI unchanged. Intended for the NKD detail pipeline,
      * where the navigation reference is the full IRI used by /api/nkd/.../detail endpoints.
      */
@@ -116,13 +140,19 @@ public class OntologyDetailExtractor {
     }
 
     public OntologyDetailModel.ConceptDetailModel extractConceptDetail(Model processedModel, String conceptIri) {
-        return extractConceptDetail(processedModel, conceptIri, dbSlugResolver());
+        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+        return extractConceptDetail(ontModel, processedModel, conceptIri, batchSlugResolver(ontModel, conceptIri));
     }
 
     public OntologyDetailModel.ConceptDetailModel extractConceptDetail(Model processedModel, String conceptIri,
                                                                       Function<String, String> refResolver) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+        return extractConceptDetail(ontModel, processedModel, conceptIri, refResolver);
+    }
 
+    private OntologyDetailModel.ConceptDetailModel extractConceptDetail(OntModel ontModel, Model processedModel,
+                                                                       String conceptIri,
+                                                                       Function<String, String> refResolver) {
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
         ConceptProcessor conceptProcessor = new ConceptProcessor();
 

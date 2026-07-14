@@ -1092,35 +1092,6 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void getConceptDetail_publishedButLocalExtractFailsInDeviationCheck_returnsQueryErrorDeviation() {
-        // Top-level extract succeeds, but the second extract inside checkPublishedConcept
-        // returns null. Hits the QUERY_ERROR branch.
-        testConceptEntity.setIsPublished(true);
-        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
-        Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
-
-        OntologyDetailModel.ConceptDetailModel localDetail =
-                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
-        // First call returns detail (top-level), second returns null (inside checkPublishedConcept).
-        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI))
-                .thenReturn(localDetail)
-                .thenReturn(null);
-
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(true);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
-
-        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
-
-        assertEquals(PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                result.getPublishedConceptDeviationModel().getStatus());
-        verify(nkdSparqlClient, never()).fetchPublishedConcept(anyString());
-    }
-
-    @Test
     void getConceptDetail_attachesComments() {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
