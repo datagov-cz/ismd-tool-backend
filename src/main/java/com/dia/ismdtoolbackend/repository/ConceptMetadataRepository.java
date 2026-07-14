@@ -122,13 +122,21 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
     @EntityGraph(attributePaths = "ontologyMetadata")
     Optional<ConceptMetadataEntity> findBySlug(String slug);
 
+    @EntityGraph(attributePaths = "ontologyMetadata")
     List<ConceptMetadataEntity> findByGraphName(String graphName);
 
     List<ConceptMetadataEntity> findByOntologyMetadataId(Long ontologyMetadataId);
 
+    @EntityGraph(attributePaths = "ontologyMetadata")
     List<ConceptMetadataEntity> findAllByUserIdAndIsPublished(String userId, Boolean isPublished);
 
+    @EntityGraph(attributePaths = "ontologyMetadata")
     List<ConceptMetadataEntity> findAllByUserId(String userId);
 
+    @EntityGraph(attributePaths = "ontologyMetadata")
     List<ConceptMetadataEntity> findAllByIsPublished(Boolean isPublished);
+
+    @Override
+    @EntityGraph(attributePaths = "ontologyMetadata")
+    List<ConceptMetadataEntity> findAll();
 }

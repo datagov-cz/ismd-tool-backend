@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -232,10 +233,19 @@ public class ConceptServiceImpl implements ConceptService {
             conceptMetadataEntities = conceptMetadataRepository.findAll();
         }
 
+        List<Long> conceptIds = conceptMetadataEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByConceptId = conceptIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByConceptMetadataIdIn(conceptIds).stream()
+                        .collect(Collectors.groupingBy(c -> c.getConceptMetadata().getId()));
+
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities = commentRepository.findByConceptMetadataId(entity.getId());
+                    List<CommentEntity> commentEntities =
+                            commentsByConceptId.getOrDefault(entity.getId(), List.of());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
@@ -287,7 +297,7 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(rawModel, metadataModel);
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(conceptDetail, metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
 
         return result;
@@ -627,7 +637,8 @@ public class ConceptServiceImpl implements ConceptService {
         return names.values().iterator().next();
     }
 
-    private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
+    private PublishedConceptDeviationModel checkPublishedConcept(OntologyDetailModel.ConceptDetailModel localConcept,
+                                                                ConceptMetadataModel conceptMetadata) {
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
         }
@@ -635,17 +646,6 @@ public class ConceptServiceImpl implements ConceptService {
         String conceptIri = conceptMetadata.getConceptIri();
 
         try {
-            OntologyDetailModel.ConceptDetailModel localConcept =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
-
-            if (localConcept == null) {
-                log.error("Local concept detail not found for IRI: {}", conceptIri);
-                return createErrorDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
-                );
-            }
-
             Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
                     nkdSparqlClient.fetchPublishedConcept(conceptIri);
 
