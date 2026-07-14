@@ -336,11 +336,14 @@ public class NKDSPARQLSearchQuery {
         return "FILTER EXISTS " + getRelationPattern(type);
     }
 
+    // KONCEPT is the generic base type every concept carries, so it is not a
+    // role narrowing — a role filter never resolves to it.
     private static String ofnRoleFragment(ConceptType type) {
         return switch (type) {
             case TRIDA -> TRIDA;
             case VLASTNOST -> VLASTNOST;
             case VZTAH -> VZTAH;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
@@ -356,6 +359,7 @@ public class NKDSPARQLSearchQuery {
             case TRIDA -> OWL_CLASS;
             case VLASTNOST -> OWL_DATATYPE_PROPERTY;
             case VZTAH -> OWL_OBJECT_PROPERTY;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
