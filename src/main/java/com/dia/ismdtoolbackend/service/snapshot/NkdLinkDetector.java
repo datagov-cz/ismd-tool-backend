@@ -112,6 +112,7 @@ public class NkdLinkDetector {
             case TRIDA -> SnapshotLinkType.BROADER_CLASS;
             case VLASTNOST -> SnapshotLinkType.SUPER_PROPERTY;
             case VZTAH -> SnapshotLinkType.SUPER_RELATION;
+            case KONCEPT -> null;
         };
     }
 }

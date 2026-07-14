@@ -1179,11 +1179,14 @@ public class JenaTDB2Repository {
         };
     }
 
+    // KONCEPT is the generic base type every concept carries, so it is not a
+    // role narrowing — SearchType.toConceptType() never yields it here.
     private static String ofnRoleIri(ConceptType type) {
         return switch (type) {
             case TRIDA -> OFN_NAMESPACE + TRIDA;
             case VLASTNOST -> OFN_NAMESPACE + VLASTNOST;
             case VZTAH -> OFN_NAMESPACE + VZTAH;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
@@ -1192,6 +1195,7 @@ public class JenaTDB2Repository {
             case TRIDA -> "http://www.w3.org/2002/07/owl#Class";
             case VLASTNOST -> "http://www.w3.org/2002/07/owl#DatatypeProperty";
             case VZTAH -> OWL_OBJECT_PROPERTY;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 }

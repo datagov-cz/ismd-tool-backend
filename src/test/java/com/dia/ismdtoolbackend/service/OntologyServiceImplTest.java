@@ -45,8 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.constants.VocabularyConstants.POJEM_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TRIDA_JSON_LD;
+import static com.dia.constants.VocabularyConstants.VZTAH_JSON_LD;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -663,15 +664,17 @@ class OntologyServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
         when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(rawModel);
 
+        // Types carry the short OFN JSON-LD labels the detail extractor actually
+        // emits (ConceptDetailModel.types), not raw rdf:type IRIs.
         OntologyDetailModel.ConceptDetailModel c1 = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/1")
                 .name(Map.of("cs", "Pojem 1"))
-                .types(List.of(OFN_NAMESPACE + TRIDA))
+                .types(List.of(POJEM_JSON_LD, "Koncept", TRIDA_JSON_LD))
                 .build();
         OntologyDetailModel.ConceptDetailModel c2 = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/2")
                 .name(Map.of("cs", "Pojem 2"))
-                .types(List.of("http://www.w3.org/2002/07/owl#ObjectProperty"))
+                .types(List.of(POJEM_JSON_LD, "Koncept", VZTAH_JSON_LD))
                 .build();
         OntologyDetailModel.ConceptDetailModel c3UnmappedSlug = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/3")
@@ -705,7 +708,8 @@ class OntologyServiceImplTest {
         assertEquals(ConceptType.VZTAH, out.get(1).getConceptType());
         assertEquals("http://example.org/c/3", out.get(2).getIri());
         assertNull(out.get(2).getSlug(), "Concepts without a PG metadata row should have null slug");
-        assertNull(out.get(2).getConceptType(), "Concepts with no rdf:type role should have null conceptType");
+        assertEquals(ConceptType.KONCEPT, out.get(2).getConceptType(),
+                "Concepts with no rdf:type role should fall back to KONCEPT");
     }
 
     @Test
