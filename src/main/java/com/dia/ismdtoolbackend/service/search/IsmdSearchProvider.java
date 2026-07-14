@@ -24,11 +24,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
-
 @Slf4j
 @Component
 public class IsmdSearchProvider implements SearchProvider {
@@ -598,28 +593,13 @@ public class IsmdSearchProvider implements SearchProvider {
         return SearchType.CONCEPT;
     }
 
-    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
-    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
-    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
-
     /**
      * Extracts the concept role from a pipe-separated rdf:type set produced by
-     * Fuseki text search. Accepts either the OFN role tag
-     * (slovníky:třída/vlastnost/vztah — what ISMD writes) or the corresponding
-     * OWL type (owl:Class/ObjectProperty/DatatypeProperty — what externally
-     * imported data may carry). Returns null when neither is present.
+     * Fuseki text search. Delegates to {@link ConceptType#fromRdfTypes(List)}.
      */
     private static ConceptType conceptTypeByRdfTypes(String types) {
         if (types == null || types.isEmpty()) return null;
-        String tridaIri = OFN_NAMESPACE + TRIDA;
-        String vlastnostIri = OFN_NAMESPACE + VLASTNOST;
-        String vztahIri = OFN_NAMESPACE + VZTAH;
-        for (String t : types.split("\\|")) {
-            if (tridaIri.equals(t) || OWL_CLASS.equals(t)) return ConceptType.TRIDA;
-            if (vlastnostIri.equals(t) || OWL_DATATYPE_PROPERTY.equals(t)) return ConceptType.VLASTNOST;
-            if (vztahIri.equals(t) || OWL_OBJECT_PROPERTY.equals(t)) return ConceptType.VZTAH;
-        }
-        return null;
+        return ConceptType.fromRdfTypes(java.util.Arrays.asList(types.split("\\|")));
     }
 
     /**

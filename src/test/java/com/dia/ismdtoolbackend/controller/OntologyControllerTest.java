@@ -5,7 +5,6 @@ import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
-import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
@@ -1064,9 +1063,10 @@ class OntologyControllerTest {
                 .iri(iri + "/pojem/foo")
                 .slug("foo")
                 .name(java.util.Map.of("cs", "Foo"))
+                .conceptType(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA)
                 .build();
 
-        when(ontologyService.getConceptsByIri(iri))
+        when(ontologyService.getConceptsByIri(iri, SearchSource.ISMD))
                 .thenReturn(java.util.List.of(concept));
 
         mockMvc.perform(get("/api/ontology/concepts")
@@ -1079,26 +1079,22 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/foo"))
                 .andExpect(jsonPath("$.data[0].slug").value("foo"))
                 .andExpect(jsonPath("$.data[0].name.cs").value("Foo"))
+                .andExpect(jsonPath("$.data[0].conceptType").value("TRIDA"))
                 .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
-
-        verify(nkdDetailService, never()).getOntologyDetail(anyString());
     }
 
     @Test
     void testGetConceptsByIri_NkdSuccess_omitsSlug() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
-        OntologyDetailModel.ConceptDetailModel concept = OntologyDetailModel.ConceptDetailModel.builder()
+        MinimalConceptDto concept = MinimalConceptDto.builder()
                 .iri(iri + "/pojem/bar")
                 .name(java.util.Map.of("cs", "Bar"))
-                .build();
-        OntologyDetailModel detail = OntologyDetailModel.builder()
-                .iri(iri)
-                .concepts(java.util.List.of(concept))
+                .conceptType(com.dia.ismdtoolbackend.enums.ConceptType.VZTAH)
                 .build();
 
-        when(nkdDetailService.getOntologyDetail(iri))
-                .thenReturn(new GetNkdOntologyDto(detail));
+        when(ontologyService.getConceptsByIri(iri, SearchSource.NKD))
+                .thenReturn(java.util.List.of(concept));
 
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("iri", iri)
@@ -1109,24 +1105,18 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/bar"))
                 .andExpect(jsonPath("$.data[0].name.cs").value("Bar"))
+                .andExpect(jsonPath("$.data[0].conceptType").value("VZTAH"))
                 // FE uses IRI for NKD navigation — slug must be omitted (NON_NULL).
                 .andExpect(jsonPath("$.data[0].slug").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
-
-        verify(ontologyService, never()).getConceptsByIri(anyString());
     }
 
     @Test
-    void testGetConceptsByIri_NkdEmptyConceptsCoercedToEmptyArray() throws Exception {
+    void testGetConceptsByIri_EmptyListCoercedToEmptyArray() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
-        OntologyDetailModel detail = OntologyDetailModel.builder()
-                .iri(iri)
-                .concepts(null)
-                .build();
-
-        when(nkdDetailService.getOntologyDetail(iri))
-                .thenReturn(new GetNkdOntologyDto(detail));
+        when(ontologyService.getConceptsByIri(iri, SearchSource.NKD))
+                .thenReturn(java.util.List.of());
 
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("iri", iri)
@@ -1137,10 +1127,10 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testGetConceptsByIri_IsmdNotFound() throws Exception {
+    void testGetConceptsByIri_ServiceNotFoundRelayed() throws Exception {
         String iri = "http://example.org/missing";
 
-        when(ontologyService.getConceptsByIri(iri))
+        when(ontologyService.getConceptsByIri(iri, SearchSource.ISMD))
                 .thenThrow(new org.apache.jena.ontology.OntologyException(
                         "Slovník s IRI " + iri + " nebyl nalezen."));
 
@@ -1154,10 +1144,10 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testGetConceptsByIri_NkdNotFound() throws Exception {
+    void testGetConceptsByIri_NkdNotFoundRelayed() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/missing";
 
-        when(nkdDetailService.getOntologyDetail(iri))
+        when(ontologyService.getConceptsByIri(iri, SearchSource.NKD))
                 .thenThrow(new NkdResourceNotFoundException(
                         "Slovník s IRI " + iri + " nebyl v NKD nalezen."));
 
@@ -1171,15 +1161,18 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testGetConceptsByIri_UnsupportedSourceRejected() throws Exception {
+    void testGetConceptsByIri_UnsupportedSourceRelayed() throws Exception {
+        String iri = "http://example.org/x";
+
+        when(ontologyService.getConceptsByIri(iri, SearchSource.UNPUBLISHED))
+                .thenThrow(new IllegalArgumentException(
+                        "Nepodporovaný zdroj: UNPUBLISHED. Povolené hodnoty: ISMD, NKD."));
+
         mockMvc.perform(get("/api/ontology/concepts")
-                        .param("iri", "http://example.org/x")
+                        .param("iri", iri)
                         .param("source", "UNPUBLISHED"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.data").doesNotExist());
-
-        verify(ontologyService, never()).getConceptsByIri(anyString());
-        verify(nkdDetailService, never()).getOntologyDetail(anyString());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto;
 
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,4 +24,5 @@ public class MinimalConceptDto {
     private String iri;
     private String slug;
     private Map<String, String> name;
+    private ConceptType conceptType;
 }
