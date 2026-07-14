@@ -24,6 +24,7 @@ import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.published.NkdSnapshotTripleFilter;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.DataTypeConverter;
@@ -191,6 +192,11 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
+        // Materialized NKD snapshot copies live in this graph and carry real concept types, so the detail
+        // extractor would list them in pojmy. Linked concepts surface only via linkSnapshots, so strip the
+        // copies before extraction (and before the shared processedModel feeds the deviation checker).
+        NkdSnapshotTripleFilter.removeSnapshotSubjects(rawModel);
+
         // OFN transform is expensive (filter + reformat over the full graph);
         // run once and share with the deviation checker instead of re-running
         // it three times across detail extraction and deviation checks.
@@ -291,6 +297,10 @@ public class OntologyServiceImpl implements OntologyService {
         if (rawModel.isEmpty()) {
             throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        // Same intermixing as getOntologyDetailModel: strip materialized NKD copies so they don't
+        // surface as owned concepts. See NkdSnapshotTripleFilter.
+        NkdSnapshotTripleFilter.removeSnapshotSubjects(rawModel);
 
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
