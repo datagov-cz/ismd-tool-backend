@@ -137,15 +137,12 @@ public class ConceptServiceImpl implements ConceptService {
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
-        // NKD local-copy cascade: drop the snapshot rows for the deleted concepts and get back the NKD
-        // IRIs whose copy is now orphaned (this batch held its last referrers). Appending them to the
-        // delete-URI list lets the existing sweep remove the orphaned copy subjects too — safe only
-        // because they are last-referrer, so no surviving owner's link is harmed.
+        // NKD local-copy cascade: drop the PG snapshot rows for the deleted concepts. The copy lives
+        // only in PG, so there is nothing to add to the TDB2 delete-sweep.
         List<Long> deletedConceptIds = relatedConceptEntities.stream()
                 .map(ConceptMetadataEntity::getId)
                 .toList();
-        List<String> orphanedNkdCopies = nkdSnapshotService.cascadeConceptDeletion(deletedConceptIds, graphName);
-        relatedConceptUris.addAll(orphanedNkdCopies);
+        nkdSnapshotService.cascadeConceptDeletion(deletedConceptIds, graphName);
 
         if (outboxConfig.isEnabled()) {
             // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
@@ -186,10 +183,11 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptEditor.EditResult editResult = performConceptEdit(aggregateIri, conceptEditModel, model, graphName);
 
-        // Reconcile NKD links and union the resulting copy delta with the editor's, so the link and the
-        // copy ride one owner-keyed aggregate. The snapshot service reads owner.getConceptIri(), so the
-        // metadata IRI is set to its post-edit value first. reconcileNkdLinks returns its own mutable set
-        // (EditResult's are immutable copies), which we merge — re-using EditResult's sets would throw.
+        // Reconcile NKD links and union the resulting link delta with the editor's, so a dropped link's
+        // edge removal rides the same owner-keyed aggregate as the edit. The snapshot service reads
+        // owner.getConceptIri(), so the metadata IRI is set to its post-edit value first. reconcileNkdLinks
+        // returns its own mutable set (EditResult's are immutable copies), which we merge — re-using
+        // EditResult's sets would throw. (Snapshot copies live only in PG; nothing copy-related is in the delta.)
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
         }
@@ -208,9 +206,9 @@ public class ConceptServiceImpl implements ConceptService {
             return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
         }
 
-        // Direct (outbox-disabled) path: the editor already applied its delta to `model`, but the snapshot
-        // copy triples are not yet in it. Apply the combined delta so the copy reaches TDB2 in the same
-        // write as the link. Idempotent — re-applying the editor's own triples is a no-op.
+        // Direct (outbox-disabled) path: the editor already applied its delta to `model`. Apply the merged
+        // delta (editor ∪ reconcile link removals) so any dropped-link edge removal reaches TDB2 in the
+        // same write. Idempotent — re-applying the editor's own triples is a no-op.
         model.remove(new ArrayList<>(toRemove));
         model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);

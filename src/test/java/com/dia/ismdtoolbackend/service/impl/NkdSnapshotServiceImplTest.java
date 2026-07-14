@@ -32,7 +32,6 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -88,7 +87,7 @@ class NkdSnapshotServiceImplTest {
     }
 
     @Test
-    void createOrRefresh_nkdFound_createsRowAndAddsTriples() {
+    void createOrRefresh_nkdFound_createsRowWithMaterializedTriples_noTdb2Delta() {
         when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.empty());
         when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI))
                 .thenReturn(Optional.of(new PublishedConcept(detail(), NKD_SCHEME)));
@@ -100,15 +99,16 @@ class NkdSnapshotServiceImplTest {
 
         assertThat(saved).isNotNull();
         assertThat(saved.getOrigin()).isEqualTo(SnapshotOrigin.LINK_TARGET);
-        assertThat(saved.getMaterializedTriples()).isNotBlank();
-        assertThat(cs.toRemove).isEmpty();                 // new snapshot → no prior set
-        assertThat(cs.toAdd).isNotEmpty();                 // raw triples + provenance
-        assertThat(cs.toAdd).anyMatch(s ->
-                s.getPredicate().getURI().equals(NkdSnapshotMaterializer.NKD_SNAPSHOT_OF));
+        // The copy lives ONLY in the PG column — the provenance marker is present there ...
+        assertThat(saved.getMaterializedTriples()).isNotBlank()
+                .contains(NkdSnapshotMaterializer.NKD_SNAPSHOT_OF);
+        // ... and NOTHING copy-related is contributed to the TDB2 change set.
+        assertThat(cs.toRemove).isEmpty();
+        assertThat(cs.toAdd).isEmpty();
     }
 
     @Test
-    void createOrRefresh_reSnapshot_removesOldTriplesAddsNew_M1() {
+    void createOrRefresh_reSnapshot_updatesPgCopy_noTdb2Delta() {
         // Existing row with a STORED old triple set (label "Old").
         NkdConceptSnapshotEntity existing = new NkdConceptSnapshotEntity();
         existing.setOwningConcept(owner);
@@ -117,7 +117,7 @@ class NkdSnapshotServiceImplTest {
         existing.setOrigin(SnapshotOrigin.LINK_TARGET);
         existing.setLinkPredicate(SnapshotLinkType.BROADER_CLASS.value());
         existing.setMaterializedTriples(materializer.toNTriples(
-                materializer.materialize(rawNkd("Old"), NKD_IRI, OWNER_IRI, OWNER_GRAPH)));
+                materializer.materialize(rawNkd("Old"), NKD_IRI, OWNER_IRI)));
 
         when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.of(existing));
         when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI))
@@ -128,37 +128,35 @@ class NkdSnapshotServiceImplTest {
         OwnerChangeSet cs = new OwnerChangeSet();
         service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
 
-        // M1: the OLD label triple is in the delete set; the NEW one is in the add set.
-        assertThat(cs.toRemove).anyMatch(s -> s.getObject().isLiteral()
-                && s.getObject().asLiteral().getString().equals("Old"));
-        assertThat(cs.toAdd).anyMatch(s -> s.getObject().isLiteral()
-                && s.getObject().asLiteral().getString().equals("New"));
-        assertThat(cs.toRemove).noneMatch(s -> s.getObject().isLiteral()
-                && s.getObject().asLiteral().getString().equals("New"));
+        // The PG copy is refreshed to the NEW payload; the old label is gone from it.
+        assertThat(existing.getMaterializedTriples()).contains("New").doesNotContain("Old");
+        // No copy triples flow to TDB2.
+        assertThat(cs.toRemove).isEmpty();
+        assertThat(cs.toAdd).isEmpty();
     }
 
     @Test
-    void createOrRefresh_nkdEmpty_existingSnapshot_cascadesRemoval() {
+    void createOrRefresh_nkdEmpty_existingSnapshot_deletesRow_noTdb2Delta() {
         NkdConceptSnapshotEntity existing = new NkdConceptSnapshotEntity();
         existing.setOwningConcept(owner);
         existing.setNkdIri(NKD_IRI);
         existing.setGraphName(OWNER_GRAPH);
         existing.setLinkPredicate(SnapshotLinkType.BROADER_CLASS.value());
         existing.setMaterializedTriples(materializer.toNTriples(
-                materializer.materialize(rawNkd("Gone"), NKD_IRI, OWNER_IRI, OWNER_GRAPH)));
+                materializer.materialize(rawNkd("Gone"), NKD_IRI, OWNER_IRI)));
 
         when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.of(existing));
         when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI)).thenReturn(Optional.empty());
-        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(1L);
 
         OwnerChangeSet cs = new OwnerChangeSet();
         NkdConceptSnapshotEntity result = service.createOrRefreshSnapshot(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
 
         assertThat(result).isNull();
         verify(snapshotRepository).delete(existing);
-        // Cascade removes the materialized copy (last referrer); the dangling owner link triple is
-        // the edit's own change-set concern, not create/refresh (no owner-graph view here).
-        assertThat(cs.toRemove).anyMatch(s -> s.getSubject().getURI().equals(NKD_IRI));
+        // The copy lived only in PG (row deleted); no TDB2 copy triple to remove. The dangling owner link
+        // triple is the edit's own change-set concern, not create/refresh (no owner-graph view here).
+        assertThat(cs.toRemove).isEmpty();
+        assertThat(cs.toAdd).isEmpty();
     }
 
     @Test
@@ -199,9 +197,8 @@ class NkdSnapshotServiceImplTest {
     }
 
     @Test
-    void removeSnapshotAndLink_lastReferrer_dropsCopyAndAllLinkPredicates() {
-        NkdConceptSnapshotEntity snap = lastReferrerSnapshot();
-        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(1L);
+    void removeSnapshotAndLink_dropsAllLinkPredicates_andDeletesRow() {
+        NkdConceptSnapshotEntity snap = snapshotRow();
 
         OwnerChangeSet cs = new OwnerChangeSet();
         service.removeSnapshotAndLink(snap, ownerOutgoingToNkd(), cs);
@@ -215,34 +212,19 @@ class NkdSnapshotServiceImplTest {
         assertThat(ownerLinksRemoved).isEqualTo(2);
         assertThat(cs.toRemove).noneMatch(s -> s.getObject().isURIResource()
                 && s.getObject().asResource().getURI().equals("http://other/x"));
-        // Materialized copy removed (last referrer).
-        assertThat(cs.toRemove).anyMatch(s -> s.getSubject().getURI().equals(NKD_IRI));
-        verify(snapshotRepository).delete(snap);
-    }
-
-    @Test
-    void removeSnapshotAndLink_sharedIri_keepsCopy_C2() {
-        NkdConceptSnapshotEntity snap = lastReferrerSnapshot();
-        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(2L); // another referrer
-
-        OwnerChangeSet cs = new OwnerChangeSet();
-        service.removeSnapshotAndLink(snap, ownerOutgoingToNkd(), cs);
-
-        // Owner's own link triples removed; the shared copy triples (subject = nkdIri) are NOT.
-        assertThat(cs.toRemove).anyMatch(s -> s.getSubject().getURI().equals(OWNER_IRI)
-                && s.getObject().asResource().getURI().equals(NKD_IRI));
+        // The copy lives only in PG (row deleted) — no copy triple (subject = nkdIri) in the TDB2 delta.
         assertThat(cs.toRemove).noneMatch(s -> s.getSubject().getURI().equals(NKD_IRI));
         verify(snapshotRepository).delete(snap);
     }
 
-    private NkdConceptSnapshotEntity lastReferrerSnapshot() {
+    private NkdConceptSnapshotEntity snapshotRow() {
         NkdConceptSnapshotEntity snap = new NkdConceptSnapshotEntity();
         snap.setOwningConcept(owner);
         snap.setNkdIri(NKD_IRI);
         snap.setGraphName(OWNER_GRAPH);
         snap.setLinkPredicate(SnapshotLinkType.BROADER_CLASS.value());
         snap.setMaterializedTriples(materializer.toNTriples(
-                materializer.materialize(rawNkd("X"), NKD_IRI, OWNER_IRI, OWNER_GRAPH)));
+                materializer.materialize(rawNkd("X"), NKD_IRI, OWNER_IRI)));
         return snap;
     }
 
@@ -296,50 +278,34 @@ class NkdSnapshotServiceImplTest {
     }
 
     @Test
-    void cascadeConceptDeletion_lastReferrer_reportsOrphanedCopy() {
-        NkdConceptSnapshotEntity row = rowFor(NKD_IRI);
-        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(row));
-        // Live count == 1 (only this concept refers it) → orphaned after delete.
-        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(1L);
-
-        List<String> orphaned = service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
-
-        assertThat(orphaned).containsExactly(NKD_IRI);
-        verify(snapshotRepository).deleteAll(List.of(row));
-    }
-
-    @Test
-    void cascadeConceptDeletion_sharedWithSurvivor_keepsCopy_C2() {
-        NkdConceptSnapshotEntity row = rowFor(NKD_IRI);
-        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(row));
-        // Live count == 2 (another, non-deleted concept also refers it) → copy must survive.
-        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(2L);
-
-        List<String> orphaned = service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
-
-        assertThat(orphaned).isEmpty();
-        verify(snapshotRepository).deleteAll(List.of(row));
-    }
-
-    @Test
-    void cascadeConceptDeletion_sharedAcrossBatch_bothDeleted_orphansCopy_C2() {
-        // Two concepts in the SAME delete batch both link NKD_IRI → live count 2, batch drops 2 → orphaned.
+    void cascadeConceptDeletion_deletesRowsForGraph_noTdb2Sweep() {
         NkdConceptSnapshotEntity rowA = rowFor(NKD_IRI);
         NkdConceptSnapshotEntity rowB = rowFor(NKD_IRI);
         when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(rowA));
         when(snapshotRepository.findByOwningConceptId(18L)).thenReturn(List.of(rowB));
-        when(snapshotRepository.countByGraphNameAndNkdIri(OWNER_GRAPH, NKD_IRI)).thenReturn(2L);
 
-        List<String> orphaned = service.cascadeConceptDeletion(List.of(17L, 18L), OWNER_GRAPH);
+        service.cascadeConceptDeletion(List.of(17L, 18L), OWNER_GRAPH);
 
-        // The whole batch held the last two referrers → copy is orphaned despite live count > 1.
-        assertThat(orphaned).containsExactly(NKD_IRI);
+        // The copy lives only in PG — the rows are dropped, nothing to sweep from TDB2.
+        verify(snapshotRepository).deleteAll(List.of(rowA, rowB));
     }
 
     @Test
-    void cascadeConceptDeletion_noSnapshots_returnsEmpty() {
+    void cascadeConceptDeletion_filtersOtherGraphRows() {
+        NkdConceptSnapshotEntity thisGraph = rowFor(NKD_IRI);
+        NkdConceptSnapshotEntity otherGraph = rowFor(NKD_IRI);
+        otherGraph.setGraphName("https://example.org/slovnik/jiny");
+        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(thisGraph, otherGraph));
+
+        service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
+
+        verify(snapshotRepository).deleteAll(List.of(thisGraph));
+    }
+
+    @Test
+    void cascadeConceptDeletion_noSnapshots_deletesNothing() {
         when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of());
-        assertThat(service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH)).isEmpty();
+        service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
         verify(snapshotRepository, never()).deleteAll(any());
     }
 
@@ -351,8 +317,7 @@ class NkdSnapshotServiceImplTest {
 
         service.cascadeGraphDeletion(OWNER_GRAPH);
 
+        // No refcount / copy-triple bookkeeping — the copy lives only in PG.
         verify(snapshotRepository).deleteAll(List.of(r1, r2));
-        // No refcount / copy-triple bookkeeping — DELETE_GRAPH sweeps the whole graph.
-        verify(snapshotRepository, never()).countByGraphNameAndNkdIri(anyString(), anyString());
     }
 }

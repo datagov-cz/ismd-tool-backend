@@ -24,12 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * See {@link NkdSnapshotService}. All triple-producing methods contribute to a caller-owned
@@ -73,7 +70,7 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
             return existingOpt.orElse(null);
         }
         if (publishedOpt.isEmpty()) {
-            existingOpt.ifPresent(snapshot -> removeSnapshotCopyAndRow(snapshot, ownerChangeSet));
+            existingOpt.ifPresent(this::removeSnapshotRow);
             log.info("NKD has no concept {} — no snapshot created (existing removed if any)", nkdIri);
             return null;
         }
@@ -84,7 +81,7 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
             return existingOpt.orElse(null);
         }
 
-        Set<Statement> newTriples = materializer.materialize(rawOpt.get(), nkdIri, owner.getConceptIri(), graphName);
+        Set<Statement> newTriples = materializer.materialize(rawOpt.get(), nkdIri, owner.getConceptIri());
 
         NkdConceptSnapshotEntity snapshot = existingOpt.orElseGet(() -> {
             NkdConceptSnapshotEntity fresh = new NkdConceptSnapshotEntity();
@@ -93,9 +90,6 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
             fresh.setOrigin(SnapshotOrigin.LINK_TARGET);
             return fresh;
         });
-
-        ownerChangeSet.toRemove.addAll(materializer.parse(snapshot.getMaterializedTriples()));
-        ownerChangeSet.toAdd.addAll(newTriples);
 
         Instant now = Instant.now();
         snapshot.setGraphName(graphName);
@@ -153,22 +147,11 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
                 }
             }
         }
-        removeSnapshotCopyAndRow(snapshot, ownerChangeSet);
+        removeSnapshotRow(snapshot);
     }
 
-    /**
-     * Drops the materialized copy and deletes the PG row. Does NOT touch the
-     * owner's link triple — that is handled by the caller (which holds the owner-graph view) or, in
-     * the create/refresh cascade, by the edit's own change set.
-     */
-    private void removeSnapshotCopyAndRow(NkdConceptSnapshotEntity snapshot, OwnerChangeSet ownerChangeSet) {
-        long referrers = snapshotRepository.countByGraphNameAndNkdIri(snapshot.getGraphName(), snapshot.getNkdIri());
-        if (referrers <= 1) {
-            ownerChangeSet.toRemove.addAll(materializer.parse(snapshot.getMaterializedTriples()));
-        } else {
-            log.debug("NKD copy {} still referenced by {} other concept(s) in {} — keeping materialized triples",
-                    snapshot.getNkdIri(), referrers - 1, snapshot.getGraphName());
-        }
+    /** Deletes the PG snapshot row. The copy lives only in PG, so there is no TDB2 triple to remove. */
+    private void removeSnapshotRow(NkdConceptSnapshotEntity snapshot) {
         snapshotRepository.delete(snapshot);
         log.debug("Removed snapshot row for NKD copy {} (owner {})",
                 snapshot.getNkdIri(), snapshot.getOwningConcept().getConceptIri());
@@ -176,36 +159,19 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
 
     @Override
     @Transactional
-    public List<String> cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName) {
+    public void cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName) {
         if (deletedConceptIds == null || deletedConceptIds.isEmpty()) {
-            return List.of();
+            return;
         }
         List<NkdConceptSnapshotEntity> rows = deletedConceptIds.stream()
                 .flatMap(id -> snapshotRepository.findByOwningConceptId(id).stream())
                 .filter(s -> graphName.equals(s.getGraphName()))
                 .toList();
         if (rows.isEmpty()) {
-            return List.of();
+            return;
         }
-
-        Map<String, Long> droppedByIri = rows.stream()
-                .collect(Collectors.groupingBy(NkdConceptSnapshotEntity::getNkdIri, Collectors.counting()));
-
-        List<String> orphanedCopies = new ArrayList<>();
-        for (Map.Entry<String, Long> e : droppedByIri.entrySet()) {
-            long live = snapshotRepository.countByGraphNameAndNkdIri(graphName, e.getKey());
-            if (live - e.getValue() <= 0) {
-                orphanedCopies.add(e.getKey());
-            } else {
-                log.debug("NKD copy {} keeps {} surviving referrer(s) after delete in {} — copy retained",
-                        e.getKey(), live - e.getValue(), graphName);
-            }
-        }
-
         snapshotRepository.deleteAll(rows);
-        log.debug("Concept-deletion cascade: removed {} snapshot row(s), {} orphaned copy(ies) in {}",
-                rows.size(), orphanedCopies.size(), graphName);
-        return orphanedCopies;
+        log.debug("Concept-deletion cascade: removed {} snapshot row(s) in {}", rows.size(), graphName);
     }
 
     @Override

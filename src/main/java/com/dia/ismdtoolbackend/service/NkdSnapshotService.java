@@ -54,20 +54,13 @@ public interface NkdSnapshotService {
     List<NkdConceptSnapshotEntity> findForGraph(String graphName);
 
     /**
-     * Concept-deletion cascade. Deletes the PG snapshot rows owned by the concepts being
-     * removed and returns the NKD IRIs whose materialized copy is now orphaned — i.e. the
-     * deleted concepts were its last referrers in the graph — so the caller can sweep those copy
-     * subjects out of TDB2 in the same delete operation.
+     * Concept-deletion cascade. Deletes the PG snapshot rows owned by the concepts being removed.
+     * The copy lives only in PG, so there is nothing to sweep out of TDB2.
      * @param deletedConceptIds the owned concepts being deleted (their PG ids)
      * @param graphName         the graph they belong to
-     * @return NKD IRIs whose copy subject should be swept from TDB2 (possibly empty)
      */
-    List<String> cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName);
+    void cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName);
 
-    /**
-     * Whole-ontology deletion cascade. Deletes all PG snapshot rows for the graph. The
-     * materialized copy triples need no explicit removal — the caller's {@code DELETE_GRAPH} sweeps
-     * the entire named graph, copies included.
-     */
+    /** Whole-ontology deletion cascade. Deletes all PG snapshot rows for the graph. */
     void cascadeGraphDeletion(String graphName);
 }
