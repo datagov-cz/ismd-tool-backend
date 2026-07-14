@@ -1,15 +1,22 @@
 package com.dia.ismdtoolbackend.enums;
 
+import com.dia.constants.VocabularyConstants;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.apache.jena.ontology.OntologyException;
+
+import java.util.List;
 
 @Schema(type = "string", allowableValues = {"TRIDA", "VLASTNOST", "VZTAH"})
 public enum ConceptType {
     TRIDA("TRIDA"),
     VLASTNOST("VLASTNOST"),
     VZTAH("VZTAH");
+
+    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
 
     private final String value;
 
@@ -42,5 +49,27 @@ public enum ConceptType {
     @Override
     public String toString() {
         return value;
+    }
+
+    /**
+     * Resolves the concept role from a set of rdf:type IRIs. Accepts either the
+     * OFN role tag (slovníky:třída/vlastnost/vztah — what ISMD writes) or the
+     * corresponding OWL type (owl:Class/DatatypeProperty/ObjectProperty — what
+     * externally imported or NKD data may carry). Returns null when neither is
+     * present.
+     */
+    public static ConceptType fromRdfTypes(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        String tridaIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.TRIDA;
+        String vlastnostIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.VLASTNOST;
+        String vztahIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.VZTAH;
+        for (String t : types) {
+            if (tridaIri.equals(t) || OWL_CLASS.equals(t)) return TRIDA;
+            if (vlastnostIri.equals(t) || OWL_DATATYPE_PROPERTY.equals(t)) return VLASTNOST;
+            if (vztahIri.equals(t) || OWL_OBJECT_PROPERTY.equals(t)) return VZTAH;
+        }
+        return null;
     }
 }
