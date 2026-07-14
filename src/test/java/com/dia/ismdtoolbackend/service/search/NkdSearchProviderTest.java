@@ -50,6 +50,7 @@ class NkdSearchProviderTest {
         row.put("description", "Popis osoby");
         row.put("definition", "Definice osoby");
         row.put("ontology", "https://example.org/ontology/1");
+        row.put("roleTrida", "http://www.w3.org/2002/07/owl#Class");
 
         when(nkdSparqlClient.executeSelect(anyString())).thenReturn(List.of(row));
 
@@ -66,7 +67,47 @@ class NkdSearchProviderTest {
         assertEquals("Definice osoby", dto.getDefinition());
         assertEquals("https://example.org/ontology/1", dto.getOntologyIri());
         assertEquals(SearchType.CONCEPT, dto.getType());
+        // Unfiltered search (type=CONCEPT → roleFilter null): conceptType is derived
+        // from the projected role marker, not left null.
+        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA, dto.getConceptType());
         assertEquals(SearchSource.NKD, dto.getSource());
+    }
+
+    @Test
+    void search_conceptType_derivedPerRoleMarker() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        Map<String, String> trida = conceptRow("https://example.org/c/trida");
+        trida.put("roleTrida", "https://slovník.gov.cz/základní/pojem/třída");
+        Map<String, String> vlastnost = conceptRow("https://example.org/c/vlastnost");
+        vlastnost.put("roleVlastnost", "http://www.w3.org/2002/07/owl#DatatypeProperty");
+        Map<String, String> vztah = conceptRow("https://example.org/c/vztah");
+        vztah.put("roleVztah", "http://www.w3.org/2002/07/owl#ObjectProperty");
+        Map<String, String> untyped = conceptRow("https://example.org/c/untyped");
+
+        when(nkdSparqlClient.executeSelect(anyString()))
+                .thenReturn(List.of(trida, vlastnost, vztah, untyped));
+
+        SearchProvider.SearchProviderResult result =
+                nkdSearchProvider.search("x", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
+
+        Map<String, com.dia.ismdtoolbackend.enums.ConceptType> byIri = new LinkedHashMap<>();
+        for (SearchResultDto dto : result.results()) {
+            byIri.put(dto.getIri(), dto.getConceptType());
+        }
+        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA, byIri.get("https://example.org/c/trida"));
+        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.VLASTNOST, byIri.get("https://example.org/c/vlastnost"));
+        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.VZTAH, byIri.get("https://example.org/c/vztah"));
+        assertNull(byIri.get("https://example.org/c/untyped"));
+    }
+
+    private static Map<String, String> conceptRow(String iri) {
+        Map<String, String> row = new LinkedHashMap<>();
+        row.put("resource", iri);
+        row.put("label", "L");
+        row.put("labelLang", "cs");
+        row.put("ontology", "https://example.org/ontology/1");
+        return row;
     }
 
     @Test

@@ -304,6 +304,28 @@ class NKDSPARQLSearchQueryTest {
     }
 
     @Test
+    void buildConceptSearchQuery_projectsRoleMarkers() {
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
+
+        assertTrue(query.contains("?roleTrida"));
+        assertTrue(query.contains("?roleVlastnost"));
+        assertTrue(query.contains("?roleVztah"));
+    }
+
+    @Test
+    void buildConceptSearchQuery_roleMarkersAcceptOfnAndOwlTypes() {
+        String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
+
+        // OFN role tags (ISMD-published) and OWL types (NKD-carried) both bind the marker.
+        assertTrue(query.contains("http://www.w3.org/2002/07/owl#Class"));
+        assertTrue(query.contains("http://www.w3.org/2002/07/owl#DatatypeProperty"));
+        assertTrue(query.contains("http://www.w3.org/2002/07/owl#ObjectProperty"));
+        assertTrue(query.contains("třída"));
+        assertTrue(query.contains("vlastnost"));
+        assertTrue(query.contains("vztah"));
+    }
+
+    @Test
     void buildConceptSearchQuery_includesOntologyVariable() {
         String query = NKDSPARQLSearchQuery.buildConceptSearchQuery("test", "cs", 10, 0, null, null, null);
 
