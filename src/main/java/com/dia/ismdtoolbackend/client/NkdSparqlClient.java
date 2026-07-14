@@ -23,9 +23,6 @@ import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Component
 @Slf4j
@@ -47,13 +44,11 @@ public class NkdSparqlClient {
      */
     public static final String PUBLISHED_RESOURCE_CACHE = "nkdPublishedResource";
 
-    private final int maxConcurrentRequests;
     private final HttpSparqlExecutor executor;
     private final OntologyDetailExtractor detailExtractor;
 
     public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor,
                            @Qualifier("externalSparqlHttpClient") HttpClient externalSparqlHttpClient) {
-        this.maxConcurrentRequests = config.getSparql().getMaxConcurrentRequests();
         this.executor = new HttpSparqlExecutor(
                 NKD_LABEL,
                 config.getSparql().getEndpoint(),
@@ -217,6 +212,11 @@ public class NkdSparqlClient {
         return resolutions;
     }
 
+    /**
+     * Returns which of {@code resourceIris} exist as published resources in NKD, in a single batched CONSTRUCT
+     * rather than one round-trip per IRI — so wall-time is independent of the batch size.
+     * Best-effort: an NKD outage returns an empty list, never an exception.
+     */
     public List<String> getPublishedResourcesList(List<String> resourceIris) {
         if (resourceIris == null || resourceIris.isEmpty()) {
             log.debug("No resource IRIs provided for NKD verification");
@@ -230,26 +230,27 @@ public class NkdSparqlClient {
 
         log.debug("Verifying {} resources against NKD", resourceIris.size());
 
-        ExecutorService threadPool = Executors.newFixedThreadPool(
-                Math.min(maxConcurrentRequests, resourceIris.size())
-        );
-        try {
-            List<CompletableFuture<String>> futures = resourceIris.stream()
-                    .map(iri -> CompletableFuture.supplyAsync(() ->
-                            isConceptPublishedInNKD(iri) ? iri : null, threadPool))
-                    .toList();
-
-            List<String> publishedResources = futures.stream()
-                    .map(CompletableFuture::join)
-                    .filter(Objects::nonNull)
-                    .toList();
-
-            log.info("Found {} published resources out of {} total resources",
-                    publishedResources.size(), resourceIris.size());
-            return publishedResources;
-        } finally {
-            threadPool.shutdown();
+        String query = NKDSPARQLConstructQuery.buildPublicationCheckQuery(resourceIris);
+        Optional<Model> result = executor.constructLenient(
+                "NKD publication check for " + resourceIris.size() + " resource(s)", query);
+        if (result.isEmpty()) {
+            log.info("Found 0 published resources out of {} total resources", resourceIris.size());
+            return new ArrayList<>();
         }
+
+        // Intersect the requested IRIs with the subjects NKD returned, so a lenient result
+        // can only ever confirm IRIs the caller actually asked about.
+        Set<String> requested = new HashSet<>(resourceIris);
+        List<String> publishedResources = result.get().listSubjects().toList().stream()
+                .filter(Resource::isURIResource)
+                .map(Resource::getURI)
+                .filter(requested::contains)
+                .distinct()
+                .toList();
+
+        log.info("Found {} published resources out of {} total resources",
+                publishedResources.size(), resourceIris.size());
+        return publishedResources;
     }
 
     /**
@@ -284,16 +285,5 @@ public class NkdSparqlClient {
 
     public boolean isEndpointConfigured() {
         return executor.isConfigured();
-    }
-
-    private boolean isConceptPublishedInNKD(String conceptIri) {
-        String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
-        boolean isPublished = executor
-                .constructLenient("NKD publication check for " + conceptIri, query)
-                .isPresent();
-        if (isPublished) {
-            log.debug("Concept is published in NKD: {}", conceptIri);
-        }
-        return isPublished;
     }
 }
