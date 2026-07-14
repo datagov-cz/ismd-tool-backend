@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -232,10 +233,19 @@ public class ConceptServiceImpl implements ConceptService {
             conceptMetadataEntities = conceptMetadataRepository.findAll();
         }
 
+        List<Long> conceptIds = conceptMetadataEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByConceptId = conceptIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByConceptMetadataIdIn(conceptIds).stream()
+                        .collect(Collectors.groupingBy(c -> c.getConceptMetadata().getId()));
+
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities = commentRepository.findByConceptMetadataId(entity.getId());
+                    List<CommentEntity> commentEntities =
+                            commentsByConceptId.getOrDefault(entity.getId(), List.of());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
