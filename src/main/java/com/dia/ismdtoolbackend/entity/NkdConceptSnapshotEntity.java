@@ -40,9 +40,9 @@ import java.time.LocalDateTime;
 @Slf4j
 public class NkdConceptSnapshotEntity {
 
+    /** Surfaced as {@code LinkSnapshotDto.snapshotId} — the UPDATE/REMOVE action URLs are keyed on it. */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    // TODO id is required for proper endpoint calling, we are NOT currently return it anywhere in the data layer
     private Long id;
 
     /**

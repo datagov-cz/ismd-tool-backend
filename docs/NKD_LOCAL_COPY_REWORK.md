@@ -14,7 +14,7 @@ Three phases, shipped together as one branch:
 | **A** | Bugfix: stop rejecting a domain/range that points at a *locally-owned* working copy | **done** (2026-07-15) |
 | **B** | Rename `SELF_PUBLISHED` → `WORKING_COPY`; derive + surface a `sourceTag` | **done** (2026-07-15) |
 | **C** | Selective sync (partial accept) + sever | **done** (2026-07-15) |
-| **D** | UI data model: split the two deviation models, surface source ref + snapshotId on concept detail | in progress |
+| **D** | UI data model: tag the deviation, surface source ref + link snapshots on concept detail | **done** (2026-07-15) |
 
 Prerequisite (already shipped on this branch, commits `e6236b7` / `2569710`): copies are
 **PG-only**, never in TDB2. See `.planning/snapshot-graph-separation-DESIGN.md`.
@@ -230,7 +230,7 @@ Traps handled:
 **Doc impact:** new API rows + a working-copy lifecycle section; the "read-only deviation" framing of the
 `is_published` path becomes wrong.
 
-### Phase D — UI data model (in progress)
+### Phase D — UI data model (done, 2026-07-15)
 
 Three asks about giving the UI what it needs to act on a deviation. **What the code already does**
 (verified 2026-07-15) narrowed each one:
@@ -261,6 +261,33 @@ only the envelope gains fields. Purely additive — nothing the FE reads today c
 > **Known duplication (accepted):** for UC1 on ontology detail the same `{iri, label}` appears twice —
 > once as `LinkSnapshotDto.nkdConcept`, once as the nested `deviation.source`. Harmless, and the price of
 > one uniform code path over "populate it only where it's missing."
+
+**As built.**
+- `PublishedConceptDeviationModel` gains `origin` + `source`. `ConceptDeviationComparator` gains a
+  4-arg `compareConceptDetails(local, published, origin, source)` overload that delegates to the
+  existing 2-arg comparison and stamps the envelope — **the 23-field logic is untouched and unforked**.
+  The source label is taken from the **NKD** side (`publishedConcept`), never the local one.
+- All **three** comparison call sites now stamp: `ConceptServiceImpl.checkPublishedConcept` and
+  `PublishedResourceUtil.checkSingleConceptDeviation` (both `WORKING_COPY`, source = the concept's own
+  IRI) and `NkdSnapshotServiceImpl.computeDeviation` (`snapshot.getOrigin()`, source = `nkdIri`).
+- **Error envelopes stamp too.** `ENDPOINT_UNAVAILABLE` / `CONCEPT_NOT_FOUND_IN_NKD` / `QUERY_ERROR`
+  previously carried only a status; they now carry `origin` + `source` (IRI, no label — it lives on the
+  NKD concept we could not fetch), so the FE can render the card even when NKD is down.
+- `GetConceptDto.linkSnapshots` (`NON_NULL`, a flat `List` — already scoped to one owner, unlike the
+  ontology's map). `ConceptServiceImpl.surfaceLinkSnapshots` mirrors the ontology path: reuses
+  `LinkSnapshotAssembler`, the snapshot row is the cache (no NKD call), cold/stale → `PENDING` + async
+  warm, and it is try/caught so a snapshot problem never costs the user their concept page.
+- Deleted the stale `// TODO id is required…` on `NkdConceptSnapshotEntity.id` — Phase D disproved it.
+
+**Behaviour change worth knowing:** concept detail can now fire the async warmer (it previously never
+did). Guarded by `!rows.isEmpty()`, so a concept with no snapshot rows costs nothing — unlike ontology
+detail, this path does **not** warm on a zero-row cold start, because a single concept's page should not
+trigger a whole-graph scan.
+
+**Test-mock breakage (caught by the suite):** two pre-existing tests stubbed the 2-arg
+`compareConceptDetails`, which production no longer calls — one failed loudly, and two `never()`
+verifications would have passed **vacuously** against a method that is no longer invoked. All updated to
+the 4-arg form and now assert the tag.
 
 ## Deferred: alt-name sync (revisit — large blast radius)
 
@@ -308,6 +335,12 @@ When C lands, revise `NKD_LOCAL_COPY_SNAPSHOT.md` to describe **both** copy path
       use cases side by side (UC1 all-or-nothing vs UC2 selective) — they are the feature's core shape.
 - [ ] Record the non-syncable fields and **why**: `typ` (no cross-type conversion) and
       `alternativní-název` (lossy `Map<String,Object>` → `AltNameModel`).
+- [ ] Document the deviation envelope (Phase D): `origin` + `source` on
+      `PublishedConceptDeviationModel`, incl. on error envelopes; note that one model serves both cases
+      and `origin` is what disambiguates `localValue`.
+- [ ] Update §Surfacing: `linkSnapshots` is now on **concept** detail too (flat list), not only ontology
+      detail — the doc currently says "`GetConceptDto` does **not** carry them."
+- [ ] Carry over the alt-name deferral (§Deferred) as a known limitation.
 - [ ] Note the IRI collision after a sever is the validator's concern (out of scope).
 - [ ] Refresh §Status: final suite count + the dev smoke test result.
 - [ ] **Fix the stale cleanup-script path** — the doc says `.planning/snapshot-graph-separation-cleanup.sh`,
@@ -347,6 +380,13 @@ Filled in as phases land — this is the evidence the rework is done, not the ta
 | ⚠ A sever leaves the concept's `LINK_TARGET` rows intact (decision 9) | C | **not tested** — assert during the smoke test |
 | UC1 accept-all / remove endpoints still behave | C | pre-existing endpoints untouched; suite green |
 | UC2 delete = existing `DELETE /api/concept/{id}` | C | not re-verified this round — assert during the smoke test |
-| Full suite (baseline **1379/0**, 4 skipped as of 2026-07-15) | all | ✅ A: **1384/0** (+5) · B: **1391/0** (+7) · C: **1403/0** (+12), 4 skipped |
+| Working-copy deviation stamped `WORKING_COPY` + source | D | ✅ `DeviationSourceTagTest.workingCopy_stampsOriginAndSource` |
+| Link-target deviation stamped `LINK_TARGET` + source | D | ✅ `linkTarget_stampsOriginAndSource` |
+| Source label comes from the NKD side, not the local one | D | ✅ both tests assert the published-side label |
+| Unnamed NKD concept → label null, IRI still present | D | ✅ `unnamedNkdConcept_sourceLabelIsNull_iriStillPresent` |
+| Stamping does not disturb the per-field diffs (additive) | D | ✅ `stamping_doesNotDisturbTheFieldDiff` |
+| ⚠ `linkSnapshots` actually appears on concept detail JSON | D | **not unit-tested** — needs the dev smoke test |
+| ⚠ Concept detail warms only when rows exist (no zero-row scan) | D | **not unit-tested** — same |
+| Full suite (baseline **1379/0**, 4 skipped as of 2026-07-15) | all | ✅ A: **1384/0** (+5) · B: **1391/0** (+7) · C: **1403/0** (+12) · D: **1407/0** (+4), 4 skipped |
 | Dev smoke test, `outbox.enabled=true`, live NKD, real Fuseki/PG | all | — |
 | Reconciler dry-run: zero `RDF_ORPHAN` for the synced concept | all | — |
