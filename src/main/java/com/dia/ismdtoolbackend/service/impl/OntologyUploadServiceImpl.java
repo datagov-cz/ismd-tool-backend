@@ -149,6 +149,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             String graphName = determineGraphName(finalModel);
             log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
+            normalizeOntologyType(finalModel, graphName);
+
             List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel);
             if (!publishedConceptIris.isEmpty()) {
                 log.info("Model contains published resources: {}", publishedConceptIris.size());
@@ -326,6 +328,23 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 yield chosen;
             }
         };
+    }
+
+    /**
+     * Stamps {@code owl:Ontology} on the vocabulary resource when the uploaded data omits it.
+     *
+     * <p>OFN vocabularies commonly declare only {@code skos:ConceptScheme} and the OFN
+     * {@code …/pojem/slovník} type. {@code owl:Ontology} is the foundational type every
+     * ontology-keyed lookup asks for — {@link PublishedResourceUtil#checkPublishedResourcesInNKD}
+     * among them, which decides {@code isPublished}. The create path stamps all three types; upload
+     * must land in the same shape.
+     */
+    private void normalizeOntologyType(OntModel model, String graphName) {
+        Resource ontologyResource = model.getResource(graphName);
+        if (!ontologyResource.hasProperty(RDF.type, OWL2.Ontology)) {
+            ontologyResource.addProperty(RDF.type, OWL2.Ontology);
+            log.info("Normalized ontology {} to owl:Ontology (absent from uploaded data)", graphName);
+        }
     }
 
     private String extractOntologyIRI(OntModel model) {
