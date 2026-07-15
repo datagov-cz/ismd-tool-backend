@@ -11,6 +11,7 @@ import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
@@ -31,7 +32,21 @@ public class ConceptEditor {
             ConceptType.VLASTNOST, new PropertyConceptTypeEditor(fieldUpdaters),
             ConceptType.VZTAH, new RelationshipConceptTypeEditor(fieldUpdaters)));
 
+    /**
+     * Edits a concept without a uniqueness check on renames.
+     */
     public EditResult editConcept(String conceptIri, ConceptEditModel editModel, Model model, String graphName) {
+        return editConcept(conceptIri, editModel, model, graphName, iri -> false);
+    }
+
+    /**
+     * Edits a concept, renaming it when the supplied name derives a new IRI.
+     *
+     * @param iriTaken tests whether an owned concept other than this one already claims a
+     *                 candidate IRI; a rename onto a taken IRI is rejected with HTTP 400
+     */
+    public EditResult editConcept(String conceptIri, ConceptEditModel editModel, Model model, String graphName,
+                                  Predicate<String> iriTaken) {
         Resource existingConcept = model.getResource(conceptIri);
 
         if (existingConcept == null || !model.containsResource(existingConcept)) {
@@ -61,12 +76,12 @@ public class ConceptEditor {
             log.info("Name changed from '{}' to '{}', updating IRI from {} to {}",
                     oldName, newName, conceptIri, newConceptIRI);
 
-            if (!newConceptIRI.equals(conceptIri)) {
-                Resource targetResource = model.getResource(newConceptIRI);
-                if (model.containsResource(targetResource)) {
-                    throw new ConceptValidationException(
-                            "Concept with IRI " + newConceptIRI + " already exists in the model");
-                }
+            // Tested against owned-concept metadata, not the in-memory model: the graph also holds
+            // referenced concepts and NKD snapshot copies, whose IRIs are not names this concept
+            // would be colliding with.
+            if (!newConceptIRI.equals(conceptIri) && iriTaken.test(newConceptIRI)) {
+                throw new ConceptValidationException(
+                        "Pojem se stejným názvem již v ontologii existuje: " + newConceptIRI);
             }
         }
 
