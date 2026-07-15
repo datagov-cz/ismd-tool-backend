@@ -472,6 +472,33 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
+    /**
+     * A concurrent create that loses the race to the concept_iri unique constraint surfaces as
+     * 400, not 500 — the DB backstop and the service-layer uniqueness check agree on the status.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testEditConcept_DataIntegrityViolation_mapsTo400() throws Exception {
+        Long conceptId = 1L;
+        String jsonRequest = """
+                {
+                    "conceptType": "TRIDA",
+                    "conceptIRI": "http://example.org/TestConcept"
+                }
+                """;
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(conceptService.editConcept(anyLong(), any()))
+                .thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                        "duplicate key value violates unique constraint"));
+
+        mockMvc.perform(patch("/api/concept/{conceptId}/edit", conceptId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
     @Test
     @WithMockSecurityUser(userId = "user123")
     void testEditConcept_UnexpectedException() throws Exception {

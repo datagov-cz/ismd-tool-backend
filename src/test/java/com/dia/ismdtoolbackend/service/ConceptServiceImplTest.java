@@ -175,17 +175,15 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void createConcept_AlreadyExists() {
+    void createConcept_AlreadyExists_rejectedAs400() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
-        ConceptMetadataModel existingDto = new ConceptMetadataModel();
 
         when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(existingDto);
 
-        ConceptMetadataModel result = conceptService.createConcept(createModel, TEST_USER_ID);
+        assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
 
-        assertNotNull(result);
         verify(jenaTDB2Repository, never()).saveConcept(any(), anyString());
         verify(conceptMetadataRepository, never()).save(any());
     }
@@ -400,7 +398,7 @@ class ConceptServiceImplTest {
         // Outbox path takes the pessimistic lock finder (HIGH review fix), not plain findById.
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
@@ -427,7 +425,7 @@ class ConceptServiceImplTest {
         // Outbox path takes the pessimistic lock finder (HIGH review fix), not plain findById.
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(renameResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
@@ -437,6 +435,52 @@ class ConceptServiceImplTest {
         // Aggregate = OLD IRI (TEST_CONCEPT_IRI), NOT the new one — this is the #4 fix.
         verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
         verify(outboxWriter, never()).enqueueUpsert(anyString(), eq(newIri), anySet(), anySet());
+    }
+
+    /**
+     * The uniqueness predicate handed to the editor excludes the concept being edited, so
+     * re-saving a concept under its own name is not a collision, while another concept's IRI is.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void editConcept_uniquenessPredicate_excludesSelfButRejectsOthers() {
+        when(outboxConfig.isEnabled()).thenReturn(false);
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        ArgumentCaptor<java.util.function.Predicate<String>> captor =
+                ArgumentCaptor.forClass(java.util.function.Predicate.class);
+        verify(conceptEditor).editConcept(anyString(), any(), any(Model.class), anyString(), captor.capture());
+        java.util.function.Predicate<String> iriTaken = captor.getValue();
+
+        // The concept's own row is not a collision.
+        testConceptEntity.setId(TEST_CONCEPT_ID);
+        when(conceptMetadataRepository.findByConceptIri("http://example.org/pojem/x"))
+                .thenReturn(Optional.of(testConceptEntity));
+        assertFalse(iriTaken.test("http://example.org/pojem/x"));
+
+        // A different concept's row is.
+        ConceptMetadataEntity other = new ConceptMetadataEntity();
+        other.setId(TEST_CONCEPT_ID + 1);
+        when(conceptMetadataRepository.findByConceptIri("http://example.org/pojem/y"))
+                .thenReturn(Optional.of(other));
+        assertTrue(iriTaken.test("http://example.org/pojem/y"));
+
+        // A free IRI is not.
+        when(conceptMetadataRepository.findByConceptIri("http://example.org/pojem/z"))
+                .thenReturn(Optional.empty());
+        assertFalse(iriTaken.test("http://example.org/pojem/z"));
     }
 
     // Review #4 HIGH — the outbox edit path must take the PESSIMISTIC row lock (findWithLockById),
@@ -451,7 +495,7 @@ class ConceptServiceImplTest {
                 TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
@@ -477,7 +521,7 @@ class ConceptServiceImplTest {
                 new java.util.HashSet<>(), new java.util.HashSet<>());
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
@@ -511,7 +555,7 @@ class ConceptServiceImplTest {
                 TEST_CONCEPT_IRI, false, new java.util.HashSet<>(), new java.util.HashSet<>());
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
@@ -624,7 +668,7 @@ class ConceptServiceImplTest {
                 TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
@@ -713,7 +757,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -735,7 +779,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -761,7 +805,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -783,7 +827,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -805,7 +849,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
@@ -840,7 +884,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("prázdný"));
-        verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString());
+        verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString(), any());
     }
 
     @Test
@@ -857,7 +901,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString());
+        verify(conceptEditor, never()).editConcept(anyString(), any(), any(), anyString(), any());
     }
 
     @Test
@@ -868,7 +912,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenThrow(new RuntimeException("Editor error"));
 
         OntologyException exception = assertThrows(OntologyException.class,
@@ -888,7 +932,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME)))
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenThrow(new ConceptValidationException("Neplatné hodnoty v úpravě pojmu: exactMatch"));
 
         ConceptValidationException exception = assertThrows(ConceptValidationException.class,
@@ -908,7 +952,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         doThrow(new RuntimeException("TDB2 error")).when(jenaTDB2Repository).putOntologyModel(TEST_GRAPH_NAME, testModel);
 
         OntologyException exception = assertThrows(OntologyException.class,
@@ -927,7 +971,7 @@ class ConceptServiceImplTest {
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
-        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME))).thenReturn(editResult);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class)))
                 .thenThrow(new RuntimeException("DB error"));
 

@@ -10,6 +10,7 @@ import org.apache.jena.ontology.OntologyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.TypeMismatchException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -36,6 +37,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleAccessDenied(AccessDeniedException e) {
         log.error("Access denied: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        log.warn("Constraint violation: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error("Zápis porušuje omezení databáze — pravděpodobně již existuje záznam se stejnou hodnotou."), HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(JenaTDB2Exception.class)
