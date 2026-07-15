@@ -23,7 +23,7 @@ import java.util.List;
  * {@link PublishedConceptDeviationModel} unchanged, but for a {@link SnapshotOrigin#LINK_TARGET}
  * snapshot each {@code PropertyDeviation}'s {@code localValue} is the stored local copy and
  * {@code publishedValue} is live NKD — NOT "the user's own value". The FE must relabel the
- * columns keyed on {@link #origin} (e.g. "lokální kopie" / "NKD") rather than the SELF_PUBLISHED
+ * columns keyed on {@link #origin} (e.g. "lokální kopie" / "NKD") rather than the working-copy
  * labels ("vaše hodnota" / "publikováno"). The backend keeps a single comparison type; the FE owns
  * the label switch.
  */
@@ -48,7 +48,7 @@ public class LinkSnapshotDto {
 
     /**
      * Always {@link SnapshotOrigin#LINK_TARGET} this round, but carried explicitly so the FE relabels
-     * the deviation pair (see class Javadoc) and stays forward-compatible when SELF_PUBLISHED arrives.
+     * the deviation pair (see class Javadoc) and stays forward-compatible when WORKING_COPY arrives.
      */
     private SnapshotOrigin origin;
 

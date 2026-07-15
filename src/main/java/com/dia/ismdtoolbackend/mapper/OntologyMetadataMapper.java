@@ -2,11 +2,14 @@ package com.dia.ismdtoolbackend.mapper;
 
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 
 import java.util.Collections;
@@ -25,7 +28,22 @@ public interface OntologyMetadataMapper {
     @Mapping(target = "popis", ignore = true)
     @Mapping(target = "concepts", ignore = true)
     @Mapping(target = "conceptCount", ignore = true)
+    @Mapping(target = "sourceTag", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
+
+    /**
+     * Derives {@code sourceTag} from this ontology's own {@code isPublished} — never a rollup over its
+     * concepts, which carry their own tags. A null flag stays null rather than defaulting to DRAFT.
+     */
+    @AfterMapping
+    default void deriveSourceTag(OntologyMetadataEntity entity, @MappingTarget OntologyMetadataModel model) {
+        if (entity.getIsPublished() == null) {
+            return;
+        }
+        model.setSourceTag(Boolean.TRUE.equals(entity.getIsPublished())
+                ? ConceptSourceTag.WORKING_COPY
+                : ConceptSourceTag.DRAFT);
+    }
 
     default CommentModel commentEntityToModel(CommentEntity entity) {
         if (entity == null) {
