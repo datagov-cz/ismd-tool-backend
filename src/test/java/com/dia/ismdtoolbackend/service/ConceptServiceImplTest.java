@@ -467,6 +467,7 @@ class ConceptServiceImplTest {
     private static final String NKD_SUPERCLASS = "https://slovník.gov.cz/agendový/104/pojem/nadrazena";
     private static final org.apache.jena.rdf.model.Property SUBCLASS_OF = org.apache.jena.vocabulary.RDFS.subClassOf;
     private static final org.apache.jena.rdf.model.Property RDFS_DOMAIN = org.apache.jena.vocabulary.RDFS.domain;
+    private static final org.apache.jena.rdf.model.Property RDFS_RANGE = org.apache.jena.vocabulary.RDFS.range;
 
     /** Stage an outbox-path edit whose POST-edit model is {@code testModel} (which the test pre-populates). */
     private ConceptEditModel stageEdit(boolean iriChanged, String newIri) {
@@ -578,6 +579,94 @@ class ConceptServiceImplTest {
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);   // must NOT throw
 
         verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
+    }
+
+    /**
+     * Phase A: a locally-owned concept whose own IRI is in NKD (a working copy). It reads as external to
+     * NkdLinkDetector (its IRI is not prefixed by the owner graph's scheme) and is published, so it used
+     * to be rejected/snapshotted as if it were someone else's concept.
+     */
+    private void stageLocallyOwnedWorkingCopy(String... iris) {
+        java.util.List<ConceptMetadataEntity> owned = java.util.Arrays.stream(iris).map(iri -> {
+            ConceptMetadataEntity e = new ConceptMetadataEntity();
+            e.setConceptIri(iri);
+            e.setGraphName(TEST_GRAPH_NAME);
+            e.setIsPublished(true);
+            return e;
+        }).toList();
+        when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(owned);
+    }
+
+    @Test
+    void editConcept_domainPointsAtLocallyOwnedWorkingCopy_notRejectedAndNkdNotQueried() {
+        // Phase A trigger bug: domain → a working copy is our own concept, so it must not 400 — and NKD
+        // must not even be asked, since the only candidate was locally owned.
+        testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = stageEdit(false, null);
+        stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);   // must NOT throw
+
+        verify(nkdSparqlClient, never()).getPublishedResourcesList(anyList());
+        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
+    }
+
+    @Test
+    void editConcept_domainMixesOwnedAndForeignPublished_rejectsOnlyForeign() {
+        // The reject message must name the foreign IRI only — the owned working copy is legitimate.
+        String foreign = "https://slovník.gov.cz/agendový/999/pojem/foreign";
+        testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
+        testModel.add(testResource, RDFS_RANGE, testModel.createResource(foreign));
+        ConceptEditModel editModel = stageEdit(false, null);
+        stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(java.util.List.of(foreign));
+
+        com.dia.ismdtoolbackend.exception.OntologyValidationException ex = assertThrows(
+                com.dia.ismdtoolbackend.exception.OntologyValidationException.class,
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
+
+        assertTrue(ex.getMessage().contains(foreign), "reject must name the foreign IRI");
+        assertTrue(!ex.getMessage().contains(NKD_SUPERCLASS), "reject must not name the owned working copy");
+
+        // Only the foreign IRI is worth asking NKD about; the owned one is filtered out first.
+        ArgumentCaptor<java.util.List<String>> asked = ArgumentCaptor.forClass(java.util.List.class);
+        verify(nkdSparqlClient).getPublishedResourcesList(asked.capture());
+        assertTrue(asked.getValue().contains(foreign));
+        assertTrue(!asked.getValue().contains(NKD_SUPERCLASS), "owned IRI must not be sent to NKD");
+    }
+
+    @Test
+    void editConcept_superclassIsLocallyOwnedWorkingCopy_notSnapshotted() {
+        // A link to a working copy is a first-class local link, never a LINK_TARGET snapshot of a
+        // concept we already own.
+        testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = stageEdit(false, null);
+        stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void editConcept_linkTargetBecameOwned_staleSnapshotRemoved() {
+        // The target is now locally owned, so it drops out of allowedTargets and the existing removal
+        // loop tears down the snapshot row it no longer warrants.
+        testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
+        ConceptEditModel editModel = stageEdit(false, null);
+        stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
+        com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity stale =
+                new com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity();
+        stale.setNkdIri(NKD_SUPERCLASS);
+        stale.setGraphName(TEST_GRAPH_NAME);
+        when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of(stale));
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(nkdSnapshotService).removeSnapshotAndLink(eq(stale), anySet(), any());
+        verify(nkdSnapshotService, never()).createOrRefreshSnapshot(any(), anyString(), anyString(), any());
     }
 
     @Test

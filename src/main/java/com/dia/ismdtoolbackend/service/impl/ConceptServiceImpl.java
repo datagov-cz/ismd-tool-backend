@@ -450,6 +450,12 @@ public class ConceptServiceImpl implements ConceptService {
      * <p>Returns its own change set rather than mutating {@code EditResult}'s, whose sets are immutable
      * copies. Best-effort: a transient NKD outage never rolls back the edit (the service skips); only a
      * confirmed-published domain/range link throws (HTTP 400).
+     *
+     * <p>{@link NkdLinkDetector} calls a target "external" when its IRI is not prefixed by the owner
+     * graph's scheme, which is true of a <em>working copy</em> — a locally-owned concept whose own IRI is
+     * in NKD. Such a target is external-looking and published, but it is ours, so both paths below
+     * subtract the locally-owned IRIs first: it must never be rejected, and never snapshotted as a copy
+     * of someone else's concept. The detector stays IO-free; the ownership lookup belongs here.
      */
     private OwnerChangeSet reconcileNkdLinks(ConceptMetadataEntity owner, Model model) {
         String ownerIri = owner.getConceptIri();
@@ -458,8 +464,16 @@ public class ConceptServiceImpl implements ConceptService {
 
         List<String> domainRangeTargets =
                 nkdLinkDetector.forbiddenDomainRangeTargets(ownerIri, graphScheme, model);
-        if (!domainRangeTargets.isEmpty()) {
-            Set<String> publishedForbidden = publishedAmong(domainRangeTargets);
+        List<NkdLinkDetector.LinkTarget> detectedTargets =
+                nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
+
+        Set<String> locallyOwned = locallyOwnedAmong(domainRangeTargets, detectedTargets);
+
+        List<String> foreignDomainRangeTargets = domainRangeTargets.stream()
+                .filter(iri -> !locallyOwned.contains(iri))
+                .toList();
+        if (!foreignDomainRangeTargets.isEmpty()) {
+            Set<String> publishedForbidden = publishedAmong(foreignDomainRangeTargets);
             if (!publishedForbidden.isEmpty()) {
                 throw new OntologyValidationException(
                         "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: "
@@ -467,8 +481,9 @@ public class ConceptServiceImpl implements ConceptService {
             }
         }
 
-        List<NkdLinkDetector.LinkTarget> allowed =
-                nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
+        List<NkdLinkDetector.LinkTarget> allowed = detectedTargets.stream()
+                .filter(t -> !locallyOwned.contains(t.targetIri()))
+                .toList();
         Set<String> currentTargetIris = new HashSet<>();
         allowed.forEach(t -> currentTargetIris.add(t.targetIri()));
 
@@ -502,6 +517,22 @@ public class ConceptServiceImpl implements ConceptService {
             it.close();
         }
         return out;
+    }
+
+    /**
+     * Which of the reconcile candidates are concepts we own locally (working copies). One batch lookup
+     * over the union of both candidate sets, so the reject path and the snapshot path share a single query.
+     */
+    private Set<String> locallyOwnedAmong(List<String> domainRangeTargets,
+                                          List<NkdLinkDetector.LinkTarget> detectedTargets) {
+        Set<String> candidates = new HashSet<>(domainRangeTargets);
+        detectedTargets.forEach(t -> candidates.add(t.targetIri()));
+        if (candidates.isEmpty()) {
+            return Set.of();
+        }
+        return conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(candidates)).stream()
+                .map(ConceptMetadataEntity::getConceptIri)
+                .collect(Collectors.toSet());
     }
 
     /** Best-effort batch "which of these IRIs are published in NKD"; empty set on any failure (fail-open). */
