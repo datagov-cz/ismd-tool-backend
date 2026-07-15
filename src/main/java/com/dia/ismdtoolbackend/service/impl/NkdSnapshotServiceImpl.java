@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotLinkType;
@@ -118,17 +119,19 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
     private PublishedConceptDeviationModel computeDeviation(NkdConceptSnapshotEntity snapshot) {
         ConceptDetailModel local = snapshot.getSnapshot();
         if (local == null) {
-            return error(DeviationStatus.QUERY_ERROR, "Stored snapshot detail unavailable");
+            return error(snapshot, DeviationStatus.QUERY_ERROR, "Stored snapshot detail unavailable");
         }
         try {
             Optional<ConceptDetailModel> publishedOpt = nkdSparqlClient.fetchPublishedConcept(snapshot.getNkdIri());
             if (publishedOpt.isEmpty()) {
-                return error(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD, "Concept not found in NKD");
+                return error(snapshot, DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD, "Concept not found in NKD");
             }
-            return conceptDeviationComparator.compareConceptDetails(local, publishedOpt.get());
+            // LINK_TARGET: the stored copy is compared against the foreign NKD concept it was copied from.
+            return conceptDeviationComparator.compareConceptDetails(
+                    local, publishedOpt.get(), snapshot.getOrigin(), snapshot.getNkdIri());
         } catch (Exception e) {
             log.error("Deviation check failed for snapshot {}: {}", snapshot.getNkdIri(), e.getMessage(), e);
-            return error(DeviationStatus.ENDPOINT_UNAVAILABLE, "NKD unavailable: " + e.getMessage());
+            return error(snapshot, DeviationStatus.ENDPOINT_UNAVAILABLE, "NKD unavailable: " + e.getMessage());
         }
     }
 
@@ -196,7 +199,17 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         return snapshotRepository.findByGraphName(graphName);
     }
 
-    private static PublishedConceptDeviationModel error(DeviationStatus status, String message) {
-        return PublishedConceptDeviationModel.builder().status(status).errorMessage(message).build();
+    /**
+     * An error envelope still carries {@code origin}/{@code source}: the comparison failed, but which case
+     * this is and what it points at are known, and the FE needs both to render the card.
+     */
+    private static PublishedConceptDeviationModel error(NkdConceptSnapshotEntity snapshot,
+                                                        DeviationStatus status, String message) {
+        return PublishedConceptDeviationModel.builder()
+                .status(status)
+                .errorMessage(message)
+                .origin(snapshot.getOrigin())
+                .source(NkdConceptRefDto.builder().iri(snapshot.getNkdIri()).build())
+                .build();
     }
 }

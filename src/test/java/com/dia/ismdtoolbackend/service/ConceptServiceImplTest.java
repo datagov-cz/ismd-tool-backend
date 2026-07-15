@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -1093,7 +1094,7 @@ class ConceptServiceImplTest {
         assertNull(result.getPublishedConceptDeviationModel());
         verify(referencedConceptsEnricher).enrich(detail);
         verify(nkdSparqlClient, never()).fetchPublishedConcept(anyString());
-        verify(deviationComparator, never()).compareConceptDetails(any(), any());
+        verify(deviationComparator, never()).compareConceptDetails(any(), any(), any(), any());
     }
 
     @Test
@@ -1121,13 +1122,18 @@ class ConceptServiceImplTest {
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
                 .status(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION)
                 .build();
-        when(deviationComparator.compareConceptDetails(localDetail, publishedDetail)).thenReturn(deviationResult);
+        // A working copy compares against its own NKD twin, so the deviation is stamped WORKING_COPY with
+        // the concept's own IRI as the source (Phase D).
+        when(deviationComparator.compareConceptDetails(
+                localDetail, publishedDetail, SnapshotOrigin.WORKING_COPY, TEST_CONCEPT_IRI))
+                .thenReturn(deviationResult);
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
         assertNotNull(result);
         assertEquals(deviationResult, result.getPublishedConceptDeviationModel());
-        verify(deviationComparator).compareConceptDetails(localDetail, publishedDetail);
+        verify(deviationComparator).compareConceptDetails(
+                localDetail, publishedDetail, SnapshotOrigin.WORKING_COPY, TEST_CONCEPT_IRI);
     }
 
     @Test
@@ -1152,7 +1158,7 @@ class ConceptServiceImplTest {
 
         assertEquals(PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
                 result.getPublishedConceptDeviationModel().getStatus());
-        verify(deviationComparator, never()).compareConceptDetails(any(), any());
+        verify(deviationComparator, never()).compareConceptDetails(any(), any(), any(), any());
     }
 
     @Test

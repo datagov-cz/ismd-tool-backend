@@ -235,7 +235,8 @@ class NkdSnapshotServiceImplTest {
         snap.setSnapshot(detail());
 
         when(nkdSparqlClient.fetchPublishedConcept(NKD_IRI)).thenReturn(Optional.of(detail()));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any()))
+        // The snapshot path stamps the deviation with its origin + the NKD IRI it tracks (Phase D).
+        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
                 .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS).build());
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 

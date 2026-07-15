@@ -92,7 +92,10 @@ class ConceptEditFlowIntegrationTest {
                 commentRepository, nkdSparqlClient, deviationComparator,
                 rppSnapshotHolder, referencedConceptsEnricher,
                 outboxConfig, outboxWriter, outboxRelayTrigger,
-                nkdSnapshotService, linkDetector);
+                nkdSnapshotService, linkDetector,
+                new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
+                org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
+                new com.dia.ismdtoolbackend.config.NkdConfig());
 
         Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);

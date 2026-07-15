@@ -13,7 +13,8 @@ Three phases, shipped together as one branch:
 |---|---|---|
 | **A** | Bugfix: stop rejecting a domain/range that points at a *locally-owned* working copy | **done** (2026-07-15) |
 | **B** | Rename `SELF_PUBLISHED` → `WORKING_COPY`; derive + surface a `sourceTag` | **done** (2026-07-15) |
-| **C** | Selective sync (partial accept) + sever | next |
+| **C** | Selective sync (partial accept) + sever | **done** (2026-07-15) |
+| **D** | UI data model: split the two deviation models, surface source ref + snapshotId on concept detail | in progress |
 
 Prerequisite (already shipped on this branch, commits `e6236b7` / `2569710`): copies are
 **PG-only**, never in TDB2. See `.planning/snapshot-graph-separation-DESIGN.md`.
@@ -137,7 +138,7 @@ concept's? **Yes.** Upload sets both by the same test against the same list: the
 **Doc impact:** the permanent doc's `SELF_PUBLISHED`-as-reserved-seam framing (§"Scope this round" and
 §"Status") is obsolete — replace with the working-copy path as built.
 
-### Phase C — selective sync + sever (in progress)
+### Phase C — selective sync + sever (done, 2026-07-15)
 
 **Two deviation use cases, two different accept models** (specified by the user 2026-07-15). Both can
 apply to the *same* concept at once — they are claims about different IRIs (decision 9).
@@ -193,14 +194,104 @@ updater: `removed=true, reAdded=false`.
 > accepted fields — a null is not a safe "don't touch" signal here. This also means the existing
 > full-snapshot edit trap (memory `concept_edit_ispublic_not_null_safe`) has the same root cause.
 
-Traps carried forward:
-- **Outbox keying** — key the aggregate on the **pre-edit** `metadata.getConceptIri()`; a label-driven
-  rename relocates the IRI mid-edit.
-- **Sever atomicity** — `is_published=false` and the RDF delta commit in one boundary, mirroring
-  `editConcept`.
+**As built.**
+- `utility/published/WorkingCopySyncFields` — the single source of truth for the field vocabulary: which
+  deviation keys exist, which are acceptable, and how each one's live-NKD value applies to a
+  `ConceptEditModel`. Without it the deviation model, the request DTO and the edit model drift in three
+  places. A field deviates **iff** its `PropertyDeviation` is non-null (the comparator only ever emits
+  `isDifferent(true)`), which is how deviating fields are enumerated and counted.
+- `controller/dto/WorkingCopySyncRequestDto` — `fieldsToAccept` only, **never values**.
+- `ConceptServiceImpl.syncWorkingCopy` — re-derives the deviation from live NKD, validates the keys,
+  builds a type-correct edit model, routes through `editConcept` (inheriting its lock, aggregate keying,
+  validation and reconcile), then severs iff `accepted < deviating`.
+- `POST /api/concept/{conceptId}/sync` + `SecurityConfig` allowlist entry.
+- **`isPublic`/`privacyProvisions` are carried through at their CURRENT values** (read from the graph via
+  the same `hasProperty(RDF.type, verejny)` check the updater uses, so the two cannot disagree) whenever
+  the user did not accept them. This is the fix for the data-loss trap above.
 
-**Doc impact when it lands:** new API rows + a working-copy lifecycle section; the "read-only
-deviation" framing of the `is_published` path becomes wrong.
+**Decisions made during the build:**
+1. **Alt names are not syncable.** The deviation carries `Map<String, Object>` (a language may hold
+   several alt labels) but `AltNameModel` holds one string per language, so accepting would silently drop
+   every label after the first. The key still shows in the deviation; it just cannot be accepted.
+   See **§Deferred: alt-name sync** below.
+2. **A mismatched hierarchy key no-ops instead of throwing.** `nadřazená-třída` on a VLASTNOST would have
+   been a `ClassCastException`; it is now a no-op, so a bad key cannot take the request down.
+3. **The sever re-reads the post-edit row** rather than reusing the pre-edit instance — `editConcept` may
+   relocate the IRI, and the flag must land on the post-edit row in the same transaction.
+4. **The slug is a safe handle across the edit.** `updateMetadataFromEditResult` only ever changes
+   `conceptIri`/`conceptName`/`inTezaurus` — never the slug — so `getConceptDetail(slug)` is valid
+   after the sync.
+
+Traps handled:
+- **Outbox keying** — inherited from `editConcept`, which keys on the pre-edit IRI. Not re-implemented.
+- **Sever atomicity** — `syncWorkingCopy` is `@Transactional`; the flag flip and the RDF delta commit in
+  one boundary.
+
+**Doc impact:** new API rows + a working-copy lifecycle section; the "read-only deviation" framing of the
+`is_published` path becomes wrong.
+
+### Phase D — UI data model (in progress)
+
+Three asks about giving the UI what it needs to act on a deviation. **What the code already does**
+(verified 2026-07-15) narrowed each one:
+
+| Ask | Finding | Work |
+|---|---|---|
+| "snapshotId needed but never surfaced" | `LinkSnapshotDto.snapshotId` **exists** and both assembler paths set it from `s.getId()` — but only on **ontology** detail. `GetConceptDto` carries **no** `linkSnapshots` at all. | Add `linkSnapshots` to concept detail. The `// TODO id is required…` on `NkdConceptSnapshotEntity` is **stale** → delete. |
+| "separate models for the two deviations" | One `PublishedConceptDeviationModel` serves both, so `localValue`/`publishedValue` mean different things per case — the FE relabels keyed on `origin`. | **One model + a source tag** (below). |
+| "add label + IRI of the deviation SOURCE" | UC1 **already has** it (`NkdConceptRefDto` on `LinkSnapshotDto`). UC2 has **nothing** — the working-copy deviation carries no source ref, so the UI cannot navigate to the NKD twin. | Add `source` to the deviation model, populated in both cases. |
+
+**Decision: one model carrying a source tag — NOT two models** (user, 2026-07-15, after reconsidering an
+initial "full split"). Both cases call the *same* `ConceptDeviationComparator.compareConceptDetails()`
+over the same 23 fields: the comparison is genuinely identical, only the *interpretation* of the value
+pair differs. Splitting the model would fork 23 `compareAndSetX` methods that must then stay in sync
+forever (a new characteristic, or an `areDifferent()` fix, would have to land in both) — the per-site
+recurrence tax `.planning/snapshot-graph-separation-DESIGN.md` §2 argues against.
+`PublishedOntologyDeviationModel` already forked this way; that is precedent, not a reason to repeat it.
+
+**Shipped shape** — `PublishedConceptDeviationModel` gains two fields:
+- `origin` — reuses **`SnapshotOrigin`** (`LINK_TARGET` / `WORKING_COPY`); no new enum, and Phase B just
+  renamed it to be accurate for exactly this. Tells the FE what the value pair means.
+- `source` — `NkdConceptRefDto {iri, label}` of the NKD published resource, for navigation. **Populated
+  uniformly on every deviation**, both cases, so the block is self-describing wherever it is embedded.
+
+**`localValue`/`publishedValue` keep their names** (user decision): per-field diffs stay byte-identical,
+only the envelope gains fields. Purely additive — nothing the FE reads today changes.
+
+> **Known duplication (accepted):** for UC1 on ontology detail the same `{iri, label}` appears twice —
+> once as `LinkSnapshotDto.nkdConcept`, once as the nested `deviation.source`. Harmless, and the price of
+> one uniform code path over "populate it only where it's missing."
+
+## Deferred: alt-name sync (revisit — large blast radius)
+
+`alternativní-název` is the one deviating field the user cannot accept, and closing that gap is **not** a
+Phase C-sized change.
+
+**The mismatch.** NKD/detail model alt names as `Map<String, Object>` — one language key may hold *a
+string or a list*, because a concept can carry several `skos:altLabel`s per language. `AltNameModel`
+holds `Map<String, String>`: exactly one label per language. There is no lossless mapping in that
+direction, so any "coerce and move on" fix silently drops labels — the same failure class as the
+`isPublic` trap, just quieter.
+
+**Why it is expensive.** `AltNameModel` is not internal to the sync path — it is on the **public
+create/edit API contract**:
+
+| Touch point | Why it hurts |
+|---|---|
+| `models/concept/AltNameModel` | the shape itself |
+| `models/concept/ConceptEditModel` + `ConceptCreateModel` | **request bodies** — changing the shape is an FE-breaking API change |
+| `utility/editor/ConceptFieldUpdaters.updateAltNameModel` | writes one literal per language; must become per-language multi-value |
+| `utility/creator/ConceptCreator` | same on the create path |
+| `utility/published/WorkingCopySyncFields` | the sync mapping this would unblock |
+
+~17 references in `src/main`, ~38 in `src/test`. The FE sends `altNameModel` today, so the shape change
+needs a coordinated FE cut-over (or a tolerant-reader migration accepting both shapes).
+
+**Options when revisited:** (a) widen `AltNameModel` to `Map<String, List<String>>` and migrate the FE;
+(b) keep the API shape and add a sync-only multi-value path; (c) accept lossiness deliberately, with the
+drop surfaced to the user rather than silent. **Not decided.** Until then the key stays visible in the
+deviation and unacceptable in `/sync`, which is honest: the user sees the drift and cannot silently
+destroy data by "fixing" it.
 
 ## Final doc revision (do this last)
 
@@ -213,7 +304,10 @@ When C lands, revise `NKD_LOCAL_COPY_SNAPSHOT.md` to describe **both** copy path
 - [ ] Carve out the locally-owned exemption in §"Allowed links" (Phase A).
 - [ ] Document `sourceTag` on the concept **and ontology** DTOs (Phase B2), including the
       describes-its-own-IRI invariant (decision 7) — a working-copy ontology may hold draft concepts.
-- [ ] Add the `/sync` endpoint to §API with the accept-all vs partial semantics.
+- [ ] Add the `/sync` endpoint to §API with the accept-all vs partial semantics, and document the two
+      use cases side by side (UC1 all-or-nothing vs UC2 selective) — they are the feature's core shape.
+- [ ] Record the non-syncable fields and **why**: `typ` (no cross-type conversion) and
+      `alternativní-název` (lossy `Map<String,Object>` → `AltNameModel`).
 - [ ] Note the IRI collision after a sever is the validator's concern (out of scope).
 - [ ] Refresh §Status: final suite count + the dev smoke test result.
 - [ ] **Fix the stale cleanup-script path** — the doc says `.planning/snapshot-graph-separation-cleanup.sh`,
@@ -239,10 +333,20 @@ Filled in as phases land — this is the evidence the rework is done, not the ta
 | Working-copy ontology may hold draft concepts (decision 7) | B | ✅ `workingCopyOntology_mayHoldDraftConcepts` |
 | Enum rename compiles; no `SELF_PUBLISHED` stragglers in `src/` | B | ✅ grep clean; full suite green |
 | ⚠ `sourceTag` not yet confirmed on a live JSON payload (FE contract) | B | pending dev smoke test |
-| Partial accept → only those fields change in Fuseki | C | — |
-| Partial accept → `is_published=false`, tag flips to `DRAFT`, deviation gone | C | — |
-| Accept-all → matches NKD, `is_published` stays `true`, tag stays `WORKING_COPY` | C | — |
-| Type/`typ` never offered as an accepted field | C | — |
-| Full suite (baseline **1379/0**, 4 skipped as of 2026-07-15) | all | ✅ A: **1384/0** (+5) · B: **1391/0** (+7), 4 skipped |
+| Only accepted fields are applied; the rest stay null | C | ✅ `WorkingCopySyncFieldsTest.apply_onlyTouchesTheAcceptedField` |
+| Accepted values come from NKD, never the client | C | ✅ `apply_takesTheNkdValue_notTheLocalOne` + service re-derives from `fetchPublishedConcept` |
+| Type/`typ` never offered as an accepted field | C | ✅ `deviatingKeys_typeNeverOffered` + `validateAcceptedKeys` rejects it |
+| Alt name never offered (lossy mapping) | C | ✅ `deviatingKeys_altNameNeverOffered` |
+| **Null `isPublic` strips the classification (the trap)** | C | ✅ pinned by `DataClassificationCarryThroughTest.nullIsPublic_stripsClassification_theTrapPhaseCMustAvoid` |
+| **Carrying the current `isPublic` preserves it (the fix)** | C | ✅ `carriedThroughIsPublic_preservesClassification` |
+| Range → `dataType` for VLASTNOST, `range` for VZTAH | C | ✅ `apply_rangeMapsToDataTypeForProperty_butRangeForRelationship` |
+| Mismatched hierarchy key no-ops, never throws | C | ✅ `apply_hierarchyKeyOnWrongType_isNoOpNotCrash` |
+| ⚠ Partial accept → `is_published=false`, tag→`DRAFT`, deviation gone | C | **not unit-tested** — `syncWorkingCopy`'s own branch logic needs a live/integration run |
+| ⚠ Accept-all → `is_published` stays `true`, tag stays `WORKING_COPY` | C | **not unit-tested** — same |
+| ⚠ Only the accepted fields actually change in Fuseki | C | **not unit-tested** — needs the dev smoke test |
+| ⚠ A sever leaves the concept's `LINK_TARGET` rows intact (decision 9) | C | **not tested** — assert during the smoke test |
+| UC1 accept-all / remove endpoints still behave | C | pre-existing endpoints untouched; suite green |
+| UC2 delete = existing `DELETE /api/concept/{id}` | C | not re-verified this round — assert during the smoke test |
+| Full suite (baseline **1379/0**, 4 skipped as of 2026-07-15) | all | ✅ A: **1384/0** (+5) · B: **1391/0** (+7) · C: **1403/0** (+12), 4 skipped |
 | Dev smoke test, `outbox.enabled=true`, live NKD, real Fuseki/PG | all | — |
 | Reconciler dry-run: zero `RDF_ORPHAN` for the synced concept | all | — |

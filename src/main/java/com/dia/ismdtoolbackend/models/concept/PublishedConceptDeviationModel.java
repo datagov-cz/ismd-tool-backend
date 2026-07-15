@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -9,6 +11,21 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * A per-characteristic diff against a published NKD concept. One model serves both deviation cases —
+ * the comparison is identical, only the <em>meaning</em> of each {@link PropertyDeviation}'s value pair
+ * differs — so {@link #origin} tells the reader which it is holding:
+ *
+ * <ul>
+ *   <li>{@link SnapshotOrigin#LINK_TARGET} — {@code localValue} is the <strong>stored local copy</strong>
+ *       of a foreign NKD concept, {@code publishedValue} is live NKD.</li>
+ *   <li>{@link SnapshotOrigin#WORKING_COPY} — {@code localValue} is <strong>the user's own value</strong>,
+ *       {@code publishedValue} is the concept's NKD twin at the same IRI.</li>
+ * </ul>
+ *
+ * {@link #source} is the NKD resource being compared against, in both cases, so the block is
+ * self-describing wherever it is embedded and the FE can navigate from it.
+ */
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -16,6 +33,12 @@ public class PublishedConceptDeviationModel {
 
     private DeviationStatus status;
     private String errorMessage;
+
+    /** Which deviation case this is */
+    private SnapshotOrigin origin;
+
+    /** The NKD published resource this was compared against */
+    private NkdConceptRefDto source;
 
     @JsonProperty("typ")
     private PropertyDeviation<List<String>> types;

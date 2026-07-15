@@ -1,15 +1,26 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
+import com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler;
+import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
+import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
+import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
@@ -34,20 +45,29 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ;
+import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE_LEGAL;
+import static com.dia.constants.VocabularyConstants.USTANOVENI_NEVEREJNOST;
+import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ;
 
 @Service
 @RequiredArgsConstructor
@@ -71,6 +91,9 @@ public class ConceptServiceImpl implements ConceptService {
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final NkdSnapshotService nkdSnapshotService;
     private final NkdLinkDetector nkdLinkDetector;
+    private final WorkingCopySyncFields syncFields;
+    private final NkdSnapshotWarmer nkdSnapshotWarmer;
+    private final NkdConfig nkdConfig;
 
     @Override
     @Transactional
@@ -217,6 +240,184 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
+    @Transactional
+    public GetConceptDto syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
+        if (!Boolean.TRUE.equals(metadata.getIsPublished())) {
+            throw new OntologyValidationException(
+                    "Pojem není pracovní kopií publikovaného pojmu v NKD — není co synchronizovat.");
+        }
+
+        // Re-derive the deviation from LIVE NKD. The request carries field names only; every accepted
+        // value comes from here, never from the client.
+        GetConceptDto current = getConceptDetail(metadata.getSlug());
+        PublishedConceptDeviationModel deviation = current.getPublishedConceptDeviationModel();
+        if (deviation == null || deviation.getStatus() != PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS) {
+            throw new OntologyValidationException(
+                    "Pojem se neliší od publikovaného pojmu v NKD, nebo NKD není dostupné — není co synchronizovat.");
+        }
+
+        Set<String> deviatingKeys = syncFields.deviatingSyncableKeys(deviation);
+        Set<String> accepted = new LinkedHashSet<>(fieldsToAccept);
+        validateAcceptedKeys(accepted, deviatingKeys);
+
+        Optional<OntologyDetailModel.ConceptDetailModel> nkdOpt =
+                nkdSparqlClient.fetchPublishedConcept(metadata.getConceptIri());
+        if (nkdOpt.isEmpty()) {
+            throw new OntologyValidationException("Publikovaný pojem nebyl v NKD nalezen.");
+        }
+
+        String slug = metadata.getSlug();   // an edit never changes the slug, only conceptIri/name
+        ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, accepted, nkdOpt.get());
+        editConcept(conceptId, editModel);
+
+        // Sever iff the user took only SOME of what deviates: they have chosen to diverge, so the concept
+        // stops being a working copy. Accepting everything leaves it a faithful copy, still tracked.
+        // Re-read after the edit: editConcept may have relocated the IRI (a name/identifier sync renames),
+        // and this must flip the flag on the post-edit row, in the same transaction as the RDF delta.
+        if (accepted.size() < deviatingKeys.size()) {
+            ConceptMetadataEntity postEdit = fetchAndValidateMetadata(conceptId);
+            postEdit.setIsPublished(false);
+            conceptMetadataRepository.save(postEdit);
+            log.info("Working copy {} severed: {} of {} deviating field(s) accepted → now a draft",
+                    postEdit.getConceptIri(), accepted.size(), deviatingKeys.size());
+        }
+
+        return getConceptDetail(slug);
+    }
+
+    /**
+     * Surfaces this concept's tracked local copies (and their {@code snapshotId}, which the UPDATE/REMOVE
+     * action URLs need) on concept detail, mirroring the ontology-detail path: the snapshot row IS the
+     * cache, so this never calls NKD; cold/stale rows surface as {@code PENDING} and fire the async warmer.
+     *
+     * <p>The read never writes and never breaks the detail — a snapshot problem must not cost the user
+     * their concept page.
+     */
+    private void surfaceLinkSnapshots(GetConceptDto result, ConceptMetadataEntity metadata) {
+        try {
+            List<NkdConceptSnapshotEntity> rows = nkdSnapshotService.findForConcept(metadata.getId());
+            if (rows.isEmpty()) {
+                return;
+            }
+            LinkSnapshotAssembler.Result assembled = LinkSnapshotAssembler.assemble(
+                    rows, nkdConfig.getSnapshot().getDeviationTtl(), Instant.now());
+
+            List<LinkSnapshotDto> forThisConcept = assembled.byOwnerConcept()
+                    .getOrDefault(metadata.getConceptIri(), List.of());
+            if (!forThisConcept.isEmpty()) {
+                result.setLinkSnapshots(forThisConcept);
+            }
+            if (assembled.needsWarming()) {
+                nkdSnapshotWarmer.warmGraph(metadata.getGraphName());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to surface link snapshots for concept {}: {}",
+                    metadata.getConceptIri(), e.getMessage());
+        }
+    }
+
+    /** Every accepted key must be both known and actually deviating; {@code typ} is never acceptable. */
+    private void validateAcceptedKeys(Set<String> accepted, Set<String> deviatingKeys) {
+        if (accepted.contains(WorkingCopySyncFields.TYPE_KEY)) {
+            throw new OntologyValidationException(
+                    "Typ pojmu nelze synchronizovat — ISMD nepodporuje převod mezi typy pojmů.");
+        }
+        Set<String> unknown = accepted.stream()
+                .filter(k -> !syncFields.syncableKeys().contains(k))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!unknown.isEmpty()) {
+            throw new OntologyValidationException("Neznámé nebo nesynchronizovatelné vlastnosti: " + unknown);
+        }
+        Set<String> notDeviating = accepted.stream()
+                .filter(k -> !deviatingKeys.contains(k))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (!notDeviating.isEmpty()) {
+            throw new OntologyValidationException("Tyto vlastnosti se neliší od NKD: " + notDeviating);
+        }
+    }
+
+    /**
+     * An edit model of the concept's own type carrying <strong>only</strong> the accepted fields, so the
+     * normal edit path's null early-returns leave everything else untouched.
+     *
+     * <p><strong>Except data classification.</strong> {@code updateDataClassification} has no null guard:
+     * it strips the veřejný/neveřejný type unconditionally and re-adds it only for a non-null
+     * {@code isPublic}, so leaving it null would silently DELETE the classification. Both it and
+     * {@code privacyProvisions} are therefore carried through at their CURRENT local values unless the user
+     * accepted them — for this field, null means "drop it", not "don't touch it".
+     */
+    private ConceptEditModel buildEditModelFromAcceptedFields(
+            ConceptMetadataEntity metadata, Set<String> accepted, OntologyDetailModel.ConceptDetailModel nkd) {
+        ConceptEditModel editModel = newEditModelFor(metadata.getConceptType());
+        editModel.setConceptType(metadata.getConceptType().name());
+
+        carryCurrentDataClassification(editModel, metadata, accepted);
+        accepted.forEach(key -> syncFields.apply(key, editModel, nkd));
+        return editModel;
+    }
+
+    private ConceptEditModel newEditModelFor(ConceptType conceptType) {
+        return switch (conceptType) {
+            case TRIDA -> new ClassConceptEditModel();
+            case VLASTNOST -> new PropertyConceptEditModel();
+            case VZTAH -> new RelationshipConceptEditModel();
+            case KONCEPT -> throw new OntologyValidationException(
+                    "Pojem typu KONCEPT nelze editovat, a tedy ani synchronizovat.");
+        };
+    }
+
+    /**
+     * Seeds the edit model with the concept's current classification, read from the graph the same way
+     * {@code updateDataClassification} reads it, so a sync that does not accept these fields is a no-op on
+     * them instead of a deletion. An accepted key overwrites the seed afterwards.
+     */
+    private void carryCurrentDataClassification(
+            ConceptEditModel editModel, ConceptMetadataEntity metadata, Set<String> accepted) {
+        Model model = jenaTDB2Repository.fetchGraph(metadata.getGraphName());
+        Resource concept = model.getResource(metadata.getConceptIri());
+        Boolean isPublic = currentIsPublic(model, concept);
+        List<String> provisions = currentPrivacyProvisions(model, concept);
+
+        if (editModel instanceof ClassConceptEditModel c) {
+            c.setIsPublic(isPublic);
+            c.setPrivacyProvisions(provisions);
+        } else if (editModel instanceof PropertyConceptEditModel p) {
+            p.setIsPublic(isPublic);
+            p.setPrivacyProvisions(provisions);
+        } else if (editModel instanceof RelationshipConceptEditModel r) {
+            r.setIsPublic(isPublic);
+            r.setPrivacyProvisions(provisions);
+        }
+    }
+
+    /** True/false from the veřejný/neveřejný rdf:type; null when the concept carries neither. */
+    private Boolean currentIsPublic(Model model, Resource concept) {
+        if (concept.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ))) {
+            return Boolean.TRUE;
+        }
+        if (concept.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ))) {
+            return Boolean.FALSE;
+        }
+        return null;
+    }
+
+    private List<String> currentPrivacyProvisions(Model model, Resource concept) {
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        List<String> provisions = new ArrayList<>();
+        StmtIterator it = model.listStatements(concept, provisionProperty, (RDFNode) null);
+        try {
+            while (it.hasNext()) {
+                RDFNode object = it.next().getObject();
+                provisions.add(object.isURIResource() ? object.asResource().getURI() : object.toString());
+            }
+        } finally {
+            it.close();
+        }
+        return provisions;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<ConceptMetadataModel> getAll(String userId, Boolean isPublished) {
         List<ConceptMetadataEntity> conceptMetadataEntities;
@@ -297,6 +498,8 @@ public class ConceptServiceImpl implements ConceptService {
 
         PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(conceptDetail, metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
+
+        surfaceLinkSnapshots(result, metadataEntity);
 
         return result;
     }
@@ -682,28 +885,40 @@ public class ConceptServiceImpl implements ConceptService {
                 log.warn("Published concept not found in NKD: {}", conceptIri);
                 return createErrorDeviation(
                         PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Concept not found in NKD SPARQL endpoint"
+                        "Concept not found in NKD SPARQL endpoint",
+                        conceptIri
                 );
             }
 
             OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
-            return deviationComparator.compareConceptDetails(localConcept, publishedConcept);
+            // WORKING_COPY: the concept's own IRI is the NKD twin it is compared against.
+            return deviationComparator.compareConceptDetails(
+                    localConcept, publishedConcept, SnapshotOrigin.WORKING_COPY, conceptIri);
 
         } catch (Exception e) {
             log.error("Error checking published concept deviation: {}", e.getMessage(), e);
             return createErrorDeviation(
                     PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
+                    "NKD SPARQL endpoint unavailable: " + e.getMessage(),
+                    conceptIri
             );
         }
     }
 
+    /**
+     * An error envelope still carries {@code origin}/{@code source} — the comparison failed, but this is
+     * known to be a working copy and the twin's IRI is known, and the FE needs both to render the block.
+     * No label: it lives on the NKD concept we could not fetch.
+     */
     private PublishedConceptDeviationModel createErrorDeviation(
             PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage) {
+            String errorMessage,
+            String conceptIri) {
         return PublishedConceptDeviationModel.builder()
                 .status(status)
                 .errorMessage(errorMessage)
+                .origin(SnapshotOrigin.WORKING_COPY)
+                .source(NkdConceptRefDto.builder().iri(conceptIri).build())
                 .build();
     }
 }

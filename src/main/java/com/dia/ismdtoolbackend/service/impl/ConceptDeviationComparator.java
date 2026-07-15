@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +13,36 @@ import java.util.*;
 @Component
 @Slf4j
 public class ConceptDeviationComparator {
+
+    /**
+     * Compares the 23 characteristics and stamps the result with which deviation case it is and which NKD
+     * resource it was compared against — both cases share this one comparison, so the tag is what tells the
+     * reader whether {@code localValue} is a stored copy or the user's own value.
+     *
+     * @param origin {@code LINK_TARGET} (stored copy vs NKD) or {@code WORKING_COPY} (own value vs own twin)
+     * @param source the NKD resource compared against; its label is taken from {@code publishedConcept}
+     */
+    public PublishedConceptDeviationModel compareConceptDetails(
+            OntologyDetailModel.ConceptDetailModel localConcept,
+            OntologyDetailModel.ConceptDetailModel publishedConcept,
+            SnapshotOrigin origin,
+            String source) {
+        PublishedConceptDeviationModel deviation = compareConceptDetails(localConcept, publishedConcept);
+        deviation.setOrigin(origin);
+        deviation.setSource(NkdConceptRefDto.builder()
+                .iri(source)
+                .label(labelOf(publishedConcept))
+                .build());
+        return deviation;
+    }
+
+    private static String labelOf(OntologyDetailModel.ConceptDetailModel concept) {
+        if (concept == null || concept.getName() == null || concept.getName().isEmpty()) {
+            return null;
+        }
+        String cs = concept.getName().get("cs");
+        return cs != null ? cs : concept.getName().values().iterator().next();
+    }
 
     public PublishedConceptDeviationModel compareConceptDetails(
             OntologyDetailModel.ConceptDetailModel localConcept,

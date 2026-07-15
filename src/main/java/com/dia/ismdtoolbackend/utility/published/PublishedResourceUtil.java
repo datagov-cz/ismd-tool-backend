@@ -1,7 +1,9 @@
 package com.dia.ismdtoolbackend.utility.published;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
@@ -121,7 +123,8 @@ public class PublishedResourceUtil {
                             log.error("Error checking concept deviation for {}: {}", conceptIri, e.getMessage(), e);
                             deviations.put(conceptIri, createErrorConceptDeviation(
                                     PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                                    "Error checking concept: " + e.getMessage()
+                                    "Error checking concept: " + e.getMessage(),
+                                    conceptIri
                             ));
                         }
                     }, executor))
@@ -153,7 +156,8 @@ public class PublishedResourceUtil {
                 log.error("Local concept detail not found for IRI: {}", conceptIri);
                 return createErrorConceptDeviation(
                         PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
+                        "Local concept detail not available",
+                        conceptIri
                 );
             }
 
@@ -164,12 +168,15 @@ public class PublishedResourceUtil {
                 log.warn("Published concept not found in NKD: {}", conceptIri);
                 return createErrorConceptDeviation(
                         PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Concept not found in NKD SPARQL endpoint"
+                        "Concept not found in NKD SPARQL endpoint",
+                        conceptIri
                 );
             }
 
             OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
-            PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(localConcept, publishedConcept);
+            // WORKING_COPY: this concept's own IRI is the NKD twin it is compared against.
+            PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(
+                    localConcept, publishedConcept, SnapshotOrigin.WORKING_COPY, conceptIri);
 
             log.debug("Concept deviation check completed for {}: status={}", conceptIri, deviation.getStatus());
             return deviation;
@@ -178,7 +185,8 @@ public class PublishedResourceUtil {
             log.error("Error checking published concept deviation for {}: {}", conceptIri, e.getMessage(), e);
             return createErrorConceptDeviation(
                     PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
+                    "NKD SPARQL endpoint unavailable: " + e.getMessage(),
+                    conceptIri
             );
         }
     }
@@ -230,12 +238,20 @@ public class PublishedResourceUtil {
         return publishedIris;
     }
 
+    /**
+     * An error envelope still carries {@code origin}/{@code source} — the comparison failed, but this is
+     * known to be a working copy and the twin's IRI is known, and the FE needs both to render the block.
+     * No label: it lives on the NKD concept we could not fetch.
+     */
     private PublishedConceptDeviationModel createErrorConceptDeviation(
             PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage) {
+            String errorMessage,
+            String conceptIri) {
         return PublishedConceptDeviationModel.builder()
                 .status(status)
                 .errorMessage(errorMessage)
+                .origin(SnapshotOrigin.WORKING_COPY)
+                .source(NkdConceptRefDto.builder().iri(conceptIri).build())
                 .build();
     }
 }
