@@ -546,3 +546,36 @@ copy; drifted `popis`, accepted it — a NON-isPublic field):
 **Phase 3 COMPLETE** — 3a/3b/3c/3d/3e all green. Every ⚠ sync-branch row in the ledger closed (sever
 one-way direction correct both ways, only-accepted-fields, decision 9, isPublic trap, guard rails, live
 origin/source stamping). NKD simulated via local Fuseki `nkd-simulation` service; identical code path.
+
+**Phase 4 — UC1 link-target path, live** (partial — 5 of 6 done):
+
+| # | Check | Result |
+|---|---|---|
+| 4.1 | concept detail → `linkSnapshots` present | ✅ flat list, `snapshotId=2`, `origin=LINK_TARGET`, `predicate=BROADER_CLASS` (id=8) — ⚠row **closed** |
+| 4.2 | zero-row concept → no `linkSnapshots`, no warmer | ✅ payload: `linkSnapshots` absent/null (id=1). Warmer: **structurally unreachable** — `surfaceLinkSnapshots` early-returns at `rows.isEmpty()` (`ConceptServiceImpl:300-302`) *before* the `warmGraph` call (`:311-312`). Console-only logs (IntelliJ) not tailable, so warmer half confirmed by control flow, not log — ⚠row **closed** |
+| 4.3 | link snapshot deviation `.origin` | ✅ **`LINK_TARGET`**; `nkdConcept={iri,label:"Položka číselníku"}` served from the stored snapshot row (the row IS the cache — no live NKD call) — **D** |
+| 4.4 | `POST /{id}/localcopy/{snapshotId}/update` → re-snapshot, back in sync | ⏳ **NOT DONE** — fixture seeded (id=24 `číselník-3200…`, twin + target `číselník` in sim), needs an app restart to clear cache, then run |
+| 4.5 | `DELETE /{id}/localcopy/{snapshotId}` | ✅ HTTP 200; snapshot row id=2 gone **and** the `subClassOf → položka-číselníku` link triple gone (id=8) — **C** |
+| 4.6 | `DELETE /api/concept/{id}/delete` on a working copy | ✅ HTTP 200 "Pojem úspěšně smazán."; metadata + snapshot rows + RDF all → 0 (id=22) — ⚠row **closed** |
+
+> **Endpoint note:** concept delete is `DELETE /api/concept/{id}/**delete**` (not `/api/concept/{id}`) —
+> the bare path falls through the SecurityConfig allowlist → **403** (not 404). Worth knowing for FE.
+
+**Session state at pause (2026-07-18):**
+- App: profile `local` (IntelliJ), `nkd.sparql.endpoint` → `http://localhost:3030/nkd-simulation/sparql` (**must be restored** to `https://data.gov.cz/slovn%C3%ADky/sparql` at teardown).
+- Sim (`nkd-simulation`, in-memory): currently seeded with id=24's twin + target `číselník` for the pending 4.4.
+- Fixtures mutated this session: id=6 (severed→draft), id=8 (synced, snapshot removed), id=22 (**deleted**),
+  id=537 (severed→draft), id=2 (synced). Do NOT reuse these as pristine working copies.
+- **Resume at 4.4**, then Phase 5 (invariants after churn: cleanup verify, reconciler dry-run, outbox drained).
+
+**Operational learnings for next session (see also `.planning/phase3-nkd-simulation-PREP.md`):**
+1. **Token TTL 300s is punishing** — several checks 401'd mid-run. Next time: issue a token immediately
+   before each write batch, or script token refresh via the Keycloak refresh_token.
+2. **Cold-load hang ~20–75s** on the first concept-detail read after every app restart (referenced-concept
+   enrichment + deviation fetch, likely serialized by the 4-way NKD limiter). Always pre-warm with a throwaway
+   read before timed/authed checks. Logged as a perf follow-up.
+3. **Cache masks passive sim drift** — after editing a sim twin, the app needs a restart to see it (24h
+   `nkdPublishedResource` TTL). An *active* `/sync` re-derives and refills the cache with no restart.
+4. **Sim seeding contract:** CONSTRUCT the twin OUT of `ismd-tool-dataset` with `GRAPH ?g {…}` (data is in a
+   named graph); POST it INTO nkd-sim's **default** graph (`?default`). For LINK_TARGET checks also seed the
+   target itself with an `rdf:type` (publication signal) or link reconciliation tears the snapshot down.
