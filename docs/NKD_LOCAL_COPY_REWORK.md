@@ -388,5 +388,161 @@ Filled in as phases land — this is the evidence the rework is done, not the ta
 | ⚠ `linkSnapshots` actually appears on concept detail JSON | D | **not unit-tested** — needs the dev smoke test |
 | ⚠ Concept detail warms only when rows exist (no zero-row scan) | D | **not unit-tested** — same |
 | Full suite (baseline **1379/0**, 4 skipped as of 2026-07-15) | all | ✅ A: **1384/0** (+5) · B: **1391/0** (+7) · C: **1403/0** (+12) · D: **1407/0** (+4), 4 skipped |
-| Dev smoke test, `outbox.enabled=true`, live NKD, real Fuseki/PG | all | — |
-| Reconciler dry-run: zero `RDF_ORPHAN` for the synced concept | all | — |
+| Dev smoke test, `outbox.enabled=true`, live NKD, real Fuseki/PG | all | ▶ in progress 2026-07-18 (local stack) — see §Smoke-test run below |
+| Reconciler dry-run: zero `RDF_ORPHAN` for the synced concept | all | — pending Phase 5 |
+
+### Smoke-test run — 2026-07-18 (local stack, `slovník-registru-sčítacích-obvodů-a-budov.json-ld`)
+
+Clean-DB start; `outbox.enabled=true`; live NKD; real Fuseki/PG. Fixture upload minted **381 owned
+working copies** (149 TRIDA / 51 VLASTNOST / 181 VZTAH), all `is_published=true`, plus **119
+`LINK_TARGET` snapshots** for their references into NKD číselníky.
+
+**Phase 0 — baseline:** ✅ all clean — cleanup `count`=0 TDB2 copies, `nkd_concept_snapshots`=0,
+concepts/ontologies=0, Fuseki triples=0.
+
+**Phase 1 — upload:**
+
+| # | Check | Result |
+|---|---|---|
+| 1.1 | Upload wall-clock | ✅ HTTP 200 in 2.7s, no timeout |
+| 1.2 | `GET /api/concept/list` → `sourceTag` | ✅ 381/381 `WORKING_COPY` (all published) — **live JSON `sourceTag` contract confirmed (B)** |
+| 1.3 | Ontology detail → `ontologyMetadata.sourceTag` | ✅ `WORKING_COPY`, `isPublished=true` — matches PG (B) |
+| 1.4 | Working-copy ontology holding drafts | — not exercised: this file produced 0 draft concepts |
+| 1.5 | cleanup `count` (TDB2 leak) | ✅ **0** — upload materialised no copies into TDB2 |
+| 1.6 | `nkd_concept_snapshots GROUP BY origin` | ✅ **119 `LINK_TARGET`, 0 `WORKING_COPY`** — decision 8 holds; stop-condition clear |
+
+> **Note (minor, FE-facing — root cause found):** the **upload-response DTO** returned `isPublished:false` /
+> `sourceTag:"DRAFT"` for the ontology, while PG and both read endpoints report `is_published=true` /
+> `WORKING_COPY`. Not async — the flag flips synchronously, but on a **different entity instance**:
+> `createOntologyMetadataEntity` sets `is_published=false` (`OntologyUploadServiceImpl:391`) and returns
+> that object; `extractAndSaveConceptMetadata` re-fetches by id and flips it to `true` on the *re-fetched*
+> instance (`:447`/`:452`), which is what persists. The returned object is a stale sibling → the response
+> DTO. Reads are authoritative and correct; only the immediate upload response is wrong. Fix: propagate the
+> flag onto the returned `metadata`, or re-read after all writes. Cosmetic; not a rework invariant.
+>
+> **Fix applied 2026-07-18** (`OntologyUploadServiceImpl`): `extractAndSaveConceptMetadata` now returns the
+> publish decision and the caller mirrors it onto the returned model. Verified live on the a103 upload —
+> response now shows `isPublished:true`. **Residual:** the DTO's derived `sourceTag` still shows `DRAFT` in
+> the upload response (derived separately from `isPublished`, not recomputed post-flip). Read endpoints show
+> the correct `WORKING_COPY`. Left as-is — cosmetic, one surface, reads authoritative.
+
+**Phase 2 — Phase A bugfix, live** (needed a 2nd owned vocabulary under a different scheme; uploaded
+`a103-…json-ld`, scheme `atom.cuzk.cz/a103`, 219 owned concepts. The single-ontology fixture structurally
+cannot produce an "external-scheme yet locally-owned" domain target — every own concept shares one scheme):
+
+| # | Step | Result |
+|---|---|---|
+| 2.1 | PATCH VZTAH (registru graph) `domain` = owned a103 concept (external scheme, locally owned) | ✅ **HTTP 200**, not 400 (0.13s — NKD never queried); domain change verified in Fuseki — **A (live)** |
+| 2.2 | `nkd_concept_snapshots` for that owner + any `atom.cuzk.cz/a103` target | ✅ **0 rows** — owned target not snapshotted as a foreign copy — **A: owned → no snapshot** |
+| 2.3 | PATCH `domain` = foreign published NKD IRI (`…/datový/číselníky/pojem/číselník`) | ✅ **HTTP 400** (0.23s — NKD *was* queried), message names exactly that IRI — **A: regression guard** |
+
+> Fixture restored (VZTAH id=1 domain → original `…/pojem/byt`) after the run.
+> **Payload note:** the full-snapshot edit rejects `acquisitionMethod` set to the *resolved* `…/položky/vlastní`
+> IRI ("Neplatná hodnota pro způsob získání") — the edit validator expects a different value than the detail
+> echoes back. Sidestepped by omitting the field; flagged as a possible detail↔edit round-trip mismatch (FE-facing).
+
+**Phase 3 — UC2 selective sync (untested branch).** NKD is third-party/unwritable, so deviations are
+manufactured against a **local Fuseki `nkd-simulation` in-memory service** the app's `nkd.sparql.endpoint`
+points at (see `.planning/phase3-nkd-simulation-PREP.md`). Same `NkdSparqlClient` code path, controllable
+data. Fixture: `region-soudržnosti` (concept id=568, a103 TRIDA, working copy; carries název/definice/popis).
+Wiring proven: with an identical twin → `NO_DEVIATION`; a concept absent from the sim → `CONCEPT_NOT_FOUND_IN_NKD`.
+
+*3a — deviation surfaces (drifted `definice` in the sim):*
+
+| # | Check | Result |
+|---|---|---|
+| 3.1 | `publishedConceptDeviationModel.status` | ✅ **HAS_DEVIATIONS**, `definice` present with local vs published values |
+| 3.2 | `.origin` | ✅ **WORKING_COPY** (live) — **D** |
+| 3.3 | `.source` | ✅ `{iri, label:"Region soudržnosti"}`, label from the NKD/sim side — **D** |
+| 3.4 | `typ`/`alternativní-název` | deferred — not drifting here; the "not acceptable" half verified at 3.18 (sync guard) |
+
+> **⚠ Finding (perf, real — not a test artifact):** the **cold** first read of a concept detail after an app
+> restart hangs **~20–40s** (`region-soudržnosti`, repeatedly); warm reads are 0.04–0.07s. Cause is the
+> cold-cache referenced-concept enrichment + deviation fetch firing external SPARQL on first load (sim + RPP +
+> eSbirka), likely serialized by the NKD client's 4-way concurrency limiter. Real NKD would incur the same.
+> Self-clearing per concept. Mitigation during the run: pre-warm with one throwaway read before timed checks.
+> Worth a follow-up perf look (async warm on detail, or widen the limiter).
+
+*3b — accept-ALL does NOT sever* (only `definice` drifting → accepting it is accept-all):
+
+| # | Check | Result |
+|---|---|---|
+| 3.5 | `POST /568/sync {fieldsToAccept:["definice"]}` | ✅ **200** |
+| 3.6 | `is_published` after | ✅ **still `true`** — sever branch did NOT fire on accept-all — ⚠row **closed** |
+| 3.7 | `sourceTag` | ✅ **still `WORKING_COPY`** — ⚠row **closed** |
+| 3.8 | deviation after | ✅ **NO_DEVIATION** — cleared |
+| — | local `definice` in Fuseki after | ✅ now = the sim's value ("ZMĚNĚNÁ DEFINICE V NKD…") — accepted value taken from the NKD/sim side, not the client |
+
+> Note: after an active `/sync` the deviation cleared with **no restart** (the write path re-derives from live
+> sim and refills the cache); the stale-cache hang only bit the *passive* drift setup (3a). Good sign for FE UX.
+
+*3c — partial accept DOES sever* (fixture switched to id=537 `rozsah-členění`, a working copy that ALSO has a
+LINK_TARGET row — snapshot id=150 → `…/datový/číselníky/pojem/položka-číselníku` — so 3.15 is non-vacuous.
+Drifted `definice`+`popis`, accepted only `definice`):
+
+| # | Check | Result |
+|---|---|---|
+| 3.9 | `POST /537/sync {["definice"]}` (1 of 2) | ✅ **200** |
+| 3.10 | accepted `definice` in Fuseki | ✅ = sim value ("NKD-DEFINICE-537") — only the accepted field changed |
+| 3.11 | **un**accepted `popis` in Fuseki | ✅ **unchanged** (still local "LAU 2…") — ⚠row **closed** |
+| 3.12 | `is_published` | ✅ **`false`** — partial → **severed** — ⚠row **closed** |
+| 3.13 | `sourceTag` | ✅ **`DRAFT`** — ⚠row **closed** |
+| 3.14 | deviation block | ✅ **gone** (NULL) — ⚠row **closed** |
+| 3.15 | LINK_TARGET snapshot 150 intact (decision 9) | ⚠ **row DELETED — but this is a SIM ARTIFACT, not a real bug (see below)** |
+
+> **3.15 analysis — decision 9 NOT actually violated.** Root cause pinned: `syncWorkingCopy` applies accepted
+> fields via `editConcept` (`ConceptServiceImpl:271-272`), which runs `reconcileNkdLinks`. That re-checks
+> whether the link target `položka-číselníku` is still published in "NKD" — but the **sim only contains id=537's
+> own twin, not the link target** (`ASK` against sim = false). So the publication-check returns 0 → the target
+> drops from `allowedTargets` → the existing "target no longer published → tear down snapshot" loop fires
+> (same path as `editConcept_linkTargetBecameOwned_staleSnapshotRemoved`). Against **real NKD**,
+> `položka-číselníku` IS published → it stays in `allowedTargets` → snapshot survives → **decision 9 holds**.
+> The RDF link triple (`subClassOf položka-číselníku`) survived the sever — only the tracking row was torn down,
+> and only because the sim is incomplete. **To prove 3.15 cleanly, re-run with the link target ALSO seeded into
+> the sim** (below). This also surfaces a real design note: a `/sync` re-runs full link reconciliation, so an
+> NKD outage during sync could transiently tear down snapshots (fail-open covers reject, but the removal loop
+> runs on an empty published-set) — worth a follow-up look.
+
+*3.15 re-test — decision 9 proven cleanly* (fresh fixture id=6 `číselník-53…`, snapshot id=1 →
+`…/datový/číselníky/pojem/číselník`; this time the **link target was ALSO seeded into the sim** as a published
+concept, then drifted `popis`+`název` and accepted only `popis`):
+
+| # | Check | Result |
+|---|---|---|
+| — | `is_published` after partial sync | ✅ **false** — severed |
+| **3.15** | LINK_TARGET snapshot id=1 after sever | ✅ **INTACT** (origin `LINK_TARGET`, target `…/číselník`) — **decision 9 holds** — ⚠row **closed** |
+
+> **Conclusion:** the sever branch never touches LINK_TARGET rows on its own. Snapshots are only torn down when
+> the link target genuinely reads as no-longer-published (the existing stale-target removal path). With a
+> complete NKD (target published), a sever leaves them intact. The 3c deletion was a sim-completeness artifact,
+> now excluded. **Real design note stands:** `/sync`'s `editConcept` sub-call re-runs link reconciliation and
+> its removal loop executes even when the published-set is empty — a genuine NKD outage mid-sync could tear down
+> a snapshot; fail-open guards the *reject* path but not the *teardown*. Follow-up candidate.
+
+*3e — sync guard rails* (order matters: `syncWorkingCopy` checks HAS_DEVIATIONS *before* `validateAcceptedKeys`,
+so 3.18 needs a genuinely-deviating fixture — used id=8 `plocha-ostatních-prostor-bytu` drifted on `popis`):
+
+| # | Step | Result |
+|---|---|---|
+| 3.17 | `/sync` on a draft (severed id=6) | ✅ **400** "Pojem není pracovní kopií…" |
+| 3.18a | `/sync {["typ"]}` on a deviating WC | ✅ **400** "Typ pojmu nelze synchronizovat — ISMD nepodporuje převod mezi typy pojmů." |
+| 3.18b | `/sync {["alternativní-název"]}` | ✅ **400** "Neznámé nebo nesynchronizovatelné vlastnosti: [alternativní-název]" |
+| 3.19 | `/sync` on a WC with no deviation (id=8 pre-drift) | ✅ **400** "Pojem se neliší…" |
+| 3.20 | `/sync` unauthenticated | ✅ **401** (not 404) — SecurityConfig allowlist entry proven |
+| 3.4 | `typ`/`alternativní-název` present-but-not-acceptable | ✅ closed via 3.18 — both keys are hard-rejected — **C** |
+
+*3d — the isPublic data-loss trap, live* (fixture id=2 `pořadové-číslo-bytu`, a **`veřejný-údaj`** working
+copy; drifted `popis`, accepted it — a NON-isPublic field):
+
+| # | Step | Result |
+|---|---|---|
+| 3.16 | `POST /2/sync {["popis"]}`; then ASK Fuseki for the `veřejný-údaj` `rdf:type` | ✅ **classification SURVIVES** — `veřejný-údaj` still present after sync; `popis` was written (proves the RDF was actually re-derived) — **C: the fix holds live** |
+
+> The trap (`concept_edit_ispublic_not_null_safe`): `updateDataClassification` has no null guard; a sync that
+> re-writes the concept for an unrelated field would strip the veřejný/neveřejný `rdf:type` unless `isPublic` is
+> carried through. Asserted in **Fuseki** (not the DTO) — the trap is a dropped `rdf:type`. Phase C carries it
+> through; live-confirmed clean.
+
+**Phase 3 COMPLETE** — 3a/3b/3c/3d/3e all green. Every ⚠ sync-branch row in the ledger closed (sever
+one-way direction correct both ways, only-accepted-fields, decision 9, isPublic trap, guard rails, live
+origin/source stamping). NKD simulated via local Fuseki `nkd-simulation` service; identical code path.

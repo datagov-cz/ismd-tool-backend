@@ -1,0 +1,2122 @@
+{
+  "@context" : "https://ofn.gov.cz/slovníky/2026-02-26/kompletní/kontext.jsonld",
+  "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí",
+  "typ" : [ "Slovník", "Tezaurus" ],
+  "název" : {
+    "cs" : "A103 Základní registr - registr územní identifikace, adres a nemovitostí"
+  },
+  "popis" : {
+    "cs" : "Datový slovník ČÚZK pro agendu A103 Základní registr - registr územní identifikace, adres a nemovitostí"
+  },
+  "pojmy" : [ {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky---4--pád",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Mluvnické charakteristiky - 4. pád"
+    },
+    "definice" : {
+      "cs" : "K názvu území obce, území vojenského újezdu, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech, katastrálního území a části obce se vedou doplňující údaje vyjadřující mluvnické charakteristiky názvu."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/souřadnice-y-definičního-bodu",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Souřadnice Y definičního bodu"
+    },
+    "definice" : {
+      "cs" : "Souřadnice Y v souřadnicovém systému Jednotné trigonometrické sítě katastrální (S-JTSK), která je součástí lokalizačních údajů územního prvku nebo územně evidenční jednotky"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/podrobný-bod-polohopisu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Podrobný bod polohopisu"
+    },
+    "popis" : {
+      "cs" : "Podrobný bod polohopisu"
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/výměra-bpej",
+    "typ" : [ "Pojem", "Koncept", "Vlastnost" ],
+    "název" : {
+      "cs" : "Výměra BPEJ"
+    },
+    "popis" : {
+      "cs" : "Výměra bonitované půdně ekologické jednotky je evidovaná v m2."
+    },
+    "definice" : {
+      "cs" : "O pozemku se dále v registru územní identifikace vedou údaje o druhu a způsobu využití pozemku, typu a způsobu jeho ochrany a technickoekonomické atributy tohoto pozemku, kterými je výměra parcely."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/díl-parcely",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přístup-pro-záchrannou-službu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Přístup pro záchrannou službu"
+    },
+    "definice" : {
+      "cs" : "V případě, že přístup z ulice ke stavebnímu objektu vhodný pro vjezd vozidel používaných složkami integrovaného záchranného systému (dále jen „příjezdové místo“) je umístěn odlišně od vchodu z ulice do stavebního objektu, lze uvést k adresnímu místu také souřadnice příslušného příjezdového místa. Parametry příjezdového místa jsou uvedeny v příloze č. 2 k této vyhlášce."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/zastavěná-plocha",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Zastavěná plocha"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/poú-je-ve-správním-obvodu-orp",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "POÚ je ve správním obvodu ORP"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-pověřeným-obecním-úřadem--poú",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-rozšířenou-působností--orp"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka-má-definiční-bod",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "územní prvek / evidenční jednotka má definiční bod"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/momc-je-v-obvodu-prahy",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "MOMC je v obvodu Prahy"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-v-praze"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/souřadnice-y-polohy",
+    "typ" : [ "Pojem", "Koncept", "Vlastnost" ],
+    "název" : {
+      "cs" : "Souřadnice Y polohy"
+    },
+    "popis" : {
+      "cs" : "Souřadnice Y polohy v S-JTSK"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/podrobný-bod-polohopisu",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/městský-obvod---městská-část-má-mluvnické-charakteristiky",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "městský obvod / městská část má mluvnické charakteristiky"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-regionu-soudržnosti",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v regionu soudržnosti"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-přípojka-kanalizační-sítě",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku Přípojka kanalizační sítě"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-kanalizační-sítě",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-přípojka-kanalizační-sítě"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-bod",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Adresní bod"
+    },
+    "definice" : {
+      "cs" : "Nově zapisovaný nebo změněný definiční bod adresního místa se umístí uvnitř polygonu stavebního objektu v místě vchodu z ulice."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-státě",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve státě"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/agendový/104/pojem/stát"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kód-územního-prvku---evidenční-jednotky",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Kód územního prvku / evidenční jednotky"
+    },
+    "definice" : {
+      "cs" : "O každém územním prvku se v registru územní identifikace vedou identifikační údaje, kterými jsou kód a název. O každé územně evidenční jednotce se v registru územní identifikace vedou identifikační údaje, kterými jsou kód a název."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-typ-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má typ stavebního objektu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-stavebního-objektu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-na-adresní-poště",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je na adresní poště"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/psč-adresní-pošty-adresního-místa"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka---obrázek",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Vlajka - obrázek"
+    },
+    "definice" : {
+      "cs" : "O území obce, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech se v registru územní identifikace vedou doplňující údaje o znaku a vlajce, kterými jsou vyobrazení a popis znaku nebo vlajky."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/charakter-zsj",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Charakter ZSJ"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/základní-sídelní-jednotka--zsj",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "volební okrsek je v obci"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-typů-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku typů stavebního objektu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-stavebního-objektu",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-typů-stavebního-objektu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-rozsahu-členění",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku rozsahu členění"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/rozsah-členění",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-rozsahu-členění"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kód-parcely",
+    "typ" : [ "Pojem", "Koncept", "Vlastnost" ],
+    "název" : {
+      "cs" : "Kód parcely"
+    },
+    "popis" : {
+      "cs" : "Kód parcely"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/díl-parcely",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-způsob-využití-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má způsob využití stavebního objektu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-využití-stavebního-objektu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/datum-dokončení",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Datum dokončení"
+    },
+    "definice" : {
+      "cs" : "O stavebním objektu se dále v registru územní identifikace vedou údaje o typu stavebního objektu, způsobu jeho využití a o typu a způsobu jeho ochrany a technickoekonomický atribut měsíc a rok dokončení."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak---popis",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Znak - popis"
+    },
+    "definice" : {
+      "cs" : "O území obce, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech se v registru územní identifikace vedou doplňující údaje o znaku a vlajce, kterými jsou vyobrazení a popis znaku nebo vlajky."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-má-znak",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec má znak"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/díl-parcely",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Díl parcely"
+    },
+    "popis" : {
+      "cs" : "Bonitní díl parcely"
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/nespravný-územní-prvek---evidenční-jednotka",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Nespravný územní prvek / evidenční jednotka"
+    },
+    "definice" : {
+      "cs" : "Referenční údaj je považován za správný, pokud není prokázán opak nebo pokud nevznikne oprávněná pochybnost o správnosti referenčního údaje. V případě pochybnosti editor nebo správce základního registru označí referenční údaj jako nesprávný; toto označení editor odstraní neprodleně poté, co ověří správnost údajů, jinak se postupuje obdobně podle odstavce 3. Referenční údaj označený jako nesprávný má po dobu, po kterou je takto označen, pouze informativní povahu."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-přípojka-kanalizační-sítě",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník Přípojka kanalizační sítě"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/okres-je-v-kraji",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "okres je v kraji"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/okres",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj--vyšší-územní-samosprávný-celek"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přístup-pro-hasiče",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Přístup pro hasiče"
+    },
+    "definice" : {
+      "cs" : "V případě, že přístup z ulice ke stavebnímu objektu vhodný pro vjezd vozidel používaných složkami integrovaného záchranného systému (dále jen „příjezdové místo“) je umístěn odlišně od vchodu z ulice do stavebního objektu, lze uvést k adresnímu místu také souřadnice příslušného příjezdového místa. Parametry příjezdového místa jsou uvedeny v příloze č. 2 k této vyhlášce."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-regionů-soudržnosti",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník regionů soudržnosti"
+    },
+    "popis" : {
+      "cs" : "Číselník ČÚZK (ISÚI) - Regiony soudržnosti"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ]
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-způsob-ochrany-parcely",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má způsob ochrany parcely"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-ochrany-nemovitosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-má-číslo-domovní",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo má číslo domovní"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/číslo-domovní"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-bonitní-díl-parcely",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má bonitní díl parcely"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/díl-parcely"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-způsobů-využití-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku způsobů využití stavebního objektu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-využití-stavebního-objektu",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobů-využití-stavebního-objektu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-katastrálních-území",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník katastrálních území"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ]
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/základní-sídelní-jednotka--zsj",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Základní sídelní jednotka (ZSJ)"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území základní sídelní jednotky."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/lokalizační-údaje-územního-prvku---územně-evidenční-jednotky",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Lokalizační údaje územního prvku / územně evidenční jednotky"
+    },
+    "definice" : {
+      "cs" : "O každém územním prvku se v registru územní identifikace vedou lokalizační údaje, kterými jsou definiční bod, a nejde-li o adresní místo nebo stavební objekt, jehož hranice nejsou zobrazeny v katastrální mapě, též hranice."
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobů-využití-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník způsobů využití pozemku"
+    },
+    "popis" : {
+      "cs" : "Číselník typu ochrany - SC_T_OCHRANY_NEM"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/katastrální-území-má-mluvnické-charakteristiky",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "katastrální území má mluvnické charakteristiky"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Znak"
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky---2--pád",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Mluvnické charakteristiky - 2. pád"
+    },
+    "definice" : {
+      "cs" : "K názvu území obce, území vojenského újezdu, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech, katastrálního území a části obce se vedou doplňující údaje vyjadřující mluvnické charakteristiky názvu."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v obci"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-volebních-okrsků",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku volebních okrsků"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-volebních-okrsků"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-vybaven-výtahem",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je vybaven výtahem"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vybavení-výtahem"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/orp-je-v-okresu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "ORP je v okresu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-rozšířenou-působností--orp",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/okres"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobů-využití-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník způsobů využití stavebního objektu"
+    },
+    "popis" : {
+      "cs" : "Číselník využití stavby - SC_ZP_VYUZITI_BUD"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-pověřeným-obecním-úřadem--poú",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Správní obvod obce s pověřeným obecním úřadem (POÚ)"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o správním obvodu obce s pověřeným obecním úřadem."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/geometrie-polygonu-hranice-je-složena-z-podrobných-bodů-polohopisu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "geometrie polygonu hranice je složena z podrobných bodů polohopisu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/geometrie-polygonu-hranice",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/podrobný-bod-polohopisu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-správních-obvodů-prahy",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku správních obvodů Prahy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-prahy",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-správních-obvodů-prahy"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-vybavení-výtahem",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku vybavení výtahem"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vybavení-výtahem",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-vybavení-výtahem"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-městských-obvodů---městských-částí",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku městských obvodů / městských částí"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-městských-obvodů---městských-částí"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-části-obce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v části obce"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/část-obce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/počet-bytů",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Počet bytů"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Parcela"
+    },
+    "popis" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o pozemku v podobě parcely."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/hodnota-čísla-domovního",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Hodnota čísla domovního"
+    },
+    "popis" : {
+      "cs" : "Číslo popisné nebo číslo evidenční, podle typu čísla domovního. V případě uvedení čísla domovního musí být vyplněn i jeho typ. Hodnota této vlastnosti odpovídá vlastnosti locatorDesignator z ISA2 Core Location Vocabulary."
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/číslo-domovní",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/výměra-zsj",
+    "typ" : [ "Pojem", "Koncept", "Vlastnost" ],
+    "název" : {
+      "cs" : "Výměra ZSJ"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/základní-sídelní-jednotka--zsj",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti-je-ve-státě",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "region soudržnosti je ve státě"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti",
+    "obor-hodnot" : "https://slovník.gov.cz/agendový/104/pojem/stát"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Obec"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/statistický-kód-lau-1",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Statistický kód LAU 1"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/okres",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obvod-prahy-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obvod Prahy je v obci"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-v-praze",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-správním-obvodu-prahy",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve správním obvodu Prahy"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-prahy"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-způsob-využití-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má způsob využití pozemku"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-využití-pozemku"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/platnost-od-územního-prkvu---evidenční-jednotky",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Platnost od územního prkvu / evidenční jednotky"
+    },
+    "popis" : {
+      "cs" : "Označuje datum vzniku územního prvku/územně evidenční jednotky nebo datum jeho/její poslední změny."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-typu-ochrany-nemovitosti",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník typu ochrany nemovitosti"
+    },
+    "popis" : {
+      "cs" : "Číselník typu ochrany - SC_T_OCHRANY_NEM"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/základní-sídelní-jednotka-je-v-katastrálním-území",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "základní sídelní jednotka je v katastrálním území"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/základní-sídelní-jednotka--zsj",
+    "obor-hodnot" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-správních-obvodů-prahy",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník správních obvodů Prahy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-využití-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Způsob využití stavebního objektu"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu se dále v registru územní identifikace vedou údaje o typu stavebního objektu, způsobu jeho využití a o typu a způsobu jeho ochrany a technickoekonomický atribut měsíc a rok dokončení."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Volební okrsek"
+    },
+    "definice" : {
+      "cs" : "Volební okrsky a volební místnost pro každý volební okrsek stanoví starosta. Volební okrsky jsou vedeny v základním registru územní identifikace, adres a nemovitostí36) jako účelové územní prvky. Identifikační údaje, údaje o vazbách na ostatní územní prvky a lokalizační údaje o volebních okrscích zapisuje do základního registru územní identifikace, adres a nemovitostí editor těchto údajů, kterým je starosta, a to prostřednictvím informačního systému územní identifikace."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/část-obce-má-mluvnické-charakteristiky",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "část obce má mluvnické charakteristiky"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/část-obce",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-přípojka-vodovodu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník Přípojka vodovodu"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-číslování",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Druh číslování"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/poddělení-čísla",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Poddělení čísla"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-prahy",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Správní obvod Prahy"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o správním obvodu v hlavním městě Praze. Správním obvodem v hlavním městě Praze se rozumí území, na němž vykonává úřad městské části hlavního města Prahy určený Statutem hlavního města Prahy některou přenesenou působnost z rozsahu svěřeného orgánu obce s rozšířenou působností."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-druhů-konstrukce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku druhů konstrukce"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-konstrukce",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-druhů-konstrukce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-čára-ulice",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Definiční čára ulice"
+    },
+    "definice" : {
+      "cs" : "O každé územně evidenční jednotce se v registru územní identifikace vedou lokalizační údaje, kterými jsou u části obce definiční bod a u ulice definiční čára. Definiční čára ulice vyjadřuje průběh ulice v terénu."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/lokalizační-údaje-územního-prvku---územně-evidenční-jednotky" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obestavěný-prostor",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Obestavěný prostor"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/existence-digitální-mapy",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Existence digitální mapy"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-okresu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v okresu"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/okres"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-obvodu-prahy",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v obvodu Prahy"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-v-praze"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-způsobů-využití-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku způsobů využití pozemku"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-využití-pozemku",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobů-využití-pozemku"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/momc-je-ve-správním-obvodu-prahy",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "MOMC je ve správním obvodu Prahy"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-prahy"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-přípojku-vodovodu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má přípojku vodovodu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-vodovodu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-typu-členění",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník typu členění"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Stavební objekt / budova"
+    },
+    "definice" : {
+      "cs" : "Stavebním objektem se rozumí dokončená budova zapisovaná do katastru nemovitostí, která je samostatnou věcí, nebo budova, která je součástí pozemku nebo součástí práva stavby a údaje o ní se do katastru nemovitostí zapisují k pozemku nebo k právu stavby, nebo jiná dokončená stavba, která se do katastru nemovitostí nezapisuje, ale bylo jí přiděleno číslo popisné nebo evidenční"
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak---obrázek",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Znak - obrázek"
+    },
+    "definice" : {
+      "cs" : "O území obce, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech se v registru územní identifikace vedou doplňující údaje o znaku a vlajce, kterými jsou vyobrazení a popis znaku nebo vlajky."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobu-ochrany-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník způsobu ochrany stavebního objektu"
+    },
+    "popis" : {
+      "cs" : "Způsob ochrany nemovitosti vyplývající z oblasti ochrany přírody, kultury, zdravotnictví nebo umístění geodetického bodu na parcele - SC_ZP_OCHRANY_NEM"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-způsob-ochrany-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má způsob ochrany stavebního objektu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-ochrany-nemovitosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-kraji",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v kraji"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj--vyšší-územní-samosprávný-celek"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-regionů-soudržnosti",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku regionů soudržnosti"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-regionů-soudržnosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-způsobu-ochrany-nemovitosti",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Typ způsobu ochrany nemovitosti"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/název-územního-prvku---evidenční-jednotky",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Název územního prvku / evidenční jednotky"
+    },
+    "definice" : {
+      "cs" : "O každém územním prvku se v registru územní identifikace vedou identifikační údaje, kterými jsou kód a název. O každé územně evidenční jednotce se v registru územní identifikace vedou identifikační údaje, kterými jsou kód a název."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-je-v-části-obce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "stavební objekt je v části obce"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/část-obce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-katastrálním-území",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v katastrálním území"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-je-v-městském-obvodu---městské-části",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "stavební objekt je v městském obvodu / městské části"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-kanalizační-sítě",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Přípojka kanalizační sítě"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Mluvnické charakteristiky"
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-okresů",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník okresů"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ]
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/momc-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "MOMC je v obci"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-má-číslo-orientační",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo má číslo orientační"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/číslo-orientační"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-částí-obce",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník částí obce"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-volebním-okrsku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve volebním okrsku"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/rozsah-členění",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Rozsah členění"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-je-v-okrese",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec je v okrese"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/okres"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-krajů",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku krajů"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj--vyšší-územní-samosprávný-celek",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-krajů"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/hodnota-čísla-orientačního",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Hodnota čísla orientačního"
+    },
+    "popis" : {
+      "cs" : "Číslo orientační, slouží k orientaci v rámci ulice. Hodnota této vlastnosti odpovídá vlastnosti locatorDesignator z ISA2 Core Location Vocabulary."
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/číslo-orientační",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka-má-geometrii-polygonu-hranice",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "územní prvek / evidenční jednotka má geometrii polygonu hranice"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/geometrie-polygonu-hranice"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky---3--pád",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Mluvnické charakteristiky - 3. pád"
+    },
+    "definice" : {
+      "cs" : "K názvu území obce, území vojenského újezdu, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech, katastrálního území a části obce se vedou doplňující údaje vyjadřující mluvnické charakteristiky názvu."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/souřadnice-x-polohy",
+    "typ" : [ "Pojem", "Koncept", "Vlastnost" ],
+    "název" : {
+      "cs" : "Souřadnice X polohy"
+    },
+    "popis" : {
+      "cs" : "Souřadnice X polohy v S-JTSK"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/podrobný-bod-polohopisu",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/datum-vzniku-územního-prkvu---evidenční-jednotky",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Datum vzniku územního prkvu / evidenční jednotky"
+    },
+    "definice" : {
+      "cs" : "O základních územních prvcích uvedených v § 31 odst. 1 písm. a) až n) a o územně evidenční jednotce část obce se vede doplňující údaj o datu jejich vzniku."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-obcí",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník obcí"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ]
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-krajů",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník krajů"
+    },
+    "popis" : {
+      "cs" : "Číselník ČÚZK (ISÚI) - Vyšší územní samopravné celky (nové kraje)"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ]
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-přípojku-kanalizační-sítě",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má přípojku kanalizační sítě"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-kanalizační-sítě"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/katastrální-území-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "katastrální území je v obci"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/část-obce-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "část obce je v obci"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/část-obce",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-čára-ulice-je-složena-z-podrobných-bodů-polohopisu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "definiční čára ulice je složena z podrobných bodů polohopisu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-čára-ulice",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/podrobný-bod-polohopisu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-má-mluvnické-charakteristiky",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec má mluvnické charakteristiky"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-na-parcele",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je na parcele"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-typů-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník typů stavebního objektu"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/status-obce",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Status obce"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-přípojka-vodovodu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku Přípojka vodovodu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-vodovodu",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-přípojka-vodovodu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-druhů-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník druhů pozemku"
+    },
+    "popis" : {
+      "cs" : "Číselník typu ochrany - SC_T_OCHRANY_NEM"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vybavení-výtahem",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Vybavení výtahem"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-druhů-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku druhů pozemku"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-pozemku",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-druhů-pozemku"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-typu-členění",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku typu členění"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-členění",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-typu-členění"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresa-v-registru-územní-identifikace",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Adresa v registru územní identifikace"
+    },
+    "definice" : {
+      "cs" : "Adresou se rozumí kombinace názvu okresu, názvu obce nebo vojenského újezdu, názvu části obce nebo v případě hlavního města Prahy názvu katastrálního území a názvu městského obvodu, čísla popisného nebo evidenčního, názvu ulice a čísla orientačního a dále zvláštních údajů pro doručování prostřednictvím poštovních služeb, která jednoznačně určuje adresní místo."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresa" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-správních-obvodů-obce-s-pověřeným-obecním-úřadem--poú",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník správních obvodů obce s pověřeným obecním úřadem (POÚ)"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-rozsahu-členění",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník rozsahu členění"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-kód-bpej",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vztah" ],
+    "název" : {
+      "cs" : "má kód BPEJ"
+    },
+    "popis" : {
+      "cs" : "Bonitovaná půdně ekologická jednotka je položkou číselníku BPEJ - RÚIAN"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/díl-parcely",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/bonitovaná-půdně-ekologická-jednotka",
+    "je-sdílen-v-ppdf" : false
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-má-typ-členění",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec má typ členění"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-členění"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-ulic-a-veřejných-prostranství",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku ulic a veřejných prostranství"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice---veřejné-prostranství",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-ulic-a-veřejných-prostranství"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-obcí",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku obcí"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-obcí"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-je-na-parcele",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "stavební objekt je na parcele"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/počet-podlaží",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Počet podlaží"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-ochrany-nemovitosti",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Způsob ochrany nemovitosti"
+    },
+    "popis" : {
+      "cs" : "Typ a způsob ochrany nemovitosti podle bodu 7 přílohy k vyhlášce č. 357/2013 Sb. se v katastru eviduje u pozemku, stavby, budovy a práva stavby."
+    },
+    "definice" : {
+      "cs" : "Referenčními údaji v registru územní identifikace jsou údaje o typu a způsobu ochrany nemovitosti"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-druhů-konstrukce",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník druhů konstrukce"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Typ stavebního objektu"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-správních-obvodů-obce-s-rozšířenou-působností--orp",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku správních obvodů obce s rozšířenou působností (ORP)"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-rozšířenou-působností--orp",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-správních-obvodů-obce-s-rozšířenou-působností--orp"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobů-vytápění",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník způsobů vytápění"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-stavebním-objektu-s-číslem-domovním",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve stavebním objektu s číslem domovním"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-s-číslem-domovním"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-obvodů-prahy",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník obvodů Prahy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka---popis",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Vlajka - popis"
+    },
+    "definice" : {
+      "cs" : "O území obce, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech se v registru územní identifikace vedou doplňující údaje o znaku a vlajce, kterými jsou vyobrazení a popis znaku nebo vlajky."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-správním-obvodu-obce-s-pověřeným-obecním-úřadem--poú",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve správním obvodu obce s pověřeným obecním úřadem (POÚ)"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-pověřeným-obecním-úřadem--poú"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-správním-obvodu-obce-s-rozšířenou-působností--orp",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve správním obvodu obce s rozšířenou působností (ORP)"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-rozšířenou-působností--orp"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku--způsobů-vytápění",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku  způsobů vytápění"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-vytápění",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobů-vytápění"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Vlajka"
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek-je-v-městském-obvodu---městské-části",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "volební okrsek je v městském obvodu / městské části"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/volební-okrsek",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/jednoznačně-určuje-adresní-místo",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "jednoznačně určuje adresní místo"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresa-v-registru-územní-identifikace",
+    "obor-hodnot" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Územní prvek / evidenční jednotka"
+    },
+    "definice" : {
+      "cs" : "Územním prvkem se rozumí část zemského povrchu vymezená hranicí nebo výčtem jiných územních prvků, které ji dohromady tvoří, adresní místo nebo stavební objekt. Územně evidenční jednotkou se rozumí jednotka sloužící pro evidenci územních prvků stejného druhu, která nemá hranici"
+    },
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-typu-ochrany-nemovitosti",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku typu ochrany nemovitosti."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-způsobu-ochrany-nemovitosti",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-typu-ochrany-nemovitosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela-je-v-katastrálním-území",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "parcela je v katastrálním území"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-správních-obvodů-obce-s-pověřeným-obecním-úřadem--poú",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku správních obvodů obce s pověřeným obecním úřadem (POÚ)"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-pověřeným-obecním-úřadem--poú",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-správních-obvodů-obce-s-pověřeným-obecním-úřadem--poú"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-členění",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Typ členění"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-bpej--rúian",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou Číselníku BPEJ -RÚIAN"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/bonitovaná-půdně-ekologická-jednotka",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-bpej--rúian"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice---veřejné-prostranství-má-definiční-čáru-ulice",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "Ulice / veřejné prostranství má definiční čáru ulice"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice---veřejné-prostranství",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-čára-ulice"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj--vyšší-územní-samosprávný-celek",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Kraj (vyšší územní samosprávný celek)"
+    },
+    "popis" : {
+      "cs" : "NUTS 3; území vyššího územního samosprávného celku"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území vyššího územního samosprávného celku."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-statusu-obce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku statusu obce"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/status-obce",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-statusu-obce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-bpej--rúian",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník BPEJ -RÚIAN"
+    },
+    "popis" : {
+      "cs" : "Číselník bonitovaných půdně ekologických jednotek (BPEJ) - SC_BPEJ"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-vodovodu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Přípojka vodovodu"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-má-status-obce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec má status obce"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/status-obce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-statusu-obce",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník statusu obce"
+    },
+    "popis" : {
+      "cs" : "LAU 2. Obec nebo vojenský újezd a v případě, že je obec členěna, název městského obvodu nebo městské části."
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území obce."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/geometrie-polygonu-hranice",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Geometrie polygonu hranice"
+    },
+    "definice" : {
+      "cs" : "O každém územním prvku se v registru územní identifikace vedou lokalizační údaje, kterými jsou definiční bod, a nejde-li o adresní místo nebo stavební objekt, jehož hranice nejsou zobrazeny v katastrální mapě, též hranice."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/lokalizační-údaje-územního-prvku---územně-evidenční-jednotky" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/souřadnice-x-definičního-bodu",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Souřadnice X definičního bodu"
+    },
+    "definice" : {
+      "cs" : "Souřadnice X v souřadnicovém systému Jednotné trigonometrické sítě katastrální (S-JTSK), která je součástí lokalizačních údajů územního prvku nebo územně evidenční jednotky"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-způsobu-ochrany-stavebního-objektu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku způsobu ochrany stavebního objektu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-ochrany-nemovitosti",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-způsobu-ochrany-stavebního-objektu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-vybavení-výtahem",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník vybavení výtahem"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "ulice je v obci"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice---veřejné-prostranství",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-využití-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Způsob využití pozemku"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/městský-obvod---městská-část-má-znak",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "městský obvod / městská část má znak"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/znak"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kmenové-číslo",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Kmenové číslo"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-ulici",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v ulici"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice---veřejné-prostranství"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-přípojka-plynu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku Přípojka plynu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-plynu",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-přípojka-plynu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-přípojka-plynu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník Přípojka plynu"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-v-městském-obvodu---městské-části",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je v městském obvodu / městské části"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-plynu",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Přípojka plynu"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresa-je-ve-státě",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresa je ve státě"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresa",
+    "obor-hodnot" : "https://slovník.gov.cz/agendový/104/pojem/stát"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-bez-čísla-domovního",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Stavební objekt bez čísla domovního"
+    },
+    "definice" : {
+      "cs" : "Stavebním objektem se rozumí dokončená budova zapisovaná do katastru nemovitostí, která je samostatnou věcí, nebo budova, která je součástí pozemku nebo součástí práva stavby a údaje o ní se do katastru nemovitostí zapisují k pozemku nebo k právu stavby, nebo jiná dokončená stavba, která se do katastru nemovitostí nezapisuje, ale bylo jí přiděleno číslo popisné nebo evidenční"
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-má-rozsah-členění",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec má rozsah členění"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/rozsah-členění"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-druh-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má druh pozemku"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/parcela",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-pozemku"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-pozemku",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Druh pozemku"
+    },
+    "definice" : {
+      "cs" : "Pozemky se člení podle druhů na ornou půdu, chmelnice, vinice, zahrady, ovocné sady, trvalé travní porosty, lesní pozemky, vodní plochy, zastavěné plochy a nádvoří a ostatní plochy. Orná půda, chmelnice, vinice, zahrady, ovocné sady a trvalé travní porosty jsou zemědělskými pozemky."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/definiční-bod",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Definiční bod"
+    },
+    "definice" : {
+      "cs" : "O každém územním prvku se v registru územní identifikace vedou lokalizační údaje, kterými jsou definiční bod, a nejde-li o adresní místo nebo stavební objekt, jehož hranice nejsou zobrazeny v katastrální mapě, též hranice. O každé územně evidenční jednotce se v registru územní identifikace vedou lokalizační údaje, kterými jsou u části obce definiční bod a u ulice definiční čára. Definičním bodem územního prvku nebo územně evidenční jednotky je bod umístěný uvnitř územního prvku nebo územně evidenční jednotky poblíž jejich středu."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/lokalizační-údaje-územního-prvku---územně-evidenční-jednotky" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-způsob-vytápění",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má způsob vytápění"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-vytápění"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-částí-obce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku částí obce"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/část-obce",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-částí-obce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-volebních-okrsků",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník volebních okrsků"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky---7--pád",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Mluvnické charakteristiky - 7. pád"
+    },
+    "definice" : {
+      "cs" : "K názvu území obce, území vojenského újezdu, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech, katastrálního území a části obce se vedou doplňující údaje vyjadřující mluvnické charakteristiky názvu."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/počet-vchodů",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Počet vchodů"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-s-číslem-domovním",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-konstrukce",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Druh konstrukce"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/datum-odstranění",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Datum odstranění"
+    },
+    "definice" : {
+      "cs" : "Informační systém územní identifikace obsahuje údaje registru územní identifikace, s výjimkou těch údajů, které jsou vedeny v katastru nemovitostí, a zachycuje stav těchto údajů k jakémukoli datu od jeho vytvoření. Informační systém územní identifikace nadto obsahuje další technickoekonomický atribut stavebního objektu, kterým je měsíc a rok jeho odstranění."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-správních-obvodů-obce-s-rozšířenou-působností--orp",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník správních obvodů obce s rozšířenou působností (ORP)"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/podlahová-plocha",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Podlahová plocha"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-je-ve-správním-obvodu-obce-s-poú",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec je ve správním obvodu obce s POÚ"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-pověřeným-obecním-úřadem--poú"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-druh-konstrukce",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má druh konstrukce"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/druh-konstrukce"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-okresů",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku okresů"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/okres",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-okresů"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-obce-s-rozšířenou-působností--orp",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Správní obvod obce s rozšířenou působností (ORP)"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o správním obvodu obce s rozšířenou působností."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-místo-je-ve-stavebním-objektu---budově",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "adresní místo je ve stavebním objektu / budově"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-ulic-a-veřejných-prostranství",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník ulic a veřejných prostranství"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/městský-obvod---městská-část-má-vlajku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "městský obvod / městská část má vlajku"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-městská-část",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky---6--pád",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Mluvnické charakteristiky - 6. pád"
+    },
+    "definice" : {
+      "cs" : "K názvu území obce, území vojenského újezdu, území městské části v hlavním městě Praze, území městského obvodu nebo městské části ve statutárních městech, katastrálního území a části obce se vedou doplňující údaje vyjadřující mluvnické charakteristiky názvu."
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/mluvnické-charakteristiky",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal",
+    "je-sdílen-v-ppdf" : true
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj-je-v-regionu-soudržnosti",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "kraj je v regionu soudržnosti"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj--vyšší-územní-samosprávný-celek",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-vytápění",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Způsob vytápění"
+    },
+    "popis" : {
+      "cs" : "O stavebním objektu s číslem popisným nebo evidenčním se dále vedou technickoekonomické atributy"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt-s-číslem-domovním",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Stavební objekt s číslem domovním"
+    },
+    "definice" : {
+      "cs" : "Stavebním objektem se rozumí dokončená budova zapisovaná do katastru nemovitostí, která je samostatnou věcí, nebo budova, která je součástí pozemku nebo součástí práva stavby a údaje o ní se do katastru nemovitostí zapisují k pozemku nebo k právu stavby, nebo jiná dokončená stavba, která se do katastru nemovitostí nezapisuje, ale bylo jí přiděleno číslo popisné nebo evidenční"
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-přístup-pro-hasiče",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má přístup pro hasiče"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přístup-pro-hasiče"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Region soudržnosti"
+    },
+    "popis" : {
+      "cs" : "NUTS 2"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace obsahuje údaje o území regionu soudržnosti podle jiného právního předpisu."
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-obvodů-prahy",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku obvodů Prahy"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/datový/vfr-1.8.0/pojem/městský-obvod-v-praze",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-obvodů-prahy"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/bonitovaná-půdně-ekologická-jednotka",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Bonitovaná půdně ekologická jednotka"
+    },
+    "popis" : {
+      "cs" : "Pro daňové účely se v souboru popisných informací evidují u parcel zemědělských pozemků s vyznačenou příslušností k vlastníku údaje o bonitovaných půdně ekologických jednotkách, popřípadě další údaje stanovené jiným právním předpisem,"
+    },
+    "definice" : {
+      "cs" : "O pozemku se dále v registru územní identifikace vedou údaje o druhu a způsobu využití pozemku, typu a způsobu jeho ochrany a technickoekonomické atributy tohoto pozemku, kterými je údaj o bonitovaných půdně ekologických jednotkách (BPEJ) k parcele."
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/položka-číselníku" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-městských-obvodů---městských-částí",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Číselník městských obvodů / městských částí"
+    },
+    "nadřazená-třída" : [ "https://slovník.gov.cz/datový/číselníky/pojem/číselník" ]
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-přístup-pro-záchrannou-službu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má přístup pro záchrannou službu"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přístup-pro-záchrannou-službu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-typ-způsobu-ochrany-nemovitosti",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má typ způsobu ochrany nemovitosti"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/způsob-ochrany-nemovitosti",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/typ-způsobu-ochrany-nemovitosti"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/statistický-kód-nuts-2",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Statistický kód NUTS 2"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/region-soudržnosti",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-přípojku-plynu",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má přípojku plynu"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/stavební-objekt---budova",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/přípojka-plynu"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/je-položkou-číselníku-katastrálních-území",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "je položkou číselníku katastrálních území"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/katastrální-území",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/číselník-katastrálních-území"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/ulice---veřejné-prostranství",
+    "typ" : [ "Pojem", "Koncept", "Třída" ],
+    "název" : {
+      "cs" : "Ulice / veřejné prostranství"
+    },
+    "definice" : {
+      "cs" : "Registr územní identifikace dále obsahuje údaje o územně evidenčních jednotkách část obce a ulice nebo jiné veřejné prostranství (dále jen „ulice“)"
+    },
+    "nadřazená-třída" : [ "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/územní-prvek---evidenční-jednotka" ],
+    "agendový-informační-systém" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/6977",
+    "agenda" : "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A103"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/statistický-kód-nuts-3",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Statistický kód NUTS 3"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/kraj--vyšší-územní-samosprávný-celek",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec-má-vlajku",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "obec má vlajku"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/vlajka"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/statistický-kód-nuts-0",
+    "typ" : [ "Pojem", "Koncept", "Veřejný údaj", "Vlastnost" ],
+    "název" : {
+      "cs" : "Statistický kód NUTS 0"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/agendový/104/pojem/stát",
+    "obor-hodnot" : "http://www.w3.org/2000/01/rdf-schema#Literal"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-prahy-je-v-obci",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "správní obvod Prahy je v obci"
+    },
+    "definiční-obor" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/správní-obvod-prahy",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/obec"
+  }, {
+    "iri" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/má-adresní-bod",
+    "typ" : [ "Pojem", "Koncept", "Vztah" ],
+    "název" : {
+      "cs" : "má adresní bod"
+    },
+    "definiční-obor" : "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/adresní-místo",
+    "obor-hodnot" : "https://atom.cuzk.cz/a103-základní-registr---registr-územní-identifikace--adres-a-nemovitostí/pojem/adresní-bod"
+  } ]
+}

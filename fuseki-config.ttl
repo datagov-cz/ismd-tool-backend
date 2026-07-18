@@ -21,7 +21,7 @@ text:TextIndexLucene rdfs:subClassOf text:TextIndex .
 ## ---------------------------------------------------------------
 
 [] rdf:type fuseki:Server ;
-   fuseki:services ( :ismd-service ) .
+   fuseki:services ( :ismd-service :nkd-simulation-service ) .
 
 :ismd-service rdf:type fuseki:Service ;
     fuseki:name "ismd-tool-dataset" ;
@@ -31,6 +31,25 @@ text:TextIndexLucene rdfs:subClassOf text:TextIndex .
     fuseki:endpoint [ fuseki:operation fuseki:upload ; fuseki:name "upload" ] ;
     fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ; fuseki:name "data" ] ;
     fuseki:dataset :text_dataset .
+
+## ---------------------------------------------------------------
+## NKD simulation service (SMOKE-TEST ONLY, not production)
+## A local stand-in for the third-party NKD SPARQL endpoint. NKD content
+## is fixed upstream and unwritable, so to manufacture a deviation the
+## app's nkd.sparql.endpoint is pointed here and seeded with a concept's
+## "NKD twin"; editing one field here makes the local working copy drift.
+## In-memory: re-seeded per run, wiped on restart. Exercises the real
+## NkdSparqlClient code path (buildConstructQuery reads the default graph).
+## ---------------------------------------------------------------
+
+:nkd-simulation-service rdf:type fuseki:Service ;
+    fuseki:name "nkd-simulation" ;
+    fuseki:endpoint [ fuseki:operation fuseki:query ; fuseki:name "sparql" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:update ; fuseki:name "update" ] ;
+    fuseki:endpoint [ fuseki:operation fuseki:gsp-rw ; fuseki:name "data" ] ;
+    fuseki:dataset :nkd_sim_dataset .
+
+:nkd_sim_dataset rdf:type ja:MemoryDataset .
 
 ## ---------------------------------------------------------------
 ## Text Dataset: wraps TDB2 dataset with a Lucene text index

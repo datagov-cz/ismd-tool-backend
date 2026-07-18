@@ -201,7 +201,10 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             OntologyMetadataModel metadata;
             try {
                 metadata = createOntologyMetadataEntity(graphName, userId);
-                extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId(), publishedConceptIris);
+                boolean ontologyPublished = extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId(), publishedConceptIris);
+                // extractAndSaveConceptMetadata flips is_published on a re-fetched entity; mirror it
+                // onto the returned model so the upload response matches the persisted row.
+                metadata.setIsPublished(ontologyPublished);
             } catch (OntologyAlreadyExistsException e) {
                 // Re-throw without TDB2 cleanup — slug check above should prevent this,
                 // but if it happens (race condition), let @Transactional handle PostgreSQL
@@ -441,13 +444,14 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {
+    private boolean extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {
         log.info("Extracting concept metadata from ontology: {}", graphName);
 
         OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
                 .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
 
-        if (publishedConceptIris.contains(graphName)) {
+        boolean ontologyPublished = publishedConceptIris.contains(graphName);
+        if (ontologyPublished) {
             log.info("Ontology {} is published in NKD, setting isPublished = true", graphName);
             ontologyMetadata.setIsPublished(true);
             ontologyMetadataRepository.save(ontologyMetadata);
@@ -501,6 +505,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         } else {
             log.info("No concepts found in uploaded ontology: {}", graphName);
         }
+
+        return ontologyPublished;
     }
 
     private boolean shouldSkipConcept(Resource conceptResource, String graphName) {
