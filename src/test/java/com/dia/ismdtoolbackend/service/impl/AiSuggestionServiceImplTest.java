@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.ai.IsmdAiClient;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiClassJobRequest;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiSelectedClassJobRequest;
 import com.dia.ismdtoolbackend.config.AiServiceConfig;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiIdReferenceDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
@@ -23,11 +24,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,11 +47,13 @@ class AiSuggestionServiceImplTest {
     @Mock
     private IsmdAiClient aiClient;
 
+    private AiServiceConfig config;
+
     private AiSuggestionServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        AiServiceConfig config = new AiServiceConfig();
+        config = new AiServiceConfig();
         config.setSuggestionCount(7);
         service = new AiSuggestionServiceImpl(aiClient, config);
     }
@@ -177,6 +183,41 @@ class AiSuggestionServiceImplTest {
         IsmdAiSelectedClassJobRequest capturedRequest = requestCaptor.getValue();
         assertEquals(expectedSelectedRequest(input), capturedRequest);
         assertSame(input.knownConceptualModel(), capturedRequest.knownConceptualModel());
+    }
+
+    @Test
+    void getSuggestionsAcceptsConfiguredMaximumJobIds() {
+        config.setMaxJobIds(2);
+        List<UUID> jobIds = List.of(UUID.randomUUID(), UUID.randomUUID());
+        List<AiClassSuggestionsJobResponseDto> expectedResponse = List.of();
+        when(aiClient.getClassSuggestions(BEARER_TOKEN, jobIds)).thenReturn(expectedResponse);
+
+        List<AiClassSuggestionsJobResponseDto> result = service.getClassSuggestions(BEARER_TOKEN, jobIds);
+
+        assertSame(expectedResponse, result);
+        verify(aiClient).getClassSuggestions(BEARER_TOKEN, jobIds);
+    }
+
+    @Test
+    void getSuggestionsRejectsMoreThanConfiguredMaximumJobIds() {
+        config.setMaxJobIds(1);
+        List<UUID> jobIds = List.of(UUID.randomUUID(), UUID.randomUUID());
+
+        assertAll(
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.getClassSuggestions(BEARER_TOKEN, jobIds)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.getPropertySuggestions(BEARER_TOKEN, jobIds)
+                ),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> service.getRelationshipSuggestions(BEARER_TOKEN, jobIds)
+                )
+        );
+        verifyNoInteractions(aiClient);
     }
 
     private IsmdAiSelectedClassJobRequest expectedSelectedRequest(AiSelectedClassSuggestionRequestDto input) {

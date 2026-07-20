@@ -94,11 +94,13 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
 
     @Override
     public List<AiClassSuggestionsJobResponseDto> getClassSuggestions(String bearerToken, List<UUID> jobIds) {
+        validateJobIds(jobIds);
         return aiClient.getClassSuggestions(bearerToken, jobIds);
     }
 
     @Override
     public List<AiPropertySuggestionsJobResponseDto> getPropertySuggestions(String bearerToken, List<UUID> jobIds) {
+        validateJobIds(jobIds);
         return aiClient.getPropertySuggestions(bearerToken, jobIds);
     }
 
@@ -107,6 +109,7 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
             String bearerToken,
             List<UUID> jobIds
     ) {
+        validateJobIds(jobIds);
         return aiClient.getRelationshipSuggestions(bearerToken, jobIds);
     }
 
@@ -123,5 +126,13 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
     @Override
     public void dislikeSuggestions(String bearerToken, List<AiFeedbackRequestDto> requests) {
         aiClient.dislikeSuggestions(bearerToken, requests);
+    }
+
+    private void validateJobIds(List<UUID> jobIds) {
+        if (jobIds.size() > config.getMaxJobIds()) {
+            throw new IllegalArgumentException(
+                    "Parametr jobIds může obsahovat nejvýše " + config.getMaxJobIds() + " hodnot."
+            );
+        }
     }
 }

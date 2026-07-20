@@ -21,6 +21,10 @@ public class AiServiceConfig {
     @Max(10)
     private int suggestionCount = 5;
 
+    @Min(1)
+    @Max(100)
+    private int maxJobIds = 100;
+
     private Duration connectTimeout = Duration.ofSeconds(5);
 
     private Duration readTimeout = Duration.ofSeconds(15);
