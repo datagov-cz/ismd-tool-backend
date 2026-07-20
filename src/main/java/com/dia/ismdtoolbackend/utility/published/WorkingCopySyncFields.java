@@ -37,11 +37,7 @@ public class WorkingCopySyncFields {
      */
     public static final String TYPE_KEY = "typ";
 
-    /**
-     * The alt-name key. Syncable: {@code AltNameModel} holds a list of labels per language, matching the
-     * deviation's {@code Map<String, Object>} (a language may hold several alt labels), so accepting it
-     * is lossless.
-     */
+    /** The alt-name field. Syncable — a language may hold several alt labels and all are carried. */
     public static final String ALT_NAME_KEY = "alternativní-název";
 
     /** One syncable characteristic: how to read its deviation, and how to apply NKD's value. */
@@ -140,8 +136,7 @@ public class WorkingCopySyncFields {
 
     /**
      * Maps NKD's {@code lang -> String | List} alt names onto the edit model's {@code lang -> List} shape.
-     * Both forms occur because a language may carry one or several {@code skos:altLabel}s; normalising to
-     * a list keeps every label (the loss this field used to be excluded for).
+     * A bare string becomes a single-element list; blank values are dropped.
      */
     private static AltNameModel altNameModel(ConceptDetailModel nkd) {
         AltNameModel m = new AltNameModel();

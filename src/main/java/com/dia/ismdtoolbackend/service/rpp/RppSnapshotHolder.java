@@ -41,12 +41,10 @@ public class RppSnapshotHolder {
     }
 
     /**
-     * Loads the snapshot in the background once the app is up, so the first request that resolves an
-     * agenda/AIS reference does not pay for two full RPP downloads on its own thread (a ~20-40s stall,
-     * serialized behind {@code refreshLock} for every concurrent first reader).
+     * Loads the snapshot in the background once the app is up, keeping the full agenda/ISVS fetch off the
+     * first request that resolves an agenda or AIS reference.
      *
-     * <p>Failures are swallowed: a cold lookup still refreshes on demand, and RPP being down must not
-     * stop the app from starting.
+     * <p>Failures are swallowed: a cold lookup still refreshes on demand.
      */
     @Async("snapshotExecutor")
     @EventListener(ApplicationReadyEvent.class)
