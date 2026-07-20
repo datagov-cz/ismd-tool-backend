@@ -31,7 +31,7 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
                 () -> conceptEditor.editConcept(missingIri, classConceptEditModel, model, null));
     }
 
-    // Z2 – Error when renamed IRI already exists in the model
+    // Z2 – Error when the renamed IRI is already claimed by another owned concept
     @Test
     void editConcept_ShouldThrowWhenRenamedIRIAlreadyExists() {
         String oldIri = "https://slovnik.gov.cz/pojem/old-class";
@@ -42,17 +42,37 @@ class ConceptEditorErrorHandlingTest extends ConceptEditorTestBase {
         URIGenerator uriGen = new URIGenerator();
         String conflictingIri = uriGen.generateConceptURI("New name", "ID-1");
 
-        Resource conflicting = model.createResource(conflictingIri);
-        conflicting.addProperty(SKOS.prefLabel, model.createLiteral("Existing concept", "cs"));
-        conflicting.addProperty(RDF.type, SKOS.Concept);
-
         NameModel newName = createNameModel("cs", "New name");
 
         when(classConceptEditModel.getNameModel()).thenReturn(newName);
         when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
 
         assertThrows(ConceptValidationException.class,
-                () -> conceptEditor.editConcept(oldIri, classConceptEditModel, model, null));
+                () -> conceptEditor.editConcept(oldIri, classConceptEditModel, model, null,
+                        conflictingIri::equals));
+    }
+
+    // Z2b – A rename onto an IRI that merely appears in the graph (a referenced concept or an
+    // NKD snapshot copy, neither of which is an owned concept) is allowed.
+    @Test
+    void editConcept_ShouldAllowRenameWhenIriOnlyPresentInModel() {
+        String oldIri = "https://slovnik.gov.cz/pojem/old-class";
+        Resource existing = model.createResource(oldIri);
+        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
+        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+
+        URIGenerator uriGen = new URIGenerator();
+        String referencedIri = uriGen.generateConceptURI("New name", "ID-1");
+        model.createResource(referencedIri).addProperty(RDF.type, SKOS.Concept);
+
+        stubAllClassFieldsNull(classConceptEditModel);
+        when(classConceptEditModel.getNameModel()).thenReturn(createNameModel("cs", "New name"));
+        when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
+
+        ConceptEditor.EditResult result = conceptEditor.editConcept(
+                oldIri, classConceptEditModel, model, null, iri -> false);
+
+        assertEquals(referencedIri, result.newConceptIRI);
     }
 
     // Z3 – Custom namespace from valid graphName IRI

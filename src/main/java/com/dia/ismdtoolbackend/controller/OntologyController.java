@@ -14,10 +14,8 @@ import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -62,7 +60,6 @@ public class OntologyController {
     private final ValidationService validationService;
     private final ValidationClient validationClient;
     private final ValidationConfig validationConfig;
-    private final NkdDetailService nkdDetailService;
     private final NkdSnapshotWarmer nkdSnapshotWarmer;
 
     @Operation(
@@ -232,24 +229,7 @@ public class OntologyController {
     ) {
         log.info("Ontology concepts requested, iri: {}, source: {}", iri, source);
 
-        List<MinimalConceptDto> concepts = switch (source) {
-            case ISMD -> ontologyService.getConceptsByIri(iri);
-            case NKD -> {
-                OntologyDetailModel detail = nkdDetailService.getOntologyDetail(iri).getOntologyDetail();
-                List<OntologyDetailModel.ConceptDetailModel> nkdConcepts = detail.getConcepts();
-                if (nkdConcepts == null || nkdConcepts.isEmpty()) {
-                    yield List.of();
-                }
-                yield nkdConcepts.stream()
-                        .map(c -> MinimalConceptDto.builder()
-                                .iri(c.getIri())
-                                .name(c.getName())
-                                .build())
-                        .toList();
-            }
-            default -> throw new IllegalArgumentException(
-                    "Nepodporovaný zdroj: " + source + ". Povolené hodnoty: ISMD, NKD.");
-        };
+        List<MinimalConceptDto> concepts = ontologyService.getConceptsByIri(iri, source);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Seznam pojmů byl úspěšně načten."));
     }

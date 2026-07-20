@@ -44,6 +44,8 @@ public class ConceptCreator {
             case TRIDA -> createClassResource((ClassConceptModel) createModel);
             case VLASTNOST -> createPropertyResource((PropertyConceptModel) createModel);
             case VZTAH -> createRelationshipResource((RelationshipConceptModel) createModel);
+            case KONCEPT -> throw new IllegalArgumentException(
+                    "Nelze vytvořit pojem bez konkrétního typu (TRIDA/VLASTNOST/VZTAH).");
         };
 
         String conceptURI = concept.getURI();

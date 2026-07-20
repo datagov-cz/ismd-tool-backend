@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -83,10 +84,7 @@ public class ConceptServiceImpl implements ConceptService {
         Resource conceptResource = createConceptResource(createModel);
         String conceptUri = conceptResource.getURI();
 
-        ConceptMetadataModel existingConcept = checkForExistingConcept(conceptUri);
-        if (existingConcept != null) {
-            return existingConcept;
-        }
+        rejectIfConceptIriTaken(conceptUri);
 
         String ontologyGraphName = createModel.getOntologyGraphName();
 
@@ -183,7 +181,7 @@ public class ConceptServiceImpl implements ConceptService {
         // the create→rename inversion (review #4 / M1).
         String aggregateIri = metadata.getConceptIri();
 
-        ConceptEditor.EditResult editResult = performConceptEdit(aggregateIri, conceptEditModel, model, graphName);
+        ConceptEditor.EditResult editResult = performConceptEdit(conceptId, aggregateIri, conceptEditModel, model, graphName);
 
         // Reconcile NKD links and union the resulting copy delta with the editor's, so the link and the
         // copy ride one owner-keyed aggregate. The snapshot service reads owner.getConceptIri(), so the
@@ -232,10 +230,19 @@ public class ConceptServiceImpl implements ConceptService {
             conceptMetadataEntities = conceptMetadataRepository.findAll();
         }
 
+        List<Long> conceptIds = conceptMetadataEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByConceptId = conceptIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByConceptMetadataIdIn(conceptIds).stream()
+                        .collect(Collectors.groupingBy(c -> c.getConceptMetadata().getId()));
+
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities = commentRepository.findByConceptMetadataId(entity.getId());
+                    List<CommentEntity> commentEntities =
+                            commentsByConceptId.getOrDefault(entity.getId(), List.of());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
@@ -287,7 +294,7 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(rawModel, metadataModel);
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(conceptDetail, metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
 
         return result;
@@ -507,9 +514,10 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private ConceptEditor.EditResult performConceptEdit(String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
+    private ConceptEditor.EditResult performConceptEdit(Long conceptId, String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
         try {
-            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName);
+            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName,
+                    candidateIri -> isConceptIriTakenByOther(candidateIri, conceptId));
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
@@ -571,13 +579,30 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private ConceptMetadataModel checkForExistingConcept(String conceptUri) {
-        Optional<ConceptMetadataEntity> existingConcept = conceptMetadataRepository.findByConceptIri(conceptUri);
-        if (existingConcept.isPresent()) {
-            log.error("Concept already exists with IRI: {}", conceptUri);
-            return conceptMetadataMapper.toDto(existingConcept.get());
+    /**
+     * Rejects the request when an owned concept already claims this IRI.
+     *
+     * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
+     * referenced NKD concept never triggers a collision.
+     */
+    private void rejectIfConceptIriTaken(String conceptUri) {
+        if (conceptMetadataRepository.findByConceptIri(conceptUri).isPresent()) {
+            log.info("Rejecting concept creation, IRI already exists: {}", conceptUri);
+            throw new ConceptValidationException(
+                    "Pojem se stejným názvem již v ontologii existuje: " + conceptUri);
         }
-        return null;
+    }
+
+    /**
+     * Tests whether an owned concept other than {@code conceptId} already claims this IRI.
+     *
+     * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
+     * referenced NKD concept never counts as a collision.
+     */
+    private boolean isConceptIriTakenByOther(String conceptUri, Long conceptId) {
+        return conceptMetadataRepository.findByConceptIri(conceptUri)
+                .filter(existing -> !existing.getId().equals(conceptId))
+                .isPresent();
     }
 
     private void saveConceptToTDB2(Resource conceptResource, String ontologyGraphName) {
@@ -627,7 +652,8 @@ public class ConceptServiceImpl implements ConceptService {
         return names.values().iterator().next();
     }
 
-    private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
+    private PublishedConceptDeviationModel checkPublishedConcept(OntologyDetailModel.ConceptDetailModel localConcept,
+                                                                ConceptMetadataModel conceptMetadata) {
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
         }
@@ -635,17 +661,6 @@ public class ConceptServiceImpl implements ConceptService {
         String conceptIri = conceptMetadata.getConceptIri();
 
         try {
-            OntologyDetailModel.ConceptDetailModel localConcept =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
-
-            if (localConcept == null) {
-                log.error("Local concept detail not found for IRI: {}", conceptIri);
-                return createErrorDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
-                );
-            }
-
             Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
                     nkdSparqlClient.fetchPublishedConcept(conceptIri);
 

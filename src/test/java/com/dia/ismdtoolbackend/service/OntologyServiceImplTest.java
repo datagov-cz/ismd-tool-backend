@@ -1,8 +1,11 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -17,6 +20,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
+import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -41,6 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.dia.constants.VocabularyConstants.POJEM_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TRIDA_JSON_LD;
+import static com.dia.constants.VocabularyConstants.VZTAH_JSON_LD;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -94,6 +101,9 @@ class OntologyServiceImplTest {
 
     @Mock
     private NkdSnapshotService nkdSnapshotService;
+
+    @Mock
+    private NkdDetailService nkdDetailService;
 
     @InjectMocks
     private OntologyServiceImpl ontologyService;
@@ -559,23 +569,38 @@ class OntologyServiceImplTest {
 
     // ========== getConceptsByIri Tests (B1) ==========
     //
-    // Covers /api/ontology/concepts?ontologyIri=... — the slim concept-listing
+    // Covers /api/ontology/concepts?iri=...&source=... — the slim concept-listing
     // endpoint used by the FE for navigation. Branches: input validation,
-    // ontology-not-found, empty-graph, empty-concepts-list short-circuit, and
-    // the slug-join from PG metadata.
+    // source dispatch, ontology-not-found, empty-graph, empty-concepts-list
+    // short-circuit, the slug-join from PG metadata, conceptType resolution,
+    // and the NKD source path.
 
     @Test
     void getConceptsByIri_nullIri_throws() {
         OntologyException ex = assertThrows(OntologyException.class,
-                () -> ontologyService.getConceptsByIri(null));
+                () -> ontologyService.getConceptsByIri(null, SearchSource.ISMD));
         assertTrue(ex.getMessage().toLowerCase().contains("iri"));
     }
 
     @Test
     void getConceptsByIri_blankIri_throws() {
         OntologyException ex = assertThrows(OntologyException.class,
-                () -> ontologyService.getConceptsByIri("   "));
+                () -> ontologyService.getConceptsByIri("   ", SearchSource.ISMD));
         assertTrue(ex.getMessage().toLowerCase().contains("iri"));
+    }
+
+    @Test
+    void getConceptsByIri_nullSource_throws() {
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, null));
+        assertTrue(ex.getMessage().toLowerCase().contains("zdroj")
+                || ex.getMessage().toLowerCase().contains("source"));
+    }
+
+    @Test
+    void getConceptsByIri_unsupportedSource_throws() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.UNPUBLISHED));
     }
 
     @Test
@@ -583,7 +608,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
 
         OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
-                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD));
         assertTrue(ex.getMessage().contains(TEST_GRAPH_NAME));
     }
 
@@ -594,7 +619,7 @@ class OntologyServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
         OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
-                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD));
         assertTrue(ex.getMessage().toLowerCase().contains("prázdn")
                 || ex.getMessage().toLowerCase().contains("empty"));
     }
@@ -609,7 +634,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.extractOntologyDetail(rawModel))
                 .thenReturn(OntologyDetailModel.builder().concepts(null).build());
 
-        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD);
 
         assertTrue(out.isEmpty());
         // PG lookup is never executed when the RDF detail has no concepts.
@@ -626,26 +651,30 @@ class OntologyServiceImplTest {
         when(detailExtractor.extractOntologyDetail(rawModel))
                 .thenReturn(OntologyDetailModel.builder().concepts(List.of()).build());
 
-        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD);
 
         assertTrue(out.isEmpty());
     }
 
     @Test
-    void getConceptsByIri_joinsConceptSlugsFromPg() {
+    void getConceptsByIri_joinsConceptSlugsFromPg_andResolvesConceptType() {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
                 .thenReturn(Optional.of(testOntologyEntity));
         Model rawModel = nonEmptyOntologyModel();
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
         when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(rawModel);
 
+        // Types carry the short OFN JSON-LD labels the detail extractor actually
+        // emits (ConceptDetailModel.types), not raw rdf:type IRIs.
         OntologyDetailModel.ConceptDetailModel c1 = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/1")
                 .name(Map.of("cs", "Pojem 1"))
+                .types(List.of(POJEM_JSON_LD, "Koncept", TRIDA_JSON_LD))
                 .build();
         OntologyDetailModel.ConceptDetailModel c2 = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/2")
                 .name(Map.of("cs", "Pojem 2"))
+                .types(List.of(POJEM_JSON_LD, "Koncept", VZTAH_JSON_LD))
                 .build();
         OntologyDetailModel.ConceptDetailModel c3UnmappedSlug = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/3")
@@ -668,15 +697,58 @@ class OntologyServiceImplTest {
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
                 .thenReturn(List.of(e1, e2, eNoise));
 
-        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD);
 
         assertEquals(3, out.size());
         assertEquals("http://example.org/c/1", out.get(0).getIri());
         assertEquals("pojem-1", out.get(0).getSlug());
+        assertEquals(ConceptType.TRIDA, out.get(0).getConceptType());
         assertEquals("http://example.org/c/2", out.get(1).getIri());
         assertEquals("pojem-2", out.get(1).getSlug());
+        assertEquals(ConceptType.VZTAH, out.get(1).getConceptType());
         assertEquals("http://example.org/c/3", out.get(2).getIri());
         assertNull(out.get(2).getSlug(), "Concepts without a PG metadata row should have null slug");
+        assertEquals(ConceptType.KONCEPT, out.get(2).getConceptType(),
+                "Concepts with no rdf:type role should fall back to KONCEPT");
+    }
+
+    @Test
+    void getConceptsByIri_nkdSource_omitsSlug_andResolvesConceptType() {
+        String iri = "https://data.gov.cz/zdroj/slovnik/test";
+
+        OntologyDetailModel.ConceptDetailModel c = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(iri + "/pojem/bar")
+                .name(Map.of("cs", "Bar"))
+                .types(List.of("http://www.w3.org/2002/07/owl#Class"))
+                .build();
+        OntologyDetailModel detail = OntologyDetailModel.builder()
+                .iri(iri)
+                .concepts(List.of(c))
+                .build();
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenReturn(new GetNkdOntologyDto(detail));
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(iri, SearchSource.NKD);
+
+        assertEquals(1, out.size());
+        assertEquals(iri + "/pojem/bar", out.get(0).getIri());
+        assertNull(out.get(0).getSlug(), "NKD concepts have no local slug");
+        assertEquals(ConceptType.TRIDA, out.get(0).getConceptType());
+        // ISMD path must not be touched for an NKD request.
+        verify(ontologyMetadataRepository, never()).findByGraphName(anyString());
+    }
+
+    @Test
+    void getConceptsByIri_nkdSource_noConcepts_returnsEmptyList() {
+        String iri = "https://data.gov.cz/zdroj/slovnik/test";
+
+        OntologyDetailModel detail = OntologyDetailModel.builder().iri(iri).concepts(null).build();
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenReturn(new GetNkdOntologyDto(detail));
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(iri, SearchSource.NKD);
+
+        assertTrue(out.isEmpty());
     }
 
     // ========== getAll / getBySlugs Tests (B2 — enrichEntitiesWithBatchMetadata) ==========

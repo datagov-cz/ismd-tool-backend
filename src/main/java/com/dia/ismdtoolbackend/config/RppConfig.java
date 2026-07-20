@@ -22,6 +22,8 @@ public class RppConfig {
     @Data
     public static class Cache {
         private long ttlHours = 24;
+        /** Background refresh cadence; fires before {@code ttlHours} so no user pays the cold rebuild. Default every 12h. */
+        private String refreshCron = "0 0 */12 * * *";
     }
 
     @Data

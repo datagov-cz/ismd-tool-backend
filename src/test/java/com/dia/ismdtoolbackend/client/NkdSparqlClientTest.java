@@ -289,17 +289,29 @@ class NkdSparqlClientTest {
     }
 
     @Test
-    void getPublishedResourcesList_publishedConceptIncluded_unpublishedExcluded() {
+    void getPublishedResourcesList_returnsOnlyRequestedIrisPresentUpstream() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
-        // Per-IRI CONSTRUCT — return non-empty Turtle for the published probe; lenient empty
-        // would otherwise short-circuit. We can't easily differentiate the two IRIs from a
-        // single WireMock stub, so this test exercises the path where BOTH IRIs are present
-        // upstream; combined with the empty-stub test (above) for the unpublished path,
-        // both branches of `isConceptPublishedInNKD` are covered.
-        stubTurtle("<" + CONCEPT_IRI + "> <http://www.w3.org/2000/01/rdf-schema#label> \"x\" .");
+        // Batched CONSTRUCT: the stub reports a type triple for CONCEPT_IRI only. The result
+        // is the intersection of the requested IRIs with the subjects NKD returned, so the
+        // published concept is included and the unpublished one is excluded.
+        stubTurtle("<" + CONCEPT_IRI + "> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+                + "<http://www.w3.org/2004/02/skos/core#Concept> .");
 
         List<String> out = newClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
-        assertEquals(2, out.size());
+        assertEquals(List.of(CONCEPT_IRI), out);
+    }
+
+    @Test
+    void getPublishedResourcesList_ignoresSubjectsNotRequested() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        // A lenient upstream may return triples about IRIs the caller never asked about;
+        // those must not leak into the published set.
+        stubTurtle("<https://data.gov.cz/zdroj/pojem/unrelated> "
+                + "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
+                + "<http://www.w3.org/2004/02/skos/core#Concept> .");
+
+        List<String> out = newClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI));
+        assertTrue(out.isEmpty());
     }
 
     @Test
