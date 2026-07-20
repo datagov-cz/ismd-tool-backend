@@ -20,13 +20,10 @@ and watches for **deviation** between the stored copy and the live NKD source. T
 triple (e.g. `rdfs:subClassOf` → the NKD IRI) is written to the graph as usual; the copy's triples
 are **not** — they are kept in the `materialized_triples` column, not in TDB2.
 
-> **Why PG-only (design decision, 2026-07-14).** Earlier the copy triples were also materialized
-> into the owner's TDB2 graph, co-resident with owned concepts. That co-location was a recurring bug
-> source: every graph reader had to strip the copies (they leaked into `pojmy` and `MinimalConceptDto`),
-> and the reconciler flagged them `RDF_ORPHAN`. An audit found **no read path needs the copy in TDB2**
-> — deviation compares live NKD against the PG `snapshot_json`, and surfacing reads the PG rows — so
-> the TDB2 copy was pure duplication. Dropping it makes "owner graph = owned concepts" true by
-> construction. See `.planning/snapshot-graph-separation-DESIGN.md`.
+> **Why PG-only.** Copies were once materialized into the owner's TDB2 graph as well, where they sat
+> co-resident with owned concepts and had to be filtered out by every graph reader. Keeping them out of
+> TDB2 makes "owner graph = owned concepts" true by construction. Rationale, rejected alternatives, and
+> verification: [decision record 0002](./decision-records/0002-retire-nkd-copy-tdb2-materialization.md).
 
 This is distinct from the `ConceptMetadataEntity.is_published` path. `is_published=true` means a
 concept's *own* IRI exists in NKD — a **working copy** — and is deviation-tracked against its NKD twin
