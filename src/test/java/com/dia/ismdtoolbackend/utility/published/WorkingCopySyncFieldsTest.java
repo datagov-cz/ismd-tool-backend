@@ -49,15 +49,54 @@ class WorkingCopySyncFieldsTest {
     }
 
     @Test
-    void deviatingKeys_altNameNeverOffered() {
-        // Alt names are lossy to map (Map<String,Object> → one string per language), so they are not
-        // acceptable — accepting would silently drop every label after the first.
+    void deviatingKeys_altNameIsOffered() {
+        // AltNameModel now holds a list per language, matching the deviation's Map<String,Object>,
+        // so alt names are syncable.
         PublishedConceptDeviationModel deviation = PublishedConceptDeviationModel.builder()
                 .alternativeName(deviating(Map.of("cs", "A"), Map.of("cs", "B")))
                 .build();
 
-        assertTrue(fields.deviatingSyncableKeys(deviation).isEmpty());
-        assertFalse(fields.syncableKeys().contains(WorkingCopySyncFields.ALT_NAME_KEY));
+        assertEquals(java.util.Set.of(WorkingCopySyncFields.ALT_NAME_KEY),
+                fields.deviatingSyncableKeys(deviation));
+        assertTrue(fields.syncableKeys().contains(WorkingCopySyncFields.ALT_NAME_KEY));
+    }
+
+    @Test
+    void apply_altName_keepsEveryLabelPerLanguage() {
+        // The reason this field was excluded: a language holding several alt labels must not lose any.
+        ConceptDetailModel nkd = ConceptDetailModel.builder()
+                .alternativeName(Map.of("cs", List.of("Obec", "Municipalita"), "en", List.of("Municipality")))
+                .build();
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+
+        fields.apply(WorkingCopySyncFields.ALT_NAME_KEY, edit, nkd);
+
+        assertEquals(List.of("Obec", "Municipalita"), edit.getAltNameModel().getAltName().get("cs"));
+        assertEquals(List.of("Municipality"), edit.getAltNameModel().getAltName().get("en"));
+    }
+
+    @Test
+    void apply_altName_acceptsSingleStringFromNkd() {
+        // NKD's Map<String,Object> carries a bare string when a language has exactly one label.
+        ConceptDetailModel nkd = ConceptDetailModel.builder()
+                .alternativeName(Map.of("cs", "Obec"))
+                .build();
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+
+        fields.apply(WorkingCopySyncFields.ALT_NAME_KEY, edit, nkd);
+
+        assertEquals(List.of("Obec"), edit.getAltNameModel().getAltName().get("cs"));
+    }
+
+    @Test
+    void apply_altName_nullFromNkd_yieldsEmptyMapNotCrash() {
+        ConceptDetailModel nkd = ConceptDetailModel.builder().build();
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+
+        fields.apply(WorkingCopySyncFields.ALT_NAME_KEY, edit, nkd);
+
+        assertTrue(edit.getAltNameModel().getAltName() == null
+                || edit.getAltNameModel().getAltName().isEmpty());
     }
 
     @Test

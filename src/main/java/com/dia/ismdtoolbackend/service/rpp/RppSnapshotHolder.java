@@ -8,6 +8,9 @@ import com.dia.ismdtoolbackend.models.rpp.RppCodeComparator;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.models.rpp.RppSnapshot;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -35,6 +38,27 @@ public class RppSnapshotHolder {
         this.client = client;
         this.clock = clock;
         this.ttl = Duration.ofHours(config.getCache().getTtlHours());
+    }
+
+    /**
+     * Loads the snapshot in the background once the app is up, so the first request that resolves an
+     * agenda/AIS reference does not pay for two full RPP downloads on its own thread (a ~20-40s stall,
+     * serialized behind {@code refreshLock} for every concurrent first reader).
+     *
+     * <p>Failures are swallowed: a cold lookup still refreshes on demand, and RPP being down must not
+     * stop the app from starting.
+     */
+    @Async("snapshotExecutor")
+    @EventListener(ApplicationReadyEvent.class)
+    public void warmOnStartup() {
+        try {
+            long started = System.currentTimeMillis();
+            RppSnapshot snap = get();
+            log.info("RPP snapshot warmed at startup: agendas={}, isvs={}, took={}ms",
+                    snap.getAgendas().size(), snap.getIsvs().size(), System.currentTimeMillis() - started);
+        } catch (RuntimeException e) {
+            log.warn("RPP startup warm failed; first lookup will refresh on demand. cause={}", e.getMessage());
+        }
     }
 
     public RppSnapshot get() {

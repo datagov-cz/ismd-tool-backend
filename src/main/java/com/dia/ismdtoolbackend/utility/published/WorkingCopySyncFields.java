@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.published;
 
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
+import com.dia.ismdtoolbackend.models.concept.AltNameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
@@ -8,8 +9,11 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -34,10 +38,9 @@ public class WorkingCopySyncFields {
     public static final String TYPE_KEY = "typ";
 
     /**
-     * Alt names are not syncable: the deviation carries {@code Map<String, Object>} (a language may hold
-     * several alt labels), while {@code AltNameModel} holds one string per language. Accepting it would
-     * silently drop every alt label after the first, so the key is left out of {@link #FIELDS} — it stays
-     * visible in the deviation, just not acceptable.
+     * The alt-name key. Syncable: {@code AltNameModel} holds a list of labels per language, matching the
+     * deviation's {@code Map<String, Object>} (a language may hold several alt labels), so accepting it
+     * is lossless.
      */
     public static final String ALT_NAME_KEY = "alternativní-název";
 
@@ -51,6 +54,8 @@ public class WorkingCopySyncFields {
     private static final List<SyncableField> FIELDS = List.of(
             new SyncableField("název", PublishedConceptDeviationModel::getName,
                     (edit, nkd) -> edit.setNameModel(nameModel(nkd))),
+            new SyncableField(ALT_NAME_KEY, PublishedConceptDeviationModel::getAlternativeName,
+                    (edit, nkd) -> edit.setAltNameModel(altNameModel(nkd))),
             new SyncableField("definice", PublishedConceptDeviationModel::getDefinition,
                     (edit, nkd) -> edit.setDefinitionModel(definitionModel(nkd))),
             new SyncableField("popis", PublishedConceptDeviationModel::getDescription,
@@ -131,6 +136,44 @@ public class WorkingCopySyncFields {
         com.dia.ismdtoolbackend.models.NameModel m = new com.dia.ismdtoolbackend.models.NameModel();
         m.setName(nkd.getName());
         return m;
+    }
+
+    /**
+     * Maps NKD's {@code lang -> String | List} alt names onto the edit model's {@code lang -> List} shape.
+     * Both forms occur because a language may carry one or several {@code skos:altLabel}s; normalising to
+     * a list keeps every label (the loss this field used to be excluded for).
+     */
+    private static AltNameModel altNameModel(ConceptDetailModel nkd) {
+        AltNameModel m = new AltNameModel();
+        Map<String, Object> published = nkd.getAlternativeName();
+        if (published == null) {
+            return m;
+        }
+        Map<String, List<String>> byLanguage = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : published.entrySet()) {
+            List<String> values = new ArrayList<>();
+            Object value = entry.getValue();
+            if (value instanceof Iterable<?> many) {
+                many.forEach(v -> addIfNotBlank(values, v));
+            } else {
+                addIfNotBlank(values, value);
+            }
+            if (!values.isEmpty()) {
+                byLanguage.put(entry.getKey(), values);
+            }
+        }
+        m.setAltName(byLanguage);
+        return m;
+    }
+
+    private static void addIfNotBlank(List<String> values, Object value) {
+        if (value == null) {
+            return;
+        }
+        String text = String.valueOf(value).trim();
+        if (!text.isEmpty()) {
+            values.add(text);
+        }
     }
 
     private static com.dia.ismdtoolbackend.models.concept.DefinitionModel definitionModel(ConceptDetailModel nkd) {

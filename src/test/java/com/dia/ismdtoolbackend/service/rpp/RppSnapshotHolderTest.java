@@ -167,4 +167,27 @@ class RppSnapshotHolderTest {
 
         assertTrue(holder.findIsvsByIri("i-iri").isEmpty());
     }
+
+    @Test
+    void warmOnStartupLoadsTheSnapshotSoTheFirstRequestDoesNot() {
+        when(client.fetchAllAgendas()).thenReturn(List.of(new RppAgenda("a-iri", "1", "Ag")));
+        when(client.fetchAllIsvs()).thenReturn(List.of(new RppIsvs("i-iri", "10", "Is", List.of())));
+
+        holder.warmOnStartup();
+
+        // A subsequent lookup is served from the warmed snapshot — the client is not hit again.
+        assertTrue(holder.findAgendaByIri("a-iri").isPresent());
+        verify(client, times(1)).fetchAllAgendas();
+        verify(client, times(1)).fetchAllIsvs();
+    }
+
+    @Test
+    void warmOnStartupSwallowsFailure_soAppStartIsNotBlocked() {
+        when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
+
+        // Must not propagate: RPP being down cannot stop the app from starting.
+        holder.warmOnStartup();
+
+        assertTrue(holder.peek().isEmpty());
+    }
 }

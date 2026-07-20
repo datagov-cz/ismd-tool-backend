@@ -289,9 +289,38 @@ trigger a whole-graph scan.
 verifications would have passed **vacuously** against a method that is no longer invoked. All updated to
 the 4-arg form and now assert the tag.
 
-## Deferred: alt-name sync (revisit — large blast radius)
+## Alt-name sync — CLOSED 2026-07-20 (option (a): widen the model)
 
-`alternativní-název` is the one deviating field the user cannot accept, and closing that gap is **not** a
+**Shipped.** `alternativní-název` is now syncable. Resolution: option **(a)** — `AltNameModel.altName`
+widened from `Map<String, String>` to `Map<String, List<String>>`, with a **tolerant reader** so the FE is
+not forced into a lockstep deploy.
+
+| Change | File |
+|---|---|
+| `Map<String, List<String>>` + tolerant deserializer | `models/concept/AltNameModel` |
+| Accepts `{"cs":"x"}` **and** `{"cs":["x","y"]}`; always emits the list form; trims, drops blanks | `models/concept/AltNameValuesDeserializer` (new) |
+| Multi-value RDF read (`byLanguage` collapses; this does not) | `utility/editor/RdfLangValues.allByLanguage` (new) |
+| Writes every label per language | `utility/editor/ConceptFieldUpdaters.updateAltNameModel` |
+| Same on the create path | `utility/creator/ConceptCreator.addAlternativeNames` |
+| Alt-name added to `FIELDS`; NKD's `Map<String,Object>` normalised losslessly | `utility/published/WorkingCopySyncFields` |
+
+> **This also fixed a live data-loss bug, independent of sync.** `RdfLangValues.byLanguage` builds a
+> `lang -> value` map with `put` in a loop — **last write wins** — and both write paths did the same. A
+> concept with two `cs` alt labels, edited through the tool, silently lost one. The widening removes that
+> collapse on the create **and** edit paths, not just in sync. Pinned by
+> `ConceptEditorLanguageMergeTest.altLabel_severalLabelsInOneLanguage_allSurvive`.
+
+**FE migration:** none required immediately. The old string-per-language shape is still accepted and
+wrapped into a single-element list. Responses always emit lists, so the FE must **read** lists before it
+can safely round-trip a concept that has multiple labels. Drop the string form once the FE has cut over.
+
+Tests: `AltNameModelDeserializationTest` (7), `WorkingCopySyncFieldsTest` alt-name cases (4, replacing
+`deviatingKeys_altNameNeverOffered` which asserted the old exclusion), 2 multi-value editor round-trips.
+Suite **1417/0** (4 skipped), from a 1407 baseline.
+
+### Original analysis (why it was deferred)
+
+`alternativní-název` was the one deviating field the user could not accept, and closing that gap was **not** a
 Phase C-sized change.
 
 **The mismatch.** NKD/detail model alt names as `Map<String, Object>` — one language key may hold *a
@@ -316,9 +345,13 @@ needs a coordinated FE cut-over (or a tolerant-reader migration accepting both s
 
 **Options when revisited:** (a) widen `AltNameModel` to `Map<String, List<String>>` and migrate the FE;
 (b) keep the API shape and add a sync-only multi-value path; (c) accept lossiness deliberately, with the
-drop surfaced to the user rather than silent. **Not decided.** Until then the key stays visible in the
-deviation and unacceptable in `/sync`, which is honest: the user sees the drift and cannot silently
-destroy data by "fixing" it.
+drop surfaced to the user rather than silent.
+
+> **Decided 2026-07-20: (a), with a tolerant reader.** Confirmed with the product owner that one language
+> legitimately holds several alt labels — so `Map<String,String>` is structurally wrong, not merely
+> awkward, which disqualifies (c). (b) was rejected because create/edit would stay lossy and the codebase
+> would carry two representations of one field. The tolerant reader removes (a)'s only real cost, the
+> lockstep FE deploy. See §"Alt-name sync — CLOSED" above.
 
 ## Final doc revision (do this last)
 
@@ -360,12 +393,12 @@ Filled in as phases land — this is the evidence the rework is done, not the ta
 | Target became owned → stale snapshot torn down | A | ✅ `editConcept_linkTargetBecameOwned_staleSnapshotRemoved` |
 | NKD outage, only-foreign candidates → fail-open (no 400) | A | ✅ pre-existing `editConcept_domainPointsAtNkd_nkdOutage_failsOpen` still green |
 | Warmer does not churn against the edit hook on owned targets | A | ✅ `warmGraph_targetIsLocallyOwnedWorkingCopy_notSnapshotted` |
-| ⚠ Unit-level only — no live NKD/Fuseki run yet (see dev smoke test below) | A | pending |
+| Live NKD/Fuseki run | A | ✅ smoke 2.1/2.2/2.3 — owned external-scheme domain → 200 (NKD never queried), 0 snapshot rows for the owned target, foreign published IRI → still 400 naming that IRI |
 | Working copy → `sourceTag=WORKING_COPY`; plain draft → `DRAFT` | B | ✅ `SourceTagDerivationTest` (concept + ontology, real generated mappers) |
 | Null `is_published` → tag omitted, not defaulted to DRAFT | B | ✅ `concept_nullPublished_tagOmitted` / `ontology_nullPublished_tagOmitted` |
 | Working-copy ontology may hold draft concepts (decision 7) | B | ✅ `workingCopyOntology_mayHoldDraftConcepts` |
 | Enum rename compiles; no `SELF_PUBLISHED` stragglers in `src/` | B | ✅ grep clean; full suite green |
-| ⚠ `sourceTag` not yet confirmed on a live JSON payload (FE contract) | B | pending dev smoke test |
+| `sourceTag` confirmed on a live JSON payload (FE contract) | B | ✅ smoke 1.2/1.3 — 381/381 concepts `WORKING_COPY` on `GET /api/concept/list`; ontology detail `WORKING_COPY`, matching PG |
 | Only accepted fields are applied; the rest stay null | C | ✅ `WorkingCopySyncFieldsTest.apply_onlyTouchesTheAcceptedField` |
 | Accepted values come from NKD, never the client | C | ✅ `apply_takesTheNkdValue_notTheLocalOne` + service re-derives from `fetchPublishedConcept` |
 | Type/`typ` never offered as an accepted field | C | ✅ `deviatingKeys_typeNeverOffered` + `validateAcceptedKeys` rejects it |
@@ -374,22 +407,22 @@ Filled in as phases land — this is the evidence the rework is done, not the ta
 | **Carrying the current `isPublic` preserves it (the fix)** | C | ✅ `carriedThroughIsPublic_preservesClassification` |
 | Range → `dataType` for VLASTNOST, `range` for VZTAH | C | ✅ `apply_rangeMapsToDataTypeForProperty_butRangeForRelationship` |
 | Mismatched hierarchy key no-ops, never throws | C | ✅ `apply_hierarchyKeyOnWrongType_isNoOpNotCrash` |
-| ⚠ Partial accept → `is_published=false`, tag→`DRAFT`, deviation gone | C | **not unit-tested** — `syncWorkingCopy`'s own branch logic needs a live/integration run |
-| ⚠ Accept-all → `is_published` stays `true`, tag stays `WORKING_COPY` | C | **not unit-tested** — same |
-| ⚠ Only the accepted fields actually change in Fuseki | C | **not unit-tested** — needs the dev smoke test |
-| ⚠ A sever leaves the concept's `LINK_TARGET` rows intact (decision 9) | C | **not tested** — assert during the smoke test |
+| Partial accept → `is_published=false`, tag→`DRAFT`, deviation gone | C | ✅ smoke 3.12/3.13/3.14 (id=537, 1 of 2 fields accepted) — `false`, `DRAFT`, deviation NULL |
+| Accept-all → `is_published` stays `true`, tag stays `WORKING_COPY` | C | ✅ smoke 3.6/3.7 (id=568) — sever branch did not fire |
+| Only the accepted fields actually change in Fuseki | C | ✅ smoke 3.10/3.11 (id=537) — accepted `definice` = sim value, unaccepted `popis` unchanged |
+| A sever leaves the concept's `LINK_TARGET` rows intact (decision 9) | C | ✅ smoke 3.15 — severed id=6 still owns snapshot row id=1 (`LINK_TARGET`); non-vacuous |
 | UC1 accept-all / remove endpoints still behave | C | pre-existing endpoints untouched; suite green |
-| UC2 delete = existing `DELETE /api/concept/{id}` | C | not re-verified this round — assert during the smoke test |
+| UC2 delete = existing `DELETE /api/concept/{id}/delete` | C | ✅ smoke 4.6 (id=22) — HTTP 200; metadata + snapshot rows + RDF all → 0. Note the `/delete` suffix; the bare path 403s |
 | Working-copy deviation stamped `WORKING_COPY` + source | D | ✅ `DeviationSourceTagTest.workingCopy_stampsOriginAndSource` |
 | Link-target deviation stamped `LINK_TARGET` + source | D | ✅ `linkTarget_stampsOriginAndSource` |
 | Source label comes from the NKD side, not the local one | D | ✅ both tests assert the published-side label |
 | Unnamed NKD concept → label null, IRI still present | D | ✅ `unnamedNkdConcept_sourceLabelIsNull_iriStillPresent` |
 | Stamping does not disturb the per-field diffs (additive) | D | ✅ `stamping_doesNotDisturbTheFieldDiff` |
-| ⚠ `linkSnapshots` actually appears on concept detail JSON | D | **not unit-tested** — needs the dev smoke test |
-| ⚠ Concept detail warms only when rows exist (no zero-row scan) | D | **not unit-tested** — same |
+| `linkSnapshots` actually appears on concept detail JSON | D | ✅ smoke 4.1 — flat list with `snapshotId`/`origin`/`linkPredicate`; re-confirmed 2026-07-20 on concept 24 |
+| Concept detail warms only when rows exist (no zero-row scan) | D | ✅ smoke 4.2 — payload half live-verified (no `linkSnapshots` on a zero-row concept); warmer half by control flow — `surfaceLinkSnapshots` early-returns at `rows.isEmpty()` *before* `warmGraph` (IntelliJ console not tailable) |
 | Full suite (baseline **1379/0**, 4 skipped as of 2026-07-15) | all | ✅ A: **1384/0** (+5) · B: **1391/0** (+7) · C: **1403/0** (+12) · D: **1407/0** (+4), 4 skipped |
-| Dev smoke test, `outbox.enabled=true`, live NKD, real Fuseki/PG | all | ▶ in progress 2026-07-18 (local stack) — see §Smoke-test run below |
-| Reconciler dry-run: zero `RDF_ORPHAN` for the synced concept | all | — pending Phase 5 |
+| Dev smoke test, `outbox.enabled=true`, live NKD, real Fuseki/PG | all | ✅ **COMPLETE 2026-07-20** (local stack; NKD simulated via local Fuseki) — Phases 0–5 all green, no stop-condition fired — see §Smoke-test run below |
+| Reconciler dry-run: zero `RDF_ORPHAN` for the synced concept | all | ✅ **`totalMismatches: 0`**, `RDF_ORPHAN: 0` over 598 concepts / 2 graphs (5.2) |
 
 ### Smoke-test run — 2026-07-18 (local stack, `slovník-registru-sčítacích-obvodů-a-budov.json-ld`)
 
@@ -457,11 +490,24 @@ Wiring proven: with an identical twin → `NO_DEVIATION`; a concept absent from 
 | 3.4 | `typ`/`alternativní-název` | deferred — not drifting here; the "not acceptable" half verified at 3.18 (sync guard) |
 
 > **⚠ Finding (perf, real — not a test artifact):** the **cold** first read of a concept detail after an app
-> restart hangs **~20–40s** (`region-soudržnosti`, repeatedly); warm reads are 0.04–0.07s. Cause is the
-> cold-cache referenced-concept enrichment + deviation fetch firing external SPARQL on first load (sim + RPP +
-> eSbirka), likely serialized by the NKD client's 4-way concurrency limiter. Real NKD would incur the same.
-> Self-clearing per concept. Mitigation during the run: pre-warm with one throwaway read before timed checks.
-> Worth a follow-up perf look (async warm on detail, or widen the limiter).
+> restart hangs **~20–40s** (`region-soudržnosti`, repeatedly); warm reads are 0.04–0.07s.
+>
+> **Root cause found 2026-07-20 — FIXED.** It was **not** the NKD 4-way limiter (the referenced-concept
+> enrichment is already batched into one SPARQL call per detail, so widening the limiter would not have
+> helped). The stall is `RppSnapshotHolder`: `resolveRppReferences` on the detail path calls
+> `findAgendaByIri`/`findIsvsByIri`, and on a cold snapshot that triggers `buildFresh()` —
+> **`fetchAllAgendas()` + `fetchAllIsvs()`, two full RPP downloads, synchronously on the request thread and
+> under a global `refreshLock`**, so every concurrent first reader queues behind it. Nothing warmed it at
+> startup; the first user request paid for it.
+>
+> **Fix:** `RppSnapshotHolder.warmOnStartup()` — `@Async("snapshotExecutor")` +
+> `@EventListener(ApplicationReadyEvent.class)` loads the snapshot in the background once the app is up.
+> Failures are swallowed (RPP down must not block startup; a cold lookup still refreshes on demand).
+> Pinned by `RppSnapshotHolderTest.warmOnStartupLoadsTheSnapshotSoTheFirstRequestDoesNot` and
+> `warmOnStartupSwallowsFailure_soAppStartIsNotBlocked`.
+>
+> ⏳ **Not yet measured live** — the app was down when the fix landed. Verify the cold read drops from
+> ~20–40s to sub-second after a restart (watch for the `RPP snapshot warmed at startup` log line).
 
 *3b — accept-ALL does NOT sever* (only `definice` drifting → accepting it is accept-all):
 
@@ -554,19 +600,56 @@ origin/source stamping). NKD simulated via local Fuseki `nkd-simulation` service
 | 4.1 | concept detail → `linkSnapshots` present | ✅ flat list, `snapshotId=2`, `origin=LINK_TARGET`, `predicate=BROADER_CLASS` (id=8) — ⚠row **closed** |
 | 4.2 | zero-row concept → no `linkSnapshots`, no warmer | ✅ payload: `linkSnapshots` absent/null (id=1). Warmer: **structurally unreachable** — `surfaceLinkSnapshots` early-returns at `rows.isEmpty()` (`ConceptServiceImpl:300-302`) *before* the `warmGraph` call (`:311-312`). Console-only logs (IntelliJ) not tailable, so warmer half confirmed by control flow, not log — ⚠row **closed** |
 | 4.3 | link snapshot deviation `.origin` | ✅ **`LINK_TARGET`**; `nkdConcept={iri,label:"Položka číselníku"}` served from the stored snapshot row (the row IS the cache — no live NKD call) — **D** |
-| 4.4 | `POST /{id}/localcopy/{snapshotId}/update` → re-snapshot, back in sync | ⏳ **NOT DONE** — fixture seeded (id=24 `číselník-3200…`, twin + target `číselník` in sim), needs an app restart to clear cache, then run |
+| 4.4 | `POST /{id}/localcopy/{snapshotId}/update` → re-snapshot, back in sync | ✅ **2026-07-20** HTTP 200 "Lokální kopie byla aktualizována."; concept 24 / snapshot id=4. PG `materialized_triples` moved to the drifted upstream value (`skos:definition` → `"DRIFT-B 4.4: …"@cs`), `snapshot_at` advanced, `status=NO_DEVIATION` — a real re-snapshot, not a timestamp touch — **C** |
 | 4.5 | `DELETE /{id}/localcopy/{snapshotId}` | ✅ HTTP 200; snapshot row id=2 gone **and** the `subClassOf → položka-číselníku` link triple gone (id=8) — **C** |
 | 4.6 | `DELETE /api/concept/{id}/delete` on a working copy | ✅ HTTP 200 "Pojem úspěšně smazán."; metadata + snapshot rows + RDF all → 0 (id=22) — ⚠row **closed** |
 
 > **Endpoint note:** concept delete is `DELETE /api/concept/{id}/**delete**` (not `/api/concept/{id}`) —
 > the bare path falls through the SecurityConfig allowlist → **403** (not 404). Worth knowing for FE.
 
-**Session state at pause (2026-07-18):**
-- App: profile `local` (IntelliJ), `nkd.sparql.endpoint` → `http://localhost:3030/nkd-simulation/sparql` (**must be restored** to `https://data.gov.cz/slovn%C3%ADky/sparql` at teardown).
-- Sim (`nkd-simulation`, in-memory): currently seeded with id=24's twin + target `číselník` for the pending 4.4.
-- Fixtures mutated this session: id=6 (severed→draft), id=8 (synced, snapshot removed), id=22 (**deleted**),
-  id=537 (severed→draft), id=2 (synced). Do NOT reuse these as pristine working copies.
-- **Resume at 4.4**, then Phase 5 (invariants after churn: cleanup verify, reconciler dry-run, outbox drained).
+**Phase 4 COMPLETE (6/6)** as of 2026-07-20.
+
+> **Finding (by design, but a fixture trap): a concept-detail GET re-snapshots link-target rows.**
+> `surfaceLinkSnapshots` → `NkdSnapshotWarmer.warmGraph` → `NkdSnapshotOwnerWarmer.warmOwner` calls
+> `createOrRefreshSnapshot`, which per its own comment "seeds the deviation cache (NO_DEVIATION at snapshot
+> time)". So a read **refreshes the stored copy from NKD and records `NO_DEVIATION` by construction**.
+> Observed live: drift seeded into the sim, then a detail GET → PG `materialized_triples` silently adopted the
+> drifted value and `snapshot_at` advanced, with no deviation ever surfaced. Consequence for testing: drift
+> introduced *before* a GET is absorbed and 4.4 becomes vacuous — **drift must be introduced after the row
+> settles, and the update endpoint called with no intervening detail read.** Consequence for product: an
+> upstream NKD change is adopted into the local copy by a passive read rather than by an explicit user
+> action, and `lastCheckedAt`/`NO_DEVIATION` cannot distinguish "verified unchanged" from "just overwritten".
+> Worth a design decision — it sits against the C4 "no-write GET" intent. Not a blocker for this rework.
+
+**Phase 5 — invariants after all the churn (2026-07-20):**
+
+| # | Check | Result |
+|---|---|---|
+| 5.1 | copy subjects in TDB2 (`nkd-snapshot-of` across all graphs) | ✅ **0** — the run's headline PG-only proof |
+| 5.2 | Reconciler dry-run | ✅ **`totalMismatches: 0`**, every category 0 (`RDF_ORPHAN`, `PG_MISSING_RDF`, `IRI_GRAPH_MISMATCH`, `GRAPH_ORPHAN`, `SUSPECTED_RENAME`, `EXCLUDED_NO_INSCHEME`, `RDF_NOT_OWNED_RESOLVABLE`) over 598 owned RDF concepts / 598 PG concepts / 2 graphs — ⚠row **closed** |
+| 5.3 | Outbox drained | ✅ 8 rows, **all `DONE`**, nothing stuck/pending |
+| 5.4 | Severed concept, RDF intact | ✅ id=6: `is_published=f`, **8 triples still at its original IRI**; only the flag changed |
+| 3.15 | Sever leaves `LINK_TARGET` rows intact (decision 9) | ✅ confirmed retroactively — id=6 still owns snapshot row id=1 (`LINK_TARGET`) after its sever; non-vacuous (the row exists) |
+
+> **5.2 is the one that mattered.** Per `nkd_snapshot_m3_orphan_bug`, materialized copies used to be flagged
+> `RDF_ORPHAN` (auto-repair would have deleted them). Copies are now PG-only and the scan reports zero
+> orphans — the rework **structurally closed** that bug rather than relocating it. The two severed concepts
+> (id=6, id=537 — `is_published=false`, RDF present at their own IRI) are a state the reconciler had never
+> seen in the wild; they produced no findings.
+
+**SMOKE TEST COMPLETE — Phases 0–5 all green.** No stop-condition ever fired.
+
+**Session state (2026-07-20):**
+- ⚠ **TEARDOWN STILL PENDING:** `application-local.properties:78` `nkd.sparql.endpoint` →
+  `http://localhost:3030/nkd-simulation/sparql`; **restore** to `https://data.gov.cz/slovn%C3%ADky/sparql`
+  before any real-NKD work. The `nkd-simulation` service in `fuseki-config.ttl` is harmless to leave.
+- Sim (in-memory) holds 16 triples: concept 24's twin + target `číselník` (definition drifted to `DRIFT-B`).
+  **It is wiped by any Fuseki restart** — that is what emptied it between the 07-18 and 07-20 sessions.
+- Fixtures mutated across both sessions: id=6 (severed→draft), id=8 (synced, snapshot removed),
+  id=22 (**deleted**), id=537 (severed→draft), id=2 (synced), id=24 (snapshot id=4 re-snapshotted to
+  `DRIFT-B`). Do NOT reuse these as pristine working copies.
+- Concept 24's PG snapshot row now carries a **simulated** upstream definition, not the real NKD one. A real
+  `/update` against live NKD will correct it; harmless, but do not read it as real NKD content.
 
 **Operational learnings for next session (see also `.planning/phase3-nkd-simulation-PREP.md`):**
 1. **Token TTL 300s is punishing** — several checks 401'd mid-run. Next time: issue a token immediately
