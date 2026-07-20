@@ -761,6 +761,7 @@ public class ConceptProcessor {
             Statement datasetStmt = codeListNode.getProperty(datasetProperty);
             if (datasetStmt != null && datasetStmt.getObject().isResource()) {
                 Map<String, Object> codeListObj = new LinkedHashMap<>();
+                codeListObj.put(JSON_IRI, codeListNode.getURI());
                 codeListObj.put("typ", CISELNIK_JSON_LD);
                 codeListObj.put(DATOVA_SADA_V_NKOD, datasetStmt.getObject().asResource().getURI());
                 conceptObj.put(INSTANCE_DEFINOVANY_CISELNIKEM, codeListObj);

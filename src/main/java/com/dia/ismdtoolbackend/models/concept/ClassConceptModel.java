@@ -19,6 +19,7 @@ public class ClassConceptModel extends ConceptCreateModel {
     private Boolean isPublic;
     private List<String> privacyProvisions;
     private List<String> broaderConcept;
+    private String codeListIri;
     private String codeListDataset;
 
     @Override

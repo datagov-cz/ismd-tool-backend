@@ -74,7 +74,9 @@ public class ConceptCreator {
                     });
                     obj = blankNode;
                 } else {
-                    obj = cleanModel.createResource(objRes.getURI());
+                    Resource named = cleanModel.createResource(objRes.getURI());
+                    copyCodeListSubject(objRes, named, cleanModel);
+                    obj = named;
                 }
             } else {
                 obj = stmt.getObject();
@@ -86,6 +88,24 @@ public class ConceptCreator {
         log.info("Created clean model with {} statements for: {}", cleanModel.size(), conceptURI);
 
         return cleanModel.getResource(conceptURI);
+    }
+
+    /**
+     * Copies a named číselník's own statements into the clean model. Only subjects typed
+     * {@code l111-2009:číselník} are carried over, so ordinary IRI references stay bare references.
+     */
+    private void copyCodeListSubject(Resource source, Resource target, Model cleanModel) {
+        Resource codeListType = source.getModel().getResource(OFN_NAMESPACE_LEGAL + CISELNIK);
+        if (!source.hasProperty(RDF.type, codeListType)) {
+            return;
+        }
+        source.listProperties().forEachRemaining(stmt -> {
+            Property pred = cleanModel.createProperty(stmt.getPredicate().getURI());
+            RDFNode obj = stmt.getObject().isResource()
+                    ? cleanModel.createResource(stmt.getObject().asResource().getURI())
+                    : stmt.getObject();
+            cleanModel.add(target, pred, obj);
+        });
     }
 
     private void initializeModel(ConceptCreateModel createModel) {
@@ -501,7 +521,7 @@ public class ConceptCreator {
                 classModel.getPrivacyProvisions());
         addDataClassification(classResource, classModel.getIsPublic(), classModel.getPrivacyProvisions());
         addBroaderConcept(classResource, classModel);
-        addCodeListDataset(classResource, classModel.getCodeListDataset());
+        addCodeListDataset(classResource, classModel.getCodeListIri(), classModel.getCodeListDataset());
     }
 
     private void addBroaderConcept(Resource classResource, ClassConceptModel classModel) {
@@ -532,7 +552,6 @@ public class ConceptCreator {
         addIsInPPDF(propertyResource, propModel.getIsInPPDF());
         addPropertyDataClassification(propertyResource, propModel);
         addPropertyGovernanceMetadata(propertyResource, propModel);
-        addCodeListDataset(propertyResource, propModel.getCodeListDataset());
     }
 
     private void addPropertyDataClassification(Resource propertyResource, PropertyConceptModel propModel) {
@@ -553,7 +572,6 @@ public class ConceptCreator {
        addIsInPPDF(relationshipResource, relModel.getIsInPPDF());
        addRelationshipDataClassification(relationshipResource, relModel);
        addRelationshipGovernanceMetadata(relationshipResource, relModel);
-       addCodeListDataset(relationshipResource, relModel.getCodeListDataset());
     }
 
     private void addDomain(Resource relationshipResource, RelationshipConceptModel relModel) {
@@ -916,8 +934,24 @@ public class ConceptCreator {
         return names.values().iterator().next();
     }
 
-    private void addCodeListDataset(Resource resource, String datasetUrl) {
-        if (datasetUrl == null || datasetUrl.trim().isEmpty()) return;
+    /**
+     * Writes the code-list structure: the concept links to the číselník, which is a named
+     * subject carrying its type and its NKOD dataset. Both IRIs are mandatory together.
+     */
+    private void addCodeListDataset(Resource resource, String codeListIri, String datasetUrl) {
+        boolean hasIri = codeListIri != null && !codeListIri.trim().isEmpty();
+        boolean hasDataset = datasetUrl != null && !datasetUrl.trim().isEmpty();
+
+        if (!hasIri && !hasDataset) return;
+
+        ConceptValidationUtil.validateCodeListIri(codeListIri);
+        ConceptValidationUtil.validateCodeListDataset(datasetUrl);
+        ConceptValidationUtil.validateCodeListCompleteness(codeListIri, datasetUrl);
+
+        if (!hasIri || !hasDataset) return;
+
+        String iri = codeListIri.trim();
+        String dataset = datasetUrl.trim();
 
         Property instanceDefinedByCodeList = ontModel.createProperty(
                 OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
@@ -926,9 +960,9 @@ public class ConceptCreator {
         Property datasetProperty = ontModel.createProperty(
                 OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
-        Resource codeListNode = ontModel.createResource();
+        Resource codeListNode = ontModel.createResource(iri);
         codeListNode.addProperty(RDF.type, codeListType);
-        codeListNode.addProperty(datasetProperty, ontModel.createResource(datasetUrl.trim()));
+        codeListNode.addProperty(datasetProperty, ontModel.createResource(dataset));
 
         resource.addProperty(instanceDefinedByCodeList, codeListNode);
     }

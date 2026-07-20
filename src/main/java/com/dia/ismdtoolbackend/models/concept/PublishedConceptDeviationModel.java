@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -85,6 +86,9 @@ public class PublishedConceptDeviationModel {
 
     @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
     private PropertyDeviation<List<String>> privacyProvisions;
+
+    @JsonProperty("instance-definovány-číselníkem")
+    private PropertyDeviation<CodeListDto> codeList;
 
     @Data
     @Builder

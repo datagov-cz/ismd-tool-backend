@@ -73,23 +73,31 @@ class ConceptEditValidator {
         return problems;
     }
 
-    /** Per-type bundle of the governance/privacy fields the domain rules check. */
+    /**
+     * Per-type bundle of the governance/privacy fields the domain rules check.
+     * The code-list fields are class-only — OFN scopes "má instance definované číselníkem"
+     * to Třída — so they are null for property and relationship models.
+     */
     private record GovernanceBundle(List<String> privacyProvisions, Boolean isPublic,
-                                    String codeListDataset, List<String> sharingMethod,
+                                    String codeListIri, String codeListDataset,
+                                    List<String> sharingMethod,
                                     String acquisitionMethod, String contentType,
                                     String entityName, String genderSuffix) {}
 
     private GovernanceBundle governanceOf(ConceptEditModel editModel) {
         if (editModel instanceof ClassConceptEditModel c) {
-            return new GovernanceBundle(c.getPrivacyProvisions(), c.getIsPublic(), c.getCodeListDataset(),
+            return new GovernanceBundle(c.getPrivacyProvisions(), c.getIsPublic(),
+                    c.getCodeListIri(), c.getCodeListDataset(),
                     c.getSharingMethod(), c.getAcquisitionMethod(), c.getContentType(), "Třída", "á");
         }
         if (editModel instanceof PropertyConceptEditModel p) {
-            return new GovernanceBundle(p.getPrivacyProvisions(), p.getIsPublic(), p.getCodeListDataset(),
+            return new GovernanceBundle(p.getPrivacyProvisions(), p.getIsPublic(),
+                    null, null,
                     p.getSharingMethod(), p.getAcquisitionMethod(), p.getContentType(), "Vlastnost", "á");
         }
         if (editModel instanceof RelationshipConceptEditModel r) {
-            return new GovernanceBundle(r.getPrivacyProvisions(), r.getIsPublic(), r.getCodeListDataset(),
+            return new GovernanceBundle(r.getPrivacyProvisions(), r.getIsPublic(),
+                    null, null,
                     r.getSharingMethod(), r.getAcquisitionMethod(), r.getContentType(), "Vztah", "ý");
         }
         return null;
@@ -105,11 +113,16 @@ class ConceptEditValidator {
         GovernanceBundle g = governanceOf(editModel);
         if (g == null) return;
 
+        // The code-list rules are no-ops for property/relationship, whose bundle carries
+        // null code-list fields — only Třída has a číselník.
         record Check(String field, Runnable rule) {}
         List<Check> checks = List.of(
                 new Check("isPublic", () -> ConceptValidationUtil.validatePrivacyPublicConflict(
                         g.privacyProvisions(), g.isPublic(), g.entityName(), g.genderSuffix())),
                 new Check("codeListDataset", () -> ConceptValidationUtil.validateCodeListDataset(g.codeListDataset())),
+                new Check("codeListIri", () -> ConceptValidationUtil.validateCodeListIri(g.codeListIri())),
+                new Check("codeListIri", () -> ConceptValidationUtil.validateCodeListCompleteness(
+                        g.codeListIri(), g.codeListDataset())),
                 new Check("governance", () -> ConceptValidationUtil.validateGovernanceFields(
                         g.sharingMethod(), g.acquisitionMethod(), g.contentType()))
         );

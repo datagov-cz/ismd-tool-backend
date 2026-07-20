@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
@@ -44,6 +45,7 @@ public class ConceptDeviationComparator {
         hasDeviations |= compareAndSetAis(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAgenda(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetPrivacyProvisions(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetCodeList(localConcept, publishedConcept, builder);
 
         builder.status(hasDeviations ?
                 PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS :
@@ -413,6 +415,22 @@ public class ConceptDeviationComparator {
             builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getPrivacyProvisions())
                     .publishedValue(published.getPrivacyProvisions())
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    private boolean compareAndSetCodeList(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        if (areDifferent(local.getCodeList(), published.getCodeList())) {
+            builder.codeList(PublishedConceptDeviationModel.PropertyDeviation.<CodeListDto>builder()
+                    .localValue(local.getCodeList())
+                    .publishedValue(published.getCodeList())
                     .isDifferent(true)
                     .build());
             return true;
