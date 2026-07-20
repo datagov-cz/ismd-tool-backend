@@ -128,6 +128,26 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
+    void poznamkyPodcarouFragmentsBecomeRoots() {
+        // Footnotes hang off <versionIri>/dokument/poznamkypodcarou, a second structural
+        // root alongside /dokument/norma. They carry real text and must not be dropped.
+        // (Live: labour law 262/2006 has 123 such footnote fragments, all text-bearing.)
+        String poznamkyRoot = VERSION_IRI + "/dokument/poznamkypodcarou";
+        String par = VERSION_IRI + "/par_1";
+        String fn1 = poznamkyRoot + "/frag_1";
+        String fn2 = poznamkyRoot + "/frag_2";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(fn1, poznamkyRoot, "1)", "frag", "9001"),
+                new FragmentModel(fn2, poznamkyRoot, "2)", "frag", "9002")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals(3, out.size());
+        assertEquals(par, out.get(0).getIri());
+        assertEquals(fn1, out.get(1).getIri());
+        assertEquals(fn2, out.get(2).getIri());
+    }
+
+    @Test
     void multiRootIsSupported() {
         String par1 = VERSION_IRI + "/par_1";
         String par2 = VERSION_IRI + "/par_2";
@@ -141,21 +161,94 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
-    void orphanRowsAreDroppedWithWarn() {
-        // par_1 is a root; "ghost" claims a parent that isn't in the result set.
-        String par = VERSION_IRI + "/par_1";
-        String ghost = VERSION_IRI + "/par_1/odst_1";
-        String missingParent = VERSION_IRI + "/par_99/odst_5";
+    void fragUnderParWhoseGrouperIsMissing_reparentsToNearestExistingAncestor() {
+        // e-Sbírka nests text fragments under intermediate frag_* grouping nodes that
+        // má-fragment-znění never returns. The child's parent IRI (.../par_1/frag_X) is not
+        // in the set; walking the IRI path up one segment lands on par_1, which IS. The text
+        // fragment must attach to par_1, not be dropped. (Live: 151/152 such rows on 262/2006.)
+        String par = NORMA_ROOT + "/par_1";
+        String missingGrouper = par + "/frag_6660499";
+        String text = missingGrouper + "/text_1";
         when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(ghost, par, "§ 1 odst. 1", "odst", "0002"),
-                new FragmentModel(missingParent, missingParent + "-no-such",
-                        "ghost", "odst", "0003")));
+                new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0002")));
         List<FragmentDto> out = service.getFragments(VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(1, out.get(0).getChildren().size());
-        assertEquals(ghost, out.get(0).getChildren().get(0).getIri());
+        assertEquals(text, out.get(0).getChildren().get(0).getIri());
+    }
+
+    @Test
+    void prilohyDokumentContainerIsAThirdRoot() {
+        // Besides norma and poznamkypodcarou, annexes live under <V>/dokument/prilohy.
+        // A priloha fragment whose grouper parent is missing must walk up to the prilohy
+        // container and become a root. (Live: priloha_0 on 262/2006.)
+        String par = NORMA_ROOT + "/par_1";
+        String prilohyRoot = VERSION_IRI + "/dokument/prilohy";
+        String priloha = prilohyRoot + "/priloha_0";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(priloha, prilohyRoot + "/frag_6668611", "Příloha", "priloha", "9999")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals(2, out.size());
+        assertEquals(par, out.get(0).getIri());
+        assertEquals(priloha, out.get(1).getIri());
+    }
+
+    @Test
+    void realisticMixedShape_losesNoFragment() {
+        // End-to-end regression mirroring labour law 262/2006's structure: a norma subtree
+        // with a text fragment nested under a MISSING frag_* grouper, a footnote root, and an
+        // annex whose grouper is also missing. Every input row must appear in the tree exactly
+        // once. (Pre-fix, ~11% of rows like these were dropped.)
+        String cast = NORMA_ROOT + "/cast_1";
+        String par = cast + "/par_1";
+        String missingGrouper = par + "/frag_100";
+        String text = missingGrouper + "/text_1";
+        String footnote = VERSION_IRI + "/dokument/poznamkypodcarou/frag_9";
+        String annexGrouper = VERSION_IRI + "/dokument/prilohy/frag_50";
+        String annex = VERSION_IRI + "/dokument/prilohy/priloha_0";
+
+        List<FragmentModel> rows = List.of(
+                new FragmentModel(cast, NORMA_ROOT, "Část 1", "cast", "0001"),
+                new FragmentModel(par, cast, "§ 1", "par", "0002"),
+                new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0003"),
+                new FragmentModel(footnote, VERSION_IRI + "/dokument/poznamkypodcarou", "1)", "frag", "0004"),
+                new FragmentModel(annex, annexGrouper, "Příloha 1", "priloha", "0005"));
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(rows);
+
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+
+        // Walk the assembled tree and collect every IRI; must equal the 5 input IRIs.
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.Deque<FragmentDto> stack = new java.util.ArrayDeque<>(out);
+        while (!stack.isEmpty()) {
+            FragmentDto n = stack.pop();
+            assertTrue(seen.add(n.getIri()), "fragment appeared twice: " + n.getIri());
+            stack.addAll(n.getChildren());
+        }
+        assertEquals(java.util.Set.of(cast, par, text, footnote, annex), seen,
+                "every input fragment must appear exactly once — no text lost");
+
+        // Roots: cast (norma child), footnote, annex. text/par are nested, not roots.
+        assertEquals(3, out.size());
+    }
+
+    @Test
+    void unresolvableParentIsSurfacedAsRootNotDropped() {
+        // A parent that resolves to neither an existing node nor a dokument container is a
+        // genuine data anomaly. We surface the fragment as a root (its text is never lost)
+        // and warn, rather than silently dropping it.
+        String par = NORMA_ROOT + "/par_1";
+        String ghost = VERSION_IRI + "/par_99/odst_5";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(ghost, ghost + "-no-such", "ghost", "odst", "0003")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals(2, out.size());
+        assertEquals(par, out.get(0).getIri());
+        assertEquals(ghost, out.get(1).getIri());
     }
 
     @Test
@@ -201,6 +294,185 @@ class EsbirkaServiceImplTest {
         // We don't assert the warn-log message here (covered by absence of failure);
         // but the tree itself still assembles fully.
         assertEquals(5_001, out.size());
+    }
+
+    // -------- getLawContent: number/year resolution --------
+
+    @Test
+    void getLawContentParsesNumberYearAndResolvesLatestVersion() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        String olderIri = LAW_IRI + "/2020-01-01";
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true),
+                new LawVersionModel(olderIri, LocalDate.of(2020, 1, 1), null, "t", false)));
+        String par = VERSION_IRI + "/par_1";
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001", "<var>§ 1</var>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+
+        assertEquals(LAW_IRI, out.getLawIri());
+        assertEquals("49/1997 Sb.", out.getCitace());
+        assertEquals(VERSION_IRI, out.getVersionIri());
+        assertEquals(LocalDate.of(2026, 4, 1), out.getVersionDate());
+        assertEquals(2, out.getVersions().size());
+        assertEquals(1, out.getFragments().size());
+        assertEquals("<var>§ 1</var>", out.getFragments().get(0).getBodyHtml());
+    }
+
+    @Test
+    void getLawContentAssemblesNestedBodyHtmlInDocumentOrder() {
+        // Server-side bodyHtml: a document-ordered, nested tree of <section> wrappers, each
+        // carrying its fragment's body (null for structural nodes) followed by its children.
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+
+        // cast_1 (structural, no body) -> par_1 (body) -> odst_1 (body), then par_2 (body).
+        String cast = NORMA_ROOT + "/cast_1";
+        String par1 = cast + "/par_1";
+        String odst = par1 + "/odst_1";
+        String par2 = NORMA_ROOT + "/par_2";
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(cast, NORMA_ROOT, "Část 1", "cast", "0001", null),
+                new FragmentModel(par1, cast, "§ 1", "par", "0002", "<p>§ 1</p>"),
+                new FragmentModel(odst, par1, "§ 1 odst. 1", "odst", "0003", "<p>(1)</p>"),
+                new FragmentModel(par2, NORMA_ROOT, "§ 2", "par", "0004", "<p>§ 2</p>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+
+        String body = out.getBodyHtml();
+        // Document order: §1 before its odst, both before §2.
+        assertTrue(body.indexOf("<p>§ 1</p>") < body.indexOf("<p>(1)</p>"), "§ 1 must precede its odst");
+        assertTrue(body.indexOf("<p>(1)</p>") < body.indexOf("<p>§ 2</p>"), "odst must precede § 2");
+        // Structural cast_1 contributes a wrapper but no body literal of its own.
+        assertTrue(body.contains("data-kind=\"cast\""), "structural node still wrapped");
+        assertTrue(body.contains("data-kind=\"odst\""));
+        // Each section also carries the full fragment IRI in data-iri (FE navigation hook)
+        // alongside the domain-stripped data-eli path.
+        assertTrue(body.contains("data-iri=\"" + par1 + "\""),
+                "section must expose the full fragment IRI in data-iri");
+        assertTrue(body.contains("data-eli=\"/eli/cz/sb/2006/187/2026-04-01/dokument/norma/cast_1/par_1\""),
+                "data-eli still carries the domain-stripped path");
+        // Nesting: odst_1's section is INSIDE par_1's section (no closing </section> between
+        // the §1 body and the (1) body — the odst opens before §1's section closes).
+        int par1Body = body.indexOf("<p>§ 1</p>");
+        int odstBody = body.indexOf("<p>(1)</p>");
+        assertEquals(0, countCloseSections(body, par1Body, odstBody),
+                "odst must nest inside par_1 — no </section> between their bodies");
+        // Balanced wrappers: one <section> open and close per fragment (4 fragments).
+        assertEquals(4, countOccurrences(body, "<section "), "one wrapper per fragment");
+        assertEquals(4, countOccurrences(body, "</section>"), "wrappers must be balanced");
+        // bodyHtml is emitted as-is (not escaped) — raw <p> tags survive.
+        assertTrue(body.contains("<p>§ 1</p>"));
+        // The tree is still present alongside the assembled body.
+        assertEquals(2, out.getFragments().size());
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int n = 0, i = 0;
+        while ((i = haystack.indexOf(needle, i)) >= 0) { n++; i += needle.length(); }
+        return n;
+    }
+
+    private static int countCloseSections(String s, int from, int to) {
+        return countOccurrences(s.substring(from, to), "</section>");
+    }
+
+    @Test
+    void getLawContentEmptyContentYieldsEmptyBodyHtml() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+        assertEquals("", out.getBodyHtml());
+        assertTrue(out.getFragments().isEmpty());
+    }
+
+    @Test
+    void getLawContentPicksLatestEvenWhenNotFirstRow() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        String latestIri = LAW_IRI + "/2026-04-01";
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
+                new LawVersionModel(latestIri, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(latestIri)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+        assertEquals(latestIri, out.getVersionIri());
+    }
+
+    @Test
+    void getLawContentTrimsAndStripsSbSuffix() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("  49/1997 Sb. ");
+        assertEquals(LAW_IRI, out.getLawIri());
+    }
+
+    @Test
+    void getLawContentUnknownLawThrows() {
+        when(client.findLawByNumberYear("999", 1997)).thenReturn(java.util.Optional.empty());
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("999/1997"));
+        assertEquals("Právní akt č. 999/1997 nebyl nalezen.", ex.getMessage());
+    }
+
+    @Test
+    void getLawContentRejectsPartialInput() {
+        // bare number is the FE's cue to use /law/search instead
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("49"));
+        assertEquals("Referenci zadejte ve tvaru číslo/rok (např. 49/1997).", ex.getMessage());
+    }
+
+    @Test
+    void getLawContentRejectsNonNumericYear() {
+        assertThrows(IllegalArgumentException.class, () -> service.getLawContent("49/abc"));
+    }
+
+    @Test
+    void getLawContentRejectsNonNumericNumber() {
+        assertThrows(IllegalArgumentException.class, () -> service.getLawContent("abc/1997"));
+    }
+
+    @Test
+    void getLawContentRejectsBlank() {
+        assertThrows(IllegalArgumentException.class, () -> service.getLawContent("  "));
+    }
+
+    // -------- normalizeLawRef: @Cacheable key generator --------
+
+    @Test
+    void normalizeLawRefCollapsesEquivalentRefsToOneKey() {
+        // normalizeLawRef is the SpEL key expression for @Cacheable on getLawContent
+        // (#root.target.normalizeLawRef(#lawRef)). It MUST collapse trim/Sb.-suffix
+        // variants to a single key, or equivalent refs each store a separate ~2 MB entry.
+        assertEquals("49/1997", service.normalizeLawRef("49/1997"));
+        assertEquals("49/1997", service.normalizeLawRef("  49/1997  "));
+        assertEquals("49/1997", service.normalizeLawRef("49/1997 Sb."));
+        assertEquals("49/1997", service.normalizeLawRef("  49/1997 Sb. "));
+        // Leading-zero year is normalized via Integer parse (1997, not "1997 ").
+        assertEquals("262/2006", service.normalizeLawRef("262/2006 Sb."));
+    }
+
+    @Test
+    void normalizeLawRefRejectsPartialInputLikeGetLawContent() {
+        // Same parser as getLawContent, so the cache-key path rejects junk identically
+        // rather than producing a bogus key.
+        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("49"));
+        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("abc/1997"));
+        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("  "));
     }
 
     // -------- DTO mapping edge cases --------

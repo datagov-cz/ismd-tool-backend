@@ -13,6 +13,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,7 @@ public class OntologyDetailModel {
 
     @Data
     @Builder
+    @Jacksonized
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ConceptDetailModel {
 
@@ -97,21 +99,31 @@ public class OntologyDetailModel {
         @JsonProperty("nadřazená-vlastnost")
         private List<String> broaderProperties;
 
+        // Source lists are always serialized — empty array, never null/absent —
+        // so the FE has a stable contract (see OntologyDetailExtractor.nullToEmpty
+        // / buildResolvedSources / buildNonLegalSources). Overrides the class-level
+        // @JsonInclude(NON_NULL).
+        @JsonInclude()
         @JsonProperty("definující-ustanovení-právního-předpisu")
         private List<String> definingLegalSources;
 
+        @JsonInclude()
         @JsonProperty("související-ustanovení-právního-předpisu")
         private List<String> relatedLegalSources;
 
+        @JsonInclude()
         @JsonProperty("definující-ustanovení-právního-předpisu-resolved")
         private List<ResolvedLegalSourceDto> definingLegalSourcesResolved;
 
+        @JsonInclude()
         @JsonProperty("související-ustanovení-právního-předpisu-resolved")
         private List<ResolvedLegalSourceDto> relatedLegalSourcesResolved;
 
+        @JsonInclude()
         @JsonProperty("definující-nelegislativní-zdroj")
         private List<NonLegalSourceDto> definingNonLegalSources;
 
+        @JsonInclude()
         @JsonProperty("související-nelegislativní-zdroj")
         private List<NonLegalSourceDto> relatedNonLegalSources;
 
@@ -139,9 +151,11 @@ public class OntologyDetailModel {
         @JsonProperty("agenda-resolved")
         private RppAgenda agendaResolved;
 
+        @JsonInclude()
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
         private List<String> privacyProvisions;
 
+        @JsonInclude()
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje-resolved")
         private List<ResolvedLegalSourceDto> privacyProvisionsResolved;
 
@@ -153,8 +167,9 @@ public class OntologyDetailModel {
          * Pre-resolved metadata for every referenced concept IRI in this detail
          * (exact matches, broader classes/relations/properties, domain, range,
          * and each property/relationship IRI). Keyed by concept IRI; unresolved
-         * IRIs are absent from the map. Replaces the FE's secondary call to
-         * {@code POST /api/ontology/concepts/resolve} for the detail page.
+         * IRIs are absent from the map. Populated inline in the detail flow by
+         * {@code ReferencedConceptsEnricher}, so the FE needs no secondary
+         * resolve round-trip for the detail page.
          */
         @JsonProperty("referencované-pojmy-resolved")
         private Map<String, ResolvedConceptDto> referencedConceptsResolved;

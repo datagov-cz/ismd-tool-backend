@@ -70,6 +70,12 @@ public class OntologyEditor {
 
         boolean committed = false;
         try {
+            boolean iriChanged = nameChanged && !iri.equals(newOntologyIRI);
+            if (iriChanged) {
+                renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
+                updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
+            }
+
             if (editModel.getNameModel() != null) {
                 updateName(existingOntology, editModel.getNameModel(), model, statementsToRemove, statementsToAdd,
                         newOntologyIRI);
@@ -78,11 +84,6 @@ public class OntologyEditor {
             if (editModel.getDescriptionModel() != null) {
                 updateDescription(existingOntology, editModel.getDescriptionModel(), model, statementsToRemove,
                         statementsToAdd, newOntologyIRI);
-            }
-
-            if (nameChanged && !iri.equals(newOntologyIRI)) {
-                renameOntologyIRI(model, iri, newOntologyIRI, statementsToRemove, statementsToAdd);
-                updateAllConceptIRIs(model, oldNamespace, newNamespace, statementsToRemove, statementsToAdd);
             }
 
             model.remove(statementsToRemove.toArray(new Statement[0]));
@@ -100,7 +101,10 @@ public class OntologyEditor {
             return new EditResult(newOntologyIRI, iriActuallyChanged);
 
         } catch (Exception e) {
-            throw new OntologyException("Failed to edit ontology: " + iri);
+            log.error("Failed to edit ontology: {}", iri, e);
+            OntologyException ex = new OntologyException("Failed to edit ontology: " + iri + " - " + e.getMessage());
+            ex.initCause(e);
+            throw ex;
         } finally {
             if (supportsTransactions && !committed) {
                 try {
@@ -117,31 +121,10 @@ public class OntologyEditor {
                            Set<Statement> toRemove, Set<Statement> toAdd, String newOntologyIRI) {
         if (nameModel == null || nameModel.getName() == null) return;
 
-        Map<String, String> existingNames = getAllPropertyValuesWithLanguage(existingOntology, SKOS.prefLabel);
-
-        Map<String, String> newNames = nameModel.getName();
-
-        Map<String, String> mergedNames = new HashMap<>(existingNames);
-        for (Map.Entry<String, String> entry : newNames.entrySet()) {
-            if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
-                mergedNames.remove(entry.getKey());
-            } else {
-                mergedNames.put(entry.getKey(), entry.getValue().trim());
-            }
-        }
-
-        if (!existingNames.equals(mergedNames)) {
-            Resource ontologyResource = model.getResource(newOntologyIRI);
-            removeAllByPredicate(existingOntology, SKOS.prefLabel, toRemove, toAdd);
-
-            for (Map.Entry<String, String> entry : mergedNames.entrySet()) {
-                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                        ? entry.getKey()
-                        : DEFAULT_LANG;
-                toAdd.add(model.createStatement(ontologyResource, SKOS.prefLabel,
-                        model.createLiteral(entry.getValue(), languageTag)));
-            }
-        }
+        // Name is required: an empty incoming map is a no-op (merged == existing).
+        Map<String, String> existing = RdfLangValues.byLanguage(existingOntology, SKOS.prefLabel);
+        applyMergedLangProperty(model.getResource(newOntologyIRI), SKOS.prefLabel,
+                existing, nameModel.getName(), model, toRemove, toAdd);
     }
 
     private void updateDescription(Resource existingOntology, DescriptionModel descModel, Model model,
@@ -149,38 +132,53 @@ public class OntologyEditor {
         if (descModel == null) return;
 
         Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
+        Resource writeOntology = model.getResource(newOntologyIRI);
+        Map<String, String> existing = RdfLangValues.byLanguage(existingOntology, descProperty);
+        Map<String, String> incoming = descModel.getDescription();
 
-        Map<String, String> existingDescriptions = getAllPropertyValuesWithLanguage(existingOntology, descProperty);
-
-        Map<String, String> newDescriptions = descModel.getDescription();
-
-        if (newDescriptions == null || newDescriptions.isEmpty()) {
-            if (!existingDescriptions.isEmpty()) {
-                removeAllByPredicate(existingOntology, descProperty, toRemove, toAdd);
+        // An empty/absent incoming map clears the field entirely. Removal targets the
+        // write IRI so a rename+clear also cancels the stale copy renameOntologyIRI
+        // staged onto the new IRI (the old-IRI live triples are removed by rename).
+        if (incoming == null || incoming.isEmpty()) {
+            if (!existing.isEmpty()) {
+                RdfLangValues.removeAllByPredicate(writeOntology, descProperty, toRemove, toAdd);
             }
             return;
         }
 
-        Map<String, String> mergedDescriptions = new HashMap<>(existingDescriptions);
-        for (Map.Entry<String, String> entry : newDescriptions.entrySet()) {
+        applyMergedLangProperty(writeOntology, descProperty,
+                existing, incoming, model, toRemove, toAdd);
+    }
+
+    /**
+     * Merges {@code incoming} ({@code lang -> value}, already read from the old IRI)
+     * into {@code existing} and, if changed, removes {@code property} from
+     * {@code writeResource} and rewrites the merged values onto it. Targeting the
+     * write IRI for removal cancels the stale copy of this property that
+     * {@code renameOntologyIRI} stages onto the new IRI on a rename; with no rename
+     * the write IRI == old IRI, so it behaves as a plain remove-then-rewrite.
+     */
+    private void applyMergedLangProperty(Resource writeResource, Property property,
+                                         Map<String, String> existing, Map<String, String> incoming,
+                                         Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        Map<String, String> merged = new HashMap<>(existing);
+        for (Map.Entry<String, String> entry : incoming.entrySet()) {
             if (entry.getValue() == null || entry.getValue().trim().isEmpty()) {
-                mergedDescriptions.remove(entry.getKey());
+                merged.remove(entry.getKey());
             } else {
-                mergedDescriptions.put(entry.getKey(), entry.getValue().trim());
+                merged.put(entry.getKey(), entry.getValue().trim());
             }
         }
 
-        if (!existingDescriptions.equals(mergedDescriptions)) {
-            Resource ontologyResource = model.getResource(newOntologyIRI);
-            removeAllByPredicate(existingOntology, descProperty, toRemove, toAdd);
+        if (existing.equals(merged)) return;
 
-            for (Map.Entry<String, String> entry : mergedDescriptions.entrySet()) {
-                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                        ? entry.getKey()
-                        : DEFAULT_LANG;
-                toAdd.add(model.createStatement(ontologyResource, descProperty,
-                        model.createLiteral(entry.getValue(), languageTag)));
-            }
+        RdfLangValues.removeAllByPredicate(writeResource, property, toRemove, toAdd);
+        for (Map.Entry<String, String> entry : merged.entrySet()) {
+            String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                    ? entry.getKey()
+                    : DEFAULT_LANG;
+            toAdd.add(model.createStatement(writeResource, property,
+                    model.createLiteral(entry.getValue(), languageTag)));
         }
     }
 
@@ -217,6 +215,8 @@ public class OntologyEditor {
 
         Set<Resource> conceptsToUpdate = new HashSet<>();
         String oldOntologyIRI = oldNamespace.replaceAll("[/#]$", "");
+        String newOntologyIRI = newNamespace.replaceAll("[/#]$", "");
+        Resource newScheme = model.getResource(newOntologyIRI);
 
         ResIterator resIter = model.listSubjects();
         while (resIter.hasNext()) {
@@ -242,10 +242,18 @@ public class OntologyEditor {
             while (iter.hasNext()) {
                 Statement stmt = iter.next();
                 toRemove.add(stmt);
+                // A concept's skos:inScheme names the ontology; on rename force it to the new
+                // ontology IRI. Copying the object verbatim leaves it on the old (or a stale
+                // pre-rename) scheme, so the concept's IRI no longer prefix-matches its scheme
+                // and OWNED_CONCEPT_PATTERN stops resolving it (invisible to resolver/upload,
+                // mis-flagged PG_MISSING_RDF by the reconciler).
+                RDFNode newObject = stmt.getPredicate().equals(SKOS.inScheme)
+                        ? newScheme
+                        : stmt.getObject();
                 toAdd.add(model.createStatement(
                         model.getResource(newConceptIRI),
                         stmt.getPredicate(),
-                        stmt.getObject()
+                        newObject
                 ));
             }
 
@@ -262,60 +270,12 @@ public class OntologyEditor {
         }
     }
 
-    private void removeAllByPredicate(Resource resource, Property property, Set<Statement> toRemove, Set<Statement> toAdd) {
-        StmtIterator iter = resource.listProperties(property);
-        while (iter.hasNext()) {
-            toRemove.add(iter.next());
-        }
-
-        toAdd.removeIf(stmt ->
-                stmt.getSubject().equals(resource) &&
-                        stmt.getPredicate().equals(property)
-        );
-    }
-
-    private Map<String, String> getAllPropertyValuesWithLanguage(Resource resource, Property property) {
-        Map<String, String> valuesWithLang = new HashMap<>();
-        StmtIterator iter = resource.listProperties(property);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getObject().isLiteral()) {
-                Literal literal = stmt.getObject().asLiteral();
-                String lang = literal.getLanguage() != null && !literal.getLanguage().isEmpty()
-                        ? literal.getLanguage()
-                        : DEFAULT_LANG;
-                valuesWithLang.put(lang, literal.getString());
-            }
-        }
-        return valuesWithLang;
-    }
-
     private String getNameForUriGeneration(NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey("cs")) {
-            return names.get("cs");
-        }
-        if (names.containsKey(DEFAULT_LANG)) {
-            return names.get(DEFAULT_LANG);
-        }
-        return names.values().iterator().next();
+        return RdfLangValues.preferredName(nameModel == null ? null : nameModel.getName());
     }
 
     private String getNameForUriGeneration(Resource resource) {
-        Map<String, String> existingNames = getAllPropertyValuesWithLanguage(resource, SKOS.prefLabel);
-        if (existingNames.isEmpty()) {
-            return "";
-        }
-        if (existingNames.containsKey("cs")) {
-            return existingNames.get("cs");
-        }
-        if (existingNames.containsKey(DEFAULT_LANG)) {
-            return existingNames.get(DEFAULT_LANG);
-        }
-        return existingNames.values().iterator().next();
+        return RdfLangValues.preferredName(RdfLangValues.byLanguage(resource, SKOS.prefLabel));
     }
 
     public static class EditResult {

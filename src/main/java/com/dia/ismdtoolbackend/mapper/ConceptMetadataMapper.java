@@ -23,6 +23,7 @@ public interface ConceptMetadataMapper {
 
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "comments", ignore = true)
+    @Mapping(target = "ontologySlug", source = "ontologyMetadata.slug")
     ConceptMetadataModel toDto(ConceptMetadataEntity entity);
 
     default CommentModel commentEntityToModel(CommentEntity entity) {
@@ -33,8 +34,8 @@ public interface ConceptMetadataMapper {
         model.setId(entity.getId());
         model.setUserId(entity.getUserId());
         model.setComment(entity.getComment());
-        model.setOntologyIRI(entity.getOntologyIRI());
-        model.setConceptIRI(entity.getConceptIRI());
+        model.setOntologyIRI(entity.getOntologyMetadata() == null ? null : entity.getOntologyMetadata().getGraphName());
+        model.setConceptIRI(entity.getConceptMetadata() == null ? null : entity.getConceptMetadata().getConceptIri());
         model.setPostedTime(entity.getPostedTime());
         return model;
     }

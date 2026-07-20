@@ -141,7 +141,6 @@ public class SecurityConfig {
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
                         "/api/ontology/concepts",
-                        "/api/ontology/concepts/resolve",
                         "/api/ontology/list",
                         "/api/concept/list",
                         "/api/concept/*/detail",
@@ -155,6 +154,7 @@ public class SecurityConfig {
                         "/api/eli/law/search",
                         "/api/eli/law/versions",
                         "/api/eli/law/fragments",
+                        "/api/eli/law/content",
                         "/api/eli/resolve",
                         "/api/codelist/**",
                         "/v3/api-docs/**",
@@ -208,8 +208,18 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/concept/*/create").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/concept/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/concept/*/localcopy/*/update").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/concept/*/localcopy/*").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
+                        // Admin-only PG↔TDB2 reconciler. Role check is enforced by
+                        // @PreAuthorize("hasRole('ADMIN')") on the controller; this matcher
+                        // only lets the request reach it (otherwise denyAll() 403s first).
+                        .requestMatchers("/api/admin/reconciler/**").authenticated()
+                        // Admin-only PG↔TDB2 outbox observability/recovery. Same pattern: the role
+                        // is enforced by @PreAuthorize on the controller; this only lets the request
+                        // reach it (otherwise denyAll() 403s first).
+                        .requestMatchers("/api/admin/outbox/**").authenticated()
                         .anyRequest().denyAll()
                 )
                 // CSRF disabled: auth is stateless Bearer-JWT only (no cookie/session

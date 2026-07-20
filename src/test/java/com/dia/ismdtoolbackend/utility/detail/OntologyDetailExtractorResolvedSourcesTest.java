@@ -20,13 +20,15 @@ class OntologyDetailExtractorResolvedSourcesTest {
             "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01/dokument/norma/par_5";
 
     @Test
-    void buildResolvedSources_nullInput_returnsNull() {
-        assertNull(OntologyDetailExtractor.buildResolvedSources(null));
+    void buildResolvedSources_nullInput_returnsEmptyList() {
+        assertTrue(OntologyDetailExtractor.buildResolvedSources(null).isEmpty(),
+                "stable contract: empty list, never null, so the field serializes as []");
     }
 
     @Test
-    void buildResolvedSources_emptyInput_returnsNull() {
-        assertNull(OntologyDetailExtractor.buildResolvedSources(List.of()));
+    void buildResolvedSources_emptyInput_returnsEmptyList() {
+        assertTrue(OntologyDetailExtractor.buildResolvedSources(List.of()).isEmpty(),
+                "stable contract: empty list, never null, so the field serializes as []");
     }
 
     @Test
@@ -63,6 +65,22 @@ class OntologyDetailExtractorResolvedSourcesTest {
         assertEquals(1, out.size());
         assertEquals(EnrichmentStatus.INVALID_IRI, out.get(0).getEnrichmentStatus());
         assertEquals("garbage", out.get(0).getOriginalUrl());
+    }
+
+    @Test
+    void buildResolvedSources_fragmentSegments_neverNull() {
+        // INVALID_IRI builds the DTO without touching fragmentSegments — getter must still
+        // return an empty list, never null, so the field always serializes as [].
+        ResolvedLegalSourceDto invalid =
+                OntologyDetailExtractor.buildResolvedSources(List.of("garbage")).get(0);
+        assertTrue(invalid.getFragmentSegments().isEmpty(),
+                "fragmentSegments must be empty, never null, even for INVALID_IRI");
+
+        // non-fragment parse leaves no segments either
+        ResolvedLegalSourceDto law =
+                OntologyDetailExtractor.buildResolvedSources(List.of(LAW)).get(0);
+        assertTrue(law.getFragmentSegments().isEmpty(),
+                "fragmentSegments must be empty, never null, for non-fragment URLs");
     }
 
     @Test

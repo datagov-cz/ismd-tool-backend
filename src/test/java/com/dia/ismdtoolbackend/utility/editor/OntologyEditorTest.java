@@ -31,6 +31,9 @@ class OntologyEditorTest {
     //   E2 – keep ontology IRI and concept IRIs when name is unchanged
     //   E3 – remove description when new value is blank
     //   E4 – update description when new value is provided
+    //   E5 – error when renamed ontology IRI already exists in the model
+    //   E6 – rename must not leave a stale old prefLabel/description on the new IRI
+    //   E7 – rename preserves an unedited description (descriptionModel == null)
 
     private OntologyEditor ontologyEditor;
 
@@ -163,6 +166,47 @@ class OntologyEditorTest {
             assertTrue(model.containsResource(oldOtherSubject));
         }
 
+        // --- E1b. rename must rewrite each concept's skos:inScheme to the new ontology IRI ---
+        // Regression: copying the object verbatim left inScheme on the old scheme, so the renamed
+        // concept's IRI no longer prefix-matched its scheme; OWNED_CONCEPT_PATTERN then stopped
+        // resolving it (invisible to resolver/upload, mis-flagged PG_MISSING_RDF by the reconciler).
+        @Test
+        void editOntology_ShouldRewriteConceptInScheme_WhenRenamed() { // E1b
+            // Arrange
+            String oldOntologyIRI = "https://example.com/vocab/old-ontology";
+            String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+
+            Resource ontology = model.createResource(oldOntologyIRI);
+            ontology.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
+
+            Resource concept = model.createResource(oldNamespace + "concept-1");
+            concept.addProperty(RDF.type, SKOS.Concept);
+            concept.addProperty(SKOS.prefLabel, "Concept 1");
+            concept.addProperty(SKOS.inScheme, model.getResource(oldOntologyIRI));
+
+            NameModel newName = createNameModel("cs", "New ontology");
+            when(editModel.getNameModel()).thenReturn(newName);
+
+            // Act
+            OntologyEditor.EditResult result =
+                    ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI);
+
+            // Assert
+            assertTrue(result.iriChanged);
+            String newNamespace =
+                    UtilityMethods.ensureNamespaceEndsWithDelimiter(result.newOntologyIRI);
+            Resource renamedConcept = model.getResource(newNamespace + "concept-1");
+            Resource newOntology = model.getResource(result.newOntologyIRI);
+
+            assertTrue(model.contains(renamedConcept, SKOS.inScheme, newOntology),
+                    "inScheme not rewritten to the new ontology IRI");
+            assertFalse(model.contains(renamedConcept, SKOS.inScheme,
+                            model.getResource(oldOntologyIRI)),
+                    "Stale inScheme pointing at the old ontology IRI leaked onto the renamed concept");
+            assertEquals(1, renamedConcept.listProperties(SKOS.inScheme).toList().size(),
+                    "Renamed concept must carry exactly one inScheme");
+        }
+
         // --- E2. keep ontology IRI and concept IRIs when name is unchanged ---
         @Test
         void editOntology_ShouldNotRenameOntologyOrConcepts_WhenNameIsUnchanged() { // E2
@@ -195,6 +239,85 @@ class OntologyEditorTest {
             Resource sameConcept = model.getResource(namespace + "concept-1");
             assertTrue(model.containsResource(sameConcept));
             assertTrue(model.contains(sameOntology, hasConcept, sameConcept));
+        }
+
+        // --- E6. rename must not leave a stale old prefLabel/description on the new IRI ---
+        // Regression for the same class of bug fixed in ConceptEditor by commit 802104d:
+        // when the field updaters ran before renameOntologyIRI, rename re-copied the OLD
+        // prefLabel/description onto the new IRI, so the renamed ontology ended up with
+        // BOTH the new and the stale old value.
+        @Test
+        void editOntology_ShouldNotLeaveStaleLabelOrDescriptionOnNewIRI_WhenRenamed() { // E6
+            // Arrange
+            String oldOntologyIRI = "https://example.com/vocab/old-ontology";
+            String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+
+            Resource ontology = model.createResource(oldOntologyIRI);
+            ontology.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
+            Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
+            ontology.addProperty(descProperty, model.createLiteral("Old description", "cs"));
+
+            NameModel newName = createNameModel("cs", "New ontology");
+            DescriptionModel newDesc = createDescriptionModel("cs", "New description");
+
+            when(editModel.getNameModel()).thenReturn(newName);
+            when(editModel.getDescriptionModel()).thenReturn(newDesc);
+
+            // Act
+            OntologyEditor.EditResult result =
+                    ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI);
+
+            // Assert — the new IRI carries exactly the new value, with no stale copy.
+            Resource newOntology = model.getResource(result.newOntologyIRI);
+
+            assertTrue(model.contains(newOntology, SKOS.prefLabel, model.createLiteral("New ontology", "cs")),
+                    "New prefLabel not found on the renamed IRI");
+            assertFalse(model.contains(newOntology, SKOS.prefLabel, model.createLiteral("Old name", "cs")),
+                    "Stale old prefLabel leaked onto the renamed IRI");
+            assertEquals(1, newOntology.listProperties(SKOS.prefLabel).toList().size(),
+                    "Renamed IRI must carry exactly one prefLabel");
+
+            assertTrue(model.contains(newOntology, descProperty, model.createLiteral("New description", "cs")),
+                    "New description not found on the renamed IRI");
+            assertFalse(model.contains(newOntology, descProperty, model.createLiteral("Old description", "cs")),
+                    "Stale old description leaked onto the renamed IRI");
+            assertEquals(1, newOntology.listProperties(descProperty).toList().size(),
+                    "Renamed IRI must carry exactly one description");
+        }
+
+        // --- E7. rename preserves an unedited description (descriptionModel == null) ---
+        // Renaming while sending only the name (partial payload) must not drop the
+        // untouched description — rename relocates it onto the new IRI verbatim.
+        @Test
+        void editOntology_ShouldPreserveUneditedDescription_WhenRenamed() { // E7
+            // Arrange
+            String oldOntologyIRI = "https://example.com/vocab/old-ontology";
+            String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+
+            Resource ontology = model.createResource(oldOntologyIRI);
+            ontology.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
+            Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
+            ontology.addProperty(descProperty, model.createLiteral("Kept description", "cs"));
+
+            NameModel newName = createNameModel("cs", "New ontology");
+
+            when(editModel.getNameModel()).thenReturn(newName);
+            when(editModel.getDescriptionModel()).thenReturn(null);
+
+            // Act
+            OntologyEditor.EditResult result =
+                    ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI);
+
+            // Assert
+            Resource newOntology = model.getResource(result.newOntologyIRI);
+
+            assertTrue(model.contains(newOntology, descProperty, model.createLiteral("Kept description", "cs")),
+                    "Unedited description was dropped on rename");
+            assertEquals(1, newOntology.listProperties(descProperty).toList().size(),
+                    "Renamed IRI must carry exactly one (preserved) description");
+            assertFalse(model.contains(model.getResource(oldOntologyIRI), descProperty,
+                            model.createLiteral("Kept description", "cs")),
+                    "Description must no longer remain on the old IRI");
         }
     }
 

@@ -11,18 +11,18 @@ import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
+import org.springframework.cache.annotation.Cacheable;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.net.http.HttpClient;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Component
 @Slf4j
@@ -34,19 +34,30 @@ public class NkdSparqlClient {
      */
     public static final String NKD_LABEL = "NKD";
 
-    private final int maxConcurrentRequests;
+    /**
+     * Caffeine cache for NKD-published concept/ontology projections used by the deviation
+     * checks (concept detail fires one of these per published concept). The cached value is
+     * the NKD-published representation, which changes only when NKD republishes — NOT when a
+     * local ISMD copy is edited — so local ISMD mutations intentionally do NOT evict this
+     * cache; the cache's write TTL ({@code CacheConfig}) is the sole freshness mechanism.
+     * Registered/sized in {@code CacheConfig}.
+     */
+    public static final String PUBLISHED_RESOURCE_CACHE = "nkdPublishedResource";
+
     private final HttpSparqlExecutor executor;
     private final OntologyDetailExtractor detailExtractor;
 
-    public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor) {
-        this.maxConcurrentRequests = config.getSparql().getMaxConcurrentRequests();
+    public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor,
+                           @Qualifier("externalSparqlHttpClient") HttpClient externalSparqlHttpClient) {
         this.executor = new HttpSparqlExecutor(
                 NKD_LABEL,
                 config.getSparql().getEndpoint(),
-                config.getSparql().getTimeout());
+                config.getSparql().getTimeout(),
+                externalSparqlHttpClient);
         this.detailExtractor = detailExtractor;
     }
 
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'concept:' + #conceptIri")
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
         return fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
     }
@@ -54,6 +65,7 @@ public class NkdSparqlClient {
     /**
      * Concept fetch that also surfaces the {@code skos:inScheme} target
      */
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'conceptWithScheme:' + #conceptIri")
     public Optional<PublishedConcept> fetchPublishedConceptWithScheme(String conceptIri) {
         log.debug("Fetching published concept from NKD: {}", conceptIri);
         String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
@@ -65,7 +77,7 @@ public class NkdSparqlClient {
         Model rawModel = resultModel.get();
         log.debug("Fetched {} triples from NKD for concept: {}", rawModel.size(), conceptIri);
         String inSchemeIri = extractInSchemeIri(rawModel, conceptIri);
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        Model processedModel = detailExtractor.applyOFNTransformationsForNkd(rawModel);
         OntologyDetailModel.ConceptDetailModel conceptDetail =
                 detailExtractor.extractConceptDetail(processedModel, conceptIri,
                         OntologyDetailExtractor.iriResolver());
@@ -98,13 +110,41 @@ public class NkdSparqlClient {
      */
     public record PublishedConcept(OntologyDetailModel.ConceptDetailModel detail, String ontologyIri) {}
 
+    /**
+     * Raw NKD concept model — the same single-concept CONSTRUCT as
+     * {@link #fetchPublishedConceptWithScheme} but returned <em>before</em> OFN extraction, for
+     * callers that need the source triples themselves (the snapshot materializer, which copies the
+     * external concept's RDF into the owner graph).
+     *
+     * <p>Bounded: {@link NKDSPARQLConstructQuery#buildConstructQuery} pulls only the one concept's
+     * triples plus one level of blank-node expansion — never a whole-ontology tree.
+     *
+     * <p>Lenient: an NKD outage / absent concept degrades to {@link Optional#empty()} rather than
+     * throwing, so the best-effort snapshot fetch never rolls back the owning edit.
+     */
+    public Optional<Model> fetchPublishedConceptRaw(String conceptIri) {
+        if (!SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            log.warn("Refusing raw NKD concept fetch for unsafe IRI: {}", conceptIri);
+            return Optional.empty();
+        }
+        log.debug("Fetching raw NKD concept model: {}", conceptIri);
+        String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
+        Optional<Model> resultModel =
+                executor.constructLenient("NKD raw concept fetch for " + conceptIri, query);
+        if (resultModel.isEmpty()) {
+            log.info("No data found for concept in NKD (raw): {}", conceptIri);
+            return Optional.empty();
+        }
+        log.debug("Fetched {} raw triples from NKD for concept: {}", resultModel.get().size(), conceptIri);
+        return resultModel;
+    }
+
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontology:' + #ontologyIri")
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
         return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
-            Model processedModel = detailExtractor.applyOFNTransformations(resultModel);
-            OntologyDetailModel ontologyDetail = detailExtractor.extractOntologyDetail(processedModel,
+            Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);
+            return detailExtractor.extractOntologyDetail(processedModel,
                     OntologyDetailExtractor.iriResolver());
-            log.debug("Successfully extracted published ontology detail from NKD: {}", ontologyIri);
-            return ontologyDetail;
         });
     }
 
@@ -172,6 +212,11 @@ public class NkdSparqlClient {
         return resolutions;
     }
 
+    /**
+     * Returns which of {@code resourceIris} exist as published resources in NKD, in a single batched CONSTRUCT
+     * rather than one round-trip per IRI — so wall-time is independent of the batch size.
+     * Best-effort: an NKD outage returns an empty list, never an exception.
+     */
     public List<String> getPublishedResourcesList(List<String> resourceIris) {
         if (resourceIris == null || resourceIris.isEmpty()) {
             log.debug("No resource IRIs provided for NKD verification");
@@ -185,26 +230,27 @@ public class NkdSparqlClient {
 
         log.debug("Verifying {} resources against NKD", resourceIris.size());
 
-        ExecutorService threadPool = Executors.newFixedThreadPool(
-                Math.min(maxConcurrentRequests, resourceIris.size())
-        );
-        try {
-            List<CompletableFuture<String>> futures = resourceIris.stream()
-                    .map(iri -> CompletableFuture.supplyAsync(() ->
-                            isConceptPublishedInNKD(iri) ? iri : null, threadPool))
-                    .toList();
-
-            List<String> publishedResources = futures.stream()
-                    .map(CompletableFuture::join)
-                    .filter(Objects::nonNull)
-                    .toList();
-
-            log.info("Found {} published resources out of {} total resources",
-                    publishedResources.size(), resourceIris.size());
-            return publishedResources;
-        } finally {
-            threadPool.shutdown();
+        String query = NKDSPARQLConstructQuery.buildPublicationCheckQuery(resourceIris);
+        Optional<Model> result = executor.constructLenient(
+                "NKD publication check for " + resourceIris.size() + " resource(s)", query);
+        if (result.isEmpty()) {
+            log.info("Found 0 published resources out of {} total resources", resourceIris.size());
+            return new ArrayList<>();
         }
+
+        // Intersect the requested IRIs with the subjects NKD returned, so a lenient result
+        // can only ever confirm IRIs the caller actually asked about.
+        Set<String> requested = new HashSet<>(resourceIris);
+        List<String> publishedResources = result.get().listSubjects().toList().stream()
+                .filter(Resource::isURIResource)
+                .map(Resource::getURI)
+                .filter(requested::contains)
+                .distinct()
+                .toList();
+
+        log.info("Found {} published resources out of {} total resources",
+                publishedResources.size(), resourceIris.size());
+        return publishedResources;
     }
 
     /**
@@ -239,16 +285,5 @@ public class NkdSparqlClient {
 
     public boolean isEndpointConfigured() {
         return executor.isConfigured();
-    }
-
-    private boolean isConceptPublishedInNKD(String conceptIri) {
-        String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
-        boolean isPublished = executor
-                .constructLenient("NKD publication check for " + conceptIri, query)
-                .isPresent();
-        if (isPublished) {
-            log.debug("Concept is published in NKD: {}", conceptIri);
-        }
-        return isPublished;
     }
 }

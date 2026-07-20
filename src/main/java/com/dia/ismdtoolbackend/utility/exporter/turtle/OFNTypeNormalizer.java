@@ -8,7 +8,9 @@ import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.dia.constants.VocabularyConstants.*;
 
@@ -26,13 +28,270 @@ public final class OFNTypeNormalizer {
 
     private OFNTypeNormalizer() {}
 
-    public static int normalize(Model model) {
+    /**
+     * Local-detail-path normalization. Infers the OFN role tags
+     * ({@code skos:Concept}, {@code slovníky:třída/vztah/vlastnost}) and converts
+     * labels so real concepts survive {@link TurtleFilterUtil}, but does NOT touch
+     * {@code skos:inScheme}: local vocabularies are written via the authoritative
+     * upload path, which guarantees every owned concept carries an explicit
+     * {@code inScheme}. Deriving it here would be redundant and risks the
+     * {@code /pojem/} string heuristic diverging from the real scheme.
+     */
+    public static int normalizeForLocalDetail(Model model) {
         int count = 0;
         count += ensureConceptsHaveSkosType(model);
         count += normalizeOwlClassConcepts(model);
         count += normalizePropertyConcepts(model);
         count += convertLabelsToSkosPrefLabel(model);
         return count;
+    }
+
+    /**
+     * NKD-path normalization. Same role-tag/label inference as
+     * {@link #normalizeForLocalDetail} PLUS {@code skos:inScheme} derivation: NKD data
+     * is out of our control and often arrives without an explicit scheme, so we infer
+     * it per-concept by stripping {@code /pojem/} from the concept IRI
+     * ({@link #extractOntologyIRIFromConcept}) — a reasonable inference given OFN's IRI
+     * structure. There is no single authoritative graph IRI here (the detail model can
+     * mix vocabularies), hence the per-concept derivation rather than a fixed graphName.
+     */
+    public static int normalizeForNkd(Model model) {
+        int count = normalizeForLocalDetail(model);
+        count += ensureConceptsHaveDerivedInScheme(model);
+        return count;
+    }
+
+    /**
+     * Upload-path normalization. {@code graphName} is the authoritative vocabulary
+     * IRI derived from the RDF; every {@code skos:Concept} <b>under that namespace</b>
+     * that lacks an {@code skos:inScheme} gets {@code inScheme → graphName} (not the
+     * {@code /pojem/}-stripped value, which can diverge). Concepts whose IRI is NOT
+     * under {@code graphName} (alien / referenced concepts) are left untouched — they
+     * are not claimed as owned by this vocabulary.
+     *
+     * @param model     the parsed upload model
+     * @param graphName the authoritative vocabulary IRI (must be non-null)
+     */
+    public static int normalize(Model model, String graphName) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null for the upload-path normalizer");
+        }
+        // NORMALIZE_ALL convenience: stamp every owned concept that's missing inScheme.
+        return normalize(model, graphName, new HashSet<>(detectOwnedConceptsMissingInScheme(model, graphName)));
+    }
+
+    /**
+     * Upload-path normalization with an explicit allow-list of concepts to stamp.
+     * Runs the type/label normalization steps unconditionally, then adds
+     * {@code inScheme → graphName} ONLY for concepts whose IRI is in
+     * {@code conceptsToNormalize}. Concepts not in the list (the user's "exclude"
+     * choice) are left without inScheme and remain unresolvable by design.
+     *
+     * @param model                the parsed upload model
+     * @param graphName            the authoritative vocabulary IRI (must be non-null)
+     * @param conceptsToNormalize  IRIs of owned concepts the user chose to normalize
+     */
+    public static int normalize(Model model, String graphName, Set<String> conceptsToNormalize) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null for the upload-path normalizer");
+        }
+        Set<String> allowList = conceptsToNormalize == null ? Set.of() : conceptsToNormalize;
+        int count = 0;
+        count += ensureConceptsHaveSkosType(model);
+        count += normalizeOwlClassConcepts(model);
+        count += normalizePropertyConcepts(model);
+        count += convertLabelsToSkosPrefLabel(model);
+        count += addInSchemeForAllowedConcepts(model, graphName, allowList);
+        return count;
+    }
+
+    /**
+     * Pure detection (no mutation): returns the IRIs of owned concepts (under
+     * {@code graphName}) that lack {@code skos:inScheme}. Drives the
+     * {@code MISSING_INSCHEME_DECISION_REQUIRED} prompt. Detect BEFORE
+     * {@link #normalize} — once normalize runs, the type-normalization steps may have
+     * stamped inScheme on some concepts and they'd no longer appear missing.
+     */
+    public static List<String> detectOwnedConceptsMissingInScheme(Model model, String graphName) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null to detect missing inScheme");
+        }
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
+        List<String> missing = new ArrayList<>();
+
+        for (Resource concept : ownedConceptCandidates(model, pojemResource, graphName)) {
+            if (!concept.hasProperty(skosInScheme)) {
+                missing.add(concept.getURI());
+            }
+        }
+        return missing;
+    }
+
+    /**
+     * Owned concept candidates under {@code graphName}: URI resources typed as
+     * {@code skos:Concept} or {@code slovníky:pojem}, de-duplicated.
+     */
+    private static List<Resource> ownedConceptCandidates(Model model, Resource pojemResource, String graphName) {
+        List<Resource> candidates = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        collectOwnedTyped(model, SKOS.Concept, graphName, candidates, seen);
+        collectOwnedTyped(model, pojemResource, graphName, candidates, seen);
+        return candidates;
+    }
+
+    private static void collectOwnedTyped(Model model, Resource type, String graphName,
+                                          List<Resource> out, Set<String> seen) {
+        ResIterator iter = model.listResourcesWithProperty(RDF.type, type);
+        while (iter.hasNext()) {
+            Resource r = iter.next();
+            if (r.isURIResource() && isOwnedConcept(r.getURI(), graphName) && seen.add(r.getURI())) {
+                out.add(r);
+            }
+        }
+    }
+
+    /**
+     * Adds {@code inScheme → graphName} for owned concepts whose IRI is in the
+     * allow-list and that don't already have an inScheme. Owned concepts NOT in the
+     * allow-list are left untouched (excluded by user decision).
+     */
+    private static int addInSchemeForAllowedConcepts(Model model, String graphName, Set<String> allowList) {
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
+        int count = 0;
+
+        for (Resource concept : ownedConceptCandidates(model, pojemResource, graphName)) {
+            if (concept.hasProperty(skosInScheme) || !allowList.contains(concept.getURI())) {
+                continue;
+            }
+            concept.addProperty(skosInScheme, model.getResource(graphName));
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Closes the "excluded concept leaks into TDB2" gap. After {@link #normalize},
+     * an owned-namespace concept the user chose NOT to normalize is left without
+     * {@code skos:inScheme} — it gets no Postgres ownership row, yet its triples
+     * would otherwise still be written to TDB2, producing a subject that is owned
+     * by namespace but invisible to the metadata store (drift the reconciler would
+     * have to treat as a special case). This prunes those subjects before the TDB2
+     * write so "no PG row ⇒ no RDF" holds for owned concepts.
+     *
+     * <p>Safety: an excluded concept is removed only if no other subject in the
+     * model references it as an object (e.g. an owned class's {@code rdfs:subClassOf},
+     * a relationship's {@code rdfs:domain}/{@code rdfs:range}). A still-referenced
+     * excluded concept is kept as inert context so we never leave a dangling edge
+     * pointing at a bodiless IRI — the same rationale that keeps alien/referenced
+     * external concepts (e.g. {@code adresa}) in the graph. Removing it would
+     * degrade the referencing concept's detail/export view.
+     *
+     * <p>Run after {@link #normalize} (so allow-listed concepts already carry
+     * inScheme and are not candidates) and before the TDB2 write.
+     *
+     * @param model     the parsed, normalized upload model
+     * @param graphName the authoritative vocabulary IRI (must be non-null)
+     * @return the number of excluded concepts whose triples were removed
+     */
+    public static int pruneUnreferencedExcludedConcepts(Model model, String graphName) {
+        if (graphName == null || graphName.isBlank()) {
+            throw new IllegalArgumentException("graphName must be non-null to prune excluded concepts");
+        }
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        Resource pojemResource = model.createResource(POJEM_GENERIC);
+
+        // Two-pass: decide which excluded concepts to remove against the original model
+        // state, then remove them
+        List<Resource> toRemove = new ArrayList<>();
+        for (Resource concept : ownedConceptCandidates(model, pojemResource, graphName)) {
+            // Excluded = owned-namespace candidate the user left without inScheme
+            if (concept.hasProperty(skosInScheme)) {
+                continue;
+            }
+            if (isReferencedByOther(model, concept)) {
+                log.debug("Keeping excluded concept (still referenced by another subject): {}",
+                        concept.getURI());
+                continue;
+            }
+            toRemove.add(concept);
+        }
+
+        for (Resource concept : toRemove) {
+            // Remove the concept's body (all triples where it is the subject)
+            model.removeAll(concept, null, null);
+            log.debug("Pruned unreferenced excluded concept from upload model: {}", concept.getURI());
+        }
+        if (!toRemove.isEmpty()) {
+            log.info("Pruned {} unreferenced excluded concept(s) from {} before TDB2 write",
+                    toRemove.size(), graphName);
+        }
+        return toRemove.size();
+    }
+
+    /**
+     * True if any subject other than {@code concept} has a statement with
+     * {@code concept} as its object — i.e. something in the model points at it.
+     * A self-referential statement (concept as both subject and object) does not
+     * count as an external reference.
+     */
+    private static boolean isReferencedByOther(Model model, Resource concept) {
+        StmtIterator incoming = model.listStatements(null, null, concept);
+        try {
+            while (incoming.hasNext()) {
+                Statement stmt = incoming.next();
+                if (!stmt.getSubject().equals(concept)) {
+                    return true;
+                }
+            }
+        } finally {
+            incoming.close();
+        }
+        return false;
+    }
+
+    /**
+     * Read/NKD-path inScheme derivation (no authoritative graphName). Adds
+     * {@code inScheme} to every {@code skos:Concept} by stripping {@code /pojem/} from
+     * its IRI; concepts that can't yield a derived scheme are left as-is.
+     */
+    private static int ensureConceptsHaveDerivedInScheme(Model model) {
+        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
+        int count = 0;
+
+        List<Resource> concepts = new ArrayList<>();
+        ResIterator iter = model.listResourcesWithProperty(RDF.type, SKOS.Concept);
+        while (iter.hasNext()) {
+            Resource r = iter.next();
+            if (r.isURIResource()) {
+                concepts.add(r);
+            }
+        }
+
+        for (Resource concept : concepts) {
+            if (concept.hasProperty(skosInScheme)) {
+                continue;
+            }
+            String scheme = extractOntologyIRIFromConcept(concept.getURI());
+            if (scheme == null) {
+                continue;
+            }
+            concept.addProperty(skosInScheme, model.getResource(scheme));
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Ownership predicate mirroring the resolution invariant
+     * ({@code STRSTARTS(conceptIri, scheme)} in
+     * {@code JenaTDB2Repository#fetchConceptResolutions}). A concept is owned by
+     * {@code graphName} iff its IRI starts with the vocabulary IRI; owned concepts
+     * are {@code {graphName}/pojem/{name}}.
+     */
+    public static boolean isOwnedConcept(String conceptIri, String graphName) {
+        return conceptIri != null && graphName != null && conceptIri.startsWith(graphName);
     }
 
     private static int ensureConceptsHaveSkosType(Model model) {
@@ -53,10 +312,15 @@ public final class OFNTypeNormalizer {
         return added;
     }
 
+    /**
+     * Infers OFN role tags ({@code skos:Concept}, {@code slovníky:pojem},
+     * {@code slovníky:třída}) on {@code owl:Class} concepts. Role tags only — does NOT
+     * touch {@code skos:inScheme} (that's the NKD-only derivation step, or the
+     * authoritative upload step).
+     */
     private static int normalizeOwlClassConcepts(Model model) {
         Resource slovnikyPojem = model.createResource(OFN_NAMESPACE + POJEM);
         Resource slovnikyTrida = model.createResource(OFN_NAMESPACE + TRIDA);
-        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
         int count = 0;
 
         List<Resource> classesToNormalize = new ArrayList<>();
@@ -82,21 +346,20 @@ public final class OFNTypeNormalizer {
                 cls.addProperty(RDF.type, slovnikyTrida);
                 modified = true;
             }
-            String ontologyIRI = extractOntologyIRIFromConcept(cls.getURI());
-            if (ontologyIRI != null && !cls.hasProperty(skosInScheme)) {
-                cls.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                modified = true;
-            }
             if (modified) count++;
         }
 
         return count;
     }
 
+    /**
+     * Infers OFN role tags ({@code slovníky:vztah} on object properties,
+     * {@code slovníky:vlastnost} on datatype properties) for {@code /pojem/} concepts.
+     * Role tags only — does NOT touch {@code skos:inScheme}.
+     */
     private static int normalizePropertyConcepts(Model model) {
         Resource slovnikyVztah = model.createResource(OFN_NAMESPACE + VZTAH);
         Resource slovnikyVlastnost = model.createResource(OFN_NAMESPACE + VLASTNOST);
-        Property skosInScheme = model.createProperty(SKOS_NS + "inScheme");
         int count = 0;
 
         List<Resource> objectProperties = new ArrayList<>();
@@ -105,18 +368,10 @@ public final class OFNTypeNormalizer {
             objectProperties.add(iter.next());
         }
         for (Resource prop : objectProperties) {
-            if (prop.isURIResource() && prop.getURI().contains("/pojem/")) {
-                boolean modified = false;
-                if (!prop.hasProperty(RDF.type, slovnikyVztah)) {
-                    prop.addProperty(RDF.type, slovnikyVztah);
-                    modified = true;
-                }
-                String ontologyIRI = extractOntologyIRIFromConcept(prop.getURI());
-                if (ontologyIRI != null && !prop.hasProperty(skosInScheme)) {
-                    prop.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                    modified = true;
-                }
-                if (modified) count++;
+            if (prop.isURIResource() && prop.getURI().contains("/pojem/")
+                    && !prop.hasProperty(RDF.type, slovnikyVztah)) {
+                prop.addProperty(RDF.type, slovnikyVztah);
+                count++;
             }
         }
 
@@ -127,18 +382,10 @@ public final class OFNTypeNormalizer {
         }
         for (Resource prop : datatypeProperties) {
             if (prop.isURIResource() && prop.getURI().contains("/pojem/")
-                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)) {
-                boolean modified = false;
-                if (!prop.hasProperty(RDF.type, slovnikyVlastnost)) {
-                    prop.addProperty(RDF.type, slovnikyVlastnost);
-                    modified = true;
-                }
-                String ontologyIRI = extractOntologyIRIFromConcept(prop.getURI());
-                if (ontologyIRI != null && !prop.hasProperty(skosInScheme)) {
-                    prop.addProperty(skosInScheme, model.getResource(ontologyIRI));
-                    modified = true;
-                }
-                if (modified) count++;
+                    && !prop.hasProperty(RDF.type, OWL2.ObjectProperty)
+                    && !prop.hasProperty(RDF.type, slovnikyVlastnost)) {
+                prop.addProperty(RDF.type, slovnikyVlastnost);
+                count++;
             }
         }
 

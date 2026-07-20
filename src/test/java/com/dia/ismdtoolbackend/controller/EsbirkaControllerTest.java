@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
+import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -27,6 +28,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,11 +42,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = EsbirkaController.class,
         excludeAutoConfiguration = {
-                org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration.class
+                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
+                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
+                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
+                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
+                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
         })
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
 @ActiveProfiles("junit")
@@ -181,7 +183,7 @@ class EsbirkaControllerTest {
     void fragmentsHappyPathReturnsTree() throws Exception {
         FragmentDto root = new FragmentDto(VERSION_IRI + "/par_1",
                 "/eli/cz/sb/2006/187/2026-04-01/par_1",
-                "par", "§ 1", "0001", new ArrayList<>());
+                "par", "§ 1", "0001", null, new ArrayList<>());
         when(esbirkaService.getFragments(VERSION_IRI)).thenReturn(List.of(root));
 
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
@@ -204,6 +206,77 @@ class EsbirkaControllerTest {
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka fragment tree fetch failed"));
 
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
+                .andExpect(status().isServiceUnavailable());
+    }
+
+    // -------- /law/content --------
+
+    @Test
+    void contentHappyPathReturnsHeaderVersionsAndTree() throws Exception {
+        FragmentDto child = new FragmentDto(VERSION_IRI + "/par_1/odst_1",
+                "/eli/cz/sb/2006/187/2026-04-01/par_1/odst_1",
+                "odst", "§ 1 odst. 1", "0002", "<var>1.</var> Tělo.", new ArrayList<>());
+        List<FragmentDto> children = new ArrayList<>();
+        children.add(child);
+        FragmentDto root = new FragmentDto(VERSION_IRI + "/par_1",
+                "/eli/cz/sb/2006/187/2026-04-01/par_1",
+                "par", "§ 1", "0001", null, children);
+        LawVersionDto v = new LawVersionDto(VERSION_IRI, "/eli/cz/sb/2006/187/2026-04-01",
+                LocalDate.of(2026, 4, 1), null, "t", true);
+        LawContentDto dto = LawContentDto.builder()
+                .lawIri(LAW_IRI)
+                .citace("187/2006 Sb.")
+                .versionIri(VERSION_IRI)
+                .versionEliPath("/eli/cz/sb/2006/187/2026-04-01")
+                .versionDate(LocalDate.of(2026, 4, 1))
+                .versions(List.of(v))
+                .fragments(List.of(root))
+                .build();
+        when(esbirkaService.getLawContent("187/2006")).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/law/content").param("law", "187/2006"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.lawIri").value(LAW_IRI))
+                .andExpect(jsonPath("$.data.citace").value("187/2006 Sb."))
+                .andExpect(jsonPath("$.data.versionIri").value(VERSION_IRI))
+                .andExpect(jsonPath("$.data.versions.length()").value(1))
+                .andExpect(jsonPath("$.data.fragments.length()").value(1))
+                .andExpect(jsonPath("$.data.fragments[0].bodyHtml").value(nullValue()))
+                .andExpect(jsonPath("$.data.fragments[0].children[0].bodyHtml").value("<var>1.</var> Tělo."))
+                .andExpect(jsonPath("$.message").value("Celé znění právního aktu úspěšně načteno."));
+    }
+
+    @Test
+    void contentPartialInputReturns400() throws Exception {
+        when(esbirkaService.getLawContent("49"))
+                .thenThrow(new IllegalArgumentException("Referenci zadejte ve tvaru číslo/rok (např. 49/1997)."));
+        mockMvc.perform(get("/api/eli/law/content").param("law", "49"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Referenci zadejte ve tvaru číslo/rok (např. 49/1997)."));
+    }
+
+    @Test
+    void contentUnknownLawReturns400() throws Exception {
+        when(esbirkaService.getLawContent("999/1997"))
+                .thenThrow(new IllegalArgumentException("Právní akt č. 999/1997 nebyl nalezen."));
+        mockMvc.perform(get("/api/eli/law/content").param("law", "999/1997"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Právní akt č. 999/1997 nebyl nalezen."));
+    }
+
+    @Test
+    void contentMissingParamReturns400() throws Exception {
+        mockMvc.perform(get("/api/eli/law/content"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void contentService503BubblesUp() throws Exception {
+        when(esbirkaService.getLawContent("187/2006"))
+                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka version content fetch failed"));
+
+        mockMvc.perform(get("/api/eli/law/content").param("law", "187/2006"))
                 .andExpect(status().isServiceUnavailable());
     }
 

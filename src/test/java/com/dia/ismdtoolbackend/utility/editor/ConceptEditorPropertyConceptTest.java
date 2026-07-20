@@ -65,7 +65,7 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
         when(propertyConceptEditModel.getIsInPPDF()).thenReturn(Boolean.TRUE);
         when(propertyConceptEditModel.getAgendaCode()).thenReturn(null);
         when(propertyConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(propertyConceptEditModel.getContentType()).thenReturn("novy-obsah");
+        when(propertyConceptEditModel.getContentType()).thenReturn("evidenční");
         when(propertyConceptEditModel.getAcquisitionMethod()).thenReturn(null);
         when(propertyConceptEditModel.getSharingMethod()).thenReturn(null);
         when(propertyConceptEditModel.getIsPublic()).thenReturn(null);
@@ -76,7 +76,6 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
         when(propertyConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(propertyConceptEditModel.getExactMatch()).thenReturn(null);
         when(propertyConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(propertyConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, propertyConceptEditModel, model, null);

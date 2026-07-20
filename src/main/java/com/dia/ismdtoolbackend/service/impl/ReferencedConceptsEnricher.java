@@ -17,15 +17,24 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Inline-enriches a {@link OntologyDetailModel.ConceptDetailModel} with a single
- * map of every referenced-concept IRI → {@link ResolvedConceptDto}.
+ * Adapter layer of the referenced-concept resolution chain: inline-enriches a
+ * {@link OntologyDetailModel.ConceptDetailModel} with a single map of every
+ * referenced-concept IRI → {@link ResolvedConceptDto}.
  *
  * <p>Shared by the ISMD concept-detail and NKD concept-detail paths so both
  * stay in lockstep on which fields are considered "referenced IRIs" and on the
- * dedupe/batching semantics. Delegates the heavy lifting to
- * {@link ConceptMetadataResolver}, which already handles input sanitisation,
- * cache-first lookup (24h Caffeine, per-IRI key), batched ISMD CONSTRUCT,
- * batched NKD CONSTRUCT, and Postgres slug enrichment.
+ * dedupe/batching semantics. This class owns only the detail-model concern —
+ * collecting the referenced IRIs and stamping the result back — and delegates all
+ * resolution to the engine layer, {@link ReferencedConceptResolutionEngine}, which
+ * handles input sanitisation, cache-first lookup (24h Caffeine, per-IRI key),
+ * batched ISMD CONSTRUCT, batched NKD CONSTRUCT, and Postgres slug enrichment.
+ *
+ * <p>The caller passes the {@code source} of the detail being enriched. When it
+ * is {@link SearchSource#NKD} (the FE is on an NKD resource detail), resolution
+ * is gated to NKD only, so a referenced IRI that exists in <em>both</em> ISMD and
+ * NKD stays attributed to NKD instead of the default ISMD-first tie-break. The
+ * ISMD detail path passes {@code null} to keep the ISMD-first-then-NKD-fallback
+ * behaviour.
  *
  * <p>Cache-warm requests pay zero new I/O. Cold requests pay at most one
  * ISMD CONSTRUCT + one NKD CONSTRUCT + one Postgres {@code findByConceptIriIn},
@@ -36,9 +45,24 @@ import java.util.Set;
 @Slf4j
 public class ReferencedConceptsEnricher {
 
-    private final ConceptMetadataResolver conceptMetadataResolver;
+    private final ReferencedConceptResolutionEngine resolutionEngine;
 
+    /**
+     * Enriches an ISMD concept detail (default ISMD-first resolution). Convenience
+     * overload for the ISMD path; equivalent to {@code enrich(detail, null)}.
+     */
     public void enrich(OntologyDetailModel.ConceptDetailModel detail) {
+        enrich(detail, null);
+    }
+
+    /**
+     * Enriches a concept detail, gating resolution by {@code source}.
+     *
+     * @param source the source of the detail being enriched. {@link SearchSource#NKD}
+     *               resolves referenced IRIs against NKD only; any other value
+     *               (including {@code null}) uses the default ISMD-first path.
+     */
+    public void enrich(OntologyDetailModel.ConceptDetailModel detail, SearchSource source) {
         if (detail == null) {
             return;
         }
@@ -49,7 +73,7 @@ public class ReferencedConceptsEnricher {
         }
 
         Map<String, ResolvedConceptDto> resolved =
-                conceptMetadataResolver.resolveAll(new ArrayList<>(iris));
+                resolutionEngine.resolveAll(new ArrayList<>(iris), source);
         detail.setReferencedConceptsResolved(resolved);
 
         if (log.isInfoEnabled()) {

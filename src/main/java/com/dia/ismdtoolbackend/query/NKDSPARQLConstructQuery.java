@@ -17,9 +17,14 @@ public class NKDSPARQLConstructQuery {
     public static String buildResolutionConstructQuery(List<String> conceptIris) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+        pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+        pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
         pss.append("CONSTRUCT { ");
         pss.append("  ?concept skos:inScheme ?scheme . ");
         pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+        pss.append("  ?concept rdf:type ?type . ");
+        pss.append("  ?concept rdfs:domain ?domain . ");
+        pss.append("  ?concept rdfs:range ?range . ");
         pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
         pss.append("} WHERE { VALUES ?concept { ");
         for (String iri : conceptIris) {
@@ -29,8 +34,31 @@ public class NKDSPARQLConstructQuery {
         pss.append("} ?concept skos:inScheme ?scheme . ");
         pss.append("FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
         pss.append("OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+        pss.append("OPTIONAL { ?concept rdf:type ?type . } ");
+        pss.append("OPTIONAL { ?concept rdfs:domain ?domain . } ");
+        pss.append("OPTIONAL { ?concept rdfs:range ?range . } ");
         pss.append("OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } ");
         pss.append("}");
+        return pss.toString();
+    }
+
+    /**
+     * Batched publication-existence check. For a batch of resource IRIs, CONSTRUCTs one {@code rdf:type} triple
+     * per IRI that exists in NKD. The caller reads back the distinct subjects to learn which of the requested IRIs
+     * are present. One HTTP round-trip replaces the per-IRI {@link #buildConstructQuery(String)} fan-out.
+     * {@code rdf:type} presence is the existence signal because every real NKD resource — concept or ontology scheme —
+     * carries at least one type.
+     */
+    public static String buildPublicationCheckQuery(List<String> resourceIris) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+        pss.append("CONSTRUCT { ?resource rdf:type ?type . } ");
+        pss.append("WHERE { VALUES ?resource { ");
+        for (String iri : resourceIris) {
+            pss.appendIri(iri);
+            pss.append(" ");
+        }
+        pss.append("} ?resource rdf:type ?type . }");
         return pss.toString();
     }
 

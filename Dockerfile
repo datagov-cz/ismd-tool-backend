@@ -1,8 +1,10 @@
 ### Build stage
-FROM eclipse-temurin:17-jdk-alpine AS builder
+# Ubuntu-based Temurin tags (not -alpine) are published multi-arch
+# (linux/amd64 + linux/arm64). The -alpine variants are amd64-only, which
+# breaks `docker build`/`pull` on Apple Silicon. bash ships in these images,
+# so no extra install is needed.
+FROM eclipse-temurin:17-jdk AS builder
 WORKDIR /app
-
-RUN apk add --no-cache bash
 
 ARG GITHUB_ACTOR=""
 
@@ -35,7 +37,7 @@ RUN --mount=type=cache,target=/root/.m2/repository \
     ./mvnw clean install -DskipTests -B
 
 ### Runtime stage
-FROM eclipse-temurin:17-jre-alpine AS runtime
+FROM eclipse-temurin:17-jre AS runtime
 WORKDIR /app
 
 ENV SPRING_PROFILES_ACTIVE=production

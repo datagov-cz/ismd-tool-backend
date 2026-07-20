@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.config;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -12,13 +13,15 @@ import java.util.concurrent.TimeUnit;
 /**
  * Caffeine-backed caches for read-only e-Sbírka SPARQL operations.
  *
- * <p>Three caches with distinct lifetimes:
+ * <p>Caches with distinct lifetimes:
  * <ul>
  *   <li>{@code esbirkaLawSearch} — law-search results, 60 min TTL (catalogue evolves daily).</li>
  *   <li>{@code esbirkaLawVersions} — version lists per law, 60 min TTL.</li>
  *   <li>{@code esbirkaFragmentResolution} — fragment citation + version metadata,
  *       24 h TTL (fragments are immutable; only is-latest can shift when a new
  *       version is published).</li>
+ *   <li>{@code esbirkaLawContent} — whole-version content trees (fragment tree + HTML
+ *       bodies), 24 h TTL, capped at 200 entries (~2 MB each; published text is immutable).</li>
  * </ul>
  *
  * <p>Per-cache specs require {@code registerCustomCache} rather than the shared
@@ -34,8 +37,19 @@ public class CacheConfig {
     static final long ESBIRKA_RESOLUTION_TTL_HOURS = 24;
     static final long ESBIRKA_RESOLUTION_MAX_ENTRIES = 5_000;
 
+    // Whole-version content payloads are large (~2 MB each), so cap entry count tightly
+    // and keep a long TTL — a published version's text is immutable.
+    static final long ESBIRKA_CONTENT_TTL_HOURS = 24;
+    static final long ESBIRKA_CONTENT_MAX_ENTRIES = 200;
+
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
     static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
+
+    // NKD-published concept/ontology projections behind the deviation checks. NKD published data
+    // is near-immutable, so a 24h write-TTL is the freshness mechanism; local ISMD edits do NOT
+    // evict (the cached value is the NKD side, not the local copy). See NkdSparqlClient.
+    static final long NKD_PUBLISHED_TTL_HOURS = 24;
+    static final long NKD_PUBLISHED_MAX_ENTRIES = 10_000;
 
     @Bean
     public CacheManager cacheManager() {
@@ -56,13 +70,25 @@ public class CacheConfig {
                 .maximumSize(ESBIRKA_RESOLUTION_MAX_ENTRIES)
                 .build());
 
-        // Backs the concept-reference resolver (POST /api/ontology/concepts/resolve).
+        mgr.registerCustomCache("esbirkaLawContent", Caffeine.newBuilder()
+                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
+                .build());
+
+        // Backs the referenced-concept resolution engine (ReferencedConceptResolutionEngine),
+        // driven inline from the concept-detail flow via ReferencedConceptsEnricher.
         // Per-IRI entries so partially-overlapping detail views share cache hits. 24h
         // TTL is the safety net for NKD-side changes we can't observe; ISMD mutations
         // are invalidated synchronously via @CacheEvict on OntologyServiceImpl.
         mgr.registerCustomCache("conceptMetadataResolution", Caffeine.newBuilder()
                 .expireAfterWrite(CONCEPT_METADATA_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(CONCEPT_METADATA_MAX_ENTRIES)
+                .build());
+
+        // NKD-published deviation projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).
+        mgr.registerCustomCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, Caffeine.newBuilder()
+                .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
                 .build());
 
         return mgr;

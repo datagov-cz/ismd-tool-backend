@@ -22,6 +22,14 @@ import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.rdfconnection.RDFConnectionRemote;
+import org.apache.jena.graph.Node;
+import org.apache.jena.graph.NodeFactory;
+import org.apache.jena.sparql.core.Quad;
+import org.apache.jena.sparql.modify.request.QuadDataAcc;
+import org.apache.jena.sparql.modify.request.UpdateDataDelete;
+import org.apache.jena.sparql.modify.request.UpdateDataInsert;
+import org.apache.jena.update.UpdateFactory;
+import org.apache.jena.update.UpdateRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Repository;
@@ -46,6 +54,21 @@ import static com.dia.constants.VocabularyConstants.VZTAH;
 @Slf4j
 @Getter
 public class JenaTDB2Repository {
+
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+
+    /**
+     * The single source of truth for "is this concept OWNED by the scheme it declares".
+     * A concept is owned if it carries {@code skos:inScheme ?scheme} AND its IRI is a
+     * string prefix-match of that scheme. This is the same gate the live resolver
+     * ({@link #fetchConceptResolutions}) and the upload write-gate
+     * ({@code OFNTypeNormalizer.isOwnedConcept}) use; the PG↔TDB2 reconciler MUST use the
+     * exact same predicate or it would invent (and, with auto-repair, delete) phantom
+     * orphans. Bind {@code ?concept} before interpolating. See
+     * {@code pg_tdb2_dual_write_consistency} / the reconciler plan §6.
+     */
+    public static final String OWNED_CONCEPT_PATTERN =
+            " ?concept skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ";
 
     private final HttpClient fusekiHttpClient;
     private final Semaphore fusekiSemaphore;
@@ -86,7 +109,9 @@ public class JenaTDB2Repository {
         this.textIndexAvailable = available;
     }
 
-    RDFConnection createConnection() {
+    // protected so test subclasses in other packages (e.g. an in-memory-dataset-backed repo for the
+    // outbox relay tests) can override the connection source.
+    protected RDFConnection createConnection() {
         return RDFConnectionRemote.newBuilder()
                 .destination(fusekiEndpoint)
                 .queryEndpoint("sparql")
@@ -330,6 +355,137 @@ public class JenaTDB2Repository {
                 });
     }
 
+    /**
+     * Applies a concept-scoped delta to a graph: remove the {@code removeModel} triples, add the
+     * {@code addModel} triples, as ONE SPARQL update request — Fuseki's single-request atomic unit.
+     * Used by the outbox relay to apply an {@code UPSERT_CONCEPT} row. {@code conceptIri} is the
+     * concept the delta is rooted at (the outbox row's aggregate).
+     *
+     * <p><b>Two strategies, picked by whether the delta touches blank nodes:</b>
+     * <ul>
+     *   <li><b>No blank nodes (the common case — labels, definitions, field edits, renames):</b>
+     *       identity-based {@code DELETE DATA; INSERT DATA} of exactly the changed triples. Minimal
+     *       diff, so concurrent deltas to <em>different</em> concepts in one graph never collide.</li>
+     *   <li><b>Blank nodes present (digital objects, code lists):</b> blank nodes can't be matched by
+     *       identity across the serialize/parse boundary ({@code DELETE DATA} treats a bnode label as
+     *       fresh, matching nothing). So we (a) {@code DELETE DATA} the non-blank removed triples,
+     *       (b) {@code DELETE} the concept's one-hop blank substructures by PATTERN, rooted at the
+     *       concept, and (c) {@code INSERT DATA} the new model (fresh bnodes are fine on insert). The
+     *       pattern delete is bounded to {@code <concept> ?p ?bn . ?bn ?q ?o} with {@code isBlank(?bn)}
+     *       — one hop, blank-only — so it can never reach another concept's data. (Verified: the
+     *       editor/creator only ever produce one-level blank structures; no lists/nesting.)</li>
+     * </ul>
+     *
+     * <p><b>Idempotent on re-apply</b> in both strategies: identity DELETE/INSERT DATA re-runs are
+     * no-ops; the pattern path deletes ALL the concept's blank children before re-inserting, so a
+     * double-apply nets exactly one copy (this is why the blank path deletes by pattern, not by the
+     * just-inserted bnode identity).
+     */
+    public void applyConceptDelta(String conceptIri, String graphName, Model removeModel, Model addModel) {
+        Node graph = NodeFactory.createURI(graphName);
+        boolean removeHasBlank = hasBlankNode(removeModel);
+        boolean addHasBlank = hasBlankNode(addModel);
+
+        UpdateRequest request = new UpdateRequest();
+
+        // (a) Always: identity-delete the non-blank removed triples.
+        QuadDataAcc removeNonBlank = quadDataNonBlank(graph, removeModel);
+        if (!removeNonBlank.getQuads().isEmpty()) {
+            request.add(new UpdateDataDelete(removeNonBlank));
+        }
+        // (b) If either side involves blank nodes, pattern-delete the concept's one-hop blank
+        //     substructures (clears the OLD bnode structures that DATA-delete can't match, AND any
+        //     previously-inserted copy on a re-apply).
+        if (removeHasBlank || addHasBlank) {
+            blankSubstructureDelete(graphName, conceptIri).getOperations().forEach(request::add);
+        }
+        // (c) Insert the additions (blank nodes minted fresh — valid on insert).
+        if (addModel != null && !addModel.isEmpty()) {
+            request.add(new UpdateDataInsert(quadDataAll(graph, addModel)));
+        }
+
+        if (request.getOperations().isEmpty()) {
+            log.debug("applyConceptDelta no-op (empty delta) for concept {} in graph {}", conceptIri, graphName);
+            return;
+        }
+        executor.executeVoid(
+                "applying concept delta for " + conceptIri + " to graph " + graphName,
+                "Nepodařilo se aplikovat změnu pojmu do TDB2",
+                conn -> conn.update(request));
+    }
+
+    private boolean hasBlankNode(Model model) {
+        if (model == null || model.isEmpty()) {
+            return false;
+        }
+        StmtIterator it = model.listStatements();
+        try {
+            while (it.hasNext()) {
+                Statement stmt = it.next();
+                if (stmt.getSubject().isAnon() || stmt.getObject().isAnon()) {
+                    return true;
+                }
+            }
+        } finally {
+            it.close();
+        }
+        return false;
+    }
+
+    /** Quads for the model's NON-blank triples only (blank ones are handled by the pattern delete). */
+    private QuadDataAcc quadDataNonBlank(Node graph, Model model) {
+        QuadDataAcc acc = new QuadDataAcc();
+        if (model == null) {
+            return acc;
+        }
+        StmtIterator it = model.listStatements();
+        try {
+            while (it.hasNext()) {
+                Statement stmt = it.next();
+                if (stmt.getSubject().isAnon() || stmt.getObject().isAnon()) {
+                    continue;
+                }
+                acc.addQuad(Quad.create(graph, stmt.getSubject().asNode(),
+                        stmt.getPredicate().asNode(), stmt.getObject().asNode()));
+            }
+        } finally {
+            it.close();
+        }
+        return acc;
+    }
+
+    /** Quads for ALL triples in the model (used for INSERT DATA, where blank nodes are valid). */
+    private QuadDataAcc quadDataAll(Node graph, Model model) {
+        QuadDataAcc acc = new QuadDataAcc();
+        StmtIterator it = model.listStatements();
+        try {
+            while (it.hasNext()) {
+                Statement stmt = it.next();
+                acc.addQuad(Quad.create(graph, stmt.getSubject().asNode(),
+                        stmt.getPredicate().asNode(), stmt.getObject().asNode()));
+            }
+        } finally {
+            it.close();
+        }
+        return acc;
+    }
+
+    /**
+     * A {@code DELETE { GRAPH g { ?bn ?q ?o } } WHERE { GRAPH g { &lt;concept&gt; ?p ?bn . ?bn ?q ?o .
+     * FILTER isBlank(?bn) } }} — removes the concept's one-hop blank substructures (and the edges to
+     * them) without naming the blank nodes. Bounded to nodes directly hung off the concept, so it
+     * never reaches another concept.
+     */
+    private UpdateRequest blankSubstructureDelete(String graphName, String conceptIri) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText(
+                "DELETE { GRAPH ?g { ?concept ?p ?bn . ?bn ?q ?o } } " +
+                "WHERE  { GRAPH ?g { ?concept ?p ?bn . ?bn ?q ?o . FILTER(isBlank(?bn)) } }");
+        pss.setIri("g", graphName);
+        pss.setIri("concept", conceptIri);
+        return UpdateFactory.create(pss.toString());
+    }
+
     public void deleteGraph(String graphName) {
         executor.executeVoid(
                 "deleting graph " + graphName,
@@ -364,6 +520,77 @@ public class JenaTDB2Repository {
                     boolean hasData = conn.queryAsk(pss.toString());
                     log.debug("Graph '{}' has data: {}", graphName, hasData);
                     return hasData;
+                });
+    }
+
+    /**
+     * Enumerates every named graph that holds at least one triple. Used by the PG↔TDB2
+     * consistency reconciler to discover what graphs exist in Fuseki before comparing
+     * against the Postgres ontology rows. Like all reads here, this THROWS
+     * {@code JenaTDB2Exception} on a Fuseki connection failure (never silently returns an
+     * empty list), so the reconciler can abort a run rather than mistake an outage for
+     * "TDB2 is empty".
+     */
+    public List<String> listNamedGraphs() {
+        return executor.execute(
+                "listing named graphs",
+                "Failed to list named graphs",
+                conn -> {
+                    List<String> graphs = new ArrayList<>();
+                    String sparql = "SELECT DISTINCT ?g WHERE { GRAPH ?g { ?s ?p ?o } }";
+                    try (QueryExecution qExec = conn.query(sparql)) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            Resource g = rs.next().getResource("g");
+                            if (g != null && g.isURIResource()) {
+                                graphs.add(g.getURI());
+                            }
+                        }
+                    }
+                    log.debug("Enumerated {} named graph(s) in Fuseki", graphs.size());
+                    return graphs;
+                });
+    }
+
+    /**
+     * Returns the IRIs of concepts OWNED by {@code graphName} — i.e. subjects carrying
+     * {@code skos:inScheme ?scheme} with {@code STRSTARTS(conceptIri, scheme)} — within that
+     * named graph. Uses the shared {@link #OWNED_CONCEPT_PATTERN} so the reconciler's notion
+     * of "owned" is byte-identical to the resolver's.
+     *
+     * <p>By construction this EXCLUDES (a) referenced/external concepts, which appear only as
+     * triple objects and never carry an owning {@code inScheme} (e.g. an NKD {@code adresa}
+     * reference), and (b) "excluded" concepts the user declined to normalize, which have no
+     * {@code inScheme} at all. So a reconciler RDF→PG sweep over this set never false-flags
+     * either as an orphan. THROWS on Fuseki failure.
+     */
+    public List<String> listOwnedConceptIrisInGraph(String graphName) {
+        if (!SparqlIriValidator.isSafeHttpIri(graphName)) {
+            log.warn("Skipping listOwnedConceptIrisInGraph for unsafe graph IRI");
+            return List.of();
+        }
+        return executor.execute(
+                "listing owned concept IRIs in graph " + graphName,
+                "Failed to list owned concepts in graph",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("SELECT DISTINCT ?concept WHERE { GRAPH ?g { ");
+                    pss.append(OWNED_CONCEPT_PATTERN);
+                    pss.append("} }");
+                    pss.setIri("g", graphName);
+                    List<String> iris = new ArrayList<>();
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            Resource c = rs.next().getResource("concept");
+                            if (c != null && c.isURIResource()) {
+                                iris.add(c.getURI());
+                            }
+                        }
+                    }
+                    log.debug("Graph '{}' has {} owned concept subject(s)", graphName, iris.size());
+                    return iris;
                 });
     }
 
@@ -416,6 +643,61 @@ public class JenaTDB2Repository {
 
     public Model fetchMetadataProperties(String graphName) {
         return fetchMetadataProperties(List.of(graphName));
+    }
+
+    /**
+     * Returns the triples describing every property/relationship across ALL local
+     * graphs whose {@code rdfs:domain} <em>or</em> {@code rdfs:range} is {@code conceptIri}
+     * — i.e. the members that point <em>at</em> this concept. Merged into the concept's
+     * own graph by the detail pipeline so the class-detail read
+     * ({@link com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor#extractConceptPropertiesFromModel})
+     * sees members that live in a different vocabulary graph than the class.
+     *
+     * <p>The class-detail read fetches only the class's own named graph, so a
+     * cross-vocabulary {@code member rdfs:domain class} (or {@code rdfs:range}) edge
+     * (the member living in graph A, the class in graph B) was invisible from the
+     * class side even though the member's own detail showed it. This closes that
+     * asymmetry. Range is matched too: a vztah whose range is this class would
+     * otherwise never surface on the class detail.
+     *
+     * <p>Returns exactly the triples the extractor reads off each member resource:
+     * {@code rdf:type}, {@code skos:prefLabel}, {@code rdfs:domain}, {@code rdfs:range}.
+     * The member's actual domain/range edges are constructed (not the match edge), so a
+     * range-matched member still carries its own domain, and vice versa.
+     */
+    public Model fetchExternalDomainMembers(String conceptIri) {
+        if (!SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            log.warn("Skipping fetchExternalDomainMembers for unsafe concept IRI");
+            return ModelFactory.createDefaultModel();
+        }
+        return executor.execute(
+                "fetching cross-graph domain/range members for " + conceptIri,
+                "Failed to fetch cross-graph domain/range members",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("CONSTRUCT { ");
+                    pss.append("  ?member rdf:type ?type . ");
+                    pss.append("  ?member rdfs:domain ?domain . ");
+                    pss.append("  ?member skos:prefLabel ?label . ");
+                    pss.append("  ?member rdfs:range ?range . ");
+                    pss.append("} WHERE { GRAPH ?g { ");
+                    pss.append("  { ?member rdfs:domain ?concept } UNION { ?member rdfs:range ?concept } ");
+                    pss.append("  ?member rdf:type ?type . ");
+                    pss.append("  OPTIONAL { ?member skos:prefLabel ?label } ");
+                    pss.append("  OPTIONAL { ?member rdfs:domain ?domain } ");
+                    pss.append("  OPTIONAL { ?member rdfs:range ?range } ");
+                    pss.append("} }");
+                    pss.setIri("concept", conceptIri);
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        Model result = qExec.execConstruct();
+                        log.debug("Fetched {} cross-graph domain/range-member triples for {}",
+                                result.size(), conceptIri);
+                        return result;
+                    }
+                });
     }
 
     public List<String> findRelatedConceptUris(String conceptUri, String graphName) {
@@ -699,9 +981,14 @@ public class JenaTDB2Repository {
                 conn -> {
                     ParameterizedSparqlString pss = new ParameterizedSparqlString();
                     pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
                     pss.append("CONSTRUCT { ");
                     pss.append("  ?concept skos:inScheme ?scheme . ");
                     pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+                    pss.append("  ?concept rdf:type ?type . ");
+                    pss.append("  ?concept rdfs:domain ?domain . ");
+                    pss.append("  ?concept rdfs:range ?range . ");
                     pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
                     pss.append("} WHERE { VALUES ?concept { ");
                     for (String iri : safeConceptIris) {
@@ -709,9 +996,11 @@ public class JenaTDB2Repository {
                         pss.append(" ");
                     }
                     pss.append("} GRAPH ?g { ");
-                    pss.append("  ?concept skos:inScheme ?scheme . ");
-                    pss.append("  FILTER(STRSTARTS(STR(?concept), STR(?scheme))) ");
+                    pss.append(OWNED_CONCEPT_PATTERN);
                     pss.append("  OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+                    pss.append("  OPTIONAL { ?concept rdf:type ?type . } ");
+                    pss.append("  OPTIONAL { ?concept rdfs:domain ?domain . } ");
+                    pss.append("  OPTIONAL { ?concept rdfs:range ?range . } ");
                     pss.append("  OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } ");
                     pss.append("} }");
                     try (QueryExecution qExec = conn.query(pss.asQuery())) {
@@ -737,6 +1026,13 @@ public class JenaTDB2Repository {
         }
         Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
         Property prefLabel = model.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel");
+        Property rdfType = model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+        Property rdfsDomain = model.createProperty("http://www.w3.org/2000/01/rdf-schema#domain");
+        Property rdfsRange = model.createProperty("http://www.w3.org/2000/01/rdf-schema#range");
+        // A relationship is typed by the OFN role IRI (…/vztah) in ISMD-authored
+        // graphs, but published NKD vocabularies type relationships only as
+        // owl:ObjectProperty. Accept either — a hit on one is enough.
+        Set<String> relationshipTypeIris = Set.of(OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
 
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         StmtIterator inSchemeStmts = model.listStatements(null, inScheme, (RDFNode) null);
@@ -754,18 +1050,56 @@ public class JenaTDB2Repository {
                 Resource scheme = stmt.getObject().asResource();
                 Map<String, String> conceptLabels = collectMultilingual(concept, prefLabel);
                 Map<String, String> schemeLabels = collectMultilingual(scheme, prefLabel);
+
+                // Domain/range are only meaningful for relationships; carry the raw
+                // target IRIs as iri-only stub DTOs for the resolver's second hop to
+                // expand. Stubs never reach the cache or the wire — the resolver
+                // replaces them with fully-resolved DTOs (or null) before caching.
+                ResolvedConceptDto domainStub = null;
+                ResolvedConceptDto rangeStub = null;
+                if (hasAnyType(concept, rdfType, relationshipTypeIris)) {
+                    domainStub = resourceStub(concept, rdfsDomain);
+                    rangeStub = resourceStub(concept, rdfsRange);
+                }
+
                 out.put(conceptIri, ResolvedConceptDto.builder()
                         .iri(conceptIri)
                         .conceptName(conceptLabels.isEmpty() ? null : conceptLabels)
                         .ontologyIri(scheme.getURI())
                         .ontologyName(schemeLabels.isEmpty() ? null : schemeLabels)
                         .source(source)
+                        .resolvedDomain(domainStub)
+                        .resolvedRange(rangeStub)
                         .build());
             }
         } finally {
             inSchemeStmts.close();
         }
         return out;
+    }
+
+    private static boolean hasAnyType(Resource concept, Property rdfType, Set<String> typeIris) {
+        StmtIterator types = concept.listProperties(rdfType);
+        try {
+            while (types.hasNext()) {
+                RDFNode node = types.next().getObject();
+                if (node.isURIResource() && typeIris.contains(node.asResource().getURI())) {
+                    return true;
+                }
+            }
+        } finally {
+            types.close();
+        }
+        return false;
+    }
+
+    /** Returns an iri-only {@link ResolvedConceptDto} stub for the URI object of {@code property}, or null. */
+    private static ResolvedConceptDto resourceStub(Resource concept, Property property) {
+        Statement stmt = concept.getProperty(property);
+        if (stmt == null || !stmt.getObject().isURIResource()) {
+            return null;
+        }
+        return ResolvedConceptDto.builder().iri(stmt.getObject().asResource().getURI()).build();
     }
 
     private static Map<String, String> collectMultilingual(Resource subject, Property property) {
@@ -845,11 +1179,14 @@ public class JenaTDB2Repository {
         };
     }
 
+    // KONCEPT is the generic base type every concept carries, so it is not a
+    // role narrowing — SearchType.toConceptType() never yields it here.
     private static String ofnRoleIri(ConceptType type) {
         return switch (type) {
             case TRIDA -> OFN_NAMESPACE + TRIDA;
             case VLASTNOST -> OFN_NAMESPACE + VLASTNOST;
             case VZTAH -> OFN_NAMESPACE + VZTAH;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
@@ -857,7 +1194,8 @@ public class JenaTDB2Repository {
         return switch (type) {
             case TRIDA -> "http://www.w3.org/2002/07/owl#Class";
             case VLASTNOST -> "http://www.w3.org/2002/07/owl#DatatypeProperty";
-            case VZTAH -> "http://www.w3.org/2002/07/owl#ObjectProperty";
+            case VZTAH -> OWL_OBJECT_PROPERTY;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 }

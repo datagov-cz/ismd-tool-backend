@@ -1148,7 +1148,7 @@ class ConceptCreatorTest {
         }
     }
 
-    // ========== D. skos:inScheme — required by ConceptMetadataResolver / NKD ==========
+    // ========== D. skos:inScheme — required by ReferencedConceptResolutionEngine / NKD ==========
 
     @Nested
     class InSchemeTests {

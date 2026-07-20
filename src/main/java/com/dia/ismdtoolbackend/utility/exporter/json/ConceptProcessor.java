@@ -367,19 +367,11 @@ public class ConceptProcessor {
 
     private void addSourceProperty(Resource concept, Map<String, Object> conceptObj, OntModel ontModel, String propertyName, String jsonFieldName) {
         String fullPropertyUri = OFN_NAMESPACE + propertyName;
-        log.debug("addSourceProperty - Checking for property: {}", fullPropertyUri);
-        log.debug("  propertyName: {}, jsonFieldName: {}", propertyName, jsonFieldName);
-
         Property ofnProperty = ontModel.getProperty(fullPropertyUri);
 
-        boolean hasProperty = concept.hasProperty(ofnProperty);
-        log.debug("  Concept has property: {}", hasProperty);
-
-        if (hasProperty) {
-            log.debug("  Adding resource array property to JSON with field name: {}", jsonFieldName);
+        if (concept.hasProperty(ofnProperty)) {
+            log.debug("Adding source property {} to concept {}", jsonFieldName, concept.getURI());
             addResourceArrayProperty(concept, ofnProperty, jsonFieldName, conceptObj);
-        } else {
-            log.debug("  Property not found on concept: {}", concept.getURI());
         }
     }
 
@@ -731,7 +723,10 @@ public class ConceptProcessor {
 
     private void addUstanoveniProperty(Resource concept, Map<String, Object> conceptObj,
                                        OntModel ontModel) {
-        Property suppLegal = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_LONG);
+        // Must match the property IRI the writers (ConceptCreator / ConceptFieldUpdaters)
+        // actually store: OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST. Reading via
+        // USTANOVENI_LONG here silently dropped every privacy provision on detail load.
+        Property suppLegal = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_NEVEREJNOST);
 
         if (concept.hasProperty(suppLegal)) {
             addResourceArrayProperty(concept, suppLegal, USTANOVENI_NEVEREJNOST, conceptObj);

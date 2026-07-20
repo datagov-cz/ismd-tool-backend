@@ -1,22 +1,30 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.SearchSource;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
-import com.dia.ismdtoolbackend.repository.CommentRepository;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
+import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
+import com.dia.ismdtoolbackend.repository.*;
+import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.OntologyService;
+import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.published.NkdSnapshotTripleFilter;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.DataTypeConverter;
@@ -68,10 +76,18 @@ public class OntologyServiceImpl implements OntologyService {
     private final OntologyEditor ontologyEditor;
     private final OntologyDetailExtractor detailExtractor;
     private final PublishedResourceUtil deviationChecker;
+    private final OutboxConfig outboxConfig;
+    private final OutboxWriter outboxWriter;
+    private final OutboxRelayTrigger outboxRelayTrigger;
+    private final NkdConceptSnapshotRepository nkdSnapshotRepository;
+    private final NkdSnapshotWarmer nkdSnapshotWarmer;
+    private final NkdSnapshotService nkdSnapshotService;
+    private final NkdConfig nkdConfig;
+    private final NkdDetailService nkdDetailService;
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
@@ -90,13 +106,27 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
+        // NKD local-copy cascade: drop the PG snapshot rows for this graph. The materialized copy
+        // triples need no explicit removal — DELETE_GRAPH (or deleteGraph) sweeps the whole named graph,
+        // copies included. FK is not db-cascade, so the rows must go explicitly.
+        nkdSnapshotService.cascadeGraphDeletion(graphName);
+
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the graph deletion, committed atomically with the PG metadata
+            // delete below.
+            outboxWriter.enqueueDeleteGraph(graphName);
+            ontologyMetadataRepository.deleteById(ontologyId);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return;
+        }
+
         jenaTDB2Repository.deleteGraph(graphName);
         ontologyMetadataRepository.deleteById(ontologyId);
     }
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
@@ -144,11 +174,12 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologySlug {} not found", ontologySlug);
-            throw new OntologyException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
+            throw new OntologyNotFoundException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
         }
 
         OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
@@ -158,8 +189,13 @@ public class OntologyServiceImpl implements OntologyService {
 
         if (rawModel.isEmpty()) {
             log.error("Ontology model is empty for graph: {}", graphName);
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        // Materialized NKD snapshot copies live in this graph and carry real concept types, so the detail
+        // extractor would list them in pojmy. Linked concepts surface only via linkSnapshots, so strip the
+        // copies before extraction (and before the shared processedModel feeds the deviation checker).
+        NkdSnapshotTripleFilter.removeSnapshotSubjects(rawModel);
 
         // OFN transform is expensive (filter + reformat over the full graph);
         // run once and share with the deviation checker instead of re-running
@@ -170,7 +206,7 @@ public class OntologyServiceImpl implements OntologyService {
 
         enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
 
-        List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(graphName);
+        List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(metadataEntity.getId());
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
         List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
@@ -193,26 +229,78 @@ public class OntologyServiceImpl implements OntologyService {
         Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);
         result.setPublishedConceptDeviations(conceptDeviations);
 
+        surfaceLinkSnapshots(result, graphName);
+
         return result;
+    }
+
+    /**
+     * Builds {@code linkSnapshots} from cached snapshot rows (no NKD call — the snapshot row IS the
+     * cache) and triggers the async warmer when cold/stale. The read never writes; the warmer runs on its
+     * own thread/transaction. Never lets snapshot surfacing break ontology detail.
+     */
+    private void surfaceLinkSnapshots(GetOntologyDto result, String graphName) {
+        try {
+            List<com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity> rows =
+                    nkdSnapshotRepository.findByGraphName(graphName);
+
+            com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler.Result assembled =
+                    com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler.assemble(
+                            rows, nkdConfig.getSnapshot().getDeviationTtl(), java.time.Instant.now());
+
+            if (!assembled.byOwnerConcept().isEmpty()) {
+                result.setLinkSnapshots(assembled.byOwnerConcept());
+            }
+
+            // Warm when a row is cold/stale, OR when there are no rows yet (true cold start — the
+            // graph may have NKD links never snapshotted). Warm path is async; detail returns now.
+            //
+            // Accepted tradeoff: an ontology whose external links are NOT published in NKD has zero
+            // rows forever, so it re-scans on every detail load. The scan is in-memory only — the NKD
+            // batch call is gated behind finding external candidates — so a truly link-free ontology
+            // pays nothing across the wire. A per-graph "last warmed" marker (skip re-scan within TTL)
+            // is the steady-state optimization, deferred as a follow-up.
+            if (assembled.needsWarming() || rows.isEmpty()) {
+                nkdSnapshotWarmer.warmGraph(graphName);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to surface NKD link snapshots for graph {}: {}", graphName, e.getMessage(), e);
+        }
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<MinimalConceptDto> getConceptsByIri(String ontologyIri) {
+    public List<MinimalConceptDto> getConceptsByIri(String ontologyIri, SearchSource source) {
         if (ontologyIri == null || ontologyIri.isBlank()) {
             throw new OntologyException("IRI slovníku musí být zadáno.");
         }
+        if (source == null) {
+            throw new OntologyException("Zdroj (source) musí být zadán.");
+        }
 
+        return switch (source) {
+            case ISMD -> getIsmdConceptsByIri(ontologyIri);
+            case NKD -> getNkdConceptsByIri(ontologyIri);
+            default -> throw new IllegalArgumentException(
+                    "Nepodporovaný zdroj: " + source + ". Povolené hodnoty: ISMD, NKD.");
+        };
+    }
+
+    private List<MinimalConceptDto> getIsmdConceptsByIri(String ontologyIri) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIri);
         if (ontologyMetadataOpt.isEmpty()) {
             log.info("ISMD ontology not found for IRI: {}", ontologyIri);
-            throw new OntologyException("Slovník s IRI " + ontologyIri + " nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník s IRI " + ontologyIri + " nebyl nalezen.");
         }
 
         Model rawModel = jenaTDB2Repository.fetchGraph(ontologyIri);
         if (rawModel.isEmpty()) {
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        // Same intermixing as getOntologyDetailModel: strip materialized NKD copies so they don't
+        // surface as owned concepts. See NkdSnapshotTripleFilter.
+        NkdSnapshotTripleFilter.removeSnapshotSubjects(rawModel);
 
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
@@ -235,6 +323,24 @@ public class OntologyServiceImpl implements OntologyService {
                         .iri(c.getIri())
                         .slug(slugByIri.get(c.getIri()))
                         .name(c.getName())
+                        .conceptType(ConceptType.fromRdfTypes(c.getTypes()))
+                        .build())
+                .toList();
+    }
+
+    private List<MinimalConceptDto> getNkdConceptsByIri(String ontologyIri) {
+        OntologyDetailModel detail = nkdDetailService.getOntologyDetail(ontologyIri).getOntologyDetail();
+        List<OntologyDetailModel.ConceptDetailModel> concepts = detail.getConcepts();
+        if (concepts == null || concepts.isEmpty()) {
+            return List.of();
+        }
+
+        // NKD concepts have no local slug — the FE deep-links via IRI only.
+        return concepts.stream()
+                .map(c -> MinimalConceptDto.builder()
+                        .iri(c.getIri())
+                        .name(c.getName())
+                        .conceptType(ConceptType.fromRdfTypes(c.getTypes()))
                         .build())
                 .toList();
     }
@@ -243,6 +349,28 @@ public class OntologyServiceImpl implements OntologyService {
         if (model == null) {
             throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
         }
+
+        // name is required and must include a non-blank cs variant
+        Map<String, String> name = model.getNameModel() != null ? model.getNameModel().getName() : null;
+        if (name == null || name.isEmpty()) {
+            throw new OntologyValidationException("Název slovníku je povinný.");
+        }
+        if (isBlank(name.get(DEFAULT_LANG))) {
+            throw new OntologyValidationException("Název slovníku musí obsahovat českou variantu (cs).");
+        }
+
+        // description is optional, but if present it must include a non-blank cs variant
+        Map<String, String> description = model.getDescriptionModel() != null
+                ? model.getDescriptionModel().getDescription() : null;
+        if (description != null && !description.isEmpty()
+                && description.values().stream().anyMatch(v -> !isBlank(v))
+                && isBlank(description.get(DEFAULT_LANG))) {
+            throw new OntologyValidationException("Popis slovníku musí obsahovat českou variantu (cs).");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
@@ -308,7 +436,7 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ConceptMetadataResolver.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
     public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
             throw new OntologyException("Data pro úpravu slovníku jsou prázdná");
@@ -385,7 +513,7 @@ public class OntologyServiceImpl implements OntologyService {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
                     Model graphModel = perGraphModels.get(entity.getGraphName());
                     enrichMetadataFromModel(model, entity, graphModel);
-                    List<CommentEntity> commentEntities = commentRepository.findByOntologyIRI(entity.getGraphName());
+                    List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(entity.getId());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })

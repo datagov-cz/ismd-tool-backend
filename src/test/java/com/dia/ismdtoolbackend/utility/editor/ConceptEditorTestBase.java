@@ -19,7 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Map;
 
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 abstract class ConceptEditorTestBase {
@@ -85,77 +85,77 @@ abstract class ConceptEditorTestBase {
     // ========== Helper: stub all fields null for each concept type ==========
 
     protected void stubAllClassFieldsNull(ClassConceptEditModel mock) {
-        when(mock.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(mock.getNameModel()).thenReturn(null);
-        when(mock.getDescriptionModel()).thenReturn(null);
-        when(mock.getDefinitionModel()).thenReturn(null);
-        when(mock.getAltNameModel()).thenReturn(null);
-        when(mock.getDefiningLegalSource()).thenReturn(null);
-        when(mock.getRelatedLegalSource()).thenReturn(null);
-        when(mock.getDefiningNonLegalSource()).thenReturn(null);
-        when(mock.getRelatedNonLegalSource()).thenReturn(null);
-        when(mock.getExactMatch()).thenReturn(null);
-        when(mock.getInTezaurus()).thenReturn(null);
-        when(mock.getNamespace()).thenReturn(null);
-        when(mock.getType()).thenReturn(null);
-        when(mock.getPrivacyProvisions()).thenReturn(null);
-        when(mock.getBroaderConcept()).thenReturn(null);
-        when(mock.getIsInPPDF()).thenReturn(null);
-        when(mock.getAgendaCode()).thenReturn(null);
-        when(mock.getAgendaSystemCode()).thenReturn(null);
-        when(mock.getSharingMethod()).thenReturn(null);
-        when(mock.getAcquisitionMethod()).thenReturn(null);
-        when(mock.getContentType()).thenReturn(null);
-        when(mock.getIsPublic()).thenReturn(null);
+        lenient().when(mock.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
+        lenient().when(mock.getNameModel()).thenReturn(null);
+        lenient().when(mock.getDescriptionModel()).thenReturn(null);
+        lenient().when(mock.getDefinitionModel()).thenReturn(null);
+        lenient().when(mock.getAltNameModel()).thenReturn(null);
+        lenient().when(mock.getDefiningLegalSource()).thenReturn(null);
+        lenient().when(mock.getRelatedLegalSource()).thenReturn(null);
+        lenient().when(mock.getDefiningNonLegalSource()).thenReturn(null);
+        lenient().when(mock.getRelatedNonLegalSource()).thenReturn(null);
+        lenient().when(mock.getExactMatch()).thenReturn(null);
+        lenient().when(mock.getInTezaurus()).thenReturn(null);
+        lenient().when(mock.getNamespace()).thenReturn(null);
+        lenient().when(mock.getType()).thenReturn(null);
+        lenient().when(mock.getPrivacyProvisions()).thenReturn(null);
+        lenient().when(mock.getBroaderConcept()).thenReturn(null);
+        lenient().when(mock.getIsInPPDF()).thenReturn(null);
+        lenient().when(mock.getAgendaCode()).thenReturn(null);
+        lenient().when(mock.getAgendaSystemCode()).thenReturn(null);
+        lenient().when(mock.getSharingMethod()).thenReturn(null);
+        lenient().when(mock.getAcquisitionMethod()).thenReturn(null);
+        lenient().when(mock.getContentType()).thenReturn(null);
+        lenient().when(mock.getIsPublic()).thenReturn(null);
     }
 
     protected void stubAllPropertyFieldsNull(PropertyConceptEditModel mock) {
-        when(mock.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
-        when(mock.getNameModel()).thenReturn(null);
-        when(mock.getDescriptionModel()).thenReturn(null);
-        when(mock.getDefinitionModel()).thenReturn(null);
-        when(mock.getAltNameModel()).thenReturn(null);
-        when(mock.getDefiningLegalSource()).thenReturn(null);
-        when(mock.getRelatedLegalSource()).thenReturn(null);
-        when(mock.getDefiningNonLegalSource()).thenReturn(null);
-        when(mock.getRelatedNonLegalSource()).thenReturn(null);
-        when(mock.getExactMatch()).thenReturn(null);
-        when(mock.getInTezaurus()).thenReturn(null);
-        when(mock.getNamespace()).thenReturn(null);
-        when(mock.getDomain()).thenReturn(null);
-        when(mock.getDataType()).thenReturn(null);
-        when(mock.getSuperProperty()).thenReturn(null);
-        when(mock.getIsInPPDF()).thenReturn(null);
-        when(mock.getAgendaCode()).thenReturn(null);
-        when(mock.getAgendaSystemCode()).thenReturn(null);
-        when(mock.getSharingMethod()).thenReturn(null);
-        when(mock.getAcquisitionMethod()).thenReturn(null);
-        when(mock.getContentType()).thenReturn(null);
-        when(mock.getIsPublic()).thenReturn(null);
+        lenient().when(mock.getConceptTypeEnum()).thenReturn(ConceptType.VLASTNOST);
+        lenient().when(mock.getNameModel()).thenReturn(null);
+        lenient().when(mock.getDescriptionModel()).thenReturn(null);
+        lenient().when(mock.getDefinitionModel()).thenReturn(null);
+        lenient().when(mock.getAltNameModel()).thenReturn(null);
+        lenient().when(mock.getDefiningLegalSource()).thenReturn(null);
+        lenient().when(mock.getRelatedLegalSource()).thenReturn(null);
+        lenient().when(mock.getDefiningNonLegalSource()).thenReturn(null);
+        lenient().when(mock.getRelatedNonLegalSource()).thenReturn(null);
+        lenient().when(mock.getExactMatch()).thenReturn(null);
+        lenient().when(mock.getInTezaurus()).thenReturn(null);
+        lenient().when(mock.getNamespace()).thenReturn(null);
+        lenient().when(mock.getDomain()).thenReturn(null);
+        lenient().when(mock.getDataType()).thenReturn(null);
+        lenient().when(mock.getSuperProperty()).thenReturn(null);
+        lenient().when(mock.getIsInPPDF()).thenReturn(null);
+        lenient().when(mock.getAgendaCode()).thenReturn(null);
+        lenient().when(mock.getAgendaSystemCode()).thenReturn(null);
+        lenient().when(mock.getSharingMethod()).thenReturn(null);
+        lenient().when(mock.getAcquisitionMethod()).thenReturn(null);
+        lenient().when(mock.getContentType()).thenReturn(null);
+        lenient().when(mock.getIsPublic()).thenReturn(null);
     }
 
     protected void stubAllRelationshipFieldsNull(RelationshipConceptEditModel mock) {
-        when(mock.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
-        when(mock.getNameModel()).thenReturn(null);
-        when(mock.getDescriptionModel()).thenReturn(null);
-        when(mock.getDefinitionModel()).thenReturn(null);
-        when(mock.getAltNameModel()).thenReturn(null);
-        when(mock.getDefiningLegalSource()).thenReturn(null);
-        when(mock.getRelatedLegalSource()).thenReturn(null);
-        when(mock.getDefiningNonLegalSource()).thenReturn(null);
-        when(mock.getRelatedNonLegalSource()).thenReturn(null);
-        when(mock.getExactMatch()).thenReturn(null);
-        when(mock.getInTezaurus()).thenReturn(null);
-        when(mock.getNamespace()).thenReturn(null);
-        when(mock.getDomain()).thenReturn(null);
-        when(mock.getRange()).thenReturn(null);
-        when(mock.getSuperRelation()).thenReturn(null);
-        when(mock.getIsInPPDF()).thenReturn(null);
-        when(mock.getAgendaCode()).thenReturn(null);
-        when(mock.getAgendaSystemCode()).thenReturn(null);
-        when(mock.getSharingMethod()).thenReturn(null);
-        when(mock.getAcquisitionMethod()).thenReturn(null);
-        when(mock.getContentType()).thenReturn(null);
-        when(mock.getIsPublic()).thenReturn(null);
+        lenient().when(mock.getConceptTypeEnum()).thenReturn(ConceptType.VZTAH);
+        lenient().when(mock.getNameModel()).thenReturn(null);
+        lenient().when(mock.getDescriptionModel()).thenReturn(null);
+        lenient().when(mock.getDefinitionModel()).thenReturn(null);
+        lenient().when(mock.getAltNameModel()).thenReturn(null);
+        lenient().when(mock.getDefiningLegalSource()).thenReturn(null);
+        lenient().when(mock.getRelatedLegalSource()).thenReturn(null);
+        lenient().when(mock.getDefiningNonLegalSource()).thenReturn(null);
+        lenient().when(mock.getRelatedNonLegalSource()).thenReturn(null);
+        lenient().when(mock.getExactMatch()).thenReturn(null);
+        lenient().when(mock.getInTezaurus()).thenReturn(null);
+        lenient().when(mock.getNamespace()).thenReturn(null);
+        lenient().when(mock.getDomain()).thenReturn(null);
+        lenient().when(mock.getRange()).thenReturn(null);
+        lenient().when(mock.getSuperRelation()).thenReturn(null);
+        lenient().when(mock.getIsInPPDF()).thenReturn(null);
+        lenient().when(mock.getAgendaCode()).thenReturn(null);
+        lenient().when(mock.getAgendaSystemCode()).thenReturn(null);
+        lenient().when(mock.getSharingMethod()).thenReturn(null);
+        lenient().when(mock.getAcquisitionMethod()).thenReturn(null);
+        lenient().when(mock.getContentType()).thenReturn(null);
+        lenient().when(mock.getIsPublic()).thenReturn(null);
     }
 }

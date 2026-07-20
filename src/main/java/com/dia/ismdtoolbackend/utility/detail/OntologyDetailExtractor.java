@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +54,30 @@ public class OntologyDetailExtractor {
     }
 
     /**
+     * Batch-prefetched variant of {@link #dbSlugResolver()} for the single-concept detail path.
+     * Collects every property/relationship member IRI reachable from {@code conceptIri} in the
+     * model, resolves their slugs in one {@code findByConceptIriIn}, and serves each
+     * {@code apply} from the resulting map.
+     */
+    private Function<String, String> batchSlugResolver(OntModel ontModel, String conceptIri) {
+        Resource conceptResource = ontModel.getResource(conceptIri);
+        Set<String> memberIris = new LinkedHashSet<>();
+        ontModel.listSubjectsWithProperty(RDFS.domain, conceptResource)
+                .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+        ontModel.listSubjectsWithProperty(RDFS.range, conceptResource)
+                .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+
+        if (memberIris.isEmpty()) {
+            return iri -> null;
+        }
+
+        Map<String, String> slugByIri = new HashMap<>();
+        conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(memberIris))
+                .forEach(e -> slugByIri.put(e.getConceptIri(), e.getSlug()));
+        return slugByIri::get;
+    }
+
+    /**
      * Resolver that returns the IRI unchanged. Intended for the NKD detail pipeline,
      * where the navigation reference is the full IRI used by /api/nkd/.../detail endpoints.
      */
@@ -60,14 +85,33 @@ public class OntologyDetailExtractor {
         return iri -> iri;
     }
 
+    /**
+     * Local-detail OFN transform. Infers role tags + labels but does NOT derive
+     * {@code skos:inScheme}: local vocabularies are written via the authoritative
+     * upload path, which guarantees an explicit inScheme on every owned concept.
+     */
     public Model applyOFNTransformations(Model rawModel) {
-        log.debug("Applying OFN transformations");
+        return applyOFNTransformations(rawModel, false);
+    }
+
+    /**
+     * NKD-detail OFN transform. Same as the local transform PLUS {@code skos:inScheme}
+     * derivation, since NKD data is out of our control and often arrives without one.
+     */
+    public Model applyOFNTransformationsForNkd(Model rawModel) {
+        return applyOFNTransformations(rawModel, true);
+    }
+
+    private Model applyOFNTransformations(Model rawModel, boolean deriveInScheme) {
+        log.debug("Applying OFN transformations (deriveInScheme={})", deriveInScheme);
         // Normalize before filtering: NKD-published concepts often carry only
         // generic types (slovníky:pojem + owl:Class/ObjectProperty/DatatypeProperty),
         // all of which TurtleFilterUtil treats as "vocabulary noise" and would
         // strip. Inferring the role tags (skos:Concept, slovníky:třída/vztah/
         // vlastnost) here keeps real concepts past the filter.
-        int normalized = OFNTypeNormalizer.normalize(rawModel);
+        int normalized = deriveInScheme
+                ? OFNTypeNormalizer.normalizeForNkd(rawModel)
+                : OFNTypeNormalizer.normalizeForLocalDetail(rawModel);
         if (normalized > 0) {
             log.debug("Inferred OFN role tags on {} resources before filtering", normalized);
         }
@@ -96,13 +140,19 @@ public class OntologyDetailExtractor {
     }
 
     public OntologyDetailModel.ConceptDetailModel extractConceptDetail(Model processedModel, String conceptIri) {
-        return extractConceptDetail(processedModel, conceptIri, dbSlugResolver());
+        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+        return extractConceptDetail(ontModel, processedModel, conceptIri, batchSlugResolver(ontModel, conceptIri));
     }
 
     public OntologyDetailModel.ConceptDetailModel extractConceptDetail(Model processedModel, String conceptIri,
                                                                       Function<String, String> refResolver) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+        return extractConceptDetail(ontModel, processedModel, conceptIri, refResolver);
+    }
 
+    private OntologyDetailModel.ConceptDetailModel extractConceptDetail(OntModel ontModel, Model processedModel,
+                                                                       String conceptIri,
+                                                                       Function<String, String> refResolver) {
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
         ConceptProcessor conceptProcessor = new ConceptProcessor();
 
@@ -121,10 +171,10 @@ public class OntologyDetailExtractor {
         Map<String, String> descriptionMap = extractMultilingualDescription(structure.getVocabularyResource());
 
         return OntologyDetailModel.builder()
-                .context(CONTEXT_JSONLD)
+                .context(CONTEXT)
                 .iri(structure.getOntologyIRI())
                 .types(structure.getVocabularyTypes())
-                .name(createMultilingualMap(structure.getModelName()))
+                .name(extractMultilingualName(structure.getVocabularyResource()))
                 .description(descriptionMap)
                 .creationDate(structure.getCreationDate())
                 .modificationDate(structure.getModificationDate())
@@ -219,7 +269,10 @@ public class OntologyDetailExtractor {
                 Object domainObj = conceptMap.get(DEFINICNI_OBOR);
                 String domain = domainObj instanceof String ? (String) domainObj : null;
 
-                if (conceptIri.equals(domain)) {
+                Object rangeObj = conceptMap.get(OBOR_HODNOT);
+                String range = rangeObj instanceof String ? (String) rangeObj : null;
+
+                if (conceptIri.equals(domain) || conceptIri.equals(range)) {
                     ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
 
                     Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), relationshipIri, NAZEV);
@@ -244,14 +297,13 @@ public class OntologyDetailExtractor {
         Resource conceptResource = ontModel.getResource(conceptIri);
         Resource vztahType = ontModel.getResource(OFN_NAMESPACE + VZTAH);
 
-        ResIterator relationshipIterator = ontModel.listSubjectsWithProperty(
-            org.apache.jena.vocabulary.RDFS.domain,
-            conceptResource
-        );
+        Set<Resource> relationshipResources = new LinkedHashSet<>();
+        ontModel.listSubjectsWithProperty(org.apache.jena.vocabulary.RDFS.domain, conceptResource)
+                .forEachRemaining(relationshipResources::add);
+        ontModel.listSubjectsWithProperty(org.apache.jena.vocabulary.RDFS.range, conceptResource)
+                .forEachRemaining(relationshipResources::add);
 
-        while (relationshipIterator.hasNext()) {
-            Resource relationshipResource = relationshipIterator.next();
-
+        for (Resource relationshipResource : relationshipResources) {
             if (relationshipResource.hasProperty(ResourceFactory.createProperty(
                 "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "type"), vztahType)) {
 
@@ -364,8 +416,8 @@ public class OntologyDetailExtractor {
                 .broaderClasses((List<String>) conceptMap.get(NADRAZENA_TRIDA))
                 .broaderRelations((List<String>) conceptMap.get(NADRAZENY_VZTAH))
                 .broaderProperties((List<String>) conceptMap.get(NADRAZENA_VLASTNOST))
-                .definingLegalSources((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU))
-                .relatedLegalSources((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU))
+                .definingLegalSources(nullToEmpty((List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
+                .relatedLegalSources(nullToEmpty((List<String>) conceptMap.get(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
                 .definingLegalSourcesResolved(buildResolvedSources(
                         (List<String>) conceptMap.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU)))
                 .relatedLegalSourcesResolved(buildResolvedSources(
@@ -380,7 +432,7 @@ public class OntologyDetailExtractor {
                 .isPpdf((Boolean) conceptMap.get(JE_PPDF))
                 .ais(extractStringFromValue(conceptMap.get(AIS)))
                 .agenda(extractStringFromValue(conceptMap.get(AGENDA)))
-                .privacyProvisions((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST))
+                .privacyProvisions(nullToEmpty((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .privacyProvisionsResolved(buildResolvedSources((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .conceptProperties(properties)
                 .conceptRelationships(relationships)
@@ -389,7 +441,7 @@ public class OntologyDetailExtractor {
 
     static List<NonLegalSourceDto> buildNonLegalSources(List<Map<String, Object>> rawSources) {
         if (rawSources == null || rawSources.isEmpty()) {
-            return null;
+            return List.of();
         }
         List<NonLegalSourceDto> out = new ArrayList<>(rawSources.size());
         for (Map<String, Object> src : rawSources) {
@@ -404,14 +456,17 @@ public class OntologyDetailExtractor {
                     .url(asString(src.get("url")))
                     .build());
         }
-        return out.isEmpty() ? null : out;
+        return out;
+    }
+
+    private static <T> List<T> nullToEmpty(List<T> list) {
+        return list == null ? List.of() : list;
     }
 
     private static String asString(Object value) {
         return value instanceof String s ? s : null;
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, String> asMultilingualMap(Object value) {
         if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
             return null;
@@ -439,48 +494,62 @@ public class OntologyDetailExtractor {
         return null;
     }
 
-    private Map<String, String> createMultilingualMap(String value) {
-        if (value == null || value.trim().isEmpty()) {
-            return Collections.emptyMap();
-        }
-        Map<String, String> map = new LinkedHashMap<>();
-        map.put(DEFAULT_LANG, value);
-        return map;
-    }
-
-    private Map<String, String> extractMultilingualDescription(Resource vocabularyResource) {
+    /**
+     * Collect all language-tagged literal values of the given {@code properties}
+     * on {@code vocabularyResource} into a {@code lang -> value} map, preserving
+     * every language variant. Untagged literals key under {@code DEFAULT_LANG}.
+     * Properties are read in order and the first non-blank value for a language
+     * wins, so list more authoritative predicates first.
+     *
+     * <p>Shared by the ontology name and description reads — both carry multiple
+     * language variants. The single-language collapse this replaced was why only
+     * the {@code cs} name variant surfaced in the detail response.
+     */
+    private Map<String, String> extractMultilingualValue(Resource vocabularyResource, Property... properties) {
         if (vocabularyResource == null) {
             return Collections.emptyMap();
         }
 
-        Map<String, String> descriptionMap = new LinkedHashMap<>();
-        Property descProperty = ResourceFactory.createProperty(DCT_NS + "description");
-
-        StmtIterator iter = vocabularyResource.listProperties(descProperty);
-        while (iter.hasNext()) {
-            Statement stmt = iter.next();
-            if (stmt.getObject().isLiteral()) {
-                Literal literal = stmt.getObject().asLiteral();
-                String lang = literal.getLanguage();
-                String value = literal.getString();
-
-                if (value != null && !value.trim().isEmpty()) {
-                    String languageTag = (lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG;
-                    descriptionMap.put(languageTag, value);
+        Map<String, String> valuesByLang = new LinkedHashMap<>();
+        for (Property property : properties) {
+            StmtIterator iter = vocabularyResource.listProperties(property);
+            while (iter.hasNext()) {
+                Statement stmt = iter.next();
+                if (!stmt.getObject().isLiteral()) {
+                    continue;
                 }
+                Literal literal = stmt.getObject().asLiteral();
+                String value = literal.getString();
+                if (value == null || value.trim().isEmpty()) {
+                    continue;
+                }
+                String lang = literal.getLanguage();
+                String languageTag = (lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG;
+                valuesByLang.putIfAbsent(languageTag, value);
             }
         }
 
-        return descriptionMap;
+        return valuesByLang;
+    }
+
+    private Map<String, String> extractMultilingualName(Resource vocabularyResource) {
+        // Same predicates ModelAnalyzer recognises as the vocabulary name; rdfs:label first.
+        return extractMultilingualValue(vocabularyResource,
+                ResourceFactory.createProperty(RDFS.getURI() + "label"),
+                ResourceFactory.createProperty(SKOS_NS + "prefLabel"));
+    }
+
+    private Map<String, String> extractMultilingualDescription(Resource vocabularyResource) {
+        return extractMultilingualValue(vocabularyResource,
+                ResourceFactory.createProperty(DCT_NS + "description"));
     }
 
     /**
      * Build parse-only resolved-source DTOs for the concept-detail response.
-     * Returns {@code null} when the input is null/empty so {@code @JsonInclude(NON_NULL)}
-     * omits the field. Never calls SPARQL — fragment URLs are flagged
-     * {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
-     */
-    /**
+     * Returns an empty list (never null) when the input is null/empty, so the
+     * field always serializes as {@code []}. Never calls SPARQL — fragment URLs
+     * are flagged {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
+     * <p>
      * Read {@code rdfs:range} from a property {@code Resource} and emit it in
      * the same shape {@code ConceptProcessor.addDomainAndRange} writes to the
      * JSON map: abbreviated to {@code xsd:*} when in the XSD namespace, else
@@ -515,7 +584,7 @@ public class OntologyDetailExtractor {
     }
 
     static List<ResolvedLegalSourceDto> buildResolvedSources(List<String> urls) {
-        if (urls == null || urls.isEmpty()) return null;
+        if (urls == null || urls.isEmpty()) return List.of();
         List<ResolvedLegalSourceDto> out = new ArrayList<>(urls.size());
         for (String url : urls) {
             out.add(parseUrlToPendingDto(url));

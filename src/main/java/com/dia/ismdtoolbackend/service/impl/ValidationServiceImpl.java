@@ -1,8 +1,10 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
+import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.exception.ValidationException;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReport;
@@ -12,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Optional;
 
 @Service
@@ -20,6 +23,7 @@ import java.util.Optional;
 public class ValidationServiceImpl implements ValidationService {
 
     private final ValidationReportRepository validationReportRepository;
+    private final OntologyMetadataRepository ontologyMetadataRepository;
 
     @Override
     @Transactional
@@ -37,9 +41,21 @@ public class ValidationServiceImpl implements ValidationService {
             String validationResults = validationReportEntity.convertResultsToJson(validationReport.getResults());
             validationReportEntity.setResultsJson(validationResults);
             validationReportRepository.save(validationReportEntity);
+
+            // A successful save means the validator evaluated the ontology — clear any prior
+            // SKIPPED_UNAVAILABLE so a manual re-validation un-flags it.
+            markValidated(ontologyMetadataModel.getId());
         } catch (Exception e) {
             throw new ValidationException("Během ukládání zprávy z kontroly došlo k chybě", e);
         }
+    }
+
+    private void markValidated(Long ontologyMetadataId) {
+        ontologyMetadataRepository.findById(ontologyMetadataId).ifPresent(ontology -> {
+            ontology.setLastValidationStatus(OntologyValidationStatus.VALIDATED);
+            ontology.setLastValidationAt(Instant.now());
+            ontologyMetadataRepository.save(ontology);
+        });
     }
 
     @Override

@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.models.concept.AltNameModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.utility.URIGenerator;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -18,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
@@ -108,9 +110,9 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getType()).thenReturn("subjekt");
         when(classConceptEditModel.getAgendaCode()).thenReturn("");
         when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn("obsah");
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn("ziskani");
-        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("sdileni"));
+        when(classConceptEditModel.getContentType()).thenReturn("provozní");
+        when(classConceptEditModel.getAcquisitionMethod()).thenReturn("vlastní");
+        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("nesdílené"));
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
         when(classConceptEditModel.getBroaderConcept()).thenReturn(List.of("https://example.com/new-broader"));
@@ -121,7 +123,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -196,7 +197,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -267,7 +267,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
                 .thenReturn(List.of(new DigitalObjectModel("Doc 2", "Popis 2", "https://example.com/doc2")));
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -328,7 +327,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
@@ -378,7 +376,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
         when(classConceptEditModel.getIsPublic()).thenReturn(null);
         when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
 
@@ -429,7 +426,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -483,7 +479,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -532,7 +527,6 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
         when(classConceptEditModel.getExactMatch()).thenReturn(null);
         when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -546,9 +540,10 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         assertFalse(updated.hasProperty(relatedProp));
     }
 
-    // A7 – Non-legal sources with blank/invalid url are skipped (treated as an empty list)
+    // A7 – Non-legal sources with blank/invalid url now REJECT the whole edit (HTTP 400),
+    // listing every offending field, and leave the model untouched (no partial write).
     @Test
-    void editConcept_ShouldSkipNonLegalSourcesWithInvalidUrl() {
+    void editConcept_ShouldRejectNonLegalSourcesWithInvalidUrl() {
         String conceptIri = DEFAULT_NS + "class-nonlegal-clear";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class nonlegal clear", "cs"));
@@ -560,42 +555,33 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         existing.addProperty(definingProp, model.createResource(DEFAULT_NS + "digitální-dokument-1"));
         existing.addProperty(relatedProp, model.createResource(DEFAULT_NS + "digitální-dokument-2"));
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
+        long sizeBefore = model.size();
 
-        when(classConceptEditModel.getDefiningNonLegalSource())
+        // Only the fields the pre-flight validator reads need stubbing — validation
+        // throws before the type dispatch, so e.g. getConceptTypeEnum is never reached.
+        lenient().when(classConceptEditModel.getDefiningNonLegalSource())
                 .thenReturn(List.of(new DigitalObjectModel("Doc with no url", "Popis", "")));
-        when(classConceptEditModel.getRelatedNonLegalSource())
+        lenient().when(classConceptEditModel.getRelatedNonLegalSource())
                 .thenReturn(List.of(new DigitalObjectModel("Doc with invalid url", "Popis", "not a url")));
+        lenient().when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
+        lenient().when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
+        lenient().when(classConceptEditModel.getAgendaCode()).thenReturn(null);
+        lenient().when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
+        lenient().when(classConceptEditModel.getExactMatch()).thenReturn(null);
+        lenient().when(classConceptEditModel.getPrivacyProvisions()).thenReturn(null);
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getType()).thenReturn(null);
-        when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn(null);
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getNamespace()).thenReturn(null);
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
+                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null));
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+        // every offending field is named in the message
+        assertTrue(ex.getMessage().contains("definingNonLegalSource"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("relatedNonLegalSource"), ex.getMessage());
 
+        // no mutation occurred — the existing non-legal links are still present
         Resource updated = model.getResource(conceptIri);
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
-
-        assertFalse(updated.hasProperty(definingProp));
-        assertFalse(updated.hasProperty(relatedProp));
+        assertTrue(updated.hasProperty(definingProp));
+        assertTrue(updated.hasProperty(relatedProp));
+        assertEquals(sizeBefore, model.size(), "rejected edit must not change the model");
     }
 
     // A8 – IRI rename updates object references
@@ -716,7 +702,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
         stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("value-1", "value-2"));
+        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("nesdílené", "veřejně přístupné"));
 
         conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 
@@ -799,22 +785,24 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
     // A11d – Data classification: public but has provisions
     @Test
-    void editConcept_ShouldNotAddVerejnyUdaj_WhenIsPublicTrueButHasProvisions() {
+    void editConcept_ShouldReject_WhenIsPublicTrueButHasProvisions() {
+        // isPublic=true together with privacy provisions is a contradiction and is
+        // now rejected up front by validation (400) — before reaching the editor.
         String conceptIri = DEFAULT_NS + "class-a11d";
         Resource existing = model.createResource(conceptIri);
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a11d", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+        long sizeBefore = model.size();
 
         stubAllClassFieldsNull(classConceptEditModel);
         when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.TRUE);
         when(classConceptEditModel.getPrivacyProvisions())
                 .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
 
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Resource verejny = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        assertFalse(updated.hasProperty(RDF.type, verejny));
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
+                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null));
+        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
+        assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
     }
 
     // A12 – inTezaurus boolean update

@@ -1,17 +1,27 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
+import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
+import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
@@ -35,6 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.dia.constants.VocabularyConstants.POJEM_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TRIDA_JSON_LD;
+import static com.dia.constants.VocabularyConstants.VZTAH_JSON_LD;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -75,6 +88,22 @@ class OntologyServiceImplTest {
 
     @Mock
     private PublishedResourceUtil deviationChecker;
+
+    // OutboxConfig mock isEnabled() defaults to false → existing tests exercise the direct path.
+    @Mock
+    private OutboxConfig outboxConfig;
+
+    @Mock
+    private OutboxWriter outboxWriter;
+
+    @Mock
+    private OutboxRelayTrigger outboxRelayTrigger;
+
+    @Mock
+    private NkdSnapshotService nkdSnapshotService;
+
+    @Mock
+    private NkdDetailService nkdDetailService;
 
     @InjectMocks
     private OntologyServiceImpl ontologyService;
@@ -229,6 +258,68 @@ class OntologyServiceImplTest {
         verify(jenaTDB2Repository).deleteGraph(anyString());
     }
 
+    // ========== createOntology required-field validation ==========
+
+    @Test
+    void createOntology_NameMissing_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        createModel.setNameModel(new NameModel());
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Název slovníku je povinný"));
+        verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+    }
+
+    @Test
+    void createOntology_NameMissingCsVariant_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("en", "test-ontology");
+        createModel.getNameModel().setName(nameMap);
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("českou variantu"));
+        verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
+    }
+
+    @Test
+    void createOntology_NameCsBlank_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> nameMap = new HashMap<>();
+        nameMap.put("cs", "   ");
+        createModel.getNameModel().setName(nameMap);
+
+        assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+    }
+
+    @Test
+    void createOntology_DescriptionPresentWithoutCs_Throws() {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        Map<String, String> descMap = new HashMap<>();
+        descMap.put("en", "English only description");
+        createModel.getDescriptionModel().setDescription(descMap);
+
+        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
+                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
+        assertTrue(ex.getMessage().contains("Popis slovníku"));
+    }
+
+    @Test
+    void createOntology_DescriptionEmpty_Succeeds() throws OntologyException {
+        OntologyCreateModel createModel = createValidOntologyCreateModel();
+        createModel.setDescriptionModel(new DescriptionModel());
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+
+        when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
+
+        assertNotNull(ontologyService.createOntology(createModel, TEST_USER_ID));
+    }
+
     // ========== getOntologyDetailModel Tests ==========
 
     @Test
@@ -264,7 +355,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(metadataModel);
-        when(commentRepository.findByOntologyIRI(TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
+        when(commentRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(List.of(conceptEntity));
         when(conceptMetadataMapper.toDto(conceptEntity)).thenReturn(conceptModel);
@@ -290,7 +381,7 @@ class OntologyServiceImplTest {
     void getOntologyDetailModel_OntologyNotFound() {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("nebyla nalezena"));
@@ -301,7 +392,7 @@ class OntologyServiceImplTest {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException exception = assertThrows(OntologyException.class,
+        OntologyNotFoundException exception = assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG));
 
         assertTrue(exception.getMessage().contains("prázdný"));
@@ -464,8 +555,7 @@ class OntologyServiceImplTest {
     }
 
     private OntologyEditModel createValidOntologyEditModel() {
-        OntologyEditModel model = new OntologyEditModel();
-        return model;
+        return new OntologyEditModel();
     }
 
     private Model createModelWithOntologyData() {
@@ -479,31 +569,46 @@ class OntologyServiceImplTest {
 
     // ========== getConceptsByIri Tests (B1) ==========
     //
-    // Covers /api/ontology/concepts?ontologyIri=... — the slim concept-listing
+    // Covers /api/ontology/concepts?iri=...&source=... — the slim concept-listing
     // endpoint used by the FE for navigation. Branches: input validation,
-    // ontology-not-found, empty-graph, empty-concepts-list short-circuit, and
-    // the slug-join from PG metadata.
+    // source dispatch, ontology-not-found, empty-graph, empty-concepts-list
+    // short-circuit, the slug-join from PG metadata, conceptType resolution,
+    // and the NKD source path.
 
     @Test
     void getConceptsByIri_nullIri_throws() {
         OntologyException ex = assertThrows(OntologyException.class,
-                () -> ontologyService.getConceptsByIri(null));
+                () -> ontologyService.getConceptsByIri(null, SearchSource.ISMD));
         assertTrue(ex.getMessage().toLowerCase().contains("iri"));
     }
 
     @Test
     void getConceptsByIri_blankIri_throws() {
         OntologyException ex = assertThrows(OntologyException.class,
-                () -> ontologyService.getConceptsByIri("   "));
+                () -> ontologyService.getConceptsByIri("   ", SearchSource.ISMD));
         assertTrue(ex.getMessage().toLowerCase().contains("iri"));
+    }
+
+    @Test
+    void getConceptsByIri_nullSource_throws() {
+        OntologyException ex = assertThrows(OntologyException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, null));
+        assertTrue(ex.getMessage().toLowerCase().contains("zdroj")
+                || ex.getMessage().toLowerCase().contains("source"));
+    }
+
+    @Test
+    void getConceptsByIri_unsupportedSource_throws() {
+        assertThrows(IllegalArgumentException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.UNPUBLISHED));
     }
 
     @Test
     void getConceptsByIri_ontologyNotFound_throws() {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.empty());
 
-        OntologyException ex = assertThrows(OntologyException.class,
-                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
+        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD));
         assertTrue(ex.getMessage().contains(TEST_GRAPH_NAME));
     }
 
@@ -513,8 +618,8 @@ class OntologyServiceImplTest {
                 .thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(ModelFactory.createDefaultModel());
 
-        OntologyException ex = assertThrows(OntologyException.class,
-                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME));
+        OntologyNotFoundException ex = assertThrows(OntologyNotFoundException.class,
+                () -> ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD));
         assertTrue(ex.getMessage().toLowerCase().contains("prázdn")
                 || ex.getMessage().toLowerCase().contains("empty"));
     }
@@ -529,7 +634,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.extractOntologyDetail(rawModel))
                 .thenReturn(OntologyDetailModel.builder().concepts(null).build());
 
-        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD);
 
         assertTrue(out.isEmpty());
         // PG lookup is never executed when the RDF detail has no concepts.
@@ -546,26 +651,30 @@ class OntologyServiceImplTest {
         when(detailExtractor.extractOntologyDetail(rawModel))
                 .thenReturn(OntologyDetailModel.builder().concepts(List.of()).build());
 
-        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD);
 
         assertTrue(out.isEmpty());
     }
 
     @Test
-    void getConceptsByIri_joinsConceptSlugsFromPg() {
+    void getConceptsByIri_joinsConceptSlugsFromPg_andResolvesConceptType() {
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
                 .thenReturn(Optional.of(testOntologyEntity));
         Model rawModel = nonEmptyOntologyModel();
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
         when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(rawModel);
 
+        // Types carry the short OFN JSON-LD labels the detail extractor actually
+        // emits (ConceptDetailModel.types), not raw rdf:type IRIs.
         OntologyDetailModel.ConceptDetailModel c1 = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/1")
                 .name(Map.of("cs", "Pojem 1"))
+                .types(List.of(POJEM_JSON_LD, "Koncept", TRIDA_JSON_LD))
                 .build();
         OntologyDetailModel.ConceptDetailModel c2 = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/2")
                 .name(Map.of("cs", "Pojem 2"))
+                .types(List.of(POJEM_JSON_LD, "Koncept", VZTAH_JSON_LD))
                 .build();
         OntologyDetailModel.ConceptDetailModel c3UnmappedSlug = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri("http://example.org/c/3")
@@ -588,15 +697,58 @@ class OntologyServiceImplTest {
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME))
                 .thenReturn(List.of(e1, e2, eNoise));
 
-        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME);
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(TEST_GRAPH_NAME, SearchSource.ISMD);
 
         assertEquals(3, out.size());
         assertEquals("http://example.org/c/1", out.get(0).getIri());
         assertEquals("pojem-1", out.get(0).getSlug());
+        assertEquals(ConceptType.TRIDA, out.get(0).getConceptType());
         assertEquals("http://example.org/c/2", out.get(1).getIri());
         assertEquals("pojem-2", out.get(1).getSlug());
+        assertEquals(ConceptType.VZTAH, out.get(1).getConceptType());
         assertEquals("http://example.org/c/3", out.get(2).getIri());
         assertNull(out.get(2).getSlug(), "Concepts without a PG metadata row should have null slug");
+        assertEquals(ConceptType.KONCEPT, out.get(2).getConceptType(),
+                "Concepts with no rdf:type role should fall back to KONCEPT");
+    }
+
+    @Test
+    void getConceptsByIri_nkdSource_omitsSlug_andResolvesConceptType() {
+        String iri = "https://data.gov.cz/zdroj/slovnik/test";
+
+        OntologyDetailModel.ConceptDetailModel c = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(iri + "/pojem/bar")
+                .name(Map.of("cs", "Bar"))
+                .types(List.of("http://www.w3.org/2002/07/owl#Class"))
+                .build();
+        OntologyDetailModel detail = OntologyDetailModel.builder()
+                .iri(iri)
+                .concepts(List.of(c))
+                .build();
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenReturn(new GetNkdOntologyDto(detail));
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(iri, SearchSource.NKD);
+
+        assertEquals(1, out.size());
+        assertEquals(iri + "/pojem/bar", out.get(0).getIri());
+        assertNull(out.get(0).getSlug(), "NKD concepts have no local slug");
+        assertEquals(ConceptType.TRIDA, out.get(0).getConceptType());
+        // ISMD path must not be touched for an NKD request.
+        verify(ontologyMetadataRepository, never()).findByGraphName(anyString());
+    }
+
+    @Test
+    void getConceptsByIri_nkdSource_noConcepts_returnsEmptyList() {
+        String iri = "https://data.gov.cz/zdroj/slovnik/test";
+
+        OntologyDetailModel detail = OntologyDetailModel.builder().iri(iri).concepts(null).build();
+        when(nkdDetailService.getOntologyDetail(iri))
+                .thenReturn(new GetNkdOntologyDto(detail));
+
+        List<MinimalConceptDto> out = ontologyService.getConceptsByIri(iri, SearchSource.NKD);
+
+        assertTrue(out.isEmpty());
     }
 
     // ========== getAll / getBySlugs Tests (B2 — enrichEntitiesWithBatchMetadata) ==========
@@ -648,13 +800,16 @@ class OntologyServiceImplTest {
     @Test
     void getAll_enrichesEachEntityWithBatchMetadata() {
         OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
         e1.setGraphName("http://example.org/o/1");
         OntologyMetadataEntity e2 = new OntologyMetadataEntity();
+        e2.setId(2L);
         e2.setGraphName("http://example.org/o/2");
         // Entity with null graphName must be filtered out of the batch fetch but
         // still mapped via the entity stream — its enrichMetadataFromModel call
         // receives a null model.
         OntologyMetadataEntity eNoGraph = new OntologyMetadataEntity();
+        eNoGraph.setId(3L);
         eNoGraph.setGraphName(null);
         when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1, e2, eNoGraph));
 
@@ -670,9 +825,9 @@ class OntologyServiceImplTest {
         when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
 
         CommentEntity comment = new CommentEntity();
-        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of(comment));
-        when(commentRepository.findByOntologyIRI("http://example.org/o/2")).thenReturn(List.of());
-        when(commentRepository.findByOntologyIRI(null)).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of(comment));
+        when(commentRepository.findByOntologyMetadataId(2L)).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(3L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
@@ -687,7 +842,7 @@ class OntologyServiceImplTest {
         // fallback value — what matters is enrichMetadataFromModel was called and returned
         // without throwing).
         assertNotNull(mNoGraph);
-        verify(commentRepository).findByOntologyIRI("http://example.org/o/1");
+        verify(commentRepository).findByOntologyMetadataId(1L);
     }
 
     @Test
@@ -725,6 +880,7 @@ class OntologyServiceImplTest {
     @Test
     void getBySlugs_happyPath_enrichesViaBatchMetadata() {
         OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
         e1.setGraphName("http://example.org/o/1");
         when(ontologyMetadataRepository.findBySlugIn(List.of("slug-1"))).thenReturn(List.of(e1));
 
@@ -734,7 +890,7 @@ class OntologyServiceImplTest {
 
         OntologyMetadataModel m1 = new OntologyMetadataModel();
         when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(commentRepository.findByOntologyIRI("http://example.org/o/1")).thenReturn(List.of());
+        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));

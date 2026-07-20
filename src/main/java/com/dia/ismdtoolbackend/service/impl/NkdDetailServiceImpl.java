@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -22,11 +23,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 
 @Service
@@ -153,7 +150,9 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         });
 
         OntologyDetailModel.ConceptDetailModel detail = published.detail();
-        referencedConceptsEnricher.enrich(detail);
+        // NKD detail context: resolve referenced concepts NKD-only so an IRI that
+        // also exists in ISMD stays in the NKD context the user is viewing.
+        referencedConceptsEnricher.enrich(detail, SearchSource.NKD);
         resolveRppReferences(detail);
 
         // Query param wins (FE supplies it as breadcrumb context); fall back to
@@ -195,24 +194,12 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             validateIri(iri);
         }
 
-        List<NkdOntologyListItemDto> items = new ArrayList<>(iris.size());
-        for (String iri : iris) {
-            try {
-                Optional<OntologyDetailModel> detail = nkdSparqlClient.fetchPublishedOntology(iri);
-                if (detail.isEmpty()) {
-                    log.info("NKD ontology not found, skipping in list response: {}", iri);
-                    continue;
-                }
-                // null conceptCount → omitted from JSON (NON_NULL on the item DTO).
-                // Lookup-by-IRI doesn't run the count batch, so we can't supply it here.
-                items.add(toListItem(detail.get(), null));
-            } catch (RuntimeException e) {
-                // Skip-and-continue: a single stale bookmark in the FE's localStorage
-                // shouldn't blank the whole "last accessed" tile row.
-                log.warn("NKD SPARQL error while fetching ontology {} for list, skipping: {}",
-                        iri, e.getMessage());
-            }
-        }
+        // Same batched metadata SELECT as the browse path — one round-trip for all IRIs.
+        // No concept-count batch on this lookup-by-IRI flow, so conceptCount stays null
+        // (omitted from JSON via NON_NULL on the item DTO). A stale bookmarked IRI absent
+        // from NKD simply yields no rows and is skipped — it never blanks the row.
+        List<NkdOntologyListItemDto> items = assembleListItems(iris, Map.of(), false);
+
         GetNkdOntologyListDto response = new GetNkdOntologyListDto();
         response.setOntologies(items);
         return response;
@@ -260,28 +247,13 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         log.info("[timing] listAllOntologies stage2 (fetchConceptCountsForOntologies) took {} ms",
                 System.currentTimeMillis() - tStage2);
 
-        // Per-IRI CONSTRUCT round-trips reuse the existing extractor so labels
-        // (multi-language) and dates match the detail endpoint exactly.
-        // Items unfetchable from NKD are skipped, matching getOntologyList behaviour.
+        // Single batched metadata SELECT for the whole page — labels, multilingual
+        // descriptions and dates come back field-for-field identical to the full
+        // extractor, without the per-IRI full-graph CONSTRUCT over-fetch.
+        // Items with no metadata rows are skipped, matching getOntologyList behaviour.
         long tStage3 = System.currentTimeMillis();
-        List<NkdOntologyListItemDto> items = new ArrayList<>(pageIris.size());
-        for (String iri : pageIris) {
-            long tIri = System.currentTimeMillis();
-            try {
-                Optional<OntologyDetailModel> detail = nkdSparqlClient.fetchPublishedOntology(iri);
-                long iriMs = System.currentTimeMillis() - tIri;
-                log.info("[timing] listAllOntologies stage3 fetchPublishedOntology iri={} took {} ms", iri, iriMs);
-                if (detail.isEmpty()) {
-                    log.info("NKD ontology vanished between list and fetch, skipping: {}", iri);
-                    continue;
-                }
-                items.add(toListItem(detail.get(), conceptCounts.getOrDefault(iri, 0)));
-            } catch (RuntimeException e) {
-                log.warn("NKD SPARQL error while fetching ontology {} for browse, skipping: {}",
-                        iri, e.getMessage());
-            }
-        }
-        log.info("[timing] listAllOntologies stage3 (per-IRI CONSTRUCT loop, {} iris) took {} ms total",
+        List<NkdOntologyListItemDto> items = assembleListItems(pageIris, conceptCounts, true);
+        log.info("[timing] listAllOntologies stage3 (batched metadata SELECT, {} iris) took {} ms",
                 pageIris.size(), System.currentTimeMillis() - tStage3);
 
         long tStage4 = System.currentTimeMillis();
@@ -339,20 +311,147 @@ public class NkdDetailServiceImpl implements NkdDetailService {
     }
 
     /**
-     * Single source of truth for list-item construction. Pass {@code null} for
-     * {@code conceptCount} when no count is available (e.g. lookup-by-IRI path
-     * which doesn't run the batched count query) — NON_NULL serialization keeps
-     * those payloads backward-compatible.
+     * Builds list items for a page of ontology IRIs from a SINGLE batched metadata
+     * SELECT, instead of one full-graph CONSTRUCT per IRI. Replaces the N-round-trip,
+     * full-graph-over-fetch loop: the list row only needs name/description/dates, and
+     * those fields come back field-for-field identical to the full-extractor path
+     * (see {@link NKDSPARQLBrowseQuery#buildListItemMetadataQuery}).
+     *
+     * <p>Order follows {@code pageIris}. An IRI that the metadata query returns no rows
+     * for is skipped (matches the old loop's "vanished between list and fetch" skip).
+     * {@code conceptCountByIri} may be empty/missing-keyed — items then carry the count
+     * supplied (0 for the browse path, null for lookup-by-IRI).
      */
-    private static NkdOntologyListItemDto toListItem(OntologyDetailModel detail, Integer conceptCount) {
-        return NkdOntologyListItemDto.builder()
-                .iri(detail.getIri())
-                .name(detail.getName())
-                .description(detail.getDescription())
-                .creationDate(detail.getCreationDate())
-                .modificationDate(detail.getModificationDate())
-                .conceptCount(conceptCount)
-                .build();
+    private List<NkdOntologyListItemDto> assembleListItems(List<String> pageIris,
+                                                           Map<String, Integer> conceptCountByIri,
+                                                           boolean countAvailable) {
+        Map<String, ListItemMeta> metaByIri = fetchListItemMetadata(pageIris);
+        List<NkdOntologyListItemDto> items = new ArrayList<>(pageIris.size());
+        for (String iri : pageIris) {
+            ListItemMeta meta = metaByIri.get(iri);
+            if (meta == null) {
+                log.info("NKD ontology has no metadata rows, skipping in list response: {}", iri);
+                continue;
+            }
+            Integer conceptCount = countAvailable ? conceptCountByIri.getOrDefault(iri, 0) : null;
+            items.add(NkdOntologyListItemDto.builder()
+                    .iri(iri)
+                    .name(meta.nameMap())
+                    .description(meta.descriptionMap())
+                    .creationDate(meta.creationDate())
+                    .modificationDate(meta.modificationDate())
+                    .conceptCount(conceptCount)
+                    .build());
+        }
+        return items;
+    }
+
+    /**
+     * Runs the batched list-item metadata SELECT and folds the (possibly multi-row,
+     * one per description language) result into one {@link ListItemMeta} per ontology.
+     * On SPARQL failure returns an empty map — callers then skip every IRI, which the
+     * browse/list flows already treat as "page returns what it can".
+     */
+    private Map<String, ListItemMeta> fetchListItemMetadata(List<String> iris) {
+        if (iris.isEmpty()) {
+            return Map.of();
+        }
+        List<Map<String, String>> rows;
+        try {
+            String query = NKDSPARQLBrowseQuery.buildListItemMetadataQuery(iris);
+            rows = nkdSparqlClient.executeSelect(query);
+        } catch (RuntimeException e) {
+            log.warn("NKD SPARQL error while fetching list-item metadata for page: {}", e.getMessage());
+            return Map.of();
+        }
+
+        Map<String, ListItemMeta.Builder> builders = new LinkedHashMap<>();
+        for (Map<String, String> row : rows) {
+            String iri = row.get("ontology");
+            if (iri == null) continue;
+            ListItemMeta.Builder b = builders.computeIfAbsent(iri, k -> new ListItemMeta.Builder());
+
+            // Name: prefer rdfs:label, else skos:prefLabel — first non-blank wins, keyed "cs",
+            // mirroring ModelAnalyzer.extractModelName + createMultilingualMap.
+            b.offerLabel(row.get("label"), row.get("prefLabel"));
+
+            // Description: one row per literal; key by lang tag, "cs" when untagged
+            // (matches extractMultilingualDescription).
+            String desc = row.get("desc");
+            if (desc != null && !desc.trim().isEmpty()) {
+                String lang = row.get("descLang");
+                String langTag = (lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG;
+                b.putDescription(langTag, desc);
+            }
+
+            // Dates: two-hop instant already joined in SPARQL; prefer datum-a-čas (dateTime)
+            // over datum (date), matching ModelAnalyzer.extractTemporalValue.
+            b.offerCreation(row.get("cDateTime"), row.get("cDate"));
+            b.offerModification(row.get("mDateTime"), row.get("mDate"));
+        }
+
+        Map<String, ListItemMeta> out = new LinkedHashMap<>(builders.size() * 2);
+        builders.forEach((iri, b) -> out.put(iri, b.build()));
+        return out;
+    }
+
+    /**
+     * Assembled list-item metadata for one ontology. {@code nameMap} is the single-entry
+     * {@code {cs: <label>}} map (empty when unlabelled); {@code descriptionMap} is the
+     * multilingual description map (empty when none). Dates are the raw literal strings or
+     * null. The {@link Builder} folds the multi-row SELECT result.
+     */
+    private record ListItemMeta(Map<String, String> nameMap,
+                                Map<String, String> descriptionMap,
+                                String creationDate,
+                                String modificationDate) {
+        static final class Builder {
+            private String label;       // rdfs:label (wins)
+            private String prefLabel;   // skos:prefLabel (fallback)
+            private final Map<String, String> description = new LinkedHashMap<>();
+            private String creationDate;
+            private String modificationDate;
+
+            void offerLabel(String labelVal, String prefLabelVal) {
+                if (label == null && labelVal != null && !labelVal.trim().isEmpty()) {
+                    label = labelVal;
+                }
+                if (prefLabel == null && prefLabelVal != null && !prefLabelVal.trim().isEmpty()) {
+                    prefLabel = prefLabelVal;
+                }
+            }
+
+            void putDescription(String lang, String value) {
+                // First value per lang wins — deterministic, matches single-pass extractor.
+                description.putIfAbsent(lang, value);
+            }
+
+            void offerCreation(String dateTime, String date) {
+                if (creationDate == null) {
+                    creationDate = firstNonBlank(dateTime, date);
+                }
+            }
+
+            void offerModification(String dateTime, String date) {
+                if (modificationDate == null) {
+                    modificationDate = firstNonBlank(dateTime, date);
+                }
+            }
+
+            private static String firstNonBlank(String a, String b) {
+                if (a != null && !a.trim().isEmpty()) return a;
+                if (b != null && !b.trim().isEmpty()) return b;
+                return null;
+            }
+
+            ListItemMeta build() {
+                String name = (label != null) ? label : prefLabel;
+                Map<String, String> nameMap = (name == null || name.trim().isEmpty())
+                        ? Map.of()
+                        : Map.of(DEFAULT_LANG, name);
+                return new ListItemMeta(nameMap, Map.copyOf(description), creationDate, modificationDate);
+            }
+        }
     }
 
     private int getCachedTotalOntologies() {

@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
@@ -16,7 +17,15 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
+import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
+import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
+import com.dia.ismdtoolbackend.exception.OntologyValidationException;
+import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
@@ -25,14 +34,20 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -51,6 +66,11 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptDeviationComparator deviationComparator;
     private final RppSnapshotHolder rppSnapshotHolder;
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
+    private final OutboxConfig outboxConfig;
+    private final OutboxWriter outboxWriter;
+    private final OutboxRelayTrigger outboxRelayTrigger;
+    private final NkdSnapshotService nkdSnapshotService;
+    private final NkdLinkDetector nkdLinkDetector;
 
     @Override
     @Transactional
@@ -64,21 +84,34 @@ public class ConceptServiceImpl implements ConceptService {
         Resource conceptResource = createConceptResource(createModel);
         String conceptUri = conceptResource.getURI();
 
-        ConceptMetadataModel existingConcept = checkForExistingConcept(conceptUri);
-        if (existingConcept != null) {
-            return existingConcept;
-        }
+        rejectIfConceptIriTaken(conceptUri);
 
         String ontologyGraphName = createModel.getOntologyGraphName();
-        saveConceptToTDB2(conceptResource, ontologyGraphName);
 
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the concept's triples (empty remove set), committed atomically
+            // with the metadata below. No rollback compensator needed — if the PG tx fails, the
+            // outbox row rolls back with it, so nothing reaches TDB2.
+            outboxWriter.enqueueUpsert(ontologyGraphName, conceptUri, java.util.Set.of(),
+                    conceptResource.getModel().listStatements().toSet());
+            ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return conceptMetadataMapper.toDto(savedEntity);
+        }
+
+        saveConceptToTDB2(conceptResource, ontologyGraphName);
         return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
     }
 
     @Override
     @Transactional
     public void deleteConcept(Long conceptId) {
-        Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findById(conceptId);
+        // On the outbox path, take a row lock FIRST (see ConceptMetadataRepository.findWithLockById)
+        // so a concurrent edit/delete of the same concept can't enqueue an out-of-order same-aggregate
+        // outbox row. Direct path keeps the plain findById (byte-for-byte unchanged when flag off).
+        Optional<ConceptMetadataEntity> conceptMetadataOpt = outboxConfig.isEnabled()
+                ? conceptMetadataRepository.findWithLockById(conceptId)
+                : conceptMetadataRepository.findById(conceptId);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptId {} not found", conceptId);
             throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
@@ -101,6 +134,25 @@ public class ConceptServiceImpl implements ConceptService {
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);
 
+        // NKD local-copy cascade: drop the snapshot rows for the deleted concepts and get back the NKD
+        // IRIs whose copy is now orphaned (this batch held its last referrers). Appending them to the
+        // delete-URI list lets the existing sweep remove the orphaned copy subjects too — safe only
+        // because they are last-referrer, so no surviving owner's link is harmed.
+        List<Long> deletedConceptIds = relatedConceptEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        List<String> orphanedNkdCopies = nkdSnapshotService.cascadeConceptDeletion(deletedConceptIds, graphName);
+        relatedConceptUris.addAll(orphanedNkdCopies);
+
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
+            // atomically with the PG metadata delete below.
+            outboxWriter.enqueueDeleteConcepts(graphName, conceptUri, relatedConceptUris);
+            conceptMetadataRepository.deleteAll(relatedConceptEntities);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return;
+        }
+
         jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);
         conceptMetadataRepository.deleteAll(relatedConceptEntities);
     }
@@ -111,16 +163,55 @@ public class ConceptServiceImpl implements ConceptService {
         log.info("Editing concept: ID={}, type={}",
                 conceptId, conceptEditModel.getConceptType());
 
-        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId);
+        // On the outbox path, take a row lock FIRST so two concurrent edits of the same concept are
+        // serialized — see ConceptMetadataRepository.findWithLockById. The lock must be the first DB
+        // read of the critical section (read graph → compute delta → enqueue), so it spans the whole
+        // window in which a concurrent edit could enqueue an out-of-order same-aggregate outbox row.
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
         String graphName = metadata.getGraphName();
 
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
 
-        ConceptEditor.EditResult editResult = performConceptEdit(metadata.getConceptIri(), conceptEditModel, model, graphName);
+        // Aggregate key = the PRE-EDIT IRI (metadata.getConceptIri() before the reconcile mutates it),
+        // NOT the new IRI. A createConcept keys on the concept's IRI; this concept's pre-edit IRI equals
+        // that same IRI, so a create and a subsequent rename share an aggregate and the per-aggregate
+        // ordering gate relates them (the rename's DELETE of old-IRI triples can never apply before the
+        // create's INSERT of them). Keying on the NEW IRI would make them different aggregates and reopen
+        // the create→rename inversion (review #4 / M1).
+        String aggregateIri = metadata.getConceptIri();
+
+        ConceptEditor.EditResult editResult = performConceptEdit(conceptId, aggregateIri, conceptEditModel, model, graphName);
+
+        // Reconcile NKD links and union the resulting copy delta with the editor's, so the link and the
+        // copy ride one owner-keyed aggregate. The snapshot service reads owner.getConceptIri(), so the
+        // metadata IRI is set to its post-edit value first. reconcileNkdLinks returns its own mutable set
+        // (EditResult's are immutable copies), which we merge — re-using EditResult's sets would throw.
+        if (editResult.iriChanged) {
+            metadata.setConceptIri(editResult.newConceptIRI);
+        }
+        OwnerChangeSet snapshotDelta = reconcileNkdLinks(metadata, model);
+        Set<Statement> toRemove = new HashSet<>(editResult.statementsToRemove);
+        toRemove.addAll(snapshotDelta.toRemove);
+        Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
+        toAdd.addAll(snapshotDelta.toAdd);
+
+        if (outboxConfig.isEnabled()) {
+            // Outbox path: enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a
+            // whole-graph PUT, committed atomically with the metadata update below.
+            outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
+            updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+        }
+
+        // Direct (outbox-disabled) path: the editor already applied its delta to `model`, but the snapshot
+        // copy triples are not yet in it. Apply the combined delta so the copy reaches TDB2 in the same
+        // write as the link. Idempotent — re-applying the editor's own triples is a no-op.
+        model.remove(new ArrayList<>(toRemove));
+        model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
-
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
     }
 
@@ -139,10 +230,19 @@ public class ConceptServiceImpl implements ConceptService {
             conceptMetadataEntities = conceptMetadataRepository.findAll();
         }
 
+        List<Long> conceptIds = conceptMetadataEntities.stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByConceptId = conceptIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByConceptMetadataIdIn(conceptIds).stream()
+                        .collect(Collectors.groupingBy(c -> c.getConceptMetadata().getId()));
+
         return conceptMetadataEntities.stream()
                 .map(entity -> {
                     ConceptMetadataModel model = conceptMetadataMapper.toDto(entity);
-                    List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(entity.getConceptIri());
+                    List<CommentEntity> commentEntities =
+                            commentsByConceptId.getOrDefault(entity.getId(), List.of());
                     model.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
@@ -168,6 +268,13 @@ public class ConceptServiceImpl implements ConceptService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
+        // The class-detail read traverses only this concept's own graph, so a
+        // property/relationship whose rdfs:domain points here but which lives in a
+        // different vocabulary graph would be dropped (it is still visible from the
+        // property's own detail). Merge those cross-graph members in so the class
+        // shows them too. Additive only — safe for the downstream deviation check.
+        rawModel.add(jenaTDB2Repository.fetchExternalDomainMembers(conceptIri));
+
         OntologyDetailModel.ConceptDetailModel conceptDetail = detailExtractor.extractConceptDetail(rawModel, conceptIri);
 
         if (conceptDetail == null) {
@@ -180,14 +287,14 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
 
-        List<CommentEntity> commentEntities = commentRepository.findByConceptIRI(conceptIri);
+        List<CommentEntity> commentEntities = commentRepository.findByConceptMetadataId(metadataEntity.getId());
         metadataModel.setComments(conceptMetadataMapper.commentEntitiesToModels(commentEntities));
 
         GetConceptDto result = new GetConceptDto();
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(rawModel, metadataModel);
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(conceptDetail, metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
 
         return result;
@@ -233,6 +340,38 @@ public class ConceptServiceImpl implements ConceptService {
         if (userId == null || userId.trim().isEmpty()) {
             throw new OntologyException("ID uživatele je povinné");
         }
+
+        // name is required and must include a non-blank cs variant
+        Map<String, String> name = createModel.getNameModel() != null
+                ? createModel.getNameModel().getName() : null;
+        if (name == null || name.isEmpty()) {
+            throw new ConceptValidationException("Název pojmu je povinný.");
+        }
+        if (isBlankValue(name.get("cs"))) {
+            throw new ConceptValidationException("Název pojmu musí obsahovat českou variantu (cs).");
+        }
+
+        // description is optional, but if present it must include a non-blank cs variant
+        Map<String, String> description = createModel.getDescriptionModel() != null
+                ? createModel.getDescriptionModel().getDescription() : null;
+        if (hasAnyValue(description) && isBlankValue(description.get("cs"))) {
+            throw new ConceptValidationException("Popis pojmu musí obsahovat českou variantu (cs).");
+        }
+
+        // definition is optional, but if present it must include a non-blank cs variant
+        Map<String, String> definition = createModel.getDefinitionModel() != null
+                ? createModel.getDefinitionModel().getDefinition() : null;
+        if (hasAnyValue(definition) && isBlankValue(definition.get("cs"))) {
+            throw new ConceptValidationException("Definice pojmu musí obsahovat českou variantu (cs).");
+        }
+    }
+
+    private static boolean isBlankValue(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static boolean hasAnyValue(Map<String, String> map) {
+        return map != null && !map.isEmpty() && map.values().stream().anyMatch(v -> !isBlankValue(v));
     }
 
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
@@ -270,7 +409,13 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {
-        Optional<ConceptMetadataEntity> metadataOpt = conceptMetadataRepository.findById(conceptId);
+        return fetchAndValidateMetadata(conceptId, false);
+    }
+
+    private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId, boolean lock) {
+        Optional<ConceptMetadataEntity> metadataOpt = lock
+                ? conceptMetadataRepository.findWithLockById(conceptId)
+                : conceptMetadataRepository.findById(conceptId);
         if (metadataOpt.isEmpty()) {
             log.error("Concept metadata not found for ID: {}", conceptId);
             throw new OntologyException("Metadata pojmu s ID " + conceptId + " nebyla nalezena.");
@@ -295,12 +440,93 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private ConceptEditor.EditResult performConceptEdit(String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
+    /**
+     * Reconciles this concept's links to published NKD concepts against its local-copy snapshots and
+     * returns the materialized-copy delta as a fresh mutable {@link OwnerChangeSet} for the caller to
+     * merge into the owner aggregate's flush. Operates on the post-edit {@code model} and owner IRI,
+     * inside the edit transaction.
+     *
+     * <p>Returns its own change set rather than mutating {@code EditResult}'s, whose sets are immutable
+     * copies. Best-effort: a transient NKD outage never rolls back the edit (the service skips); only a
+     * confirmed-published domain/range link throws (HTTP 400).
+     */
+    private OwnerChangeSet reconcileNkdLinks(ConceptMetadataEntity owner, Model model) {
+        String ownerIri = owner.getConceptIri();
+        String graphScheme = owner.getGraphName();
+        OwnerChangeSet ownerChangeSet = new OwnerChangeSet();
+
+        List<String> domainRangeTargets =
+                nkdLinkDetector.forbiddenDomainRangeTargets(ownerIri, graphScheme, model);
+        if (!domainRangeTargets.isEmpty()) {
+            Set<String> publishedForbidden = publishedAmong(domainRangeTargets);
+            if (!publishedForbidden.isEmpty()) {
+                throw new OntologyValidationException(
+                        "Definiční obor / obor hodnot nesmí odkazovat na publikovaný pojem v NKD: "
+                                + publishedForbidden);
+            }
+        }
+
+        List<NkdLinkDetector.LinkTarget> allowed =
+                nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
+        Set<String> currentTargetIris = new HashSet<>();
+        allowed.forEach(t -> currentTargetIris.add(t.targetIri()));
+
+        List<NkdConceptSnapshotEntity> existing = nkdSnapshotService.findForConcept(owner.getId());
+        if (!existing.isEmpty()) {
+            Set<Statement> ownerOutgoing = outgoingStatements(model, ownerIri);
+            for (NkdConceptSnapshotEntity snapshot : existing) {
+                if (!currentTargetIris.contains(snapshot.getNkdIri())) {
+                    nkdSnapshotService.removeSnapshotAndLink(snapshot, ownerOutgoing, ownerChangeSet);
+                }
+            }
+        }
+
+        for (NkdLinkDetector.LinkTarget target : allowed) {
+            nkdSnapshotService.createOrRefreshSnapshot(
+                    owner, target.targetIri(), target.linkType().value(), ownerChangeSet);
+        }
+        return ownerChangeSet;
+    }
+
+    /** The owner concept's current outgoing statements in {@code model} (for unlink triple removal). */
+    private Set<Statement> outgoingStatements(Model model, String ownerIri) {
+        Set<Statement> out = new HashSet<>();
+        Resource ownerRes = model.getResource(ownerIri);
+        StmtIterator it = model.listStatements(ownerRes, null, (RDFNode) null);
         try {
-            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName);
+            while (it.hasNext()) {
+                out.add(it.next());
+            }
+        } finally {
+            it.close();
+        }
+        return out;
+    }
+
+    /** Best-effort batch "which of these IRIs are published in NKD"; empty set on any failure (fail-open). */
+    private Set<String> publishedAmong(List<String> iris) {
+        try {
+            return new HashSet<>(nkdSparqlClient.getPublishedResourcesList(iris));
+        } catch (Exception e) {
+            log.warn("NKD published-check failed during edit reconcile (fail-open, enforcement skipped): {}",
+                    e.getMessage());
+            return Set.of();
+        }
+    }
+
+    private ConceptEditor.EditResult performConceptEdit(Long conceptId, String conceptIri, ConceptEditModel conceptEditModel, Model model, String graphName) {
+        try {
+            ConceptEditor.EditResult editResult = conceptEditor.editConcept(conceptIri, conceptEditModel, model, graphName,
+                    candidateIri -> isConceptIriTakenByOther(candidateIri, conceptId));
             log.info("Edit completed: {} changes, IRI changed: {}, new IRI: {}",
                     editResult.changesCount, editResult.iriChanged, editResult.newConceptIRI);
             return editResult;
+        } catch (ConceptValidationException e) {
+            // Invalid user input → propagate unwrapped so it surfaces as HTTP 400
+            // (GlobalExceptionHandler maps ConceptValidationException to BAD_REQUEST).
+            // Wrapping in OntologyException here would turn it into a 500.
+            log.warn("Concept edit rejected — invalid input: {}", e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("Failed to edit concept", e);
             throw new OntologyException("Nepodařilo se upravit pojem: " + e.getMessage());
@@ -353,13 +579,30 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private ConceptMetadataModel checkForExistingConcept(String conceptUri) {
-        Optional<ConceptMetadataEntity> existingConcept = conceptMetadataRepository.findByConceptIri(conceptUri);
-        if (existingConcept.isPresent()) {
-            log.error("Concept already exists with IRI: {}", conceptUri);
-            return conceptMetadataMapper.toDto(existingConcept.get());
+    /**
+     * Rejects the request when an owned concept already claims this IRI.
+     *
+     * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
+     * referenced NKD concept never triggers a collision.
+     */
+    private void rejectIfConceptIriTaken(String conceptUri) {
+        if (conceptMetadataRepository.findByConceptIri(conceptUri).isPresent()) {
+            log.info("Rejecting concept creation, IRI already exists: {}", conceptUri);
+            throw new ConceptValidationException(
+                    "Pojem se stejným názvem již v ontologii existuje: " + conceptUri);
         }
-        return null;
+    }
+
+    /**
+     * Tests whether an owned concept other than {@code conceptId} already claims this IRI.
+     *
+     * <p>Matches only owned concepts — NKD snapshot copies live in a separate table, so a
+     * referenced NKD concept never counts as a collision.
+     */
+    private boolean isConceptIriTakenByOther(String conceptUri, Long conceptId) {
+        return conceptMetadataRepository.findByConceptIri(conceptUri)
+                .filter(existing -> !existing.getId().equals(conceptId))
+                .isPresent();
     }
 
     private void saveConceptToTDB2(Resource conceptResource, String ontologyGraphName) {
@@ -409,7 +652,8 @@ public class ConceptServiceImpl implements ConceptService {
         return names.values().iterator().next();
     }
 
-    private PublishedConceptDeviationModel checkPublishedConcept(Model processedModel, ConceptMetadataModel conceptMetadata) {
+    private PublishedConceptDeviationModel checkPublishedConcept(OntologyDetailModel.ConceptDetailModel localConcept,
+                                                                ConceptMetadataModel conceptMetadata) {
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
         }
@@ -417,17 +661,6 @@ public class ConceptServiceImpl implements ConceptService {
         String conceptIri = conceptMetadata.getConceptIri();
 
         try {
-            OntologyDetailModel.ConceptDetailModel localConcept =
-                    detailExtractor.extractConceptDetail(processedModel, conceptIri);
-
-            if (localConcept == null) {
-                log.error("Local concept detail not found for IRI: {}", conceptIri);
-                return createErrorDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
-                );
-            }
-
             Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
                     nkdSparqlClient.fetchPublishedConcept(conceptIri);
 

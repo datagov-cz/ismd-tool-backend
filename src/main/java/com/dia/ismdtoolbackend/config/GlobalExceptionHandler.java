@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.apache.jena.ontology.OntologyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.TypeMismatchException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -37,6 +39,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        log.warn("Constraint violation: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error("Zápis porušuje omezení databáze — pravděpodobně již existuje záznam se stejnou hodnotou."), HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(JenaTDB2Exception.class)
     public ResponseEntity<ApiResponseDto<Void>> handleJenaTDB2Exception(JenaTDB2Exception e) {
         log.error("Database operation failed: {}", e.getMessage(), e);
@@ -59,6 +67,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyValidationException(OntologyValidationException e) {
         log.warn("Ontology validation failed: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(InSchemeDecisionRequiredException.class)
+    public ResponseEntity<ApiResponseDto<MissingInSchemeDecisionDto>> handleInSchemeDecisionRequired(InSchemeDecisionRequiredException e) {
+        log.info("Upload paused for inScheme decision: {} concept(s) missing skos:inScheme",
+                e.getConceptsMissingInScheme().size());
+        MissingInSchemeDecisionDto data = new MissingInSchemeDecisionDto(
+                e.getGraphName(), e.getConceptsMissingInScheme());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponseDto.error(data, e.getMessage(), InSchemeDecisionRequiredException.ERROR_CODE));
     }
 
     @ExceptionHandler(OntologyStorageException.class)
@@ -211,6 +229,13 @@ public class GlobalExceptionHandler {
         log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ApiResponseDto.error(e.getEndpointLabel() + " data nejsou momentálně dostupná."));
+    }
+
+    @ExceptionHandler(ValidationServiceUnavailableException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleValidationServiceUnavailable(ValidationServiceUnavailableException e) {
+        log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponseDto.error(e.getEndpointLabel() + " není momentálně dostupná."));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

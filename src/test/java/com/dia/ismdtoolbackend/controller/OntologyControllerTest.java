@@ -5,11 +5,13 @@ import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
-import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
+import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
@@ -19,14 +21,15 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
-import com.dia.ismdtoolbackend.service.impl.ConceptMetadataResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.List;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
@@ -46,16 +49,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Authentication is provided via @WithMockSecurityUser annotation.
  * Authorization checks (@PreAuthorize) are handled via TestOntologySecurityService.
  * <p>
- * Note: @MockBean is deprecated in Spring Boot 3.4+ but remains the recommended
- * approach for @WebMvcTest until a clear migration path is provided.
+ * Note: @MockitoBean replaces Spring Boot's deprecated @MockBean in these MVC
+ * slice tests.
  */
 @WebMvcTest(controllers = OntologyController.class,
     excludeAutoConfiguration = {
-        org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.security.oauth2.client.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration.class
+        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
+        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
+        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
+        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
+        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
     })
 @Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
 @ActiveProfiles("junit")
@@ -86,7 +89,7 @@ class OntologyControllerTest {
     private NkdDetailService nkdDetailService;
 
     @MockitoBean
-    private ConceptMetadataResolver conceptMetadataResolver;
+    private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -100,7 +103,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_Success() throws Exception {
         String userId = "user123";
-        String providedName = "test-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.ttl",
@@ -109,19 +111,18 @@ class OntologyControllerTest {
         );
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
-        expectedMetadata.setGraphName(providedName);
+        expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").isString());
     }
@@ -142,7 +143,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -166,7 +167,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         TestOntologySecurityService.setAllowModify(true);
@@ -190,7 +191,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -212,7 +213,7 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), any(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new RuntimeException("Parse error"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -226,7 +227,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_MissingFile() throws Exception {
         String userId = "user123";
-        String providedName = "jsonld-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.jsonld",
@@ -235,12 +235,11 @@ class OntologyControllerTest {
         );
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isBadRequest());
     }
 
@@ -248,7 +247,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_JsonLdFormat() throws Exception {
         String userId = "user123";
-        String providedName = "jsonld-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.jsonld",
@@ -257,20 +255,79 @@ class OntologyControllerTest {
         );
 
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
-        expectedMetadata.setGraphName(providedName);
+        expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_missingInScheme_returns400WithDecisionPayload() throws Exception {
+        String userId = "user123";
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test.ttl", "text/turtle",
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
+        );
+
+        String graphName = "https://slovník.gov.cz/a3791";
+        String conceptIri = graphName + "/pojem/vysoká-škola";
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
+                .thenThrow(new InSchemeDecisionRequiredException(
+                        graphName,
+                        List.of(new MissingConceptDto(conceptIri, "vysoká škola", graphName))));
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("MISSING_INSCHEME_DECISION_REQUIRED"))
+                .andExpect(jsonPath("$.data.graphName").value(graphName))
+                .andExpect(jsonPath("$.data.conceptsMissingInScheme[0].conceptIri").value(conceptIri))
+                .andExpect(jsonPath("$.data.conceptsMissingInScheme[0].proposedInScheme").value(graphName));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_withDecisionParams_passesThroughToService() throws Exception {
+        String userId = "user123";
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test.ttl", "text/turtle",
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <http://example.org/test> a owl:Ontology .".getBytes()
+        );
+
+        OntologyMetadataModel expected = new OntologyMetadataModel();
+        expected.setGraphName("file");
+        expected.setUser(new UserModel(userId));
+
+        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
+                .thenReturn(expected);
+
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .file(file)
+                        .param("normalizeMode", "PER_CONCEPT")
+                        .param("conceptsToNormalize", "https://slovník.gov.cz/a3791/pojem/x")
+                        .param("conceptsToNormalize", "https://slovník.gov.cz/a3791/pojem/y"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.graphName").value("file"));
+
+        verify(ontologyUploadService).uploadFromFile(
+                any(),
+                eq(userId),
+                eq(NormalizeMode.PER_CONCEPT),
+                eq(List.of("https://slovník.gov.cz/a3791/pojem/x", "https://slovník.gov.cz/a3791/pojem/y")));
     }
 
     @Test
@@ -284,7 +341,7 @@ class OntologyControllerTest {
         expectedMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), isNull(), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
@@ -316,7 +373,6 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_AlreadyExistsScenario() throws Exception {
         String userId = "user123";
-        String providedName = "existing-ontology";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.ttl",
@@ -326,22 +382,21 @@ class OntologyControllerTest {
 
         OntologyMetadataModel existingMetadata = new OntologyMetadataModel();
         existingMetadata.setId(1L);
-        existingMetadata.setGraphName(providedName);
+        existingMetadata.setGraphName("file");
         existingMetadata.setUser(new UserModel(userId));
 
         when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(providedName), eq(userId)))
+        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(existingMetadata);
 
         mockMvc.perform(multipart("/api/ontology/upload")
-                        .file(file)
-                        .param("providedName", providedName))
+                        .file(file))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.id").value(1))
-                .andExpect(jsonPath("$.data.graphName").value(providedName))
+                .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
-                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + providedName));
+                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + "file"));
     }
 
     @Test
@@ -798,7 +853,7 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void testValidateOntology_ServiceUnavailable() throws Exception {
+    void testValidateOntology_ServiceUnavailable_returns503() throws Exception {
         String slug = "test-ontology";
 
         OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
@@ -809,8 +864,37 @@ class OntologyControllerTest {
         TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
+        // Validator down → client throws the unavailable exception → 503.
         when(validationClient.requestValidation(anyString(), anyString()))
-                .thenReturn(java.util.Optional.empty());
+                .thenThrow(new com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException(
+                        "Validační služba", "validator unreachable"));
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Validační služba není momentálně dostupná."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_ValidatorRejectedInput_returns400WithValidatorMessage() throws Exception {
+        String slug = "test-ontology";
+
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        ontologyMetadata.setSlug(slug);
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(ontologyService.getTtlContentFromOntology(any()))
+                .thenReturn("bad ttl");
+        // Validator answered with a 4xx → client throws a rejection carrying the validator's message → 400.
+        when(validationClient.requestValidation(anyString(), anyString()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException(
+                        "Invalid TTL syntax: line 3"));
 
         mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -818,7 +902,7 @@ class OntologyControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Validace se nezdařila - validační služba nevrátila odpověď."));
+                .andExpect(jsonPath("$.message").value("Invalid TTL syntax: line 3"));
     }
 
     @Test
@@ -979,9 +1063,10 @@ class OntologyControllerTest {
                 .iri(iri + "/pojem/foo")
                 .slug("foo")
                 .name(java.util.Map.of("cs", "Foo"))
+                .conceptType(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA)
                 .build();
 
-        when(ontologyService.getConceptsByIri(iri))
+        when(ontologyService.getConceptsByIri(iri, SearchSource.ISMD))
                 .thenReturn(java.util.List.of(concept));
 
         mockMvc.perform(get("/api/ontology/concepts")
@@ -994,26 +1079,22 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/foo"))
                 .andExpect(jsonPath("$.data[0].slug").value("foo"))
                 .andExpect(jsonPath("$.data[0].name.cs").value("Foo"))
+                .andExpect(jsonPath("$.data[0].conceptType").value("TRIDA"))
                 .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
-
-        verify(nkdDetailService, never()).getOntologyDetail(anyString());
     }
 
     @Test
     void testGetConceptsByIri_NkdSuccess_omitsSlug() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
-        OntologyDetailModel.ConceptDetailModel concept = OntologyDetailModel.ConceptDetailModel.builder()
+        MinimalConceptDto concept = MinimalConceptDto.builder()
                 .iri(iri + "/pojem/bar")
                 .name(java.util.Map.of("cs", "Bar"))
-                .build();
-        OntologyDetailModel detail = OntologyDetailModel.builder()
-                .iri(iri)
-                .concepts(java.util.List.of(concept))
+                .conceptType(com.dia.ismdtoolbackend.enums.ConceptType.VZTAH)
                 .build();
 
-        when(nkdDetailService.getOntologyDetail(iri))
-                .thenReturn(new GetNkdOntologyDto(detail));
+        when(ontologyService.getConceptsByIri(iri, SearchSource.NKD))
+                .thenReturn(java.util.List.of(concept));
 
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("iri", iri)
@@ -1024,24 +1105,18 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].iri").value(iri + "/pojem/bar"))
                 .andExpect(jsonPath("$.data[0].name.cs").value("Bar"))
+                .andExpect(jsonPath("$.data[0].conceptType").value("VZTAH"))
                 // FE uses IRI for NKD navigation — slug must be omitted (NON_NULL).
                 .andExpect(jsonPath("$.data[0].slug").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Seznam pojmů byl úspěšně načten."));
-
-        verify(ontologyService, never()).getConceptsByIri(anyString());
     }
 
     @Test
-    void testGetConceptsByIri_NkdEmptyConceptsCoercedToEmptyArray() throws Exception {
+    void testGetConceptsByIri_EmptyListCoercedToEmptyArray() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
-        OntologyDetailModel detail = OntologyDetailModel.builder()
-                .iri(iri)
-                .concepts(null)
-                .build();
-
-        when(nkdDetailService.getOntologyDetail(iri))
-                .thenReturn(new GetNkdOntologyDto(detail));
+        when(ontologyService.getConceptsByIri(iri, SearchSource.NKD))
+                .thenReturn(java.util.List.of());
 
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("iri", iri)
@@ -1052,10 +1127,10 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testGetConceptsByIri_IsmdNotFound() throws Exception {
+    void testGetConceptsByIri_ServiceNotFoundRelayed() throws Exception {
         String iri = "http://example.org/missing";
 
-        when(ontologyService.getConceptsByIri(iri))
+        when(ontologyService.getConceptsByIri(iri, SearchSource.ISMD))
                 .thenThrow(new org.apache.jena.ontology.OntologyException(
                         "Slovník s IRI " + iri + " nebyl nalezen."));
 
@@ -1069,10 +1144,10 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testGetConceptsByIri_NkdNotFound() throws Exception {
+    void testGetConceptsByIri_NkdNotFoundRelayed() throws Exception {
         String iri = "https://data.gov.cz/zdroj/slovnik/missing";
 
-        when(nkdDetailService.getOntologyDetail(iri))
+        when(ontologyService.getConceptsByIri(iri, SearchSource.NKD))
                 .thenThrow(new NkdResourceNotFoundException(
                         "Slovník s IRI " + iri + " nebyl v NKD nalezen."));
 
@@ -1086,15 +1161,18 @@ class OntologyControllerTest {
     }
 
     @Test
-    void testGetConceptsByIri_UnsupportedSourceRejected() throws Exception {
+    void testGetConceptsByIri_UnsupportedSourceRelayed() throws Exception {
+        String iri = "http://example.org/x";
+
+        when(ontologyService.getConceptsByIri(iri, SearchSource.UNPUBLISHED))
+                .thenThrow(new IllegalArgumentException(
+                        "Nepodporovaný zdroj: UNPUBLISHED. Povolené hodnoty: ISMD, NKD."));
+
         mockMvc.perform(get("/api/ontology/concepts")
-                        .param("iri", "http://example.org/x")
+                        .param("iri", iri)
                         .param("source", "UNPUBLISHED"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.data").doesNotExist());
-
-        verify(ontologyService, never()).getConceptsByIri(anyString());
-        verify(nkdDetailService, never()).getOntologyDetail(anyString());
     }
 
     @Test

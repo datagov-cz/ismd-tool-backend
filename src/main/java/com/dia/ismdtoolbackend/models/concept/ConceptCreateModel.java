@@ -45,6 +45,4 @@ public abstract class ConceptCreateModel {
     protected Boolean inTezaurus;
 
     public abstract ConceptType getConceptTypeEnum();
-
-    protected abstract void validateSpecificFields();
 }

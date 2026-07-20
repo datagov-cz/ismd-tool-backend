@@ -57,6 +57,28 @@ class EsbirkaSPARQLQueryTest {
     }
 
     @Test
+    void lawByNumberYear_parsesAndUsesExactEqualityNotContains() {
+        String q = EsbirkaSPARQLQuery.buildLawByNumberYearQuery("49", 1997);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(q.contains("číslo-předpisu"), "must filter on číslo-předpisu (with č intact)");
+        assertTrue(q.contains("rok-předpisu"));
+        assertTrue(q.contains("STR(?cislo) = "), "exact equality on number, not CONTAINS");
+        assertTrue(q.contains("STR(?rok) = "), "exact equality on year");
+        assertFalse(q.contains("CONTAINS"), "must NOT use substring match (would hit 149/1997 etc.)");
+        // Values inlined as escaped literals via PSS.
+        assertTrue(q.contains("\"49\""));
+        assertTrue(q.contains("\"1997\""));
+        assertTrue(q.contains("LIMIT 1"));
+    }
+
+    @Test
+    void lawByNumberYear_numberInjectionIsEscaped() {
+        String q = EsbirkaSPARQLQuery.buildLawByNumberYearQuery("49\" ; DROP", 1997);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertFalse(q.contains("49\" ; DROP"), "bare malicious string must not appear verbatim");
+    }
+
+    @Test
     void versionList_parsesAndContainsKeyPredicates() {
         String q = EsbirkaSPARQLQuery.buildVersionListQuery(LAW_IRI);
         assertDoesNotThrow(() -> QueryFactory.create(q));
@@ -82,6 +104,37 @@ class EsbirkaSPARQLQueryTest {
         assertTrue(q.contains("ORDER BY ?order"));
         assertTrue(q.contains("<" + VERSION_IRI + ">"),
                 "versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
+    }
+
+    @Test
+    void versionContent_parsesAndContainsTreePredicatesPlusObsah() {
+        String q = EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        // Same structural backbone as the lean fragment-tree query...
+        assertTrue(q.contains("má-fragment-znění"));
+        assertTrue(q.contains("má-předka"));
+        assertTrue(q.contains("citace-označení-fragmentu-znění-právního-aktu"));
+        assertTrue(q.contains("pořadí-fragmentu-znění-právního-aktu"));
+        assertTrue(q.contains("ORDER BY ?order"));
+        assertTrue(q.contains("<" + VERSION_IRI + ">"),
+                "versionIri must be inlined as <iri> via ParameterizedSparqlString.setIri");
+        // ...plus the HTML body.
+        assertTrue(q.contains("?obsah"), "obsah must be projected");
+        assertTrue(q.contains("obsahuje-fragment"));
+        assertTrue(q.contains("text-fragmentu"));
+    }
+
+    @Test
+    void versionContent_obsahJoinIsOptional() {
+        // Critical correctness invariant: structural fragments (Část/Hlava/…) carry no
+        // text body. A non-OPTIONAL obsah join would silently drop them and break the tree.
+        String q = EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI);
+        int optionalCount = q.split("(?i)OPTIONAL").length - 1;
+        assertTrue(optionalCount >= 1, "obsah join MUST be OPTIONAL; found " + optionalCount);
+        // The obsah chain must sit inside an OPTIONAL block.
+        String afterOptional = q.substring(q.toUpperCase().indexOf("OPTIONAL"));
+        assertTrue(afterOptional.contains("obsahuje-fragment"),
+                "the obsahuje-fragment/text-fragmentu chain must be wrapped in OPTIONAL");
     }
 
     @Test
