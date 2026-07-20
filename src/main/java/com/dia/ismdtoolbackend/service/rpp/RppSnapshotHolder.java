@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -40,31 +41,53 @@ public class RppSnapshotHolder {
         this.ttl = Duration.ofHours(config.getCache().getTtlHours());
     }
 
-    /**
-     * Loads the snapshot in the background once the app is up, keeping the full agenda/ISVS fetch off the
-     * first request that resolves an agenda or AIS reference.
-     *
-     * <p>Failures are swallowed: a cold lookup still refreshes on demand.
-     */
-    @Async("snapshotExecutor")
-    @EventListener(ApplicationReadyEvent.class)
-    public void warmOnStartup() {
-        try {
-            long started = System.currentTimeMillis();
-            RppSnapshot snap = get();
-            log.info("RPP snapshot warmed at startup: agendas={}, isvs={}, took={}ms",
-                    snap.getAgendas().size(), snap.getIsvs().size(), System.currentTimeMillis() - started);
-        } catch (RuntimeException e) {
-            log.warn("RPP startup warm failed; first lookup will refresh on demand. cause={}", e.getMessage());
-        }
-    }
-
     public RppSnapshot get() {
         RppSnapshot snap = current.get();
         if (isFresh(snap)) {
             return snap;
         }
         return refreshUnderLock();
+    }
+
+    /**
+     * Warms the snapshot off the request path once the app is ready. Runs on the {@code snapshotExecutor}
+     * pool — {@link ApplicationReadyEvent} listeners run synchronously, and {@code @Async} keeps this
+     * ~15s build off the boot thread so readiness is not delayed. A failing/absent RPP endpoint is
+     * swallowed here: the lazy {@link #get()} path (and the scheduled refresh) will retry on demand.
+     */
+    @Async("snapshotExecutor")
+    @EventListener(ApplicationReadyEvent.class)
+    public void warmOnStartup() {
+        try {
+            log.info("RPP snapshot warm-up starting");
+            RppSnapshot snap = forceRefresh();
+            log.info("RPP snapshot warm-up complete: agendas={} isvs={}",
+                    snap.getAgendas().size(), snap.getIsvs().size());
+        } catch (Exception e) {
+            log.warn("RPP snapshot warm-up failed; will build lazily on first request. cause={}", e.getMessage());
+        }
+    }
+
+    /**
+     * Rebuilds the snapshot ahead of TTL expiry so no user hits the cold rebuild. Fires on
+     * {@code rpp.cache.refresh-cron} (default every 12h, inside the 24h TTL). Unlike {@link #get()} this
+     * rebuilds unconditionally regardless of freshness — the point is to refresh <em>before</em> the
+     * snapshot goes stale. Serves-stale-on-failure via {@link #attemptRefresh} means a slow or down RPP
+     * endpoint never evicts the good in-memory snapshot.
+     */
+    @Scheduled(cron = "${rpp.cache.refresh-cron:0 0 */12 * * *}")
+    public void scheduledRefresh() {
+        try {
+            forceRefresh();
+        } catch (Exception e) {
+            log.warn("Scheduled RPP refresh failed; keeping existing snapshot. cause={}", e.getMessage());
+        }
+    }
+
+    private RppSnapshot forceRefresh() {
+        synchronized (refreshLock) {
+            return attemptRefresh(current.get());
+        }
     }
 
     public RppSnapshot peek() {

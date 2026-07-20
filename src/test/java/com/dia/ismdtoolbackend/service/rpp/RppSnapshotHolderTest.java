@@ -169,25 +169,55 @@ class RppSnapshotHolderTest {
     }
 
     @Test
-    void warmOnStartupLoadsTheSnapshotSoTheFirstRequestDoesNot() {
+    void warmOnStartupPopulatesCacheSoFirstGetIsWarm() {
         when(client.fetchAllAgendas()).thenReturn(List.of(new RppAgenda("a-iri", "1", "Ag")));
         when(client.fetchAllIsvs()).thenReturn(List.of(new RppIsvs("i-iri", "10", "Is", List.of())));
 
         holder.warmOnStartup();
+        RppSnapshot afterWarm = holder.get();
 
-        // A subsequent lookup is served from the warmed snapshot — the client is not hit again.
-        assertTrue(holder.findAgendaByIri("a-iri").isPresent());
+        // one build during warm-up; get() hits the warm cache and does not refetch
+        assertEquals(1, afterWarm.getAgendas().size());
         verify(client, times(1)).fetchAllAgendas();
         verify(client, times(1)).fetchAllIsvs();
     }
 
     @Test
-    void warmOnStartupSwallowsFailure_soAppStartIsNotBlocked() {
+    void warmOnStartupSwallowsUpstreamFailure() {
         when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
 
-        // Must not propagate: RPP being down cannot stop the app from starting.
+        // must not propagate — startup event listener stays quiet and get() falls back to lazy build
         holder.warmOnStartup();
 
         assertTrue(holder.peek().isEmpty());
+    }
+
+    @Test
+    void scheduledRefreshRebuildsEvenWhenSnapshotStillFresh() {
+        when(client.fetchAllAgendas())
+                .thenReturn(List.of(new RppAgenda("a-iri", "1", "Ag")))
+                .thenReturn(List.of(new RppAgenda("a-iri", "1", "Ag"), new RppAgenda("a2-iri", "2", "Ag2")));
+        when(client.fetchAllIsvs()).thenReturn(List.of(new RppIsvs("i-iri", "10", "Is", List.of())));
+
+        holder.get();                         // initial build, snapshot fresh
+        holder.scheduledRefresh();            // still within TTL, but must rebuild anyway
+        RppSnapshot refreshed = holder.get();
+
+        assertEquals(2, refreshed.getAgendas().size());
+        verify(client, times(2)).fetchAllAgendas();
+    }
+
+    @Test
+    void scheduledRefreshFailureKeepsExistingSnapshot() {
+        when(client.fetchAllAgendas())
+                .thenReturn(List.of(new RppAgenda("a-iri", "1", "Ag")))
+                .thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
+        when(client.fetchAllIsvs()).thenReturn(List.of(new RppIsvs("i-iri", "10", "Is", List.of())));
+
+        RppSnapshot good = holder.get();
+        holder.scheduledRefresh();            // upstream now down — must not evict the good snapshot
+        RppSnapshot served = holder.get();
+
+        assertSame(good, served);
     }
 }
