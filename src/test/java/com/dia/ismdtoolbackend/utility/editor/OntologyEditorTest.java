@@ -166,6 +166,47 @@ class OntologyEditorTest {
             assertTrue(model.containsResource(oldOtherSubject));
         }
 
+        // --- E1b. rename must rewrite each concept's skos:inScheme to the new ontology IRI ---
+        // Regression: copying the object verbatim left inScheme on the old scheme, so the renamed
+        // concept's IRI no longer prefix-matched its scheme; OWNED_CONCEPT_PATTERN then stopped
+        // resolving it (invisible to resolver/upload, mis-flagged PG_MISSING_RDF by the reconciler).
+        @Test
+        void editOntology_ShouldRewriteConceptInScheme_WhenRenamed() { // E1b
+            // Arrange
+            String oldOntologyIRI = "https://example.com/vocab/old-ontology";
+            String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
+
+            Resource ontology = model.createResource(oldOntologyIRI);
+            ontology.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
+
+            Resource concept = model.createResource(oldNamespace + "concept-1");
+            concept.addProperty(RDF.type, SKOS.Concept);
+            concept.addProperty(SKOS.prefLabel, "Concept 1");
+            concept.addProperty(SKOS.inScheme, model.getResource(oldOntologyIRI));
+
+            NameModel newName = createNameModel("cs", "New ontology");
+            when(editModel.getNameModel()).thenReturn(newName);
+
+            // Act
+            OntologyEditor.EditResult result =
+                    ontologyEditor.editOntology(editModel, model, oldNamespace, oldOntologyIRI);
+
+            // Assert
+            assertTrue(result.iriChanged);
+            String newNamespace =
+                    UtilityMethods.ensureNamespaceEndsWithDelimiter(result.newOntologyIRI);
+            Resource renamedConcept = model.getResource(newNamespace + "concept-1");
+            Resource newOntology = model.getResource(result.newOntologyIRI);
+
+            assertTrue(model.contains(renamedConcept, SKOS.inScheme, newOntology),
+                    "inScheme not rewritten to the new ontology IRI");
+            assertFalse(model.contains(renamedConcept, SKOS.inScheme,
+                            model.getResource(oldOntologyIRI)),
+                    "Stale inScheme pointing at the old ontology IRI leaked onto the renamed concept");
+            assertEquals(1, renamedConcept.listProperties(SKOS.inScheme).toList().size(),
+                    "Renamed concept must carry exactly one inScheme");
+        }
+
         // --- E2. keep ontology IRI and concept IRIs when name is unchanged ---
         @Test
         void editOntology_ShouldNotRenameOntologyOrConcepts_WhenNameIsUnchanged() { // E2
