@@ -215,6 +215,8 @@ public class OntologyEditor {
 
         Set<Resource> conceptsToUpdate = new HashSet<>();
         String oldOntologyIRI = oldNamespace.replaceAll("[/#]$", "");
+        String newOntologyIRI = newNamespace.replaceAll("[/#]$", "");
+        Resource newScheme = model.getResource(newOntologyIRI);
 
         ResIterator resIter = model.listSubjects();
         while (resIter.hasNext()) {
@@ -240,10 +242,18 @@ public class OntologyEditor {
             while (iter.hasNext()) {
                 Statement stmt = iter.next();
                 toRemove.add(stmt);
+                // A concept's skos:inScheme names the ontology; on rename force it to the new
+                // ontology IRI. Copying the object verbatim leaves it on the old (or a stale
+                // pre-rename) scheme, so the concept's IRI no longer prefix-matches its scheme
+                // and OWNED_CONCEPT_PATTERN stops resolving it (invisible to resolver/upload,
+                // mis-flagged PG_MISSING_RDF by the reconciler).
+                RDFNode newObject = stmt.getPredicate().equals(SKOS.inScheme)
+                        ? newScheme
+                        : stmt.getObject();
                 toAdd.add(model.createStatement(
                         model.getResource(newConceptIRI),
                         stmt.getPredicate(),
-                        stmt.getObject()
+                        newObject
                 ));
             }
 
