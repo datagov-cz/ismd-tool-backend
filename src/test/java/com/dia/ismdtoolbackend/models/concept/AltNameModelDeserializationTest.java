@@ -1,12 +1,15 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -70,5 +73,75 @@ class AltNameModelDeserializationTest {
         AltNameModel model = read("{\"altName\":{\"cs\":\"Obec\"}}");
 
         assertEquals("{\"altName\":{\"cs\":[\"Obec\"]}}", mapper.writeValueAsString(model));
+    }
+
+    /**
+     * RDF stores {@code skos:altLabel} as a set, so a repeated label collapses to one triple on write.
+     * Keeping the duplicate in memory would make the next read-back differ from what was submitted, and
+     * every subsequent save would re-detect a change and rewrite the property forever.
+     */
+    @Test
+    void duplicatesWithinALanguage_areCollapsed() throws Exception {
+        AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"Obec\"]}}");
+
+        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
+    }
+
+    @Test
+    void duplicatesDifferingOnlyByWhitespace_areCollapsed() throws Exception {
+        AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"  Obec  \"]}}");
+
+        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
+    }
+
+    @Test
+    void firstOccurrenceOrderIsPreservedWhenCollapsing() throws Exception {
+        AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"Municipalita\",\"Obec\"]}}");
+
+        assertEquals(List.of("Obec", "Municipalita"), model.getAltName().get("cs"));
+    }
+
+    // --- strictness: malformed values are rejected, never coerced or silently dropped -------------
+    //
+    // Dropping a malformed language would leave its key absent, and the edit path reads an absent key
+    // as "no alt names" — silently deleting the stored labels. A 400 is the honest outcome.
+
+    @Test
+    void numberValue_isRejected() {
+        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":42}}"));
+    }
+
+    @Test
+    void booleanValue_isRejected() {
+        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":true}}"));
+    }
+
+    @Test
+    void nestedArrayValue_isRejected() {
+        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":[[\"a\",\"b\"]]}}"));
+    }
+
+    @Test
+    void nestedObjectValue_isRejected() {
+        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":{\"x\":1}}}"));
+    }
+
+    @Test
+    void numberInsideAnArray_isRejected() {
+        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":[\"Obec\",42]}}"));
+    }
+
+    @Test
+    void nonObjectAltName_isRejected() {
+        assertThrows(JsonMappingException.class, () -> read("{\"altName\":[\"Obec\"]}"));
+    }
+
+    /** An explicit empty object still means "clear the field" — that is a legitimate instruction. */
+    @Test
+    void emptyObject_isAcceptedAsAnExplicitClear() throws Exception {
+        AltNameModel model = read("{\"altName\":{}}");
+
+        assertNotNull(model.getAltName());
+        assertTrue(model.getAltName().isEmpty());
     }
 }

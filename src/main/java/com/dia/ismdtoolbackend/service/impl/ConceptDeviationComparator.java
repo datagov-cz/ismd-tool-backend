@@ -453,7 +453,10 @@ public class ConceptDeviationComparator {
     }
 
     private <T> boolean areDifferent(T value1, T value2) {
-        if (value1 == null && value2 == null) return false;
+        // "Absent" and "empty collection" both mean "no values" — one side modelling a missing
+        // collection as null and the other as an empty one is not a deviation. Without this, a field
+        // the local extractor defaults to an empty list but NKD never populates would deviate forever.
+        if (isNullOrEmpty(value1) && isNullOrEmpty(value2)) return false;
         if (value1 == null || value2 == null) return true;
 
         if (value1 instanceof List) {
@@ -463,6 +466,14 @@ public class ConceptDeviationComparator {
         }
 
         return !value1.equals(value2);
+    }
+
+    /** True for null, an empty collection, or an empty map — the three ways "no values" is modelled. */
+    private boolean isNullOrEmpty(Object value) {
+        if (value == null) return true;
+        if (value instanceof Collection<?> c) return c.isEmpty();
+        if (value instanceof Map<?, ?> m) return m.isEmpty();
+        return false;
     }
 
     private boolean compareListsIgnoreOrder(List<?> list1, List<?> list2) {

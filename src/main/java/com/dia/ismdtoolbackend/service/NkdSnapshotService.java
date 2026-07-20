@@ -43,8 +43,8 @@ public interface NkdSnapshotService {
      * owner's graph model); every triple among them whose object is {@code snapshot.nkdIri} is added
      * to {@code toRemove} — this drops all link predicates to the target (broaderClass writes
      * both {@code rdfs:subClassOf} and a namespaced hierarchy prop), without reconstructing predicate
-     * IRIs. The materialized copy triples are added to {@code toRemove} only when this is the
-     * last referencing concept for the NKD IRI in the graph.
+     * IRIs. Only link triples are contributed; the copy itself lives in Postgres and never reaches
+     * the graph.
      */
     void removeSnapshotAndLink(NkdConceptSnapshotEntity snapshot, Set<Statement> ownerOutgoingStatements,
                                OwnerChangeSet ownerChangeSet);

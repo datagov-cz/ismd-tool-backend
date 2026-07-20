@@ -16,8 +16,9 @@ import java.util.List;
 
 /**
  * One tracked "local copy" of a published NKD concept that a concept links to, surfaced on the
- * ontology detail in {@code GetOntologyDto.linkSnapshots} (a map keyed by owner
- * concept IRI), and returned as the body of the local-copy UPDATE endpoint. (Not on concept detail.)
+ * ontology detail in {@code GetOntologyDto.linkSnapshots} (a map keyed by owner concept IRI) and on
+ * concept detail in {@code GetConceptDto.linkSnapshots} (a flat list for that one concept), and
+ * returned as the body of the local-copy UPDATE endpoint.
  *
  * <p>Deviation semantics (the easy-to-get-wrong part). {@link #deviation} reuses
  * {@link PublishedConceptDeviationModel} unchanged, but for a {@link SnapshotOrigin#LINK_TARGET}

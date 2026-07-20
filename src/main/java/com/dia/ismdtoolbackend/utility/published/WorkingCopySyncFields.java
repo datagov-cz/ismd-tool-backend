@@ -146,28 +146,34 @@ public class WorkingCopySyncFields {
         }
         Map<String, List<String>> byLanguage = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : published.entrySet()) {
-            List<String> values = new ArrayList<>();
+            Set<String> values = new LinkedHashSet<>();
             Object value = entry.getValue();
             if (value instanceof Iterable<?> many) {
-                many.forEach(v -> addIfNotBlank(values, v));
+                many.forEach(v -> addIfLabel(values, v));
             } else {
-                addIfNotBlank(values, value);
+                addIfLabel(values, value);
             }
             if (!values.isEmpty()) {
-                byLanguage.put(entry.getKey(), values);
+                byLanguage.put(entry.getKey(), new ArrayList<>(values));
             }
         }
         m.setAltName(byLanguage);
         return m;
     }
 
-    private static void addIfNotBlank(List<String> values, Object value) {
-        if (value == null) {
+    /**
+     * Adds {@code value} as a label if it is a non-blank string. Non-string values (a nested map or
+     * list from an unexpected NKD payload) are skipped rather than stringified — {@code String.valueOf}
+     * would write something like {@code "{x=1}"} into the graph as a real alt label. Duplicates
+     * collapse: RDF stores {@code skos:altLabel} as a set.
+     */
+    private static void addIfLabel(Set<String> values, Object value) {
+        if (!(value instanceof String text)) {
             return;
         }
-        String text = String.valueOf(value).trim();
-        if (!text.isEmpty()) {
-            values.add(text);
+        String trimmed = text.trim();
+        if (!trimmed.isEmpty()) {
+            values.add(trimmed);
         }
     }
 

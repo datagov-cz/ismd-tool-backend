@@ -67,7 +67,7 @@ in the codebase, so `relatedConcept` is not applicable.
 > published working copy, and NKD is never queried for it. Ownership is decided by graph membership,
 > not by scheme prefix — an owned concept under a different scheme still counts as owned.
 
-Only `LINK_TARGET` snapshot rows are written. `SnapshotOrigin.SELF_PUBLISHED` and the
+Only `LINK_TARGET` snapshot rows are written. `SnapshotOrigin.WORKING_COPY` and the
 `linkPredicate=null` branch remain reserved seams for a future unification of the two paths.
 
 ---
@@ -320,5 +320,5 @@ The client code path is unchanged by the redirect.
 therefore adopted into the stored copy by a passive read, and `lastCheckedAt`/`NO_DEVIATION` cannot
 distinguish "verified unchanged" from "just overwritten".
 
-`SELF_PUBLISHED` remains a reserved seam for a future unification of the snapshot and `is_published`
+`SnapshotOrigin.WORKING_COPY` remains a reserved seam for a future unification of the snapshot and `is_published`
 paths.

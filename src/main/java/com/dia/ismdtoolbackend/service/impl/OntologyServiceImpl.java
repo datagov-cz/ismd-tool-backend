@@ -105,9 +105,9 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        // NKD local-copy cascade: drop the PG snapshot rows for this graph. The materialized copy
-        // triples need no explicit removal — DELETE_GRAPH (or deleteGraph) sweeps the whole named graph,
-        // copies included. FK is not db-cascade, so the rows must go explicitly.
+        // NKD local-copy cascade: drop the PG snapshot rows for this graph. Copies live only in
+        // Postgres, so there is nothing of theirs in the graph for DELETE_GRAPH to sweep. FK is not
+        // db-cascade, so the rows must go explicitly.
         nkdSnapshotService.cascadeGraphDeletion(graphName);
 
         if (outboxConfig.isEnabled()) {

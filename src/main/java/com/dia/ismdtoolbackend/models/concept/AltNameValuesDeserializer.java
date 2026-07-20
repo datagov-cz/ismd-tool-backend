@@ -8,16 +8,23 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Reads the {@code lang -> alt labels} map, accepting either shape per language key:
- * a bare string or an array. Strings are wrapped into a single-element list, so
- * callers always see lists.
+ * Reads the {@code lang -> alt labels} map, accepting either shape per language key: a bare string or
+ * an array of strings. Strings are wrapped into a single-element list, so callers always see lists.
  *
- * <p>Null and blank entries are dropped; a language whose values are all blank is omitted entirely.
- * Insertion order is preserved so round-tripping a payload keeps its ordering.
+ * <p>Values must be JSON strings. A number, boolean, object, or nested array is rejected with a
+ * {@link com.fasterxml.jackson.databind.exc.InvalidFormatException} rather than coerced or dropped —
+ * silently discarding a malformed language would clear that language's stored labels, since the edit
+ * path treats an absent key as "no alt names".
+ *
+ * <p>Blank values are dropped and duplicates within a language are collapsed: RDF stores
+ * {@code skos:altLabel} as a set, so a repeated label cannot round-trip and would otherwise make every
+ * subsequent edit re-detect a difference. Insertion order is preserved.
  */
 public class AltNameValuesDeserializer extends JsonDeserializer<Map<String, List<String>>> {
 
@@ -28,10 +35,14 @@ public class AltNameValuesDeserializer extends JsonDeserializer<Map<String, List
         if (root == null || root.isNull()) {
             return null;
         }
+        if (!root.isObject()) {
+            throw context.weirdStringException(root.toString(), Map.class,
+                    "alternativní-název must be an object keyed by language tag");
+        }
 
         Map<String, List<String>> byLanguage = new LinkedHashMap<>();
         for (Map.Entry<String, JsonNode> property : root.properties()) {
-            List<String> values = readValues(property.getValue());
+            List<String> values = readValues(property.getKey(), property.getValue(), context);
             if (!values.isEmpty()) {
                 byLanguage.put(property.getKey(), values);
             }
@@ -39,29 +50,35 @@ public class AltNameValuesDeserializer extends JsonDeserializer<Map<String, List
         return byLanguage;
     }
 
-    /** Reads one language's value, which is either an array of labels or a single label. */
-    private List<String> readValues(JsonNode node) {
-        List<String> values = new ArrayList<>();
+    /** Reads one language's value: either an array of label strings or a single label string. */
+    private List<String> readValues(String language, JsonNode node, DeserializationContext context)
+            throws IOException {
+        Set<String> unique = new LinkedHashSet<>();
         if (node == null || node.isNull()) {
-            return values;
+            return new ArrayList<>(unique);
         }
         if (node.isArray()) {
             for (JsonNode element : node) {
-                addIfNotBlank(values, element);
+                addLabel(unique, language, element, context);
             }
         } else {
-            addIfNotBlank(values, node);
+            addLabel(unique, language, node, context);
         }
-        return values;
+        return new ArrayList<>(unique);
     }
 
-    private void addIfNotBlank(List<String> values, JsonNode node) {
+    private void addLabel(Set<String> values, String language, JsonNode node,
+                          DeserializationContext context) throws IOException {
         if (node == null || node.isNull()) {
             return;
         }
-        String text = node.asText();
-        if (text != null && !text.trim().isEmpty()) {
-            values.add(text.trim());
+        if (!node.isTextual()) {
+            throw context.weirdStringException(node.toString(), String.class,
+                    "alternativní-název[" + language + "] must contain only strings");
+        }
+        String text = node.asText().trim();
+        if (!text.isEmpty()) {
+            values.add(text);
         }
     }
 }
