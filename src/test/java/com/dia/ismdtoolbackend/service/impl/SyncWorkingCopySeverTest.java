@@ -6,9 +6,6 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
-import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.PropertyDeviation;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -28,6 +25,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -86,7 +84,8 @@ class SyncWorkingCopySeverTest {
                 "nkdSparqlClient", nkdSparqlClient,
                 "outboxConfig", outboxConfig,
                 "jenaTDB2Repository", jenaTDB2Repository,
-                "syncFields", new WorkingCopySyncFields())));
+                "syncFields", new WorkingCopySyncFields(),
+                "deviationComparator", new ConceptDeviationComparator())));
 
         // The data-classification carry-through reads the concept's current RDF; an empty graph means
         // "nothing recorded", which is a valid state and keeps these tests focused on the sever.
@@ -123,33 +122,49 @@ class SyncWorkingCopySeverTest {
         }
     }
 
-    /** Stubs the detail read that `syncWorkingCopy` uses to re-derive the deviation from live NKD. */
-    private void stubDeviation(PublishedConceptDeviationModel deviation) {
+    /**
+     * Sets up a local concept that differs from its NKD twin on exactly {@code fields}.
+     *
+     * <p>Both sides are real {@code ConceptDetailModel}s run through the real
+     * {@link ConceptDeviationComparator} — the deviation is never hand-built. A synthetic deviation
+     * would not reproduce what the comparator actually emits, which is how the empty-vs-null defect
+     * stayed invisible to the suite.
+     */
+    private void deviatingOn(String... fields) {
+        Set<String> differing = Set.of(fields);
+        OntologyDetailModel.ConceptDetailModel local = detail(
+                differing.contains("název") ? "Místní obec" : "Obec",
+                differing.contains("popis") ? "Místní popis" : "Popis",
+                differing.contains("definice") ? "Místní definice" : "Definice");
+        OntologyDetailModel.ConceptDetailModel published = detail("Obec", "Popis", "Definice");
+
         GetConceptDto dto = new GetConceptDto();
-        dto.setPublishedConceptDeviationModel(deviation);
+        dto.setConceptDetail(local);
         doReturn(dto).when(service).getConceptDetail(SLUG);
+        when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.of(published));
     }
 
-    private static PublishedConceptDeviationModel deviatingOn(String... fields) {
-        PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder b =
-                PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS);
-        for (String f : fields) {
-            PropertyDeviation<Map<String, String>> d = PropertyDeviation.<Map<String, String>>builder()
-                    .localValue(Map.of("cs", "místní")).publishedValue(Map.of("cs", "publikovaný"))
-                    .isDifferent(true).build();
-            switch (f) {
-                case "název" -> b.name(d);
-                case "popis" -> b.description(d);
-                case "definice" -> b.definition(d);
-                default -> throw new IllegalArgumentException("unhandled test field " + f);
-            }
-        }
-        return b.build();
+    private static OntologyDetailModel.ConceptDetailModel detail(String name, String description,
+                                                                 String definition) {
+        return OntologyDetailModel.ConceptDetailModel.builder()
+                .name(Map.of("cs", name))
+                .description(Map.of("cs", description))
+                .definition(Map.of("cs", definition))
+                .build();
+    }
+
+    /** A local concept identical to its twin — nothing to sync. */
+    private void noDeviation() {
+        GetConceptDto dto = new GetConceptDto();
+        dto.setConceptDetail(detail("Obec", "Popis", "Definice"));
+        doReturn(dto).when(service).getConceptDetail(SLUG);
+        when(nkdSparqlClient.fetchPublishedConcept(anyString()))
+                .thenReturn(Optional.of(detail("Obec", "Popis", "Definice")));
     }
 
     @Test
     void acceptingEveryDeviatingField_keepsItAWorkingCopy() {
-        stubDeviation(deviatingOn("název", "popis"));
+        deviatingOn("název", "popis");
 
         service.syncWorkingCopy(CONCEPT_ID, List.of("název", "popis"));
 
@@ -159,7 +174,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void acceptingOnlySomeDeviatingFields_severs() {
-        stubDeviation(deviatingOn("název", "popis"));
+        deviatingOn("název", "popis");
 
         service.syncWorkingCopy(CONCEPT_ID, List.of("název"));
 
@@ -172,7 +187,7 @@ class SyncWorkingCopySeverTest {
     /** The boundary: one deviating field, accepted. Sizes are equal, so this must NOT sever. */
     @Test
     void singleDeviatingField_accepted_doesNotSever() {
-        stubDeviation(deviatingOn("definice"));
+        deviatingOn("definice");
 
         service.syncWorkingCopy(CONCEPT_ID, List.of("definice"));
 
@@ -182,7 +197,7 @@ class SyncWorkingCopySeverTest {
     /** Duplicates must not inflate the accepted count into a false "accepted everything". */
     @Test
     void duplicateAcceptedKeys_stillSever_whenTheyCoverOnlyPartOfTheDeviation() {
-        stubDeviation(deviatingOn("název", "popis"));
+        deviatingOn("název", "popis");
 
         service.syncWorkingCopy(CONCEPT_ID, List.of("název", "název"));
 
@@ -205,8 +220,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void noDeviation_isRejected() {
-        stubDeviation(PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.NO_DEVIATION).build());
+        noDeviation();
 
         OntologyValidationException e = assertThrows(OntologyValidationException.class,
                 () -> service.syncWorkingCopy(CONCEPT_ID, List.of("název")));
@@ -216,7 +230,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void nonSyncableKey_isRejected_andNothingIsSevered() {
-        stubDeviation(deviatingOn("název"));
+        deviatingOn("název");
 
         assertThrows(OntologyValidationException.class,
                 () -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.TYPE_KEY)));
@@ -226,7 +240,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void unknownKey_isRejected_andNothingIsSevered() {
-        stubDeviation(deviatingOn("název"));
+        deviatingOn("název");
 
         assertThrows(OntologyValidationException.class,
                 () -> service.syncWorkingCopy(CONCEPT_ID, List.of("neexistující-pole")));
@@ -236,7 +250,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void nkdConceptGoneAtApplyTime_isRejected_andNothingIsSevered() {
-        stubDeviation(deviatingOn("název"));
+        deviatingOn("název");
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.empty());
 
         assertThrows(OntologyValidationException.class,

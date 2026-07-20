@@ -245,11 +245,23 @@ public class ConceptServiceImpl implements ConceptService {
                     "Pojem není pracovní kopií publikovaného pojmu v NKD — není co synchronizovat.");
         }
 
-        // Re-derive the deviation from LIVE NKD. The request carries field names only; every accepted
-        // value comes from here, never from the client.
+        // ONE read of the NKD twin, used for BOTH the deviation and the values written. Reading twice
+        // would decide the (irreversible) sever against one snapshot of NKD and write another, so a
+        // change landing between the reads could sever a concept whose accepted set was in fact complete.
+        Optional<OntologyDetailModel.ConceptDetailModel> nkdOpt =
+                nkdSparqlClient.fetchPublishedConcept(metadata.getConceptIri());
+        if (nkdOpt.isEmpty()) {
+            throw new OntologyValidationException("Publikovaný pojem nebyl v NKD nalezen.");
+        }
+        OntologyDetailModel.ConceptDetailModel nkdConcept = nkdOpt.get();
+
+        // The request carries field names only; every accepted value is re-derived here, never trusted
+        // from the client.
         GetConceptDto current = getConceptDetail(metadata.getSlug());
-        PublishedConceptDeviationModel deviation = current.getPublishedConceptDeviationModel();
-        if (deviation == null || deviation.getStatus() != PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS) {
+        PublishedConceptDeviationModel deviation = deviationComparator.compareConceptDetails(
+                current.getConceptDetail(), nkdConcept, SnapshotOrigin.WORKING_COPY,
+                metadata.getConceptIri());
+        if (deviation.getStatus() != PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS) {
             throw new OntologyValidationException(
                     "Pojem se neliší od publikovaného pojmu v NKD, nebo NKD není dostupné — není co synchronizovat.");
         }
@@ -258,14 +270,8 @@ public class ConceptServiceImpl implements ConceptService {
         Set<String> accepted = new LinkedHashSet<>(fieldsToAccept);
         validateAcceptedKeys(accepted, deviatingKeys);
 
-        Optional<OntologyDetailModel.ConceptDetailModel> nkdOpt =
-                nkdSparqlClient.fetchPublishedConcept(metadata.getConceptIri());
-        if (nkdOpt.isEmpty()) {
-            throw new OntologyValidationException("Publikovaný pojem nebyl v NKD nalezen.");
-        }
-
         String slug = metadata.getSlug();   // an edit never changes the slug, only conceptIri/name
-        ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, accepted, nkdOpt.get());
+        ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, accepted, nkdConcept);
         editConcept(conceptId, editModel);
 
         // Sever iff the user took only SOME of what deviates: they have chosen to diverge, so the concept
@@ -368,6 +374,11 @@ public class ConceptServiceImpl implements ConceptService {
      * Seeds the edit model with the concept's current classification, read from the graph the same way
      * {@code updateDataClassification} reads it, so a sync that does not accept these fields is a no-op on
      * them instead of a deletion. An accepted key overwrites the seed afterwards.
+     *
+     * <p>This graph read is separate from the one {@link #editConcept} performs, which is safe on the
+     * outbox path: both run inside the caller's transaction, and {@code editConcept} takes the concept
+     * row lock before its own read, so a concurrent edit of this concept cannot land between them.
+     * Do not reuse this read-then-edit shape where that lock is not held.
      */
     private void carryCurrentDataClassification(
             ConceptEditModel editModel, ConceptMetadataEntity metadata, Set<String> accepted) {
