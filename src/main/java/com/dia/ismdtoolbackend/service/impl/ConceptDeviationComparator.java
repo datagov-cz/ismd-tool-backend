@@ -10,12 +10,17 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 
+import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
+
 @Component
 @Slf4j
 public class ConceptDeviationComparator {
 
     /**
-     * Compares the 22 characteristics and stamps the result with which deviation case it is and which NKD
+     * Compares the concept characteristics and stamps the result with which deviation case it is and which NKD
      * resource it was compared against — both cases share this one comparison, so the tag is what tells the
      * reader whether {@code localValue} is a stored copy or the user's own value.
      *
@@ -76,6 +81,8 @@ public class ConceptDeviationComparator {
         hasDeviations |= compareAndSetAcquisitionMethod(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetContentType(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetIsPpdf(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetObjectSubjectType(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetIsPublic(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAis(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAgenda(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetPrivacyProvisions(localConcept, publishedConcept, builder);
@@ -393,6 +400,86 @@ public class ConceptDeviationComparator {
             return true;
         }
         return false;
+    }
+
+    /**
+     * The object/subject role of a TRIDA, read out of the {@code typ} type list. Unlike the concept KIND,
+     * this pair is convertible, so it is surfaced as its own syncable deviation. Emitted only when at least
+     * one side actually carries the marker — a concept that is neither (e.g. a VLASTNOST/VZTAH) never
+     * deviates here.
+     */
+    private boolean compareAndSetObjectSubjectType(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        String localRole = objectSubjectRole(local.getTypes());
+        String publishedRole = objectSubjectRole(published.getTypes());
+        if (localRole == null && publishedRole == null) {
+            return false;
+        }
+        if (areDifferent(localRole, publishedRole)) {
+            builder.objectSubjectType(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(localRole)
+                    .publishedValue(publishedRole)
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * The public/private classification, read out of the {@code typ} type list. Emitted only when at least
+     * one side carries a veřejný/neveřejný marker.
+     */
+    private boolean compareAndSetIsPublic(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        Boolean localPublic = isPublic(local.getTypes());
+        Boolean publishedPublic = isPublic(published.getTypes());
+        if (localPublic == null && publishedPublic == null) {
+            return false;
+        }
+        if (areDifferent(localPublic, publishedPublic)) {
+            builder.isPublic(PublishedConceptDeviationModel.PropertyDeviation.<Boolean>builder()
+                    .localValue(localPublic)
+                    .publishedValue(publishedPublic)
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    /** {@code "objekt"} / {@code "subjekt"} from the type list; {@code null} when it carries neither. */
+    private static String objectSubjectRole(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        if (types.contains(TOP_JSON_LD)) {
+            return "objekt";
+        }
+        if (types.contains(TSP_JSON_LD)) {
+            return "subjekt";
+        }
+        return null;
+    }
+
+    /** {@code true}/{@code false} from the veřejný/neveřejný marker; {@code null} when it carries neither. */
+    private static Boolean isPublic(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        if (types.contains(VEREJNY_UDAJ_JSON_LD)) {
+            return Boolean.TRUE;
+        }
+        if (types.contains(NEVEREJNY_UDAJ_JSON_LD)) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 
     private boolean compareAndSetAis(

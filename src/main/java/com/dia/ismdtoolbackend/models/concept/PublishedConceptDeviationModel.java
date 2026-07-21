@@ -104,6 +104,23 @@ public class PublishedConceptDeviationModel {
     @JsonProperty("je-ppdf")
     private PropertyDeviation<Boolean> isPpdf;
 
+    /**
+     * The object/subject role marker of a TRIDA concept ({@code "objekt"} / {@code "subjekt"}), derived
+     * from the {@code typ} type list. Unlike the concept KIND (třída/vztah/vlastnost), this pair IS
+     * convertible, so it is emitted separately and is syncable.
+     */
+    @JsonProperty("typ-objektu-subjektu")
+    private PropertyDeviation<String> objectSubjectType;
+
+    /**
+     * The public/private data classification ({@code true} = veřejný, {@code false} = neveřejný), derived
+     * from the {@code typ} type list. Syncable — but going private requires a valid privacy provision, so
+     * the sync co-syncs {@code ustanovení-dokládající-neveřejnost-údaje} and rejects a private twin that
+     * carries none.
+     */
+    @JsonProperty("veřejnost-údaje")
+    private PropertyDeviation<Boolean> isPublic;
+
     @JsonProperty("ais")
     private PropertyDeviation<String> ais;
 

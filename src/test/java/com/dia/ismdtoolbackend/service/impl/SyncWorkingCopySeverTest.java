@@ -261,4 +261,58 @@ class SyncWorkingCopySeverTest {
 
         verify(conceptMetadataRepository, never()).save(any());
     }
+
+    // ---- public/private + provision coupling ------------------------------------------------------
+
+    /** Local public, NKD private (with the given provisions), so "veřejnost-údaje" deviates. */
+    private void publicLocal_privateNkd(List<String> nkdProvisions) {
+        OntologyDetailModel.ConceptDetailModel local = OntologyDetailModel.ConceptDetailModel.builder()
+                .name(Map.of("cs", "Obec")).types(List.of("Třída", "Veřejný údaj")).build();
+        OntologyDetailModel.ConceptDetailModel published = OntologyDetailModel.ConceptDetailModel.builder()
+                .name(Map.of("cs", "Obec")).types(List.of("Třída", "Neveřejný údaj"))
+                .privacyProvisions(nkdProvisions).build();
+
+        GetConceptDto dto = new GetConceptDto();
+        dto.setConceptDetail(local);
+        doReturn(dto).when(service).getConceptDetail(SLUG);
+        when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.of(published));
+    }
+
+    @Test
+    void syncToPrivate_withoutValidProvisionInNkd_isRejected400() {
+        publicLocal_privateNkd(List.of());   // private twin but NO provision — invalid shape
+
+        OntologyValidationException e = assertThrows(OntologyValidationException.class,
+                () -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.IS_PUBLIC_KEY)));
+
+        assertTrue(e.getMessage().contains("neveřejnost"));
+        verify(service, never()).editConcept(anyLong(), any(), anyBoolean());
+    }
+
+    @Test
+    void syncToPrivate_withValidProvision_coSyncsTheProvision() {
+        publicLocal_privateNkd(List.of("https://provision/§1"));
+
+        service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.IS_PUBLIC_KEY));
+
+        ArgumentCaptor<com.dia.ismdtoolbackend.models.concept.ConceptEditModel> edit =
+                ArgumentCaptor.forClass(com.dia.ismdtoolbackend.models.concept.ConceptEditModel.class);
+        verify(service).editConcept(anyLong(), edit.capture(), anyBoolean());
+        var klass = (com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel) edit.getValue();
+        assertEquals(Boolean.FALSE, klass.getIsPublic());
+        assertEquals(List.of("https://provision/§1"), klass.getPrivacyProvisions(),
+                "the twin's provision is co-synced so the private classification is valid");
+    }
+
+    @Test
+    void syncToPrivate_coSyncedProvisionCountsAsAccepted_soNoSever() {
+        // The only two deviations are public/private and its own required provision. Accepting public/private
+        // co-syncs the provision, and that coupled provision counts as accepted → faithful copy, not severed.
+        publicLocal_privateNkd(List.of("https://provision/§1"));
+
+        service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.IS_PUBLIC_KEY));
+
+        assertTrue(metadata.getIsPublished(), "coupled provision counts as accepted → must not sever");
+        verify(conceptMetadataRepository, never()).save(any());
+    }
 }

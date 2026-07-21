@@ -18,6 +18,11 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
+import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
+
 /**
  * The field vocabulary for a working-copy sync: which deviation keys exist, which may be accepted, and
  * how each one's live-NKD value is applied to a {@link ConceptEditModel}.
@@ -39,6 +44,15 @@ public class WorkingCopySyncFields {
 
     /** The alt-name field. Syncable — a language may hold several alt labels and all are carried. */
     public static final String ALT_NAME_KEY = "alternativní-název";
+
+    /** The object/subject role of a TRIDA ({@code objekt}/{@code subjekt}). Class-only; no-op elsewhere. */
+    public static final String OBJECT_SUBJECT_TYPE_KEY = "typ-objektu-subjektu";
+
+    /**
+     * The public/private classification. Syncable — but going private requires a valid privacy provision,
+     * enforced in the sync service before the edit is applied.
+     */
+    public static final String IS_PUBLIC_KEY = "veřejnost-údaje";
 
     /** One syncable characteristic: how to read its deviation, and how to apply NKD's value. */
     private record SyncableField(
@@ -86,6 +100,10 @@ public class WorkingCopySyncFields {
                     WorkingCopySyncFields::applyContentType),
             new SyncableField("je-ppdf", PublishedConceptDeviationModel::getIsPpdf,
                     WorkingCopySyncFields::applyIsPpdf),
+            new SyncableField(OBJECT_SUBJECT_TYPE_KEY, PublishedConceptDeviationModel::getObjectSubjectType,
+                    WorkingCopySyncFields::applyObjectSubjectType),
+            new SyncableField(IS_PUBLIC_KEY, PublishedConceptDeviationModel::getIsPublic,
+                    WorkingCopySyncFields::applyIsPublic),
             new SyncableField("ais", PublishedConceptDeviationModel::getAis,
                     WorkingCopySyncFields::applyAis),
             new SyncableField("agenda", PublishedConceptDeviationModel::getAgenda,
@@ -244,6 +262,60 @@ public class WorkingCopySyncFields {
         } else if (edit instanceof RelationshipConceptEditModel r) {
             r.setIsInPPDF(isPpdf);
         }
+    }
+
+    /**
+     * Sets the object/subject role from the NKD twin. TRIDA-only — a no-op on VLASTNOST/VZTAH (they carry
+     * no such marker and never deviate here). Null when the NKD side has neither marker (nothing to write).
+     */
+    private static void applyObjectSubjectType(ConceptEditModel edit, ConceptDetailModel nkd) {
+        if (edit instanceof ClassConceptEditModel c) {
+            c.setType(objectSubjectRole(nkd.getTypes()));
+        }
+    }
+
+    /**
+     * Sets the public/private flag from the NKD twin. When going private, the provision that makes it valid
+     * is co-synced by also accepting {@code ustanovení-dokládající-neveřejnost-údaje}; the sync service
+     * verifies a valid provision is present and rejects (400) otherwise.
+     */
+    private static void applyIsPublic(ConceptEditModel edit, ConceptDetailModel nkd) {
+        Boolean isPublic = publicFromTypes(nkd.getTypes());
+        if (edit instanceof ClassConceptEditModel c) {
+            c.setIsPublic(isPublic);
+        } else if (edit instanceof PropertyConceptEditModel p) {
+            p.setIsPublic(isPublic);
+        } else if (edit instanceof RelationshipConceptEditModel r) {
+            r.setIsPublic(isPublic);
+        }
+    }
+
+    /** {@code "objekt"}/{@code "subjekt"} from the NKD type list; null when it carries neither. */
+    static String objectSubjectRole(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        if (types.contains(TOP_JSON_LD)) {
+            return "objekt";
+        }
+        if (types.contains(TSP_JSON_LD)) {
+            return "subjekt";
+        }
+        return null;
+    }
+
+    /** {@code true}/{@code false} from the NKD veřejný/neveřejný marker; null when it carries neither. */
+    public static Boolean publicFromTypes(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        if (types.contains(VEREJNY_UDAJ_JSON_LD)) {
+            return Boolean.TRUE;
+        }
+        if (types.contains(NEVEREJNY_UDAJ_JSON_LD)) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 
     private static void applyAis(ConceptEditModel edit, ConceptDetailModel nkd) {

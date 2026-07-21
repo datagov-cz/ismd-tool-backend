@@ -212,4 +212,40 @@ class WorkingCopySyncFieldsTest {
 
         assertNull(edit.getNameModel());
     }
+
+    @Test
+    void objectSubjectAndPublicPrivate_areSyncableKeys() {
+        assertTrue(fields.syncableKeys().contains(WorkingCopySyncFields.OBJECT_SUBJECT_TYPE_KEY));
+        assertTrue(fields.syncableKeys().contains(WorkingCopySyncFields.IS_PUBLIC_KEY));
+    }
+
+    @Test
+    void apply_objectSubject_setsRoleFromNkdTypes_onClassOnly() {
+        ConceptDetailModel nkd = ConceptDetailModel.builder()
+                .types(List.of("Třída", "Typ subjektu práva")).build();
+
+        ClassConceptEditModel klass = new ClassConceptEditModel();
+        fields.apply(WorkingCopySyncFields.OBJECT_SUBJECT_TYPE_KEY, klass, nkd);
+        assertEquals("subjekt", klass.getType());
+
+        // No-op on a non-TRIDA type — it carries no such marker and must not blow up.
+        PropertyConceptEditModel property = new PropertyConceptEditModel();
+        fields.apply(WorkingCopySyncFields.OBJECT_SUBJECT_TYPE_KEY, property, nkd);
+        // PropertyConceptEditModel has no `type` field to set — the apply simply does nothing.
+    }
+
+    @Test
+    void apply_isPublic_setsClassificationFromNkdTypes() {
+        ConceptDetailModel publicNkd = ConceptDetailModel.builder()
+                .types(List.of("Třída", "Veřejný údaj")).build();
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+        fields.apply(WorkingCopySyncFields.IS_PUBLIC_KEY, edit, publicNkd);
+        assertEquals(Boolean.TRUE, edit.getIsPublic());
+
+        ConceptDetailModel privateNkd = ConceptDetailModel.builder()
+                .types(List.of("Třída", "Neveřejný údaj")).build();
+        ClassConceptEditModel edit2 = new ClassConceptEditModel();
+        fields.apply(WorkingCopySyncFields.IS_PUBLIC_KEY, edit2, privateNkd);
+        assertEquals(Boolean.FALSE, edit2.getIsPublic());
+    }
 }

@@ -28,6 +28,83 @@ class ConceptDeviationComparatorTest {
     }
 
     @Nested
+    class ObjectSubjectAndPublicPrivate {
+
+        // The type-list labels these pairs are derived from (VocabularyConstants *_JSON_LD).
+        private static final String TOP = "Typ objektu práva";
+        private static final String TSP = "Typ subjektu práva";
+        private static final String VEREJNY = "Veřejný údaj";
+        private static final String NEVEREJNY = "Neveřejný údaj";
+
+        @Test
+        void objectVsSubject_isADistinctSyncableDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", TOP)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", TSP)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNotNull(result.getObjectSubjectType());
+            assertEquals("objekt", result.getObjectSubjectType().getLocalValue());
+            assertEquals("subjekt", result.getObjectSubjectType().getPublishedValue());
+        }
+
+        @Test
+        void sameRole_noObjectSubjectDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", TOP)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", TOP)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getObjectSubjectType());
+        }
+
+        @Test
+        void neitherSideHasRoleMarker_noObjectSubjectDeviation() {
+            // A VLASTNOST/VZTAH carries no objekt/subjekt marker — must never deviate here.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Vlastnost")).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Vlastnost")).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getObjectSubjectType());
+        }
+
+        @Test
+        void publicVsPrivate_isADistinctSyncableDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", VEREJNY)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", NEVEREJNY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNotNull(result.getIsPublic());
+            assertEquals(Boolean.TRUE, result.getIsPublic().getLocalValue());
+            assertEquals(Boolean.FALSE, result.getIsPublic().getPublishedValue());
+        }
+
+        @Test
+        void sameClassification_noPublicPrivateDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", NEVEREJNY)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", NEVEREJNY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getIsPublic());
+        }
+    }
+
+    @Nested
     class NameIsNotCompared {
 
         // An OFN concept's IRI is derived from its name, so an IRI-matched pair shares a name by

@@ -287,23 +287,29 @@ public class ConceptServiceImpl implements ConceptService {
         Set<String> deviatingKeys = syncFields.deviatingSyncableKeys(deviation);
         Set<String> accepted = new LinkedHashSet<>(fieldsToAccept);
         validateAcceptedKeys(accepted, deviatingKeys);
+        // Going private requires a valid provision; accepting the flag pulls the twin's provisions in.
+        Set<String> effectiveAccepted = resolvePublicPrivateSync(accepted, nkdConcept);
 
         String slug = metadata.getSlug();   // an edit never changes the slug, only conceptIri/name
-        ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, accepted, nkdConcept);
+        ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, effectiveAccepted, nkdConcept);
         // false: a name/identifier sync relocates the IRI too, but sync owns the sever decision below —
         // accepting ALL deviating fields must leave the concept a faithful, still-tracked working copy.
         editConcept(conceptId, editModel, false);
 
         // Sever iff the user took only SOME of what deviates: they have chosen to diverge, so the concept
         // stops being a working copy. Accepting everything leaves it a faithful copy, still tracked.
+        // Uses the EFFECTIVE accepted set: a privacy provision co-synced by accepting public/private is
+        // part of that one coupled decision, so it counts as accepted (a private twin whose only other
+        // deviation is its own required provision stays a faithful working copy, not severed).
         // Re-read after the edit: editConcept may have relocated the IRI (a name/identifier sync renames),
         // and this must flip the flag on the post-edit row, in the same transaction as the RDF delta.
-        if (accepted.size() < deviatingKeys.size()) {
+        Set<String> acceptedForSever = intersect(effectiveAccepted, deviatingKeys);
+        if (acceptedForSever.size() < deviatingKeys.size()) {
             ConceptMetadataEntity postEdit = fetchAndValidateMetadata(conceptId);
             postEdit.setIsPublished(false);
             conceptMetadataRepository.save(postEdit);
             log.info("Working copy {} severed: {} of {} deviating field(s) accepted → now a draft",
-                    postEdit.getConceptIri(), accepted.size(), deviatingKeys.size());
+                    postEdit.getConceptIri(), acceptedForSever.size(), deviatingKeys.size());
         }
 
         return getConceptDetail(slug);
@@ -358,6 +364,49 @@ public class ConceptServiceImpl implements ConceptService {
         if (!notDeviating.isEmpty()) {
             throw new OntologyValidationException("Tyto vlastnosti se neliší od NKD: " + notDeviating);
         }
+    }
+
+    /**
+     * Public/private carries a validity condition: a concept is private only if it also has a valid privacy
+     * provision (see {@code updateDataClassification}, which silently drops the neveřejný marker otherwise).
+     * When the user accepts {@code veřejnost-údaje} and the NKD twin is private, this:
+     * <ol>
+     *   <li>verifies the twin actually carries a valid provision — 400 if not, so a private classification
+     *       can never land as an invalid (silently-public) shape;</li>
+     *   <li>co-syncs {@code ustanovení-dokládající-neveřejnost-údaje} so the accepted "make it private" is
+     *       self-consistent — the flag and its required provision are written together.</li>
+     * </ol>
+     * Going public needs neither. Returns the effective accepted set (with the provision key added when
+     * required); the user's original {@code accepted} set is left untouched so the sever arithmetic is
+     * unaffected by the auto-added key.
+     */
+    private static Set<String> intersect(Set<String> a, Set<String> b) {
+        Set<String> out = new LinkedHashSet<>(a);
+        out.retainAll(b);
+        return out;
+    }
+
+    private Set<String> resolvePublicPrivateSync(
+            Set<String> accepted, OntologyDetailModel.ConceptDetailModel nkd) {
+        if (!accepted.contains(WorkingCopySyncFields.IS_PUBLIC_KEY)) {
+            return accepted;
+        }
+        Boolean nkdPublic = WorkingCopySyncFields.publicFromTypes(nkd.getTypes());
+        if (!Boolean.FALSE.equals(nkdPublic)) {
+            return accepted;   // going public (or no marker) — no provision needed
+        }
+        // Going private: the twin MUST carry a valid provision, or the private shape would be invalid.
+        List<String> nkdProvisions = nkd.getPrivacyProvisions();
+        boolean hasValidProvision = nkdProvisions != null
+                && nkdProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());
+        if (!hasValidProvision) {
+            throw new OntologyValidationException(
+                    "Nelze synchronizovat neveřejnost údaje: publikovaný pojem v NKD neobsahuje platné "
+                            + "ustanovení dokládající neveřejnost.");
+        }
+        Set<String> effective = new LinkedHashSet<>(accepted);
+        effective.add("ustanovení-dokládající-neveřejnost-údaje");
+        return effective;
     }
 
     /**
