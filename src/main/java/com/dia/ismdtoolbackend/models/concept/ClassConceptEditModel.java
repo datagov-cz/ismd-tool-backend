@@ -19,6 +19,7 @@ public class ClassConceptEditModel extends ConceptEditModel {
     private List<String> privacyProvisions;
     private List<String> broaderConcept;
     private Boolean isInPPDF;
+    private String codeListIri;
     private String codeListDataset;
 
     @Override

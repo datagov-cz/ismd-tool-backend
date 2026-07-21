@@ -708,38 +708,45 @@ class ConceptFieldUpdaters {
         updateSharingMethodList(newConcept, sharingMethod, oldConcept, model, toRemove, toAdd);
     }
 
-    void updateCodeListDataset(Resource newConcept, String newDatasetUrl,
+    /**
+     * Rewrites the code-list structure: the číselník is a named subject carrying its type and
+     * its NKOD dataset. Class concepts only.
+     *
+     * <p>The removal branch drops the old číselník's own statements as well as the link. Fully exhaustive.
+     */
+    void updateCodeListDataset(Resource newConcept, String newCodeListIri, String newDatasetUrl,
                                          Resource oldConcept, Model model,
                                          Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (newDatasetUrl == null) return;
+        if (newCodeListIri == null && newDatasetUrl == null) return;
 
         Property instanceDefinedByCodeList = model.createProperty(
                 OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
 
-        // Remove existing code list dataset structure (blank node and its statements)
         if (oldConcept.hasProperty(instanceDefinedByCodeList)) {
             StmtIterator stmtIter = oldConcept.listProperties(instanceDefinedByCodeList);
             while (stmtIter.hasNext()) {
                 Statement stmt = stmtIter.next();
                 toRemove.add(stmt);
                 if (stmt.getObject().isResource()) {
-                    Resource blankNode = stmt.getObject().asResource();
-                    StmtIterator bnIter = blankNode.listProperties();
-                    while (bnIter.hasNext()) {
-                        toRemove.add(bnIter.next());
+                    Resource codeListNode = stmt.getObject().asResource();
+                    StmtIterator nodeIter = codeListNode.listProperties();
+                    while (nodeIter.hasNext()) {
+                        toRemove.add(nodeIter.next());
                     }
                 }
             }
         }
 
-        // Add new structure if value is non-empty
-        if (!newDatasetUrl.trim().isEmpty()) {
+        // Add the new structure. Both IRIs are present together or not at all —
+        // ConceptEditValidator rejects the one-sided cases before this runs.
+        if (newCodeListIri != null && !newCodeListIri.trim().isEmpty()
+                && newDatasetUrl != null && !newDatasetUrl.trim().isEmpty()) {
             Resource codeListType = model.createResource(
                     OFN_NAMESPACE_LEGAL + CISELNIK);
             Property datasetProperty = model.createProperty(
                     OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
-            Resource codeListNode = model.createResource();
+            Resource codeListNode = model.createResource(newCodeListIri.trim());
             toAdd.add(model.createStatement(codeListNode, RDF.type, codeListType));
             toAdd.add(model.createStatement(codeListNode, datasetProperty,
                     model.createResource(newDatasetUrl.trim())));

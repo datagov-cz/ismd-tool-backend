@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.detail;
 
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -434,8 +435,31 @@ public class OntologyDetailExtractor {
                 .agenda(extractStringFromValue(conceptMap.get(AGENDA)))
                 .privacyProvisions(nullToEmpty((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
                 .privacyProvisionsResolved(buildResolvedSources((List<String>) conceptMap.get(USTANOVENI_NEVEREJNOST)))
+                .codeList(buildCodeList(conceptMap.get(INSTANCE_DEFINOVANY_CISELNIKEM)))
                 .conceptProperties(properties)
                 .conceptRelationships(relationships)
+                .build();
+    }
+
+    /**
+     * Maps the nested code-list object produced by {@code ConceptProcessor} into its DTO.
+     * Absent or malformed structures yield null so the field is simply omitted.
+     */
+    @SuppressWarnings("unchecked")
+    static CodeListDto buildCodeList(Object rawCodeList) {
+        if (!(rawCodeList instanceof Map)) {
+            return null;
+        }
+        Map<String, Object> codeList = (Map<String, Object>) rawCodeList;
+        Object iri = codeList.get(JSON_IRI);
+        Object dataset = codeList.get(DATOVA_SADA_V_NKOD);
+        if (iri == null && dataset == null) {
+            return null;
+        }
+        return CodeListDto.builder()
+                .iri((String) iri)
+                .typ((String) codeList.get("typ"))
+                .datovaSadaVNkod((String) dataset)
                 .build();
     }
 

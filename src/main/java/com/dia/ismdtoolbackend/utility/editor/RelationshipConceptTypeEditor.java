@@ -38,7 +38,5 @@ class RelationshipConceptTypeEditor implements ConceptTypeEditor {
 
         fields.updateDataClassification(context.newConcept, m.getIsPublic(), m.getPrivacyProvisions(),
                 context.oldConcept, model, toRemove, toAdd);
-
-        fields.updateCodeListDataset(context.newConcept, m.getCodeListDataset(), context.oldConcept, model, toRemove, toAdd);
     }
 }

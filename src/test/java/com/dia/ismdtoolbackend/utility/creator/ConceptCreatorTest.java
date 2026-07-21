@@ -699,7 +699,9 @@ class ConceptCreatorTest {
         @Test
         void createSingleConcept_ShouldAddCodeListDatasetStructure() {
             // arrange
+            String codeListIri = "https://data.mvcr.gov.cz/zdroj/číselníky/typy-turistických-cílů";
             setupBasicClassConcept("Code List Class", "subjekt");
+            when(classConceptModel.getCodeListIri()).thenReturn(codeListIri);
             when(classConceptModel.getCodeListDataset())
                     .thenReturn("https://data.gov.cz/zdroj/datové-sady/test-dataset");
 
@@ -712,18 +714,43 @@ class ConceptCreatorTest {
             assertTrue(result.hasProperty(instanceProp), "Should have instance-definovány-číselníkem property");
 
             Statement stmt = result.getProperty(instanceProp);
-            assertTrue(stmt.getObject().isResource(), "Object should be a resource (blank node)");
+            assertTrue(stmt.getObject().isResource(), "Object should be a resource");
 
             Resource codeListNode = stmt.getObject().asResource();
+            assertFalse(codeListNode.isAnon(), "Číselník must be a named subject, not a blank node");
+            assertEquals(codeListIri, codeListNode.getURI(), "Číselník IRI must be the one supplied");
+
             Resource codeListType = result.getModel().createResource(OFN_NAMESPACE_LEGAL + CISELNIK);
-            assertTrue(codeListNode.hasProperty(RDF.type, codeListType), "Blank node should be typed as číselník");
+            assertTrue(codeListNode.hasProperty(RDF.type, codeListType), "Číselník should be typed as číselník");
 
             Property datasetProp = result.getModel().createProperty(
                     OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
-            assertTrue(codeListNode.hasProperty(datasetProp), "Blank node should have dataset property");
+            assertTrue(codeListNode.hasProperty(datasetProp), "Číselník should have dataset property");
 
             String datasetUri = codeListNode.getProperty(datasetProp).getObject().asResource().getURI();
             assertEquals("https://data.gov.cz/zdroj/datové-sady/test-dataset", datasetUri);
+        }
+
+        @Test
+        void createSingleConcept_ShouldRejectDatasetWithoutCodeListIri() {
+            setupBasicClassConcept("Incomplete Code List", "subjekt");
+            when(classConceptModel.getCodeListDataset())
+                    .thenReturn("https://data.gov.cz/zdroj/datové-sady/test-dataset");
+
+            assertThrows(RuntimeException.class,
+                    () -> conceptCreator.createSingleConcept(classConceptModel),
+                    "create must reject a dataset with no číselník IRI");
+        }
+
+        @Test
+        void createSingleConcept_ShouldRejectCodeListIriWithoutDataset() {
+            setupBasicClassConcept("Incomplete Code List", "subjekt");
+            when(classConceptModel.getCodeListIri())
+                    .thenReturn("https://data.mvcr.gov.cz/zdroj/číselníky/x");
+
+            assertThrows(RuntimeException.class,
+                    () -> conceptCreator.createSingleConcept(classConceptModel),
+                    "create must reject a číselník IRI with no dataset");
         }
 
         @Test

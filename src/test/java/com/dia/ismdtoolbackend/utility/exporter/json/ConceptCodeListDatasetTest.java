@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class ConceptCodeListDatasetTest {
 
     private static final String NKOD_DATASET_URL = "https://data.gov.cz/zdroj/datové-sady/test-dataset-123";
+    private static final String CODE_LIST_IRI =
+            "https://data.mvcr.gov.cz/zdroj/číselníky/typy-turistických-cílů";
 
     private ConceptProcessor processor;
 
@@ -26,6 +28,7 @@ class ConceptCodeListDatasetTest {
         processor = new ConceptProcessor();
     }
 
+    /** Writes the code-list structure the class write paths produce: a named číselník subject. */
     private Resource addCodeListDataset(Resource concept, OntModel model, String datasetUrl) {
         Property instanceDefinedByCodeList = model.createProperty(
                 OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
@@ -34,7 +37,7 @@ class ConceptCodeListDatasetTest {
         Property datasetProperty = model.createProperty(
                 OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
-        Resource codeListNode = model.createResource();
+        Resource codeListNode = model.createResource(CODE_LIST_IRI);
         codeListNode.addProperty(RDF.type, codeListType);
         codeListNode.addProperty(datasetProperty, model.createResource(datasetUrl));
 
@@ -55,39 +58,9 @@ class ConceptCodeListDatasetTest {
         assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
         @SuppressWarnings("unchecked")
         Map<String, Object> codeListObj = (Map<String, Object>) result.get(INSTANCE_DEFINOVANY_CISELNIKEM);
+        assertEquals(CODE_LIST_IRI, codeListObj.get(JSON_IRI));
         assertEquals(CISELNIK_JSON_LD, codeListObj.get("typ"));
         assertEquals(NKOD_DATASET_URL, codeListObj.get(DATOVA_SADA_V_NKOD));
-    }
-
-    @Test
-    @DisplayName("Exports code list dataset for property concept")
-    void exportsCodeListDataset_forPropertyConcept() {
-        OntModel model = createDefaultModel();
-        Resource concept = addDatatypeProperty(model, "test-prop", "Test vlastnost", null, null);
-        addCodeListDataset(concept, model, NKOD_DATASET_URL);
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> codeListObj = (Map<String, Object>) result.get(INSTANCE_DEFINOVANY_CISELNIKEM);
-        assertEquals(NKOD_DATASET_URL, codeListObj.get(DATOVA_SADA_V_NKOD));
-    }
-
-    @Test
-    @DisplayName("Exports code list dataset for relationship concept")
-    void exportsCodeListDataset_forRelationshipConcept() {
-        OntModel model = createDefaultModel();
-        Resource domain = addOwlClass(model, "domain-class", "Doména");
-        Resource range = addOwlClass(model, "range-class", "Rozsah");
-        Resource concept = addObjectProperty(model, "test-rel", "Test vztah", domain, range);
-        addCodeListDataset(concept, model, NKOD_DATASET_URL);
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        assertTrue(result.containsKey(INSTANCE_DEFINOVANY_CISELNIKEM));
     }
 
     @Test
@@ -113,8 +86,8 @@ class ConceptCodeListDatasetTest {
         Property datasetProperty = model.createProperty(
                 OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
-        // Create blank node WITHOUT the correct type
-        Resource codeListNode = model.createResource();
+        // Named číselník subject WITHOUT the correct type
+        Resource codeListNode = model.createResource(CODE_LIST_IRI);
         codeListNode.addProperty(datasetProperty, model.createResource(NKOD_DATASET_URL));
         concept.addProperty(instanceDefinedByCodeList, codeListNode);
 

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
@@ -158,6 +159,9 @@ public class OntologyDetailModel {
         @JsonInclude()
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje-resolved")
         private List<ResolvedLegalSourceDto> privacyProvisionsResolved;
+
+        @JsonProperty("instance-definovány-číselníkem")
+        private CodeListDto codeList;
 
         private List<ConceptPropertiesModel> conceptProperties;
 
