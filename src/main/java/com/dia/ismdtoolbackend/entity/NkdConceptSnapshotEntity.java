@@ -21,11 +21,11 @@ import java.time.LocalDateTime;
 /**
  * A tracked "local copy" of a published NKD concept that an owning local concept links to. One row per
  * (owning concept, NKD IRI) link, holding the snapshotted NKD detail (for deviation comparison) and the
- * exact triple set materialized into the owner's graph.
+ * copy's exact triple set.
  *
- * <p>Written only through {@code NkdSnapshotService}; materialized triples reach TDB2 via the owning
- * concept's outbox aggregate, never a direct write from here. Only {@link SnapshotOrigin#LINK_TARGET}
- * rows are currently produced.
+ * <p>Written only through {@code NkdSnapshotService}. This row is the copy's <strong>sole home</strong>
+ * — nothing is written to TDB2; the owner's graph holds only the link triple. Only
+ * {@link SnapshotOrigin#LINK_TARGET} rows are currently produced.
  */
 @Entity
 @Table(
@@ -40,13 +40,14 @@ import java.time.LocalDateTime;
 @Slf4j
 public class NkdConceptSnapshotEntity {
 
+    /** Surfaced as {@code LinkSnapshotDto.snapshotId} — the UPDATE/REMOVE action URLs are keyed on it. */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /**
      * The local concept that owns this link. Not db-cascade on delete — {@code NkdSnapshotService}
-     * cascades removal so the materialized Fuseki triples are cleaned in the same boundary.
+     * cascades removal so this row and the owner's link triple are dropped in the same boundary.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owning_concept_id", nullable = false)
@@ -56,7 +57,7 @@ public class NkdConceptSnapshotEntity {
     @Column(name = "nkd_iri", nullable = false, length = 1024)
     private String nkdIri;
 
-    /** Denormalized owner graph — where the copy is materialized. */
+    /** Denormalized owner graph — the graph whose link triple this copy backs. */
     @Column(name = "graph_name", length = 1024)
     private String graphName;
 
@@ -66,7 +67,7 @@ public class NkdConceptSnapshotEntity {
 
     /**
      * Which relation created the link — {@code subClassOf} / {@code subPropertyOf} / {@code exactMatch}
-     * only (never domain/range/related). Null for {@link SnapshotOrigin#SELF_PUBLISHED}.
+     * only (never domain/range/related). Null for {@link SnapshotOrigin#WORKING_COPY}.
      */
     @Column(name = "link_predicate", length = 1024)
     private String linkPredicate;
@@ -76,9 +77,9 @@ public class NkdConceptSnapshotEntity {
     private String snapshotJson;
 
     /**
-     * The exact N-Triples set last materialized into the owner graph — the source of truth for the
-     * delete-set when re-materializing or removing the copy (NOT {@link #snapshotJson}, which is lossy),
-     * so NKD drift never leaves stale triples behind.
+     * The copy's exact N-Triples set — its sole home; nothing is written to TDB2. A faithful, non-lossy
+     * record of the NKD concept, unlike {@link #snapshotJson}, which holds the detail model the deviation
+     * comparison runs on.
      */
     @Column(name = "materialized_triples", columnDefinition = "text")
     private String materializedTriples;

@@ -19,11 +19,4 @@ public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSn
 
     /** Every snapshot pointing at one NKD IRI (cross-owner). */
     List<NkdConceptSnapshotEntity> findByNkdIri(String nkdIri);
-
-    /**
-     * How many concepts in a graph link the same NKD IRI — the refcount guarding shared-copy removal.
-     * The materialized copy may be dropped only when this reaches its last referrer; otherwise removing
-     * one link would strip triples other concepts still need.
-     */
-    long countByGraphNameAndNkdIri(String graphName, String nkdIri);
 }

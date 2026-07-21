@@ -106,25 +106,35 @@ class ConceptFieldUpdaters {
                                      Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (altNameModel == null) return;
 
-        Map<String, String> oldAltNamesByLang = RdfLangValues.byLanguage(oldConcept, SKOS.altLabel);
+        Map<String, List<String>> oldAltNamesByLang = RdfLangValues.allByLanguage(oldConcept);
 
-        Map<String, String> newAltNamesByLang = new HashMap<>();
+        Map<String, List<String>> newAltNamesByLang = new HashMap<>();
         if (altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
-            for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
-                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
-                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                        ? entry.getKey()
-                        : DEFAULT_LANG;
-                    newAltNamesByLang.put(languageTag, entry.getValue().trim());
+            for (Map.Entry<String, List<String>> entry : altNameModel.getAltName().entrySet()) {
+                if (entry.getValue() == null) {
+                    continue;
+                }
+                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                    ? entry.getKey()
+                    : DEFAULT_LANG;
+                for (String value : entry.getValue()) {
+                    if (value != null && !value.trim().isEmpty()) {
+                        newAltNamesByLang.computeIfAbsent(languageTag, k -> new ArrayList<>())
+                                .add(value.trim());
+                    }
                 }
             }
+            // Sorted to match allByLanguage's ordering, so the comparison below is order-insensitive.
+            newAltNamesByLang.values().forEach(Collections::sort);
         }
 
         if (!oldAltNamesByLang.equals(newAltNamesByLang)) {
             removeAllByPredicate(newConcept, SKOS.altLabel, toRemove, toAdd);
-            for (Map.Entry<String, String> entry : newAltNamesByLang.entrySet()) {
-                toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
-                        model.createLiteral(entry.getValue(), entry.getKey())));
+            for (Map.Entry<String, List<String>> entry : newAltNamesByLang.entrySet()) {
+                for (String value : entry.getValue()) {
+                    toAdd.add(model.createStatement(newConcept, SKOS.altLabel,
+                            model.createLiteral(value, entry.getKey())));
+                }
             }
         }
     }

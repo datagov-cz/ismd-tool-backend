@@ -655,13 +655,18 @@ public class ConceptCreator {
 
     private void addAlternativeNames(Resource resource, AltNameModel altNameModel) {
         if (altNameModel != null && altNameModel.getAltName() != null && !altNameModel.getAltName().isEmpty()) {
-            for (Map.Entry<String, String> entry : altNameModel.getAltName().entrySet()) {
-                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
-                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                        ? entry.getKey()
-                        : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
-                        entry.getValue().trim(), languageTag, ontModel);
+            for (Map.Entry<String, List<String>> entry : altNameModel.getAltName().entrySet()) {
+                if (entry.getValue() == null) {
+                    continue;
+                }
+                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                    ? entry.getKey()
+                    : DEFAULT_LANG;
+                for (String value : entry.getValue()) {
+                    if (value != null && !value.trim().isEmpty()) {
+                        DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
+                            value.trim(), languageTag, ontModel);
+                    }
                 }
             }
         }

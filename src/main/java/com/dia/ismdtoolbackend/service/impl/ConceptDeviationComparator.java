@@ -1,7 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import lombok.extern.slf4j.Slf4j;
@@ -9,9 +10,44 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 
+import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
+import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
+import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
+
 @Component
 @Slf4j
 public class ConceptDeviationComparator {
+
+    /**
+     * Compares the concept characteristics and stamps the result with which deviation case it is and which NKD
+     * resource it was compared against — both cases share this one comparison, so the tag is what tells the
+     * reader whether {@code localValue} is a stored copy or the user's own value.
+     *
+     * @param origin {@code LINK_TARGET} (stored copy vs NKD) or {@code WORKING_COPY} (own value vs own twin)
+     * @param source the NKD resource compared against; its label is taken from {@code publishedConcept}
+     */
+    public PublishedConceptDeviationModel compareConceptDetails(
+            OntologyDetailModel.ConceptDetailModel localConcept,
+            OntologyDetailModel.ConceptDetailModel publishedConcept,
+            SnapshotOrigin origin,
+            String source) {
+        PublishedConceptDeviationModel deviation = compareConceptDetails(localConcept, publishedConcept);
+        deviation.setOrigin(origin);
+        deviation.setSource(NkdConceptRefDto.builder()
+                .iri(source)
+                .label(labelOf(publishedConcept))
+                .build());
+        return deviation;
+    }
+
+    private static String labelOf(OntologyDetailModel.ConceptDetailModel concept) {
+        if (concept == null || concept.getName() == null || concept.getName().isEmpty()) {
+            return null;
+        }
+        String cs = concept.getName().get("cs");
+        return cs != null ? cs : concept.getName().values().iterator().next();
+    }
 
     public PublishedConceptDeviationModel compareConceptDetails(
             OntologyDetailModel.ConceptDetailModel localConcept,
@@ -22,8 +58,11 @@ public class ConceptDeviationComparator {
 
         boolean hasDeviations = false;
 
+        // Name is intentionally not compared: an OFN concept's IRI is derived from its name, so an
+        // IRI-matched pair shares a name by construction. A name deviation could only arise from NKD
+        // publishing a stale IRI (data corruption) and is not actionable — syncing it would regenerate
+        // the IRI and break the twin match. See WorkingCopySyncFields (název is not syncable either).
         hasDeviations |= compareAndSetTypes(localConcept, publishedConcept, builder);
-        hasDeviations |= compareAndSetName(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAlternativeName(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetDefinition(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetDescription(localConcept, publishedConcept, builder);
@@ -42,10 +81,11 @@ public class ConceptDeviationComparator {
         hasDeviations |= compareAndSetAcquisitionMethod(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetContentType(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetIsPpdf(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetObjectSubjectType(localConcept, publishedConcept, builder);
+        hasDeviations |= compareAndSetIsPublic(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAis(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAgenda(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetPrivacyProvisions(localConcept, publishedConcept, builder);
-        hasDeviations |= compareAndSetCodeList(localConcept, publishedConcept, builder);
 
         builder.status(hasDeviations ?
                 PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS :
@@ -63,22 +103,6 @@ public class ConceptDeviationComparator {
             builder.types(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getTypes())
                     .publishedValue(published.getTypes())
-                    .isDifferent(true)
-                    .build());
-            return true;
-        }
-        return false;
-    }
-
-    private boolean compareAndSetName(
-            OntologyDetailModel.ConceptDetailModel local,
-            OntologyDetailModel.ConceptDetailModel published,
-            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
-
-        if (areDifferent(local.getName(), published.getName())) {
-            builder.name(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
-                    .localValue(local.getName())
-                    .publishedValue(published.getName())
                     .isDifferent(true)
                     .build());
             return true;
@@ -363,15 +387,99 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areDifferent(local.getIsPpdf(), published.getIsPpdf())) {
+        // NKD may omit je-ppdf entirely (null/undefined). Absent means "not in PPDF" — normalize both
+        // sides to false so a local false never deviates against a missing NKD value.
+        Boolean localPpdf = Boolean.TRUE.equals(local.getIsPpdf());
+        Boolean publishedPpdf = Boolean.TRUE.equals(published.getIsPpdf());
+        if (areDifferent(localPpdf, publishedPpdf)) {
             builder.isPpdf(PublishedConceptDeviationModel.PropertyDeviation.<Boolean>builder()
-                    .localValue(local.getIsPpdf())
-                    .publishedValue(published.getIsPpdf())
+                    .localValue(localPpdf)
+                    .publishedValue(publishedPpdf)
                     .isDifferent(true)
                     .build());
             return true;
         }
         return false;
+    }
+
+    /**
+     * The object/subject role of a TRIDA, read out of the {@code typ} type list. Unlike the concept KIND,
+     * this pair is convertible, so it is surfaced as its own syncable deviation. Emitted only when at least
+     * one side actually carries the marker — a concept that is neither (e.g. a VLASTNOST/VZTAH) never
+     * deviates here.
+     */
+    private boolean compareAndSetObjectSubjectType(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        String localRole = objectSubjectRole(local.getTypes());
+        String publishedRole = objectSubjectRole(published.getTypes());
+        if (localRole == null && publishedRole == null) {
+            return false;
+        }
+        if (areDifferent(localRole, publishedRole)) {
+            builder.objectSubjectType(PublishedConceptDeviationModel.PropertyDeviation.<String>builder()
+                    .localValue(localRole)
+                    .publishedValue(publishedRole)
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * The public/private classification, read out of the {@code typ} type list. Emitted only when at least
+     * one side carries a veřejný/neveřejný marker.
+     */
+    private boolean compareAndSetIsPublic(
+            OntologyDetailModel.ConceptDetailModel local,
+            OntologyDetailModel.ConceptDetailModel published,
+            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
+
+        Boolean localPublic = isPublic(local.getTypes());
+        Boolean publishedPublic = isPublic(published.getTypes());
+        if (localPublic == null && publishedPublic == null) {
+            return false;
+        }
+        if (areDifferent(localPublic, publishedPublic)) {
+            builder.isPublic(PublishedConceptDeviationModel.PropertyDeviation.<Boolean>builder()
+                    .localValue(localPublic)
+                    .publishedValue(publishedPublic)
+                    .isDifferent(true)
+                    .build());
+            return true;
+        }
+        return false;
+    }
+
+    /** {@code "objekt"} / {@code "subjekt"} from the type list; {@code null} when it carries neither. */
+    private static String objectSubjectRole(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        if (types.contains(TOP_JSON_LD)) {
+            return "objekt";
+        }
+        if (types.contains(TSP_JSON_LD)) {
+            return "subjekt";
+        }
+        return null;
+    }
+
+    /** {@code true}/{@code false} from the veřejný/neveřejný marker; {@code null} when it carries neither. */
+    private static Boolean isPublic(List<String> types) {
+        if (types == null) {
+            return null;
+        }
+        if (types.contains(VEREJNY_UDAJ_JSON_LD)) {
+            return Boolean.TRUE;
+        }
+        if (types.contains(NEVEREJNY_UDAJ_JSON_LD)) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 
     private boolean compareAndSetAis(
@@ -422,24 +530,11 @@ public class ConceptDeviationComparator {
         return false;
     }
 
-    private boolean compareAndSetCodeList(
-            OntologyDetailModel.ConceptDetailModel local,
-            OntologyDetailModel.ConceptDetailModel published,
-            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
-
-        if (areDifferent(local.getCodeList(), published.getCodeList())) {
-            builder.codeList(PublishedConceptDeviationModel.PropertyDeviation.<CodeListDto>builder()
-                    .localValue(local.getCodeList())
-                    .publishedValue(published.getCodeList())
-                    .isDifferent(true)
-                    .build());
-            return true;
-        }
-        return false;
-    }
-
     private <T> boolean areDifferent(T value1, T value2) {
-        if (value1 == null && value2 == null) return false;
+        // "Absent" and "empty collection" both mean "no values" — one side modelling a missing
+        // collection as null and the other as an empty one is not a deviation. Without this, a field
+        // the local extractor defaults to an empty list but NKD never populates would deviate forever.
+        if (isNullOrEmpty(value1) && isNullOrEmpty(value2)) return false;
         if (value1 == null || value2 == null) return true;
 
         if (value1 instanceof List) {
@@ -449,6 +544,14 @@ public class ConceptDeviationComparator {
         }
 
         return !value1.equals(value2);
+    }
+
+    /** True for null, an empty collection, or an empty map — the three ways "no values" is modelled. */
+    private boolean isNullOrEmpty(Object value) {
+        if (value == null) return true;
+        if (value instanceof Collection<?> c) return c.isEmpty();
+        if (value instanceof Map<?, ?> m) return m.isEmpty();
+        return false;
     }
 
     private boolean compareListsIgnoreOrder(List<?> list1, List<?> list2) {

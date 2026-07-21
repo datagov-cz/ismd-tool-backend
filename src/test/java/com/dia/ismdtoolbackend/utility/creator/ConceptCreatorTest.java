@@ -89,7 +89,7 @@ class ConceptCreatorTest {
      */
     private AltNameModel createAltNameModel(String languageCode, String value) {
         AltNameModel model = new AltNameModel();
-        model.setAltName(Map.of(languageCode, value));
+        model.setAltName(Map.of(languageCode, List.of(value)));
         return model;
     }
 
