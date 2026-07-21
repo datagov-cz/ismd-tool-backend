@@ -6,7 +6,6 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -26,6 +25,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
+import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -109,6 +109,9 @@ class ConceptServiceImplTest {
 
     @Mock
     private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
+
+    @Mock
+    private WorkingCopyDeviationServiceImpl workingCopyDeviationService;
 
     // Real detector (stateless, pure). On these unit tests the edited concept has no external NKD link
     // triples, so detection returns empty and reconcileNkdLinks is a no-op — the mocked snapshot service
@@ -1142,7 +1145,10 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void getConceptDetail_publishedAndNkdMatches_runsDeviationComparator() {
+    void getConceptDetail_published_delegatesDeviationToTheSharedService() {
+        // Deviation is now the single-source-of-truth service's job (WorkingCopyDeviationService); concept
+        // detail delegates on conceptIri and surfaces the result. The comparison logic itself is covered in
+        // WorkingCopyDeviationServiceTest — here we only pin the delegation + surfacing.
         testConceptEntity.setIsPublished(true);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
@@ -1150,10 +1156,6 @@ class ConceptServiceImplTest {
 
         OntologyDetailModel.ConceptDetailModel localDetail =
                 OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
-        OntologyDetailModel.ConceptDetailModel publishedDetail =
-                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
-        // First call (top-level) returns the detail; second call (from checkPublishedConcept)
-        // also returns it. Argument is the same so a single `thenReturn` covers both.
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
 
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
@@ -1161,28 +1163,23 @@ class ConceptServiceImplTest {
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
-        when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI)).thenReturn(Optional.of(publishedDetail));
 
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
                 .status(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION)
                 .build();
-        // A working copy compares against its own NKD twin, so the deviation is stamped WORKING_COPY with
-        // the concept's own IRI as the source (Phase D).
-        when(deviationComparator.compareConceptDetails(
-                localDetail, publishedDetail, SnapshotOrigin.WORKING_COPY, TEST_CONCEPT_IRI))
-                .thenReturn(deviationResult);
+        when(workingCopyDeviationService.deviationFor(TEST_CONCEPT_IRI)).thenReturn(deviationResult);
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
         assertNotNull(result);
         assertEquals(deviationResult, result.getPublishedConceptDeviationModel());
-        verify(deviationComparator).compareConceptDetails(
-                localDetail, publishedDetail, SnapshotOrigin.WORKING_COPY, TEST_CONCEPT_IRI);
+        verify(workingCopyDeviationService).deviationFor(TEST_CONCEPT_IRI);
     }
 
     @Test
-    void getConceptDetail_publishedButNotInNkd_returnsConceptNotFoundDeviation() {
-        testConceptEntity.setIsPublished(true);
+    void getConceptDetail_notPublished_skipsDeviationEntirely() {
+        // A non-working-copy has no NKD twin — the deviation service must not even be consulted.
+        testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
@@ -1192,42 +1189,15 @@ class ConceptServiceImplTest {
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
 
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(true);
+        metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
-        when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
-        assertEquals(PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                result.getPublishedConceptDeviationModel().getStatus());
-        verify(deviationComparator, never()).compareConceptDetails(any(), any(), any(), any());
-    }
-
-    @Test
-    void getConceptDetail_publishedButNkdThrows_returnsEndpointUnavailableDeviation() {
-        testConceptEntity.setIsPublished(true);
-        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
-        Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
-
-        OntologyDetailModel.ConceptDetailModel localDetail =
-                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
-        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
-
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(true);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
-        when(nkdSparqlClient.fetchPublishedConcept(TEST_CONCEPT_IRI))
-                .thenThrow(new RuntimeException("NKD timeout"));
-
-        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
-
-        assertEquals(PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                result.getPublishedConceptDeviationModel().getStatus());
+        assertNull(result.getPublishedConceptDeviationModel());
+        verify(workingCopyDeviationService, never()).deviationFor(any());
     }
 
     @Test

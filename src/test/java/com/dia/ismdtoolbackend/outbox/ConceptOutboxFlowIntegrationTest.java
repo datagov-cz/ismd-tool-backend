@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
+import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -189,7 +190,8 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
                     new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
                     mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
-                    new com.dia.ismdtoolbackend.config.NkdConfig());
+                    new com.dia.ismdtoolbackend.config.NkdConfig(),
+                    mock(WorkingCopyDeviationServiceImpl.class));
         }
     }
 }

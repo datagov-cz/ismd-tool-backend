@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
@@ -95,7 +96,8 @@ class ConceptEditFlowIntegrationTest {
                 nkdSnapshotService, linkDetector,
                 new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
                 org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
-                new com.dia.ismdtoolbackend.config.NkdConfig());
+                new com.dia.ismdtoolbackend.config.NkdConfig(),
+                org.mockito.Mockito.mock(WorkingCopyDeviationServiceImpl.class));
 
         Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);

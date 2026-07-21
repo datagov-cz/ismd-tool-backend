@@ -4,7 +4,6 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
-import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.service.snapshot.LinkSnapshotAssembler;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
@@ -51,6 +50,7 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -94,9 +94,11 @@ public class ConceptServiceImpl implements ConceptService {
     private final WorkingCopySyncFields syncFields;
     private final NkdSnapshotWarmer nkdSnapshotWarmer;
     private final NkdConfig nkdConfig;
+    private final com.dia.ismdtoolbackend.service.WorkingCopyDeviationService workingCopyDeviationService;
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId) {
         log.info("Creating concept: type={}, name={}, namespace={}, userId={}",
                 createModel.getConceptType(), createModel.getNameModel(),
@@ -128,6 +130,7 @@ public class ConceptServiceImpl implements ConceptService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public void deleteConcept(Long conceptId) {
         // On the outbox path, take a row lock FIRST (see ConceptMetadataRepository.findWithLockById)
         // so a concurrent edit/delete of the same concept can't enqueue an out-of-order same-aggregate
@@ -179,6 +182,7 @@ public class ConceptServiceImpl implements ConceptService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
         // A rename relocates the conceptIri, which for a working copy IS its NKD twin's IRI — so a rename
         // orphans it from the twin. The generic edit path treats that as chosen divergence and severs the
@@ -249,7 +253,10 @@ public class ConceptServiceImpl implements ConceptService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public GetConceptDto syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
+        // sync calls the private editConcept overload (self-invocation bypasses the proxy), so the evict
+        // must be declared here too — a sync changes the local concept and must not leave stale deviation.
         ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
         if (!Boolean.TRUE.equals(metadata.getIsPublished())) {
             throw new OntologyValidationException(
@@ -517,7 +524,7 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(conceptDetail, metadataModel);
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(metadataModel);
         result.setPublishedConceptDeviationModel(conceptDeviation);
 
         surfaceLinkSnapshots(result, metadataEntity);
@@ -919,56 +926,10 @@ public class ConceptServiceImpl implements ConceptService {
         return names.values().iterator().next();
     }
 
-    private PublishedConceptDeviationModel checkPublishedConcept(OntologyDetailModel.ConceptDetailModel localConcept,
-                                                                ConceptMetadataModel conceptMetadata) {
+    private PublishedConceptDeviationModel checkPublishedConcept(ConceptMetadataModel conceptMetadata) {
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
         }
-
-        String conceptIri = conceptMetadata.getConceptIri();
-
-        try {
-            Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
-                    nkdSparqlClient.fetchPublishedConcept(conceptIri);
-
-            if (publishedConceptOpt.isEmpty()) {
-                log.warn("Published concept not found in NKD: {}", conceptIri);
-                return createErrorDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Concept not found in NKD SPARQL endpoint",
-                        conceptIri
-                );
-            }
-
-            OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
-            // WORKING_COPY: the concept's own IRI is the NKD twin it is compared against.
-            return deviationComparator.compareConceptDetails(
-                    localConcept, publishedConcept, SnapshotOrigin.WORKING_COPY, conceptIri);
-
-        } catch (Exception e) {
-            log.error("Error checking published concept deviation: {}", e.getMessage(), e);
-            return createErrorDeviation(
-                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage(),
-                    conceptIri
-            );
-        }
-    }
-
-    /**
-     * An error envelope still carries {@code origin}/{@code source} — the comparison failed, but this is
-     * known to be a working copy and the twin's IRI is known, and the FE needs both to render the block.
-     * No label: it lives on the NKD concept we could not fetch.
-     */
-    private PublishedConceptDeviationModel createErrorDeviation(
-            PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage,
-            String conceptIri) {
-        return PublishedConceptDeviationModel.builder()
-                .status(status)
-                .errorMessage(errorMessage)
-                .origin(SnapshotOrigin.WORKING_COPY)
-                .source(NkdConceptRefDto.builder().iri(conceptIri).build())
-                .build();
+        return workingCopyDeviationService.deviationFor(conceptMetadata.getConceptIri());
     }
 }
