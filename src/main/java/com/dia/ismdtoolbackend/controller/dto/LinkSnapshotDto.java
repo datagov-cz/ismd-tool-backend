@@ -16,14 +16,15 @@ import java.util.List;
 
 /**
  * One tracked "local copy" of a published NKD concept that a concept links to, surfaced on the
- * ontology detail in {@code GetOntologyDto.linkSnapshots} (a map keyed by owner
- * concept IRI), and returned as the body of the local-copy UPDATE endpoint. (Not on concept detail.)
+ * ontology detail in {@code GetOntologyDto.linkSnapshots} (a map keyed by owner concept IRI) and on
+ * concept detail in {@code GetConceptDto.linkSnapshots} (a flat list for that one concept), and
+ * returned as the body of the local-copy UPDATE endpoint.
  *
  * <p>Deviation semantics (the easy-to-get-wrong part). {@link #deviation} reuses
  * {@link PublishedConceptDeviationModel} unchanged, but for a {@link SnapshotOrigin#LINK_TARGET}
  * snapshot each {@code PropertyDeviation}'s {@code localValue} is the stored local copy and
  * {@code publishedValue} is live NKD — NOT "the user's own value". The FE must relabel the
- * columns keyed on {@link #origin} (e.g. "lokální kopie" / "NKD") rather than the SELF_PUBLISHED
+ * columns keyed on {@link #origin} (e.g. "lokální kopie" / "NKD") rather than the working-copy
  * labels ("vaše hodnota" / "publikováno"). The backend keeps a single comparison type; the FE owns
  * the label switch.
  */
@@ -48,7 +49,7 @@ public class LinkSnapshotDto {
 
     /**
      * Always {@link SnapshotOrigin#LINK_TARGET} this round, but carried explicitly so the FE relabels
-     * the deviation pair (see class Javadoc) and stays forward-compatible when SELF_PUBLISHED arrives.
+     * the deviation pair (see class Javadoc) and stays forward-compatible when WORKING_COPY arrives.
      */
     private SnapshotOrigin origin;
 

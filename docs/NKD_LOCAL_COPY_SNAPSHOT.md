@@ -1,31 +1,46 @@
-# NKD Local Copy / Snapshot
+# NKD Working Copies & Link Snapshots
 
-> Tracks a **local copy** of a published NKD concept that a local concept *links* to (as a broader
-> class, super property/relation, or exact match), so the link can be compared against the live NKD
-> source and updated or dropped when they drift. Rides the PG↔TDB2 outbox — see
-> [`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md).
+> Two ways a local concept is tracked against NKD:
+>
+> - **Working copy** — the concept's **own** IRI is published in NKD. It carries full local RDF,
+>   deviates field-by-field from its NKD twin, and the user accepts changes **selectively**. Accepting
+>   only some fields **severs** it from NKD. No snapshot row is stored.
+> - **Link snapshot** — the concept *links* to a **foreign** published NKD concept (broader class,
+>   super property/relation, exact match). A tracked local copy of that target is stored **in Postgres
+>   only**; the owner's RDF graph holds just the link triple. Update or remove is **all-or-nothing**.
+>
+> `sourceTag` on the concept and ontology DTOs distinguishes them: `WORKING_COPY` vs `DRAFT`.
 
 ## What problem this solves
 
 A local concept (whose own IRI is **not** in NKD) can link to a **published NKD concept owned by
 someone else** — e.g. a local subclass whose broader class is an NKD concept. When that link is
-made, the system takes a **snapshot** of the NKD concept (a tracked local copy), materializes it
-into the owner's RDF graph so it renders in the graph view, and watches for **deviation** between
-the stored copy and the live NKD source.
+made, the system takes a **snapshot** of the NKD concept (a tracked local copy, stored in Postgres)
+and watches for **deviation** between the stored copy and the live NKD source. The owner's link
+triple (e.g. `rdfs:subClassOf` → the NKD IRI) is written to the graph as usual; the copy's triples
+are **not** — they are kept in the `materialized_triples` column, not in TDB2.
 
-This is distinct from the existing `ConceptMetadataEntity.is_published` path. `is_published=true`
-means a concept's *own* IRI exists in NKD (self-published) and is already deviation-tracked against
-its NKD twin at the same IRI. The new case differs only in **who owns the IRI**: a foreign IRI
-reached via a link. Conceptually both are "a local copy tracked against NKD," but `is_published` is
-also load-bearing for visibility/search (`searchByText`, `findVisibleUnpublished`, the `/list`
-endpoints), so it is left **untouched** — the snapshot model is purely additive.
+> **Why PG-only.** Copies were once materialized into the owner's TDB2 graph as well, where they sat
+> co-resident with owned concepts and had to be filtered out by every graph reader. Keeping them out of
+> TDB2 makes "owner graph = owned concepts" true by construction. Rationale, rejected alternatives, and
+> verification: [decision record 0002](./decision-records/0002-retire-nkd-copy-tdb2-materialization.md).
+
+This is distinct from the `ConceptMetadataEntity.is_published` path. `is_published=true` means a
+concept's *own* IRI exists in NKD — a **working copy** — and is deviation-tracked against its NKD twin
+at the same IRI. The link-snapshot case differs in **who owns the IRI**: a foreign IRI reached via a
+link. Both are "a local copy tracked against NKD," but `is_published` is also load-bearing for
+visibility/search (`searchByText`, `findVisibleUnpublished`, the `/list` endpoints), so the snapshot
+model is purely additive to it.
+
+**A working copy stores no snapshot row of itself.** Its comparison payload is fetched live from NKD
+at its own IRI; `nkd_concept_snapshots` holds `LINK_TARGET` rows only.
 
 ### What the user can do
 
 On the ontology detail view, each linked NKD concept surfaces as a card showing the deviation
 status. When the copy deviates from live NKD, the user can:
 
-- **Update** — re-snapshot (re-materialize) to accept the upstream change.
+- **Update** — re-snapshot to accept the upstream change.
 - **Remove** — drop the link (and the copy).
 
 If NKD deletes the concept upstream, the link and copy are removed **automatically** on the next
@@ -47,10 +62,13 @@ at a published concept is invalid input. Pointing one of those at a confirmed-pu
 **hard-rejected (HTTP 400)** on the strict edit path. There is no concept-to-concept "related" link
 in the codebase, so `relatedConcept` is not applicable.
 
-> **Scope this round:** only `LINK_TARGET` snapshots are created. The `SnapshotOrigin.SELF_PUBLISHED`
-> value and the `linkPredicate=null` branch are **reserved seams** for a future unification of the
-> two paths — no SELF_PUBLISHED rows are written, and existing `is_published=true` concepts are not
-> backfilled.
+> **Locally-owned exemption.** The rejection applies only to targets **owned by someone else**. A
+> domain/range pointing at a locally-owned concept is allowed even when that concept is itself a
+> published working copy, and NKD is never queried for it. Ownership is decided by graph membership,
+> not by scheme prefix — an owned concept under a different scheme still counts as owned.
+
+Only `LINK_TARGET` snapshot rows are written. `SnapshotOrigin.WORKING_COPY` and the
+`linkPredicate=null` branch remain reserved seams for a future unification of the two paths.
 
 ---
 
@@ -62,25 +80,25 @@ One read-only row per `(owning concept, NKD IRI)` link, unique on `(owning_conce
 
 | Column | Purpose |
 |---|---|
-| `owning_concept_id` | FK → `concepts.id`, **not** db-cascade (the service cascades so Fuseki triples are cleaned in the same boundary) |
+| `owning_concept_id` | FK → `concepts.id`, **not** db-cascade (the service cascades the rows explicitly) |
 | `nkd_iri` | the link target (`VARCHAR(1024)` — Czech/percent-encoded IRIs exceed 255) |
-| `graph_name` | denormalized owner graph where the copy is materialized |
+| `graph_name` | denormalized owner graph the link belongs to |
 | `origin` | `LINK_TARGET` (only value written this round) |
 | `link_predicate` | the logical `SnapshotLinkType` token — **not** a raw predicate IRI (one logical type can write two predicates) |
 | `snapshot_json` | serialized `ConceptDetailModel` of the NKD concept — the deviation-comparison payload |
-| `materialized_triples` | the **exact N-Triples set** last written to TDB2 — the source of truth for the delete-set on re-materialize/remove |
+| `materialized_triples` | the **exact N-Triples set** of the copy (the NKD concept's own triples, minus `skos:inScheme`, plus a provenance marker). Stored here only — this is the copy's sole home; nothing is written to TDB2. |
 | `last_deviation_status` / `last_checked_at` | cached deviation result + staleness clock |
 | `snapshot_at` | when the copy was last taken |
 
-Index `idx_nkd_snapshot_graph_iri` on `(graph_name, nkd_iri)` backs the refcount. Migration:
+Index `idx_nkd_snapshot_graph_iri` on `(graph_name, nkd_iri)`. Migration:
 `v1/009-create-nkd-concept-snapshots.yaml`. `snapshot_json` / `materialized_triples` are `VARCHAR`
 (unbounded), **not** `TEXT` — `TEXT` realizes as CLOB on H2 and fails `ddl-auto=validate` against the
 entity's `columnDefinition="text"`.
 
 > **`materialized_triples` vs `snapshot_json`** — two different things. `snapshot_json` is the NKD
-> detail for *comparison*; `materialized_triples` is the exact RDF *written to the graph*. The
-> delete-set when re-materializing or removing is read from `materialized_triples`, never recomputed
-> from the lossy `snapshot_json` — otherwise NKD drift would leave stale triples behind.
+> detail for *comparison* (drives the deviation diff); `materialized_triples` is the copy's exact RDF,
+> retained so the stored copy is a faithful, non-lossy record of the NKD concept. Neither is written
+> to TDB2.
 
 ---
 
@@ -88,73 +106,58 @@ entity's `columnDefinition="text"`.
 
 | Component | Role |
 |---|---|
-| `NkdSnapshotService` (+ impl) | Core: create/refresh, evaluate deviation, remove, cascade. **Outbox-agnostic** — fills a caller-supplied `OwnerChangeSet`, never enqueues itself. |
-| `NkdSnapshotMaterializer` | **Pure function**: NKD concept → materialized triple set. No TDB2 I/O, no outbox. |
+| `NkdSnapshotService` (+ impl) | Core: create/refresh (PG rows), evaluate deviation, remove, cascade. The copy is PG-only; the service contributes only owner **link** removals to the caller's `OwnerChangeSet`, never copy triples. |
+| `NkdSnapshotMaterializer` | **Pure function**: NKD concept → triple set for the `materialized_triples` column. No TDB2 I/O, no outbox. |
 | `NkdLinkDetector` | Shared detection: which link targets are allowed snapshot candidates vs forbidden domain/range targets; external-vs-owned check. |
 | `NkdSnapshotWarmer` | `@Async("snapshotExecutor")`, **no transaction**: one batch NKD verify, delegates per owner. |
-| `NkdSnapshotOwnerWarmer` | `@Transactional(REQUIRES_NEW)` per owner: owns the single owner-keyed outbox flush, isolated. |
-| `NkdSnapshotEndpointService` (+ impl) | Backs the UPDATE/REMOVE endpoints; owns the owner-keyed flush. |
+| `NkdSnapshotOwnerWarmer` | `@Transactional(REQUIRES_NEW)` per owner: writes the PG rows, isolated. (No TDB2 delta on the warm path — the flush is a guarded no-op.) |
+| `NkdSnapshotEndpointService` (+ impl) | Backs the UPDATE/REMOVE endpoints; owns the owner-keyed flush of the **link** removal. |
 | `LinkSnapshotAssembler` | Builds `LinkSnapshotDto` from a cached row or a fresh deviation. |
-| `OwnerChangeSet` | The `toRemove`/`toAdd` statement accumulator the service contributes to. |
+| `OwnerChangeSet` | The `toRemove`/`toAdd` statement accumulator; carries the owner's link triples only. |
 
 ---
 
-## Write path: rides the owner's outbox aggregate
+## Write path: PG-only copy, link triple rides the owner's outbox aggregate
 
-All TDB2 mutation goes through the **owning concept's outbox aggregate** — the same outbox row that
-carries the owner's link triple also carries the materialized copy. This is the central design
-decision and follows from how the outbox relay works:
+The copy is written to Postgres (`materialized_triples`) and **never** to TDB2. What reaches the
+graph is only the owner's **link** triple (e.g. `rdfs:subClassOf` → the NKD IRI), produced by the
+concept editor exactly like any other owner edge — plus its removal when a link is dropped.
 
-> The relay's ordering gate (`existsEarlierUnappliedForAggregate`) is **per-aggregate only** — there
-> is no enforced order between two distinct aggregates. If the copy were keyed on the NKD IRI as its
-> own aggregate, it could apply before the owner's link triple, or a link removal could orphan it.
-> Folding the copy into the **owner's** change set gives real per-aggregate ordering + apply
-> atomicity for free: link triple and copy land together, in one `UPSERT_CONCEPT` row keyed on the
-> owner IRI, never out of order.
+The snapshot service is outbox-agnostic: it takes a pre-computed `OwnerChangeSet` and contributes
+**only link removals** (when unlinking a target) into it. The owner's own edit/endpoint flow flushes
+that change set as one owner-keyed `UPSERT_CONCEPT` aggregate (or, when `outbox.enabled=false`, a
+direct `JenaTDB2Repository.applyConceptDelta`). No separate NKD-keyed aggregate exists, so there is
+no cross-aggregate ordering hazard — the link triple is just part of the owner's normal change set.
 
-So the service methods take a pre-computed `OwnerChangeSet` and **contribute** the materialized-copy
-triples into it; the single owner-keyed `enqueueUpsert` at the call site flushes everything as one
-aggregate. When `outbox.enabled=false`, the caller falls back to a direct
-`JenaTDB2Repository.applyConceptDelta` of the same delta.
+### Reconciler safety: nothing to guard
 
-### Reconciler safety: the copy must not look "owned"
+Because the copy is never in TDB2, the reconciler's `OWNED_CONCEPT_PATTERN`
+(`?c skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?c), STR(?scheme)))`) can never see it, so it can
+never be enumerated as owned or flagged `RDF_ORPHAN`. This is structural, not a workaround: it
+retires the earlier `NkdSnapshotTripleFilter` (which had to strip copies out of every graph read) and
+the `NkdSnapshotMaterializer.assertNotOwnedBy` guard.
 
-The reconciler enumerates *owned* subjects via `OWNED_CONCEPT_PATTERN`
-(`?c skos:inScheme ?scheme . FILTER(STRSTARTS(STR(?c), STR(?scheme)))`) and `RDF_ORPHAN` is its one
-auto-repairable (deletable) category. A concept **always** prefix-matches its own `inScheme`, so the
-materializer **strips `skos:inScheme` entirely** from the copy. The pattern needs the triple to
-exist, so without it the copy is never enumerated as owned and never flagged `RDF_ORPHAN`. Dropping
-the RDF `inScheme` does not affect deviation detection — `snapshot_json` is built independently from
-the NKD fetch. `assertNotOwnedBy` is kept as a defense-in-depth regression guard.
+The materializer still drops NKD's own `skos:inScheme` from the stored `materialized_triples` and
+still adds a provenance marker `<nkdIri> ismd:nkd-snapshot-of <ownerIri>`
+(`https://ismd.dia.gov.cz/internal/pojem/nkd-snapshot-of`) — but these now only shape the **stored PG
+payload**; they have no reconciler significance.
 
-> This was a real bug caught only by the live smoke test. The original design preserved NKD's
-> foreign `inScheme` on the theory that a foreign scheme never prefix-matches a local owner scheme —
-> but the pattern compares a subject to **its own** scheme, not the owner's, so the copy was
-> trivially "owned." Stripping `inScheme` is the fix.
+### Shared NKD IRI
 
-Each copy also carries a provenance marker `<nkdIri> ismd:nkd-snapshot-of <ownerIri>`
-(`https://ismd.dia.gov.cz/internal/pojem/nkd-snapshot-of`, in ISMD's own namespace, so it can never
-make the subject "owned"). The marker round-trips through `materialized_triples` and is cleaned on
-removal.
-
-### Shared NKD IRI: reference counting
-
-Two local concepts in one graph can link the **same** NKD superclass, sharing one materialized copy.
-`deleteConceptsFromGraph` deletes both `?nkd ?p ?o` and `?s ?p ?nkd`, so a naïve "delete the nkdIri"
-would strip **every** owner's link to that superclass. Instead, removal is **refcount-gated** via
-`countByGraphNameAndNkdIri`:
-
-- A single owner's removal always drops **that owner's** outgoing link triple.
-- The **shared copy** is dropped only when the **last** referencing concept's link is removed
-  (count ≤ 1); otherwise it stays for the remaining referrers.
+Two local concepts in one graph can link the **same** NKD superclass — each gets its own PG snapshot
+row (unique on `(owning_concept_id, nkd_iri)`). There is no shared TDB2 copy to refcount: unlinking or
+deleting one concept simply drops **that concept's** PG row and **that owner's** link triple; the
+other concept's row and link are untouched.
 
 ---
 
 ## Surfacing & async warming
 
 `LinkSnapshots` surface on **ontology detail** (`GetOntologyDto.linkSnapshots`, a
-`Map<ownerConceptIri, List<LinkSnapshotDto>>`), parallel to the existing `publishedConceptDeviations`
-map. `GetConceptDto` does **not** carry them.
+`Map<ownerConceptIri, List<LinkSnapshotDto>>`, parallel to `publishedConceptDeviations`) **and on
+concept detail** (`GetConceptDto.linkSnapshots`, a flat `List<LinkSnapshotDto>` for that one concept).
+A concept with no rows carries no `linkSnapshots` and fires no warmer — the zero-row case returns
+before the warm call.
 
 Ontology detail is heavy and snapshot deviation needs a live NKD fan-out, so **detail never blocks
 on NKD — the snapshot row is the cache:**
@@ -167,11 +170,11 @@ on NKD — the snapshot row is the cache:**
 
 The warmer (`warmGraph`, `@Async("snapshotExecutor")`, no transaction) detects each owner's external
 NKD link-targets, does **one** batch `getPublishedResourcesList` verify, then delegates per owner to
-`warmOwner` (`@Transactional(REQUIRES_NEW)`), which materializes via the owner-aggregate outbox and
-seeds `NO_DEVIATION`/`last_checked_at=now`. Per-owner failures are isolated and non-fatal — an NKD
-outage just leaves the graph cold; the next view retries. The read **only triggers** the async
-warmer; it never writes on the request thread (so concurrent GETs can't race the unique constraint
-or the no-transaction assertion).
+`warmOwner` (`@Transactional(REQUIRES_NEW)`), which writes the PG snapshot rows and seeds
+`NO_DEVIATION`/`last_checked_at=now`. (Copies are PG-only, so `warmOwner` produces no TDB2 delta.)
+Per-owner failures are isolated and non-fatal — an NKD outage just leaves the graph cold; the next
+view retries. The read **only triggers** the async warmer; it never writes on the request thread (so
+concurrent GETs can't race the unique constraint or the no-transaction assertion).
 
 **Config:** `nkd.snapshot.deviation-ttl` (default `PT24H`), `AsyncConfig` (`@EnableAsync` +
 `snapshotExecutor` thread pool, `snapshot-` prefix), `DeviationStatus.PENDING`.
@@ -183,12 +186,12 @@ or the no-transaction assertion).
 | Trigger | Where | Behavior |
 |---|---|---|
 | **Ontology detail (read)** | `OntologyServiceImpl` (`@Transactional(readOnly=true)`) | Read cached rows → DTOs; cold/stale/zero-row → `PENDING` + fire async `warmGraph`. No write in the GET. |
-| **Async warm** | `NkdSnapshotWarmer` → `NkdSnapshotOwnerWarmer` | Materialize-on-warm; one owner-keyed `enqueueUpsert` per owner. |
+| **Async warm** | `NkdSnapshotWarmer` → `NkdSnapshotOwnerWarmer` | Write PG snapshot rows per owner. No TDB2 delta (copy is PG-only). |
 | **Upload** | `OntologyController.uploadFromFile` | Fire `warmGraph` **after** the upload commits (NKD-independent; try/catch-guarded). Upload never calls NKD itself. |
-| **Edit** | `ConceptServiceImpl.reconcileNkdLinks` (in-tx, synchronous) | Detect allowed published targets → snapshot (fold into the edit change set); reject domain/range→published (400); remove snapshots whose link the edit dropped. |
-| **Upstream NKD deletion** | `NkdSnapshotEndpointServiceImpl` (UPDATE re-snapshot returns null) | Cascade: remove the owner→nkdIri link + (refcount-gated) copy; return a `CONCEPT_NOT_FOUND_IN_NKD` marker DTO. |
-| **Concept delete** | `ConceptServiceImpl.deleteConcept` | `cascadeConceptDeletion` drops the PG rows and returns last-referrer NKD IRIs to sweep from the graph. |
-| **Ontology delete** | `OntologyServiceImpl.deleteOntology` | `cascadeGraphDeletion` drops all PG rows; `DELETE_GRAPH` sweeps the copies. |
+| **Edit** | `ConceptServiceImpl.reconcileNkdLinks` (in-tx, synchronous) | Detect allowed published targets → snapshot (PG row); reject domain/range→published (400); remove snapshots whose link the edit dropped (the link-edge removal folds into the edit change set). |
+| **Upstream NKD deletion** | `NkdSnapshotEndpointServiceImpl` (UPDATE re-snapshot returns null) | Cascade: remove the owner→nkdIri link triple + the PG snapshot row; return a `CONCEPT_NOT_FOUND_IN_NKD` marker DTO. |
+| **Concept delete** | `ConceptServiceImpl.deleteConcept` | `cascadeConceptDeletion` drops the PG rows. No copy triples in the graph to sweep. |
+| **Ontology delete** | `OntologyServiceImpl.deleteOntology` | `cascadeGraphDeletion` drops all PG rows; `DELETE_GRAPH` removes the owner graph (no copies live there). |
 
 ### Edit-path enforcement (domain/range → published)
 
@@ -219,6 +222,55 @@ before `@PreAuthorize` runs). The service asserts `snapshot.owningConcept.id == 
 | `POST` | `/api/concept/{conceptId}/localcopy/{snapshotId}/update` | refreshed `LinkSnapshotDto` (re-snapshot + live deviation + recomputed actions) |
 | `DELETE` | `/api/concept/{conceptId}/localcopy/{snapshotId}` | `ApiResponseDto` (Czech message) |
 
+### `POST /api/concept/{conceptId}/sync` — working-copy selective sync
+
+Accepts a chosen subset of the deviating fields from the concept's NKD twin. Body:
+`{"fieldsToAccept": ["definice", "popis"]}`. Values are re-derived server-side from live NKD — never
+taken from the client.
+
+| Outcome | Condition | Effect |
+|---|---|---|
+| **Stays a working copy** | every deviating syncable key accepted | `is_published` stays `true`, `sourceTag` stays `WORKING_COPY`, deviation clears |
+| **Severs** | a strict subset accepted | `is_published` → `false`, `sourceTag` → `DRAFT`, deviation block disappears |
+
+A sever is **one-way through the API** and changes no RDF — the concept keeps its IRI and triples; only
+the flag moves. It also leaves the concept's `LINK_TARGET` rows **intact**: those are keyed on the link
+target, not on the linker's published state.
+
+Rejections (all HTTP 400): a concept that is not a working copy, a concept with no deviation, and the
+non-syncable key `typ` (ISMD cannot convert between concept types). Unknown keys are rejected by name.
+`typ` stays **visible** in the deviation so the drift is not hidden — it simply cannot be accepted.
+
+> **Full-snapshot semantics.** The sync applies its accepted fields through the normal edit path, which
+> is a full-snapshot write. Fields not being synced are carried through at their current values —
+> including `isPublic`/`privacyProvisions`, which would otherwise have their veřejný/neveřejný
+> `rdf:type` stripped.
+
+### `sourceTag`
+
+Derived (not stored) on both the concept and ontology DTOs:
+
+| `is_published` | `sourceTag` |
+|---|---|
+| `true` | `WORKING_COPY` |
+| `false` | `DRAFT` |
+| `null` | omitted — never defaulted |
+
+**It describes its own IRI and is not a rollup:** a `WORKING_COPY` ontology may legitimately hold
+`DRAFT` concepts.
+
+### Deviation envelope
+
+`PublishedConceptDeviationModel` serves both use cases; `origin` disambiguates how to read it:
+
+| `origin` | `localValue` | `publishedValue` |
+|---|---|---|
+| `WORKING_COPY` | the user's own value | the NKD twin at the same IRI |
+| `LINK_TARGET` | the stored local copy | live NKD at the foreign IRI |
+
+`source` (`{iri, label}`) names the NKD side that was compared against; the label always comes from the
+published side. Both fields are present on error envelopes too.
+
 ### `LinkSnapshotDto`
 
 `snapshotId`, `owningConceptId`, `linkPredicate` (`SnapshotLinkType`), `origin` (`LINK_TARGET`),
@@ -246,11 +298,37 @@ before `@PreAuthorize` runs). The service asserts `snapshot.owningConcept.id == 
 
 ## Status
 
-All built and validated. Full suite **1300/0**; ~22 snapshot-focused test files. A manual end-to-end
-smoke test passed on **dev** (2026-06-23) with `outbox.enabled=true`, live NKD, and real Fuseki/PG —
-driving the full lifecycle (edit→snapshot → ontology-detail surfacing → UPDATE → DELETE), confirming
-one owner-keyed outbox row drains atomically and the reconciler reports **zero `RDF_ORPHAN`** for the
-materialized copy (the first run flagged it and exposed the `inScheme` bug fixed above).
+Both paths are built and end-to-end verified. Full suite **1417/0** (4 skipped).
 
-The `SELF_PUBLISHED` origin remains a reserved seam for a future unification of the snapshot and
-`is_published` paths.
+**PG-only copy (2026-07-14).** The copy was moved out of TDB2 (see the design decision at the top).
+Copies already materialized into owner graphs before that change are removed by a one-off SPARQL
+delete against Fuseki — `DELETE WHERE { GRAPH ?g { ?s <…/nkd-snapshot-of> ?o . ?s ?p ?v } }`. The PG
+rows are the source of truth, so nothing is lost.
+
+**End-to-end verification (2026-07-20).** A full lifecycle run against real Fuseki/PG with
+`outbox.enabled=true` covered: upload → working copies arise → selective sync (accept-all keeps the
+copy, partial severs, only accepted fields change) → link-target update/remove → concept delete. The
+closing invariants held: **zero copy subjects in TDB2**, reconciler **0 mismatches / 0 `RDF_ORPHAN`**
+across 598 concepts, outbox drained, and a severed concept's RDF intact at its original IRI.
+
+Deviations against NKD cannot be manufactured upstream (NKD is third-party and unwritable), so that
+run pointed `nkd.sparql.endpoint` at a local in-memory Fuseki service seeded with a concept's NKD twin.
+The client code path is unchanged by the redirect.
+
+**Read path is detect-only (2026-07-21).** A concept-detail GET fires the async warmer for cold/stale
+rows, but the warmer no longer overwrites the stored copy on a read. Per target it now calls
+`NkdSnapshotService.refreshOrSeedForWarming`:
+
+- **Row already exists** → `evaluateDeviation` only: compare the frozen copy against live NKD and update
+  `lastDeviationStatus` / `lastCheckedAt`. The stored triples are never touched, so upstream drift
+  surfaces as `HAS_DEVIATIONS` for the user to accept — it is no longer silently adopted, and
+  `NO_DEVIATION` is no longer recorded by construction.
+- **No row yet** (first-time link / true cold start) → `createOrRefreshSnapshot` materializes the copy.
+
+Overwriting an existing copy is now reserved for the explicit command paths (`updateLocalCopy` / edit
+reconcile). A read still performs a small bookkeeping write (status + timestamp) — that is the cache
+freshness marker, not adoption of upstream data. Fully zero-write-on-GET (background-only warming) was
+the rejected alternative; first-view freshness was kept.
+
+`SnapshotOrigin.WORKING_COPY` remains a reserved seam for a future unification of the snapshot and `is_published`
+paths.

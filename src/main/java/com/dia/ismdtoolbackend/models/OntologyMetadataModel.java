@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -21,6 +22,16 @@ public class OntologyMetadataModel {
     private String name;
     private UserModel user;
     private Boolean isPublished;
+
+    /**
+     * Derived from {@link #isPublished} by the mapper — {@code WORKING_COPY} when this ontology's own
+     * graph IRI is in NKD, else {@code DRAFT}. Describes the ontology itself, not its concepts: a
+     * working-copy ontology may hold both working-copy and draft concepts, each carrying its own tag.
+     * {@link #isPublished} stays for back-compat.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private ConceptSourceTag sourceTag;
+
     private List<CommentModel> comments;
     private String popis;
     private List<ConceptMetadataModel> concepts;

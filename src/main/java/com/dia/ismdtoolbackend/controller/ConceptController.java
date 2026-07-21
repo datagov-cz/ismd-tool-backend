@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
+import com.dia.ismdtoolbackend.controller.dto.WorkingCopySyncRequestDto;
 import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
 import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 
@@ -121,7 +122,7 @@ public class ConceptController {
     @PostMapping("/{conceptId}/localcopy/{snapshotId}/update")
     @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
     public ResponseEntity<ApiResponseDto<LinkSnapshotDto>> updateLocalCopy(
-            @PathVariable Long conceptId,
+        @PathVariable Long conceptId,
             @PathVariable Long snapshotId,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
@@ -130,6 +131,26 @@ public class ConceptController {
 
         LinkSnapshotDto refreshed = nkdSnapshotEndpointService.updateSnapshot(conceptId, snapshotId);
         return ResponseEntity.ok().body(ApiResponseDto.success(refreshed, "Lokální kopie byla aktualizována."));
+    }
+
+    @Operation(
+            summary = "Synchronizace pracovní kopie s publikovaným pojmem v NKD",
+            description = "Převezme vybrané odlišné vlastnosti z NKD. Přijetí VŠECH odlišných vlastností "
+                    + "ponechá pojem pracovní kopií; přijetí pouze NĚKTERÝCH pojem odpojí od NKD a změní jej "
+                    + "na koncept. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @PostMapping("/{conceptId}/sync")
+    @PreAuthorize("@ontologySecurityService.canModifyConcept(#conceptId)")
+    public ResponseEntity<ApiResponseDto<GetConceptDto>> syncWorkingCopy(
+            @PathVariable Long conceptId,
+            @Valid @RequestBody WorkingCopySyncRequestDto request,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Working-copy sync requested, conceptId: {}, fields: {}, userId: {}",
+                conceptId, request.getFieldsToAccept(), securityUser.getUserId());
+
+        GetConceptDto synced = conceptService.syncWorkingCopy(conceptId, request.getFieldsToAccept());
+        return ResponseEntity.ok().body(ApiResponseDto.success(synced, "Pracovní kopie byla synchronizována."));
     }
 
     @Operation(

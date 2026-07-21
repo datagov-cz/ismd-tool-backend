@@ -19,7 +19,7 @@ public class GetOntologyDto {
     private OntologyMetadataModel ontologyMetadata;
     private OntologyDetailModel ontologyDetail;
 
-    /** SELF_PUBLISHED deviation per concept ("concept vs its own NKD twin"). */
+    /** Working-copy deviation per concept ("concept vs its own NKD twin"); see {@code ConceptSourceTag}. */
     private PublishedOntologyDeviationModel publishedOntologyDeviationModel;
     private Map<String, PublishedConceptDeviationModel> publishedConceptDeviations;
 
