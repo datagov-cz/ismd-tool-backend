@@ -42,6 +42,7 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
     private final NkdSparqlClient nkdSparqlClient;
     private final NkdSnapshotMaterializer materializer;
     private final ConceptDeviationComparator conceptDeviationComparator;
+    private final DeviationResolutionEnricher deviationEnricher;
 
     @Override
     @Transactional
@@ -143,8 +144,10 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
                 return error(snapshot, DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD, "Concept not found in NKD");
             }
             // LINK_TARGET: the stored copy is compared against the foreign NKD concept it was copied from.
-            return conceptDeviationComparator.compareConceptDetails(
+            PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(
                     local, publishedOpt.get(), snapshot.getOrigin(), snapshot.getNkdIri());
+            deviationEnricher.enrich(deviation);
+            return deviation;
         } catch (Exception e) {
             log.error("Deviation check failed for snapshot {}: {}", snapshot.getNkdIri(), e.getMessage(), e);
             return error(snapshot, DeviationStatus.ENDPOINT_UNAVAILABLE, "NKD unavailable: " + e.getMessage());

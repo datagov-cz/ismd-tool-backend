@@ -48,6 +48,7 @@ class NkdSnapshotServiceImplTest {
     @Mock private NkdConceptSnapshotRepository snapshotRepository;
     @Mock private NkdSparqlClient nkdSparqlClient;
     @Mock private ConceptDeviationComparator conceptDeviationComparator;
+    @Mock private DeviationResolutionEnricher deviationEnricher;
     @Spy private NkdSnapshotMaterializer materializer = new NkdSnapshotMaterializer();
 
     @InjectMocks private NkdSnapshotServiceImpl service;

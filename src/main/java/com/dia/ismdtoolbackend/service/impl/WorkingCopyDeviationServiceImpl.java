@@ -1,35 +1,22 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
-import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.PropertyDeviation;
-import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
-import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.WorkingCopyDeviationService;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import com.dia.ismdtoolbackend.enums.PropertyDataType;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Single source of truth for a working copy's deviation against its NKD twin, so ontology detail and
@@ -40,7 +27,7 @@ import java.util.Set;
  * ({@link #canonicalLocalConcept}, this cache) and the <b>NKD projection</b>
  * ({@link NkdSparqlClient#fetchPublishedConcept}). Both surfaces read the same two cached inputs and run
  * the cheap comparison live, so they produce identical output by construction — there is no cached
- * result to fall out of sync.
+ * result to fall out of sync. Resolved navigation metadata is attached by {@link DeviationResolutionEnricher}.
  */
 @Service
 @Slf4j
@@ -53,8 +40,7 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
     private final OntologyDetailExtractor detailExtractor;
     private final ConceptDeviationComparator conceptDeviationComparator;
     private final NkdSparqlClient nkdSparqlClient;
-    private final ReferencedConceptResolutionEngine resolutionEngine;
-    private final RppSnapshotHolder rppSnapshotHolder;
+    private final DeviationResolutionEnricher deviationEnricher;
 
     // Self-reference through the Spring proxy so canonicalLocalConcept's @Cacheable is honoured when called from deviationFor
     private final WorkingCopyDeviationService self;
@@ -64,16 +50,14 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
                                            OntologyDetailExtractor detailExtractor,
                                            ConceptDeviationComparator conceptDeviationComparator,
                                            NkdSparqlClient nkdSparqlClient,
-                                           ReferencedConceptResolutionEngine resolutionEngine,
-                                           RppSnapshotHolder rppSnapshotHolder,
+                                           DeviationResolutionEnricher deviationEnricher,
                                            @Lazy WorkingCopyDeviationService self) {
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
         this.detailExtractor = detailExtractor;
         this.conceptDeviationComparator = conceptDeviationComparator;
         this.nkdSparqlClient = nkdSparqlClient;
-        this.resolutionEngine = resolutionEngine;
-        this.rppSnapshotHolder = rppSnapshotHolder;
+        this.deviationEnricher = deviationEnricher;
         this.self = self;
     }
 
@@ -97,7 +81,7 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
             // WORKING_COPY: this concept's own IRI is the NKD twin it is compared against.
             PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(
                     local, publishedOpt.get(), SnapshotOrigin.WORKING_COPY, conceptIri);
-            enrichResolved(deviation);
+            deviationEnricher.enrich(deviation);
             return deviation;
         } catch (Exception e) {
             log.error("Error checking working-copy deviation for {}: {}", conceptIri, e.getMessage(), e);
@@ -125,91 +109,6 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
         }
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         return detailExtractor.extractConceptDetail(processedModel, conceptIri);
-    }
-
-    /**
-     * Attaches resolved navigation metadata to a deviation so the FE can render/navigate its concept
-     * references (source twin, domain, concept-typed range) and RPP references (agenda, ais) — on BOTH
-     * sides of every diff — without a second resolve round-trip. Mirrors the detail flow's resolved shapes.
-     */
-    private void enrichResolved(PublishedConceptDeviationModel deviation) {
-        if (deviation == null) {
-            return;
-        }
-
-        // Concept IRIs: the source twin + domain + concept-typed range, both diff sides. One batch resolve.
-        Set<String> conceptIris = new LinkedHashSet<>();
-        if (deviation.getSource() != null) {
-            addIri(conceptIris, deviation.getSource().getIri());
-        }
-        addBothSides(conceptIris, deviation.getDomain());
-
-        // Range: datatype values resolve to DataTypeDto; anything else is a concept IRI → resolve as a concept.
-        Map<String, DataTypeDto> rangeResolved = new LinkedHashMap<>();
-        collectRange(deviation.getRange(), conceptIris, rangeResolved);
-        if (!rangeResolved.isEmpty()) {
-            deviation.setRangeResolved(rangeResolved);
-        }
-
-        if (!conceptIris.isEmpty()) {
-            Map<String, ResolvedConceptDto> resolved = resolutionEngine.resolveAll(new ArrayList<>(conceptIris));
-            if (!resolved.isEmpty()) {
-                deviation.setReferencedConceptsResolved(resolved);
-            }
-        }
-
-        // RPP agenda / ais, both diff sides.
-        Map<String, RppAgenda> agendaResolved = new LinkedHashMap<>();
-        forEachSide(deviation.getAgenda(), iri ->
-                rppSnapshotHolder.findAgendaByIri(iri).ifPresent(a -> agendaResolved.put(iri, a)));
-        if (!agendaResolved.isEmpty()) {
-            deviation.setAgendaResolved(agendaResolved);
-        }
-
-        Map<String, RppIsvs> aisResolved = new LinkedHashMap<>();
-        forEachSide(deviation.getAis(), iri ->
-                rppSnapshotHolder.findIsvsByIri(iri).ifPresent(i -> aisResolved.put(iri, i)));
-        if (!aisResolved.isEmpty()) {
-            deviation.setAisResolved(aisResolved);
-        }
-    }
-
-    /** A range value is a DataTypeDto when it's a known XSD datatype (VLASTNOST); otherwise a concept IRI. */
-    private void collectRange(PropertyDeviation<String> range, Set<String> conceptIris,
-                              Map<String, DataTypeDto> rangeResolved) {
-        forEachSide(range, value -> {
-            Optional<PropertyDataType> datatype = PropertyDataType.fromValue(value);
-            if (datatype.isPresent()) {
-                rangeResolved.put(value, datatype.get().toDto());
-            } else {
-                addIri(conceptIris, value);
-            }
-        });
-    }
-
-    /** Runs {@code action} for each non-blank side (local, published) of a string deviation. */
-    private void forEachSide(PropertyDeviation<String> deviation, java.util.function.Consumer<String> action) {
-        if (deviation == null) {
-            return;
-        }
-        applyIfPresent(deviation.getLocalValue(), action);
-        applyIfPresent(deviation.getPublishedValue(), action);
-    }
-
-    private void applyIfPresent(String value, java.util.function.Consumer<String> action) {
-        if (value != null && !value.isBlank()) {
-            action.accept(value);
-        }
-    }
-
-    private void addBothSides(Set<String> sink, PropertyDeviation<String> deviation) {
-        forEachSide(deviation, v -> addIri(sink, v));
-    }
-
-    private void addIri(Set<String> sink, String iri) {
-        if (iri != null && !iri.isBlank()) {
-            sink.add(iri);
-        }
     }
 
     private PublishedConceptDeviationModel error(DeviationStatus status, String message, String conceptIri) {
