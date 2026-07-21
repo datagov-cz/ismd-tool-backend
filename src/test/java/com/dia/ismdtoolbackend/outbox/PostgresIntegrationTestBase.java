@@ -4,22 +4,21 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Base for JPA/Liquibase integration tests that need REAL Postgres semantics the H2 PG-compat
  * profile can't honour — {@code FOR UPDATE SKIP LOCKED}, sequences, {@code TIMESTAMP WITH TIME
- * ZONE}. A single container is shared across all subclasses (static + reused). Spring's
- * {@code @ServiceConnection} wires the datasource; Liquibase then applies the real changelog and
- * Hibernate {@code ddl-auto=validate} confirms the entities match.
+ * ZONE}. A single container is shared across all subclasses. Spring's {@code @ServiceConnection}
+ * wires the datasource; Liquibase then applies the real changelog and Hibernate
+ * {@code ddl-auto=validate} confirms the entities match.
  */
-@Testcontainers
 public abstract class PostgresIntegrationTestBase {
 
-    // Shared static container managed by the @Testcontainers extension (started before the class,
-    // stopped after) — intentionally NOT try-with-resources: that would close it after first use.
-    @Container
+    // Manual singleton container: started once in the static initializer and never stopped, so it
+    // survives across every subclass in the shared Surefire fork (reuseForks=true, one JVM). Do NOT
+    // use @Container/@Testcontainers — that hands lifecycle to the extension, which stops the
+    // container in afterAll of the FIRST subclass, leaving every later subclass with a dead
+    // container (connection refused). Ryuk terminates it at JVM exit.
     @ServiceConnection
     @SuppressWarnings("resource")
     static final PostgreSQLContainer<?> POSTGRES =
@@ -28,6 +27,10 @@ public abstract class PostgresIntegrationTestBase {
                     // before Liquibase connects. (Hikari connection-init-sql is not reliably
                     // applied to the Liquibase connection under @ServiceConnection.)
                     .withInitScript("testcontainers/init-schema.sql");
+
+    static {
+        POSTGRES.start();
+    }
 
     @DynamicPropertySource
     static void schemaProps(DynamicPropertyRegistry registry) {
