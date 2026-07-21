@@ -37,7 +37,7 @@ public class DiagramMapper {
         return nodeId;
     }
 
-    /** ReactFlow node-type string for a concept type. */
+    /** ReactFlow node-type string for a concept type; null (a stale node) falls back to the generic node. */
     public String nodeType(ConceptType type) {
         if (type == null) {
             return "conceptNode";
@@ -46,6 +46,8 @@ public class DiagramMapper {
             case TRIDA -> "classNode";
             case VLASTNOST -> "propertyNode";
             case VZTAH -> "relationNode";
+            // A roleless concept has no specific diagram shape; render as the generic node.
+            case KONCEPT -> "conceptNode";
         };
     }
 

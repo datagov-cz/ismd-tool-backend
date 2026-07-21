@@ -162,6 +162,10 @@ public class DiagramChangeApplier {
                 m.setExactMatch(overlay.getExactMatch());
                 yield m;
             }
+            // A roleless concept carries none of the structural predicates an overlay stages; in practice
+            // every diagram node has a specific role, so an overlay here is a programming error, not a no-op.
+            case KONCEPT -> throw new ConceptValidationException(
+                    "Pojem bez konkrétní role (KONCEPT) nelze převzít z diagramu.");
         };
     }
 
