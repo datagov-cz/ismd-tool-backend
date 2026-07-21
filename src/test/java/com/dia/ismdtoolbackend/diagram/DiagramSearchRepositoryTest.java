@@ -84,6 +84,12 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         diagramFor(ontology("a-slovnik"));
         diagramFor(ontology("b-slovnik"));
 
-        assertThat(diagramRepository.searchByOntologyText("")).hasSize(2);   // '%%' matches all
+        // '%%' matches every diagram — assert against the total row count rather than a fixed 2,
+        // so committed rows leaked by sibling Testcontainer tests (shared singleton container) don't
+        // make this brittle.
+        List<DiagramEntity> all = diagramRepository.searchByOntologyText("");
+        assertThat(all).hasSize((int) diagramRepository.count());
+        assertThat(all).extracting(d -> d.getOntologyMetadata().getSlug())
+                .contains("a-slovnik", "b-slovnik");
     }
 }
