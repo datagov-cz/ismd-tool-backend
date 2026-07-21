@@ -1,8 +1,12 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
+import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
+import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -108,6 +112,31 @@ public class PublishedConceptDeviationModel {
 
     @JsonProperty("ustanovení-dokládající-neveřejnost-údaje")
     private PropertyDeviation<List<String>> privacyProvisions;
+
+    /**
+     * Resolved navigation metadata for every concept IRI referenced by this deviation — the {@link #source}
+     * NKD twin and the {@code definiční-obor} / concept-typed {@code obor-hodnot} on BOTH sides of the diff.
+     * Keyed by IRI; unresolved IRIs are absent (FE falls back to the bare IRI). Same map contract as
+     * {@code OntologyDetailModel.ConceptDetailModel.referencedConceptsResolved}, so the FE reuses its reader.
+     */
+    @JsonProperty("referencované-pojmy-resolved")
+    private Map<String, ResolvedConceptDto> referencedConceptsResolved;
+
+    /**
+     * Resolved datatype metadata for {@code obor-hodnot} values that are XSD datatypes (VLASTNOST ranges),
+     * on both diff sides. Keyed by the raw range IRI/value; concept ranges live in
+     * {@link #referencedConceptsResolved} instead.
+     */
+    @JsonProperty("obor-hodnot-resolved")
+    private Map<String, DataTypeDto> rangeResolved;
+
+    /** Resolved RPP agenda metadata for {@code agenda} IRIs on both diff sides, keyed by IRI. */
+    @JsonProperty("agenda-resolved")
+    private Map<String, RppAgenda> agendaResolved;
+
+    /** Resolved RPP ISVS (AIS) metadata for {@code ais} IRIs on both diff sides, keyed by IRI. */
+    @JsonProperty("ais-resolved")
+    private Map<String, RppIsvs> aisResolved;
 
     @Data
     @Builder
