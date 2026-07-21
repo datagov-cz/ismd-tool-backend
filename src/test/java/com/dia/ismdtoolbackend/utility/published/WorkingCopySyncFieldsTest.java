@@ -29,11 +29,11 @@ class WorkingCopySyncFieldsTest {
     void deviatingKeys_onlyReportsFieldsThatDeviate() {
         // The comparator only populates fields that differ — a null PropertyDeviation means "same".
         PublishedConceptDeviationModel deviation = PublishedConceptDeviationModel.builder()
-                .name(deviating(Map.of("cs", "Místní"), Map.of("cs", "Publikovaný")))
+                .definition(deviating(Map.of("cs", "Místní"), Map.of("cs", "Publikovaný")))
                 .identifier(deviating("mistni", "publikovany"))
                 .build();
 
-        assertEquals(java.util.Set.of("název", "identifikátor"), fields.deviatingSyncableKeys(deviation));
+        assertEquals(java.util.Set.of("definice", "identifikátor"), fields.deviatingSyncableKeys(deviation));
     }
 
     @Test
@@ -41,11 +41,24 @@ class WorkingCopySyncFieldsTest {
         // ISMD cannot convert between concept types, so `typ` is never syncable even when NKD deviates.
         PublishedConceptDeviationModel deviation = PublishedConceptDeviationModel.builder()
                 .types(deviating(List.of("Třída"), List.of("Vlastnost")))
-                .name(deviating(Map.of("cs", "A"), Map.of("cs", "B")))
+                .definition(deviating(Map.of("cs", "A"), Map.of("cs", "B")))
                 .build();
 
-        assertEquals(java.util.Set.of("název"), fields.deviatingSyncableKeys(deviation));
+        assertEquals(java.util.Set.of("definice"), fields.deviatingSyncableKeys(deviation));
         assertFalse(fields.syncableKeys().contains(WorkingCopySyncFields.TYPE_KEY));
+    }
+
+    @Test
+    void nameIsNeverSyncable() {
+        // An OFN concept's IRI is derived from its name; syncing the name would rewrite the IRI and break
+        // the twin match, so "název" is not in the vocabulary and is never offered even if set.
+        assertFalse(fields.syncableKeys().contains("název"));
+
+        PublishedConceptDeviationModel deviation = PublishedConceptDeviationModel.builder()
+                .name(deviating(Map.of("cs", "Místní"), Map.of("cs", "Publikovaný")))
+                .build();
+        assertTrue(fields.deviatingSyncableKeys(deviation).isEmpty(),
+                "a name deviation offers no syncable key");
     }
 
     @Test
@@ -107,15 +120,15 @@ class WorkingCopySyncFieldsTest {
     @Test
     void apply_takesTheNkdValue_notTheLocalOne() {
         ConceptDetailModel nkd = ConceptDetailModel.builder()
-                .name(Map.of("cs", "Publikovaný název"))
+                .definition(Map.of("cs", "Publikovaná definice"))
                 .identifier("publikovany-identifikator")
                 .build();
         ClassConceptEditModel edit = new ClassConceptEditModel();
 
-        fields.apply("název", edit, nkd);
+        fields.apply("definice", edit, nkd);
         fields.apply("identifikátor", edit, nkd);
 
-        assertEquals(Map.of("cs", "Publikovaný název"), edit.getNameModel().getName());
+        assertEquals(Map.of("cs", "Publikovaná definice"), edit.getDefinitionModel().getDefinition());
         assertEquals("publikovany-identifikator", edit.getIdentifier());
     }
 
@@ -124,17 +137,15 @@ class WorkingCopySyncFieldsTest {
         // The core of the design: everything not accepted stays null, so the edit path's null
         // early-returns leave it untouched.
         ConceptDetailModel nkd = ConceptDetailModel.builder()
-                .name(Map.of("cs", "Nový"))
                 .identifier("novy")
                 .definition(Map.of("cs", "Nová definice"))
                 .build();
         ClassConceptEditModel edit = new ClassConceptEditModel();
 
-        fields.apply("název", edit, nkd);
+        fields.apply("definice", edit, nkd);
 
-        assertEquals(Map.of("cs", "Nový"), edit.getNameModel().getName());
+        assertEquals(Map.of("cs", "Nová definice"), edit.getDefinitionModel().getDefinition());
         assertNull(edit.getIdentifier(), "unaccepted field must stay null");
-        assertNull(edit.getDefinitionModel(), "unaccepted field must stay null");
     }
 
     @Test

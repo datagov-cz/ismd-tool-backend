@@ -15,7 +15,7 @@ import java.util.*;
 public class ConceptDeviationComparator {
 
     /**
-     * Compares the 23 characteristics and stamps the result with which deviation case it is and which NKD
+     * Compares the 22 characteristics and stamps the result with which deviation case it is and which NKD
      * resource it was compared against — both cases share this one comparison, so the tag is what tells the
      * reader whether {@code localValue} is a stored copy or the user's own value.
      *
@@ -53,8 +53,11 @@ public class ConceptDeviationComparator {
 
         boolean hasDeviations = false;
 
+        // Name is intentionally not compared: an OFN concept's IRI is derived from its name, so an
+        // IRI-matched pair shares a name by construction. A name deviation could only arise from NKD
+        // publishing a stale IRI (data corruption) and is not actionable — syncing it would regenerate
+        // the IRI and break the twin match. See WorkingCopySyncFields (název is not syncable either).
         hasDeviations |= compareAndSetTypes(localConcept, publishedConcept, builder);
-        hasDeviations |= compareAndSetName(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetAlternativeName(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetDefinition(localConcept, publishedConcept, builder);
         hasDeviations |= compareAndSetDescription(localConcept, publishedConcept, builder);
@@ -93,22 +96,6 @@ public class ConceptDeviationComparator {
             builder.types(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getTypes())
                     .publishedValue(published.getTypes())
-                    .isDifferent(true)
-                    .build());
-            return true;
-        }
-        return false;
-    }
-
-    private boolean compareAndSetName(
-            OntologyDetailModel.ConceptDetailModel local,
-            OntologyDetailModel.ConceptDetailModel published,
-            PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
-
-        if (areDifferent(local.getName(), published.getName())) {
-            builder.name(PublishedConceptDeviationModel.PropertyDeviation.<Map<String, String>>builder()
-                    .localValue(local.getName())
-                    .publishedValue(published.getName())
                     .isDifferent(true)
                     .build());
             return true;

@@ -37,6 +37,17 @@ public interface NkdSnapshotService {
     PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot);
 
     /**
+     * The read-path warmer's per-target operation. A snapshot is a frozen copy, so a passive read must
+     * never adopt upstream drift: when a row already exists this only RE-EVALUATES deviation (updates
+     * {@code lastDeviationStatus} / {@code lastCheckedAt}, never the stored triples), so genuine drift
+     * surfaces as {@code HAS_DEVIATIONS} for the user to accept via an explicit update/sync. Only a
+     * first-time link (no row yet) materializes the copy. Overwriting an existing copy is reserved for
+     * the explicit command paths ({@code updateLocalCopy} / edit reconcile).
+     */
+    void refreshOrSeedForWarming(ConceptMetadataEntity owner, String nkdIri, String linkType,
+                                 OwnerChangeSet ownerChangeSet);
+
+    /**
      * Removes the link + snapshot, contributing the removal to {@code ownerChangeSet}.
      * <p>
      * {@code ownerOutgoingStatements} are the owner concept's current outgoing triples (from the

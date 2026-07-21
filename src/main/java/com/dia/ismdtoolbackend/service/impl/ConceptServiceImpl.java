@@ -180,6 +180,17 @@ public class ConceptServiceImpl implements ConceptService {
     @Override
     @Transactional
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
+        // A rename relocates the conceptIri, which for a working copy IS its NKD twin's IRI — so a rename
+        // orphans it from the twin. The generic edit path treats that as chosen divergence and severs the
+        // working copy to a draft. The sync path passes false: it owns its own sever decision (a name sync
+        // relocates the IRI too, but "accept ALL" must stay a working copy).
+        return editConcept(conceptId, conceptEditModel, true);
+    }
+
+    // Package-private (not private) so a spy in tests can stub this seam directly; the sync path calls it
+    // with severWorkingCopyOnRename=false.
+    ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel,
+                                     boolean severWorkingCopyOnRename) {
         log.info("Editing concept: ID={}, type={}",
                 conceptId, conceptEditModel.getConceptType());
 
@@ -221,7 +232,7 @@ public class ConceptServiceImpl implements ConceptService {
             // Outbox path: enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a
             // whole-graph PUT, committed atomically with the metadata update below.
             outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
-            updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
+            updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
             outboxRelayTrigger.nudgeAfterCommit();
             return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
         }
@@ -232,7 +243,7 @@ public class ConceptServiceImpl implements ConceptService {
         model.remove(new ArrayList<>(toRemove));
         model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
-        updateMetadataFromEditResult(metadata, conceptEditModel, editResult);
+        updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
     }
 
@@ -272,7 +283,9 @@ public class ConceptServiceImpl implements ConceptService {
 
         String slug = metadata.getSlug();   // an edit never changes the slug, only conceptIri/name
         ConceptEditModel editModel = buildEditModelFromAcceptedFields(metadata, accepted, nkdConcept);
-        editConcept(conceptId, editModel);
+        // false: a name/identifier sync relocates the IRI too, but sync owns the sever decision below —
+        // accepting ALL deviating fields must leave the concept a faithful, still-tracked working copy.
+        editConcept(conceptId, editModel, false);
 
         // Sever iff the user took only SOME of what deviates: they have chosen to diverge, so the concept
         // stops being a working copy. Accepting everything leaves it a faithful copy, still tracked.
@@ -786,9 +799,20 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel, ConceptEditor.EditResult editResult) {
+    private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel,
+                                              ConceptEditor.EditResult editResult, boolean severWorkingCopyOnRename) {
         if (editResult.iriChanged) {
             metadata.setConceptIri(editResult.newConceptIRI);
+
+            // A working copy is tracked by shared identity with its NKD twin: its conceptIri IS the twin's
+            // IRI. Relocating the IRI orphans it from the twin (deviation checks would forever report
+            // CONCEPT_NOT_FOUND_IN_NKD), so a rename severs it to an ordinary draft — same rule the sync
+            // path applies when a user accepts only some deviating fields.
+            if (severWorkingCopyOnRename && Boolean.TRUE.equals(metadata.getIsPublished())) {
+                metadata.setIsPublished(false);
+                log.info("Working copy renamed to {} → severed from NKD, now a draft",
+                        editResult.newConceptIRI);
+            }
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {

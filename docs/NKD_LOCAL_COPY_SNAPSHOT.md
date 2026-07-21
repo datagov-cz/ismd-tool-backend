@@ -315,10 +315,20 @@ Deviations against NKD cannot be manufactured upstream (NKD is third-party and u
 run pointed `nkd.sparql.endpoint` at a local in-memory Fuseki service seeded with a concept's NKD twin.
 The client code path is unchanged by the redirect.
 
-**Known behavior worth deciding on:** a concept-detail GET refreshes its link-snapshot rows
-(`createOrRefreshSnapshot` records `NO_DEVIATION` at snapshot time). An upstream NKD change is
-therefore adopted into the stored copy by a passive read, and `lastCheckedAt`/`NO_DEVIATION` cannot
-distinguish "verified unchanged" from "just overwritten".
+**Read path is detect-only (2026-07-21).** A concept-detail GET fires the async warmer for cold/stale
+rows, but the warmer no longer overwrites the stored copy on a read. Per target it now calls
+`NkdSnapshotService.refreshOrSeedForWarming`:
+
+- **Row already exists** → `evaluateDeviation` only: compare the frozen copy against live NKD and update
+  `lastDeviationStatus` / `lastCheckedAt`. The stored triples are never touched, so upstream drift
+  surfaces as `HAS_DEVIATIONS` for the user to accept — it is no longer silently adopted, and
+  `NO_DEVIATION` is no longer recorded by construction.
+- **No row yet** (first-time link / true cold start) → `createOrRefreshSnapshot` materializes the copy.
+
+Overwriting an existing copy is now reserved for the explicit command paths (`updateLocalCopy` / edit
+reconcile). A read still performs a small bookkeeping write (status + timestamp) — that is the cache
+freshness marker, not adoption of upstream data. Fully zero-write-on-GET (background-only warming) was
+the rejected alternative; first-view freshness was kept.
 
 `SnapshotOrigin.WORKING_COPY` remains a reserved seam for a future unification of the snapshot and `is_published`
 paths.

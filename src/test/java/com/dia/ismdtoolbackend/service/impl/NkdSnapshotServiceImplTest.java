@@ -185,6 +185,60 @@ class NkdSnapshotServiceImplTest {
         assertThat(cs.toAdd).isEmpty();
     }
 
+    @Test
+    void refreshOrSeedForWarming_existingRow_reEvaluatesOnly_neverOverwritesStoredCopy() {
+        // The read-path fix: a stale row that NKD has since changed must NOT be re-materialized on a read.
+        // The stored copy stays frozen and the drift surfaces as HAS_DEVIATIONS.
+        NkdConceptSnapshotEntity existing = new NkdConceptSnapshotEntity();
+        existing.setOwningConcept(owner);
+        existing.setNkdIri(NKD_IRI);
+        existing.setGraphName(OWNER_GRAPH);
+        existing.setOrigin(SnapshotOrigin.LINK_TARGET);
+        existing.setLinkPredicate(SnapshotLinkType.BROADER_CLASS.value());
+        String frozenTriples = materializer.toNTriples(
+                materializer.materialize(rawNkd("Old"), NKD_IRI, OWNER_IRI));
+        existing.setMaterializedTriples(frozenTriples);
+        existing.setSnapshot(detail());
+
+        when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.of(existing));
+        // Live NKD now deviates from the stored copy → evaluateDeviation reports HAS_DEVIATIONS.
+        when(nkdSparqlClient.fetchPublishedConcept(NKD_IRI)).thenReturn(Optional.of(detail()));
+        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
+                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS).build());
+        when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OwnerChangeSet cs = new OwnerChangeSet();
+        service.refreshOrSeedForWarming(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+
+        // The stored copy is UNTOUCHED — a read never adopts upstream drift.
+        assertThat(existing.getMaterializedTriples()).isEqualTo(frozenTriples).contains("Old");
+        // Drift is now visible for the user to accept via an explicit update/sync.
+        assertThat(existing.getLastDeviationStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
+        assertThat(existing.getLastCheckedAt()).isNotNull();
+        // A read produced no live NKD re-materialization and no TDB2 delta.
+        verify(nkdSparqlClient, never()).fetchPublishedConceptRaw(any());
+        assertThat(cs.toAdd).isEmpty();
+        assertThat(cs.toRemove).isEmpty();
+    }
+
+    @Test
+    void refreshOrSeedForWarming_noRow_materializesFirstCopy() {
+        // First time this link is seen: no frozen copy exists, so seeding it IS correct.
+        when(snapshotRepository.findByOwningConceptIdAndNkdIri(17L, NKD_IRI)).thenReturn(Optional.empty());
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(NKD_IRI))
+                .thenReturn(Optional.of(new PublishedConcept(detail(), NKD_SCHEME)));
+        when(nkdSparqlClient.fetchPublishedConceptRaw(NKD_IRI)).thenReturn(Optional.of(rawNkd("First")));
+        when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OwnerChangeSet cs = new OwnerChangeSet();
+        service.refreshOrSeedForWarming(owner, NKD_IRI, SnapshotLinkType.BROADER_CLASS.value(), cs);
+
+        // The copy is materialized and stamped NO_DEVIATION by construction (nothing to deviate from yet).
+        verify(snapshotRepository).save(any());
+        // No re-evaluation path was taken.
+        verify(conceptDeviationComparator, never()).compareConceptDetails(any(), any(), any(), any());
+    }
+
     /** Owner's outgoing triples: a subClassOf link + the namespaced hierarchy prop, both → nkdIri. */
     private Set<Statement> ownerOutgoingToNkd() {
         Model m = ModelFactory.createDefaultModel();

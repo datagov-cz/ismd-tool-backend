@@ -47,9 +47,11 @@ public class WorkingCopySyncFields {
             BiConsumer<ConceptEditModel, ConceptDetailModel> apply) {
     }
 
+    // "název" is deliberately absent: an OFN concept's IRI is derived from its name, so an IRI-matched
+    // working copy and its NKD twin share a name by construction. Syncing the name would regenerate the
+    // IRI to a value that no longer matches the twin, breaking the link (and severing the working copy).
+    // A name deviation is therefore never emitted (see ConceptDeviationComparator) and never syncable.
     private static final List<SyncableField> FIELDS = List.of(
-            new SyncableField("název", PublishedConceptDeviationModel::getName,
-                    (edit, nkd) -> edit.setNameModel(nameModel(nkd))),
             new SyncableField(ALT_NAME_KEY, PublishedConceptDeviationModel::getAlternativeName,
                     (edit, nkd) -> edit.setAltNameModel(altNameModel(nkd))),
             new SyncableField("definice", PublishedConceptDeviationModel::getDefinition,
@@ -127,12 +129,6 @@ public class WorkingCopySyncFields {
     }
 
     // --- value mapping ------------------------------------------------------------------------
-
-    private static com.dia.ismdtoolbackend.models.NameModel nameModel(ConceptDetailModel nkd) {
-        com.dia.ismdtoolbackend.models.NameModel m = new com.dia.ismdtoolbackend.models.NameModel();
-        m.setName(nkd.getName());
-        return m;
-    }
 
     /**
      * Maps NKD's {@code lang -> String | List} alt names onto the edit model's {@code lang -> List} shape.

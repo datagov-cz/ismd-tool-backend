@@ -52,9 +52,10 @@ public class NkdSnapshotOwnerWarmer {
     public boolean warmOwner(String graphName, ConceptMetadataEntity owner, List<Target> targets) {
         OwnerChangeSet cs = new OwnerChangeSet();
         for (Target t : targets) {
-            // createOrRefreshSnapshot seeds the deviation cache (NO_DEVIATION at snapshot time), so no
-            // separate evaluateDeviation re-fetch here — that comparison is NO_DEVIATION by construction.
-            nkdSnapshotService.createOrRefreshSnapshot(owner, t.nkdIri(), t.linkType(), cs);
+            // Read-triggered warming: an existing copy is re-evaluated (drift → HAS_DEVIATIONS), never
+            // overwritten — only a first-time link materializes. Overwriting the copy is an explicit
+            // command (updateLocalCopy / edit reconcile), never a side effect of a read.
+            nkdSnapshotService.refreshOrSeedForWarming(owner, t.nkdIri(), t.linkType(), cs);
         }
         if (cs.toRemove.isEmpty() && cs.toAdd.isEmpty()) {
             return false;

@@ -108,6 +108,22 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
 
     @Override
     @Transactional
+    public void refreshOrSeedForWarming(ConceptMetadataEntity owner, String nkdIri, String linkType,
+                                        OwnerChangeSet ownerChangeSet) {
+        Optional<NkdConceptSnapshotEntity> existingOpt =
+                snapshotRepository.findByOwningConceptIdAndNkdIri(owner.getId(), nkdIri);
+        if (existingOpt.isPresent()) {
+            // A copy already exists — a read must not overwrite it. Re-evaluate only, so upstream drift
+            // surfaces as HAS_DEVIATIONS instead of being silently adopted (and NO_DEVIATION-by-construction).
+            evaluateDeviation(existingOpt.get());
+            return;
+        }
+        // First time this link is seen: no frozen copy exists yet, so materialize it.
+        createOrRefreshSnapshot(owner, nkdIri, linkType, ownerChangeSet);
+    }
+
+    @Override
+    @Transactional
     public PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot) {
         PublishedConceptDeviationModel result = computeDeviation(snapshot);
         snapshot.setLastDeviationStatus(result.getStatus());

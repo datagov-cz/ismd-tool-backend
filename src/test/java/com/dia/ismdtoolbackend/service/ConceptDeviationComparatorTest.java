@@ -28,6 +28,48 @@ class ConceptDeviationComparatorTest {
     }
 
     @Nested
+    class NameIsNotCompared {
+
+        // An OFN concept's IRI is derived from its name, so an IRI-matched pair shares a name by
+        // construction. A name difference is therefore never emitted — it could only be NKD stale-IRI
+        // corruption, and syncing it would rewrite our IRI and break the twin match.
+
+        @Test
+        void differentNames_produceNoNameDeviation_andNoOverallDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .name(Map.of("cs", "Místní název"))
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .name(Map.of("cs", "Publikovaný název"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getName(), "name deviation must never be emitted");
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus(),
+                    "a name-only difference must not register as a deviation");
+        }
+
+        @Test
+        void differentNameButRealDeviationElsewhere_omitsNameButKeepsTheOther() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .name(Map.of("cs", "Místní"))
+                    .definition(Map.of("cs", "Místní definice"))
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .name(Map.of("cs", "Publikovaný"))
+                    .definition(Map.of("cs", "Publikovaná definice"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNull(result.getName(), "name is still omitted even when other fields deviate");
+            assertNotNull(result.getDefinition());
+        }
+    }
+
+    @Nested
     class IdenticalConcepts {
 
         @Test
@@ -109,20 +151,21 @@ class ConceptDeviationComparatorTest {
 
         @Test
         void localNull_publishedNotNull_shouldDetectDeviation() {
+            // definition stands in for the generic multilingual-map null handling; name is no longer compared.
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .name(null)
+                    .definition(null)
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .name(Map.of("cs", "Název"))
+                    .definition(Map.of("cs", "Definice"))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
             assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getName());
-            assertTrue(result.getName().isDifferent());
-            assertNull(result.getName().getLocalValue());
-            assertEquals(Map.of("cs", "Název"), result.getName().getPublishedValue());
+            assertNotNull(result.getDefinition());
+            assertTrue(result.getDefinition().isDifferent());
+            assertNull(result.getDefinition().getLocalValue());
+            assertEquals(Map.of("cs", "Definice"), result.getDefinition().getPublishedValue());
         }
 
         @Test
@@ -244,17 +287,17 @@ class ConceptDeviationComparatorTest {
         @Test
         void mapsWithDifferentLanguageTags_shouldDetectDeviation() {
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .name(Map.of("cs", "Název"))
+                    .definition(Map.of("cs", "Definice"))
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .name(Map.of("en", "Name"))
+                    .definition(Map.of("en", "Definition"))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
             assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getName());
-            assertTrue(result.getName().isDifferent());
+            assertNotNull(result.getDefinition());
+            assertTrue(result.getDefinition().isDifferent());
         }
 
         @Test
@@ -276,10 +319,10 @@ class ConceptDeviationComparatorTest {
         @Test
         void mapsWithExtraLanguageTag_shouldDetectDeviation() {
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .name(Map.of("cs", "Název", "en", "Name"))
+                    .definition(Map.of("cs", "Definice", "en", "Definition"))
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .name(Map.of("cs", "Název"))
+                    .definition(Map.of("cs", "Definice"))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);

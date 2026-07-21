@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -101,7 +102,9 @@ class SyncWorkingCopySeverTest {
                         .name(Map.of("cs", "Publikovaná obec"))
                         .description(Map.of("cs", "Publikovaný popis"))
                         .build()));
-        doReturn(null).when(service).editConcept(anyLong(), any());
+        // syncWorkingCopy calls the 3-arg overload (severWorkingCopyOnRename=false); stub that seam so the
+        // real edit — which would hit an empty graph — never runs.
+        doReturn(null).when(service).editConcept(anyLong(), any(), anyBoolean());
     }
 
     /** Builds the service with only the dependencies these tests exercise; the rest stay null. */
@@ -131,12 +134,13 @@ class SyncWorkingCopySeverTest {
      * stayed invisible to the suite.
      */
     private void deviatingOn(String... fields) {
+        // "název" is not a comparable/syncable field (the IRI is derived from it), so the sever arithmetic
+        // is exercised with popis + definice instead — both are real syncable fields.
         Set<String> differing = Set.of(fields);
         OntologyDetailModel.ConceptDetailModel local = detail(
-                differing.contains("název") ? "Místní obec" : "Obec",
                 differing.contains("popis") ? "Místní popis" : "Popis",
                 differing.contains("definice") ? "Místní definice" : "Definice");
-        OntologyDetailModel.ConceptDetailModel published = detail("Obec", "Popis", "Definice");
+        OntologyDetailModel.ConceptDetailModel published = detail("Popis", "Definice");
 
         GetConceptDto dto = new GetConceptDto();
         dto.setConceptDetail(local);
@@ -144,10 +148,9 @@ class SyncWorkingCopySeverTest {
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.of(published));
     }
 
-    private static OntologyDetailModel.ConceptDetailModel detail(String name, String description,
-                                                                 String definition) {
+    private static OntologyDetailModel.ConceptDetailModel detail(String description, String definition) {
         return OntologyDetailModel.ConceptDetailModel.builder()
-                .name(Map.of("cs", name))
+                .name(Map.of("cs", "Obec"))
                 .description(Map.of("cs", description))
                 .definition(Map.of("cs", definition))
                 .build();
@@ -156,17 +159,17 @@ class SyncWorkingCopySeverTest {
     /** A local concept identical to its twin — nothing to sync. */
     private void noDeviation() {
         GetConceptDto dto = new GetConceptDto();
-        dto.setConceptDetail(detail("Obec", "Popis", "Definice"));
+        dto.setConceptDetail(detail("Popis", "Definice"));
         doReturn(dto).when(service).getConceptDetail(SLUG);
         when(nkdSparqlClient.fetchPublishedConcept(anyString()))
-                .thenReturn(Optional.of(detail("Obec", "Popis", "Definice")));
+                .thenReturn(Optional.of(detail("Popis", "Definice")));
     }
 
     @Test
     void acceptingEveryDeviatingField_keepsItAWorkingCopy() {
-        deviatingOn("název", "popis");
+        deviatingOn("popis", "definice");
 
-        service.syncWorkingCopy(CONCEPT_ID, List.of("název", "popis"));
+        service.syncWorkingCopy(CONCEPT_ID, List.of("popis", "definice"));
 
         verify(conceptMetadataRepository, never()).save(any());
         assertTrue(metadata.getIsPublished(), "accepting everything must not sever");
@@ -174,9 +177,9 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void acceptingOnlySomeDeviatingFields_severs() {
-        deviatingOn("název", "popis");
+        deviatingOn("popis", "definice");
 
-        service.syncWorkingCopy(CONCEPT_ID, List.of("název"));
+        service.syncWorkingCopy(CONCEPT_ID, List.of("popis"));
 
         ArgumentCaptor<ConceptMetadataEntity> saved = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(saved.capture());
@@ -197,9 +200,9 @@ class SyncWorkingCopySeverTest {
     /** Duplicates must not inflate the accepted count into a false "accepted everything". */
     @Test
     void duplicateAcceptedKeys_stillSever_whenTheyCoverOnlyPartOfTheDeviation() {
-        deviatingOn("název", "popis");
+        deviatingOn("popis", "definice");
 
-        service.syncWorkingCopy(CONCEPT_ID, List.of("název", "název"));
+        service.syncWorkingCopy(CONCEPT_ID, List.of("popis", "popis"));
 
         ArgumentCaptor<ConceptMetadataEntity> saved = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(saved.capture());
@@ -212,7 +215,7 @@ class SyncWorkingCopySeverTest {
         metadata.setIsPublished(false);
 
         OntologyValidationException e = assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("název")));
+                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")));
 
         assertTrue(e.getMessage().contains("není pracovní kopií"));
         verify(conceptMetadataRepository, never()).save(any());
@@ -223,14 +226,14 @@ class SyncWorkingCopySeverTest {
         noDeviation();
 
         OntologyValidationException e = assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("název")));
+                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")));
 
         assertTrue(e.getMessage().contains("neliší"));
     }
 
     @Test
     void nonSyncableKey_isRejected_andNothingIsSevered() {
-        deviatingOn("název");
+        deviatingOn("definice");
 
         assertThrows(OntologyValidationException.class,
                 () -> service.syncWorkingCopy(CONCEPT_ID, List.of(WorkingCopySyncFields.TYPE_KEY)));
@@ -240,7 +243,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void unknownKey_isRejected_andNothingIsSevered() {
-        deviatingOn("název");
+        deviatingOn("definice");
 
         assertThrows(OntologyValidationException.class,
                 () -> service.syncWorkingCopy(CONCEPT_ID, List.of("neexistující-pole")));
@@ -250,11 +253,11 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void nkdConceptGoneAtApplyTime_isRejected_andNothingIsSevered() {
-        deviatingOn("název");
+        deviatingOn("definice");
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.empty());
 
         assertThrows(OntologyValidationException.class,
-                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("název")));
+                () -> service.syncWorkingCopy(CONCEPT_ID, List.of("definice")));
 
         verify(conceptMetadataRepository, never()).save(any());
     }

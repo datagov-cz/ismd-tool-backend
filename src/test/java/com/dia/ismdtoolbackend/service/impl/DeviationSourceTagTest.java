@@ -26,6 +26,13 @@ class DeviationSourceTagTest {
         return ConceptDetailModel.builder().iri(NKD_IRI).name(Map.of("cs", name)).build();
     }
 
+    private ConceptDetailModel conceptWithDefinition(String name, String definition) {
+        return ConceptDetailModel.builder().iri(NKD_IRI)
+                .name(Map.of("cs", name))
+                .definition(Map.of("cs", definition))
+                .build();
+    }
+
     @Test
     void workingCopy_stampsOriginAndSource() {
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(
@@ -51,17 +58,18 @@ class DeviationSourceTagTest {
     @Test
     void stamping_doesNotDisturbTheFieldDiff() {
         // The per-field diffs must stay byte-identical to the untagged call — only the envelope gains
-        // fields, so the FE's existing field readers keep working.
-        ConceptDetailModel local = concept("Můj název");
-        ConceptDetailModel published = concept("Publikovaný název");
+        // fields, so the FE's existing field readers keep working. Name is not a compared field, so the
+        // diff is driven by definition here.
+        ConceptDetailModel local = conceptWithDefinition("Můj název", "Místní definice");
+        ConceptDetailModel published = conceptWithDefinition("Publikovaný název", "Publikovaná definice");
 
         PublishedConceptDeviationModel untagged = comparator.compareConceptDetails(local, published);
         PublishedConceptDeviationModel tagged = comparator.compareConceptDetails(
                 local, published, SnapshotOrigin.WORKING_COPY, NKD_IRI);
 
         assertEquals(untagged.getStatus(), tagged.getStatus());
-        assertEquals(untagged.getName().getLocalValue(), tagged.getName().getLocalValue());
-        assertEquals(untagged.getName().getPublishedValue(), tagged.getName().getPublishedValue());
+        assertEquals(untagged.getDefinition().getLocalValue(), tagged.getDefinition().getLocalValue());
+        assertEquals(untagged.getDefinition().getPublishedValue(), tagged.getDefinition().getPublishedValue());
     }
 
     @Test
