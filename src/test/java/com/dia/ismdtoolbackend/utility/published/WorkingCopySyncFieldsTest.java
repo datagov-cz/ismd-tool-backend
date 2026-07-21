@@ -168,6 +168,32 @@ class WorkingCopySyncFieldsTest {
     }
 
     @Test
+    void apply_ppdf_nullNkdValue_syncsToFalseNotNull() {
+        // NKD may omit je-ppdf. Accepting the deviation must resolve to a definitive false, otherwise the
+        // edit model carries null and the creator drops the property entirely.
+        ConceptDetailModel nkd = ConceptDetailModel.builder()
+                .isPpdf(null)
+                .build();
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+
+        fields.apply("je-ppdf", edit, nkd);
+
+        assertEquals(Boolean.FALSE, edit.getIsInPPDF());
+    }
+
+    @Test
+    void apply_ppdf_trueNkdValue_syncsToTrue() {
+        ConceptDetailModel nkd = ConceptDetailModel.builder()
+                .isPpdf(true)
+                .build();
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+
+        fields.apply("je-ppdf", edit, nkd);
+
+        assertEquals(Boolean.TRUE, edit.getIsInPPDF());
+    }
+
+    @Test
     void apply_unknownKey_isNoOp() {
         ClassConceptEditModel edit = new ClassConceptEditModel();
 

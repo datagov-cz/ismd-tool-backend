@@ -238,12 +238,15 @@ public class WorkingCopySyncFields {
     }
 
     private static void applyIsPpdf(ConceptEditModel edit, ConceptDetailModel nkd) {
+        // NKD may return null/undefined for je-ppdf; absent means "not in PPDF". Sync to a definitive
+        // false rather than null so the edit does not silently drop the property.
+        Boolean isPpdf = Boolean.TRUE.equals(nkd.getIsPpdf());
         if (edit instanceof ClassConceptEditModel c) {
-            c.setIsInPPDF(nkd.getIsPpdf());
+            c.setIsInPPDF(isPpdf);
         } else if (edit instanceof PropertyConceptEditModel p) {
-            p.setIsInPPDF(nkd.getIsPpdf());
+            p.setIsInPPDF(isPpdf);
         } else if (edit instanceof RelationshipConceptEditModel r) {
-            r.setIsInPPDF(nkd.getIsPpdf());
+            r.setIsInPPDF(isPpdf);
         }
     }
 

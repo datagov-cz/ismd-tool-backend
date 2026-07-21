@@ -308,6 +308,39 @@ class ConceptDeviationComparatorTest {
         }
 
         @Test
+        void localFalsePpdf_vsNullPublishedPpdf_shouldNotDeviate() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .isPpdf(false)
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .isPpdf(null)
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertNull(result.getIsPpdf());
+        }
+
+        @Test
+        void localTruePpdf_vsNullPublishedPpdf_shouldDeviateAsFalse() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .isPpdf(true)
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .isPpdf(null)
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNotNull(result.getIsPpdf());
+            assertTrue(result.getIsPpdf().isDifferent());
+            assertEquals(Boolean.TRUE, result.getIsPpdf().getLocalValue());
+            assertEquals(Boolean.FALSE, result.getIsPpdf().getPublishedValue());
+        }
+
+        @Test
         void differentStringValues_shouldDetectDeviation() {
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
                     .domain("domain-local")

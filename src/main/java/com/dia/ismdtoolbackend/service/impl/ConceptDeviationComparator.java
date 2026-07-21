@@ -393,10 +393,14 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areDifferent(local.getIsPpdf(), published.getIsPpdf())) {
+        // NKD may omit je-ppdf entirely (null/undefined). Absent means "not in PPDF" — normalize both
+        // sides to false so a local false never deviates against a missing NKD value.
+        Boolean localPpdf = Boolean.TRUE.equals(local.getIsPpdf());
+        Boolean publishedPpdf = Boolean.TRUE.equals(published.getIsPpdf());
+        if (areDifferent(localPpdf, publishedPpdf)) {
             builder.isPpdf(PublishedConceptDeviationModel.PropertyDeviation.<Boolean>builder()
-                    .localValue(local.getIsPpdf())
-                    .publishedValue(published.getIsPpdf())
+                    .localValue(localPpdf)
+                    .publishedValue(publishedPpdf)
                     .isDifferent(true)
                     .build());
             return true;
