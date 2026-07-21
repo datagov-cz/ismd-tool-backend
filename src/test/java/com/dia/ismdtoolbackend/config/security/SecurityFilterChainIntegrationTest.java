@@ -158,6 +158,7 @@ class SecurityFilterChainIntegrationTest {
         var requestBuilder = switch (method) {
             case "GET" -> get(path);
             case "POST" -> post(path);
+            case "PUT" -> put(path);
             case "PATCH" -> patch(path);
             case "DELETE" -> delete(path);
             default -> throw new IllegalArgumentException("Unsupported HTTP method: " + method);
@@ -191,7 +192,12 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("PATCH", "/api/concept/test/edit"),
                 Arguments.of("DELETE", "/api/concept/test/delete"),
                 Arguments.of("POST", "/api/comment/post"),
-                Arguments.of("DELETE", "/api/comment/test/delete")
+                Arguments.of("DELETE", "/api/comment/test/delete"),
+                Arguments.of("GET", "/api/diagram/all"),
+                Arguments.of("GET", "/api/diagram/test/detail"),
+                Arguments.of("PUT", "/api/diagram/test/layout"),
+                Arguments.of("PATCH", "/api/diagram/test/nodes/iri:x/overlay"),
+                Arguments.of("POST", "/api/diagram/test/materialize")
         );
     }
 

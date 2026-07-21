@@ -37,7 +37,7 @@ public class DiagramMaterializeService {
         List<MaterializeResultDto.Failed> failed = new ArrayList<>();
         List<MaterializeResultDto.SkippedStale> skippedStale = new ArrayList<>();
 
-        for (Long nodeId : diagramNodeRepository.findStagedNodeIds(diagramId)) {
+        for (Long nodeId : orderedWorkList(diagramId)) {
             try {
                 Outcome outcome = changeApplier.applyChange(nodeId);
                 if (outcome.kind() == Outcome.Kind.SKIPPED_STALE) {
@@ -58,6 +58,24 @@ public class DiagramMaterializeService {
         }
 
         return new MaterializeResultDto(materialized, failed, skippedStale);
+    }
+
+    /**
+     * The staged work-list, ordered so every {@link DiagramOp#CONVERT_TO_HIERARCHY} applies LAST.
+     */
+    private List<Long> orderedWorkList(Long diagramId) {
+        List<Long> ids = new ArrayList<>(diagramNodeRepository.findStagedNodeIds(diagramId));
+        ids.sort(java.util.Comparator.comparingInt(id -> isConvertToHierarchy(id) ? 1 : 0));
+        return ids;
+    }
+
+    /** Classify a staged node's op without applying it (own read; overlay may have raced away → false). */
+    private boolean isConvertToHierarchy(Long nodeId) {
+        DiagramNodeEntity node = diagramNodeRepository.findById(nodeId).orElse(null);
+        if (node == null || node.getPendingEdit() == null) {
+            return false;
+        }
+        return changeApplier.classify(node.getPendingEdit(), node.getConceptIri()) == DiagramOp.CONVERT_TO_HIERARCHY;
     }
 
     /**
