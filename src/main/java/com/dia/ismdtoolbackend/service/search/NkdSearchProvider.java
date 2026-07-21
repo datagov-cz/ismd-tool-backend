@@ -147,13 +147,12 @@ public class NkdSearchProvider implements SearchProvider {
         ConceptType roleFilter = type != null ? type.toConceptType() : null;
         String sparql = NKDSPARQLSearchQuery.buildConceptSearchQuery(
                 query, lang, limit, offset, ontologyIris, relationTypes, roleFilter);
+
         List<Map<String, String>> rows = nkdSparqlClient.executeSelect(sparql);
 
-        // When the SPARQL FILTER EXISTS narrowed by role, every returned row is
-        // guaranteed to be of that role — so we can populate conceptType from the
-        // request without re-querying the rdf:type set per concept.
         List<SearchResultDto> results = new ArrayList<>();
         for (Map<String, String> row : rows) {
+            ConceptType conceptType = roleFilter != null ? roleFilter : conceptTypeFromRow(row);
             results.add(SearchResultDto.builder()
                     .iri(row.get("resource"))
                     .label(row.get("label"))
@@ -164,11 +163,21 @@ public class NkdSearchProvider implements SearchProvider {
                     .ontologyIri(row.get("ontology"))
                     .lastModified(row.get("modified"))
                     .type(SearchType.CONCEPT)
-                    .conceptType(roleFilter)
+                    .conceptType(conceptType)
                     .source(SearchSource.NKD)
                     .build());
         }
         return results;
+    }
+
+    /**
+     * Derives a concept's role from the role markers the concept search query projects.
+     */
+    private static ConceptType conceptTypeFromRow(Map<String, String> row) {
+        if (row.get("roleTrida") != null) return ConceptType.TRIDA;
+        if (row.get("roleVlastnost") != null) return ConceptType.VLASTNOST;
+        if (row.get("roleVztah") != null) return ConceptType.VZTAH;
+        return null;
     }
 
     /**

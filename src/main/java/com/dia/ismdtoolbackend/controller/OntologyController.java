@@ -9,23 +9,18 @@ import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
-import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsRequest;
-import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsResponse;
-import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
-import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
-import com.dia.ismdtoolbackend.service.impl.ConceptMetadataResolver;
+import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
@@ -48,7 +43,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -66,9 +60,7 @@ public class OntologyController {
     private final ValidationService validationService;
     private final ValidationClient validationClient;
     private final ValidationConfig validationConfig;
-    private final NkdDetailService nkdDetailService;
-    private final ConceptMetadataResolver conceptMetadataResolver;
-    private final com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
+    private final NkdSnapshotWarmer nkdSnapshotWarmer;
 
     @Operation(
             summary = "Nahrání slovníku ze souboru",
@@ -237,47 +229,9 @@ public class OntologyController {
     ) {
         log.info("Ontology concepts requested, iri: {}, source: {}", iri, source);
 
-        List<MinimalConceptDto> concepts = switch (source) {
-            case ISMD -> ontologyService.getConceptsByIri(iri);
-            case NKD -> {
-                OntologyDetailModel detail = nkdDetailService.getOntologyDetail(iri).getOntologyDetail();
-                List<OntologyDetailModel.ConceptDetailModel> nkdConcepts = detail.getConcepts();
-                if (nkdConcepts == null || nkdConcepts.isEmpty()) {
-                    yield List.of();
-                }
-                yield nkdConcepts.stream()
-                        .map(c -> MinimalConceptDto.builder()
-                                .iri(c.getIri())
-                                .name(c.getName())
-                                .build())
-                        .toList();
-            }
-            default -> throw new IllegalArgumentException(
-                    "Nepodporovaný zdroj: " + source + ". Povolené hodnoty: ISMD, NKD.");
-        };
+        List<MinimalConceptDto> concepts = ontologyService.getConceptsByIri(iri, source);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Seznam pojmů byl úspěšně načten."));
-    }
-
-    @Operation(
-            summary = "Získání metadat referencovaných pojmů",
-            description = "Pro pole IRI pojmů vrací mapu IRI → {conceptName, conceptSlug, ontologyIri, ontologyName, source}. " +
-                    "FE volá tento endpoint po obdržení detailu pojmu/slovníku, aby obohatil prosté IRI " +
-                    "(nadřazená třída/vztah/vlastnost, ekvivalentní pojem, vlastnosti, vztahy) o informace " +
-                    "potřebné k navigaci napříč zdroji ISMD/NKD. {@code conceptSlug} je vyplněn pouze " +
-                    "pro ISMD pojmy; NKD pojmy se navigují podle IRI. Nerozlišené IRI jsou v odpovědi vynechány. " +
-                    "Veřejný endpoint."
-    )
-    @PostMapping("/concepts/resolve")
-    public ResponseEntity<ApiResponseDto<ResolveConceptsResponse>> resolveConceptReferences(
-            @Valid @RequestBody ResolveConceptsRequest request) {
-        log.info("Concept reference resolution requested, count: {}", request.iris().size());
-
-        Map<String, ResolvedConceptDto> resolved = conceptMetadataResolver.resolveAll(request.iris());
-
-        return ResponseEntity.ok().body(ApiResponseDto.success(
-                new ResolveConceptsResponse(resolved),
-                "Metadata referencovaných pojmů byla úspěšně načtena."));
     }
 
     @Operation(

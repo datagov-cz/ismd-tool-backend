@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
+import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -222,8 +223,9 @@ class NkdDetailServiceImplTest {
 
         service.getConceptDetail(CONCEPT_IRI, null);
 
-        // Enricher runs on the same ConceptDetailModel the FE receives — no extra round-trip from the FE
-        verify(referencedConceptsEnricher).enrich(model);
+        // Enricher runs on the same ConceptDetailModel the FE receives — no extra round-trip from the FE.
+        // NKD detail context must gate resolution NKD-only so a doubly-present IRI stays in the NKD context.
+        verify(referencedConceptsEnricher).enrich(model, SearchSource.NKD);
     }
 
     @Test

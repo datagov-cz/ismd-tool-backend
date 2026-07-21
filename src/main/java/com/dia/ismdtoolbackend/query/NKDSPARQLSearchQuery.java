@@ -164,11 +164,14 @@ public class NKDSPARQLSearchQuery {
         // projection in the same group as a 4-way bif:contains UNION combined with a
         // FILTER EXISTS clause triggers a planner bug that silently returns zero rows.
         query.append("""
-                SELECT DISTINCT ?resource ?label ?labelLang ?altName ?description ?definition ?ontology ?modified WHERE {
+                SELECT DISTINCT ?resource ?label ?labelLang ?altName ?description ?definition ?ontology ?modified ?roleTrida ?roleVlastnost ?roleVztah WHERE {
                 """);
 
         appendResourceSubquery(query, searchTerm, ontologyIris, relationTypes, conceptTypeFilter, limit, offset);
 
+        // Project the concept's role so callers can populate conceptType even when
+        // the request didn't narrow by role. Three independent OPTIONAL binds (one
+        // per role, each accepting the OFN role tag or the matching OWL type).
         query.append("""
 
                   OPTIONAL {
@@ -185,8 +188,15 @@ public class NKDSPARQLSearchQuery {
                   OPTIONAL { ?resource dcterms:description ?description }
                   OPTIONAL { ?resource skos:definition ?definition }
                   OPTIONAL { ?resource dcterms:modified ?modified }
+
+                  OPTIONAL { ?resource a ?roleTrida .     FILTER(?roleTrida IN (<%s>, <%s>)) }
+                  OPTIONAL { ?resource a ?roleVlastnost . FILTER(?roleVlastnost IN (<%s>, <%s>)) }
+                  OPTIONAL { ?resource a ?roleVztah .     FILTER(?roleVztah IN (<%s>, <%s>)) }
                 }
-                """.formatted(safeLang));
+                """.formatted(safeLang,
+                        OFN_NAMESPACE + TRIDA, OWL_CLASS,
+                        OFN_NAMESPACE + VLASTNOST, OWL_DATATYPE_PROPERTY,
+                        OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY));
 
         return query.toString();
     }
@@ -326,11 +336,14 @@ public class NKDSPARQLSearchQuery {
         return "FILTER EXISTS " + getRelationPattern(type);
     }
 
+    // KONCEPT is the generic base type every concept carries, so it is not a
+    // role narrowing — a role filter never resolves to it.
     private static String ofnRoleFragment(ConceptType type) {
         return switch (type) {
             case TRIDA -> TRIDA;
             case VLASTNOST -> VLASTNOST;
             case VZTAH -> VZTAH;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
@@ -346,6 +359,7 @@ public class NKDSPARQLSearchQuery {
             case TRIDA -> OWL_CLASS;
             case VLASTNOST -> OWL_DATATYPE_PROPERTY;
             case VZTAH -> OWL_OBJECT_PROPERTY;
+            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 

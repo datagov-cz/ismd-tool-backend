@@ -167,8 +167,9 @@ public class OntologyDetailModel {
          * Pre-resolved metadata for every referenced concept IRI in this detail
          * (exact matches, broader classes/relations/properties, domain, range,
          * and each property/relationship IRI). Keyed by concept IRI; unresolved
-         * IRIs are absent from the map. Replaces the FE's secondary call to
-         * {@code POST /api/ontology/concepts/resolve} for the detail page.
+         * IRIs are absent from the map. Populated inline in the detail flow by
+         * {@code ReferencedConceptsEnricher}, so the FE needs no secondary
+         * resolve round-trip for the detail page.
          */
         @JsonProperty("referencované-pojmy-resolved")
         private Map<String, ResolvedConceptDto> referencedConceptsResolved;
