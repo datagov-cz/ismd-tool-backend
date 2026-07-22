@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.utility.editor;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.UtilityMethods;
@@ -301,11 +302,11 @@ class ConceptFieldUpdaters {
 
         for (String provision : privacyProvisions) {
             if (provision == null || provision.trim().isEmpty()) continue;
-            String trimmed = provision.trim();
-            if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-                newProvisions.add(trimmed);
+            String canonical = EsbirkaEliParser.canonicalizeHost(provision.trim());
+            if (SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+                newProvisions.add(canonical);
             } else {
-                log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", provision.trim());
             }
         }
 
@@ -511,11 +512,11 @@ class ConceptFieldUpdaters {
 
         for (String source : newSources) {
             if (source == null || source.trim().isEmpty()) continue;
-            String trimmed = source.trim();
-            if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-                newSourceURIs.add(trimmed);
+            String canonical = EsbirkaEliParser.canonicalizeHost(source.trim());
+            if (SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+                newSourceURIs.add(canonical);
             } else {
-                log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", source.trim());
             }
         }
 
