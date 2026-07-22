@@ -120,6 +120,30 @@ class NkdSnapshotWarmerTest {
     }
 
     @Test
+    void warmGraph_targetIsLocallyOwnedWorkingCopy_notSnapshotted() {
+        // Phase A: a working copy (locally-owned concept whose own IRI is in NKD) is external-looking and
+        // published, but it is ours. The edit hook excludes it; the warmer must too, or the two churn
+        // create/remove against each other.
+        ConceptMetadataEntity a = owner(1L, "x", NKD_A);
+        ConceptMetadataEntity workingCopy = new ConceptMetadataEntity();
+        workingCopy.setId(2L);
+        workingCopy.setConceptType(ConceptType.TRIDA);
+        workingCopy.setGraphName(GRAPH);
+        workingCopy.setConceptIri(NKD_A);      // own IRI IS the NKD IRI
+        List<ConceptMetadataEntity> owners = List.of(a, workingCopy);
+
+        when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(owners);
+        when(jenaTDB2Repository.graphHasData(GRAPH)).thenReturn(true);
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graphWith(List.of(a)));
+
+        warmer.warmGraph(GRAPH);
+
+        // a's only target is the working copy → no candidates at all → NKD never asked, nothing warmed.
+        verify(nkdSparqlClient, never()).getPublishedResourcesList(anyList());
+        verify(ownerWarmer, never()).warmOwner(any(), any(), anyList());
+    }
+
+    @Test
     void warmGraph_localTargetOnly_notTreatedAsExternal() {
         // Owner links a SAME-GRAPH concept (owned) — not an NKD target, so no batch check / warming.
         ConceptMetadataEntity a = owner(1L, "x", GRAPH + "/pojem/local-parent");

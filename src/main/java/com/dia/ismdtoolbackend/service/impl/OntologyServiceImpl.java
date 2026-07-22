@@ -24,7 +24,6 @@ import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import com.dia.ismdtoolbackend.utility.published.NkdSnapshotTripleFilter;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.utility.DataTypeConverter;
@@ -87,7 +86,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
     public void deleteOntology(Long ontologyId) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findById(ontologyId);
         if (ontologyMetadataOpt.isEmpty()) {
@@ -106,9 +106,9 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        // NKD local-copy cascade: drop the PG snapshot rows for this graph. The materialized copy
-        // triples need no explicit removal — DELETE_GRAPH (or deleteGraph) sweeps the whole named graph,
-        // copies included. FK is not db-cascade, so the rows must go explicitly.
+        // NKD local-copy cascade: drop the PG snapshot rows for this graph. Copies live only in
+        // Postgres, so there is nothing of theirs in the graph for DELETE_GRAPH to sweep. FK is not
+        // db-cascade, so the rows must go explicitly.
         nkdSnapshotService.cascadeGraphDeletion(graphName);
 
         if (outboxConfig.isEnabled()) {
@@ -126,7 +126,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
     public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
@@ -191,11 +192,6 @@ public class OntologyServiceImpl implements OntologyService {
             log.error("Ontology model is empty for graph: {}", graphName);
             throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
-
-        // Materialized NKD snapshot copies live in this graph and carry real concept types, so the detail
-        // extractor would list them in pojmy. Linked concepts surface only via linkSnapshots, so strip the
-        // copies before extraction (and before the shared processedModel feeds the deviation checker).
-        NkdSnapshotTripleFilter.removeSnapshotSubjects(rawModel);
 
         // OFN transform is expensive (filter + reformat over the full graph);
         // run once and share with the deviation checker instead of re-running
@@ -297,10 +293,6 @@ public class OntologyServiceImpl implements OntologyService {
         if (rawModel.isEmpty()) {
             throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
         }
-
-        // Same intermixing as getOntologyDetailModel: strip materialized NKD copies so they don't
-        // surface as owned concepts. See NkdSnapshotTripleFilter.
-        NkdSnapshotTripleFilter.removeSnapshotSubjects(rawModel);
 
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
@@ -436,7 +428,8 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
     public OntologyMetadataModel editOntology(Long id, OntologyEditModel ontologyEditModel) {
         if (ontologyEditModel == null) {
             throw new OntologyException("Data pro úpravu slovníku jsou prázdná");

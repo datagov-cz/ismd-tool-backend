@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
+import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -186,7 +187,11 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     // No external NKD links in this flow's test data → real detector returns empty and the
                     // mocked snapshot service is never called; reconcileNkdLinks is a no-op here.
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
-                    new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector());
+                    new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
+                    new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
+                    mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
+                    new com.dia.ismdtoolbackend.config.NkdConfig(),
+                    mock(WorkingCopyDeviationServiceImpl.class));
         }
     }
 }

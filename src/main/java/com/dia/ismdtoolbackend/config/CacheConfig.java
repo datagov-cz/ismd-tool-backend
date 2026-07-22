@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.config;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -87,6 +88,15 @@ public class CacheConfig {
 
         // NKD-published deviation projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).
         mgr.registerCustomCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, Caffeine.newBuilder()
+                .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
+                .build());
+
+        // Canonical local concept projection behind working-copy deviation (WorkingCopyDeviationService).
+        // Both ontology detail and concept detail compare against THIS one cached local read, so they can
+        // never disagree. ISMD edits evict it synchronously (@CacheEvict on the concept/ontology write
+        // paths); its freshness w.r.t. NKD rides the NKD projection TTL above, so a 24h write-TTL matches.
+        mgr.registerCustomCache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, Caffeine.newBuilder()
                 .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
                 .build());

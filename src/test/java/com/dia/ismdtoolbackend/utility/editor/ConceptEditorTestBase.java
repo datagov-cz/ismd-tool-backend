@@ -17,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.mockito.Mockito.lenient;
@@ -78,7 +79,7 @@ abstract class ConceptEditorTestBase {
 
     protected AltNameModel createAltNameModel(String languageCode, String value) {
         AltNameModel altNameModel1 = new AltNameModel();
-        altNameModel1.setAltName(Map.of(languageCode, value));
+        altNameModel1.setAltName(Map.of(languageCode, List.of(value)));
         return altNameModel1;
     }
 

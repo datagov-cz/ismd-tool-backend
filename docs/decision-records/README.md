@@ -24,3 +24,4 @@ fix, and verification — so the reasoning survives past the git log and any mem
 | # | Title | Status | Date |
 |---|-------|--------|------|
 | [0001](./0001-ontology-rename-stale-inscheme.md) | Ontology rename leaves concept `skos:inScheme` on old scheme | applied | 2026-07-13 |
+| [0002](./0002-retire-nkd-copy-tdb2-materialization.md) | Retire TDB2 materialization of NKD local copies (PG becomes sole home) | applied | 2026-07-14 |
