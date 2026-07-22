@@ -72,6 +72,13 @@ public interface NkdSnapshotService {
      */
     void cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName);
 
-    /** Whole-ontology deletion cascade. Deletes all PG snapshot rows for the graph. */
-    void cascadeGraphDeletion(String graphName);
+    /**
+     * Whole-ontology deletion cascade. Deletes the PG snapshot rows owned by the ontology's concepts
+     * (keyed on the owning-concept FK so a drifted graph_name — see {@link #cascadeConceptDeletion} —
+     * can't strand a row and break the cascaded concept DELETE), plus any remaining rows still tagged
+     * with the graph.
+     * @param conceptIds the ontology's owned concept ids (their PG ids)
+     * @param graphName  the ontology graph
+     */
+    void cascadeGraphDeletion(List<Long> conceptIds, String graphName);
 }
