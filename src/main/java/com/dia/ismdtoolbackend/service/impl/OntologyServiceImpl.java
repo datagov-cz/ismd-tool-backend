@@ -106,10 +106,14 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
 
-        // NKD local-copy cascade: drop the PG snapshot rows for this graph. Copies live only in
-        // Postgres, so there is nothing of theirs in the graph for DELETE_GRAPH to sweep. FK is not
-        // db-cascade, so the rows must go explicitly.
-        nkdSnapshotService.cascadeGraphDeletion(graphName);
+        // NKD local-copy cascade: drop the PG snapshot rows before the ontology (and its cascade-deleted
+        // concepts) go. Copies live only in Postgres, so there is nothing of theirs in the graph for
+        // DELETE_GRAPH to sweep. fk_nkd_snapshot_owning_concept is not db-cascade, so keying on the owned
+        // concept ids (not just graph_name, which drifts on rename) is what keeps the concept DELETE legal.
+        List<Long> ownedConceptIds = conceptMetadataRepository.findByGraphName(graphName).stream()
+                .map(ConceptMetadataEntity::getId)
+                .toList();
+        nkdSnapshotService.cascadeGraphDeletion(ownedConceptIds, graphName);
 
         if (outboxConfig.isEnabled()) {
             // Outbox path: enqueue the graph deletion, committed atomically with the PG metadata

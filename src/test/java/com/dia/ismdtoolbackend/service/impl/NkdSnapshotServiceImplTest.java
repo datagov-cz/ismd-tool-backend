@@ -328,17 +328,20 @@ class NkdSnapshotServiceImplTest {
 
     private NkdConceptSnapshotEntity rowFor(String nkdIri) {
         NkdConceptSnapshotEntity s = new NkdConceptSnapshotEntity();
+        s.setId(nextRowId++);
         s.setNkdIri(nkdIri);
         s.setGraphName(OWNER_GRAPH);
         return s;
     }
 
+    private long nextRowId = 1L;
+
     @Test
-    void cascadeConceptDeletion_deletesRowsForGraph_noTdb2Sweep() {
+    void cascadeConceptDeletion_deletesRowsForConceptIds_noTdb2Sweep() {
         NkdConceptSnapshotEntity rowA = rowFor(NKD_IRI);
         NkdConceptSnapshotEntity rowB = rowFor(NKD_IRI);
-        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(rowA));
-        when(snapshotRepository.findByOwningConceptId(18L)).thenReturn(List.of(rowB));
+        when(snapshotRepository.findByOwningConceptIdIn(List.of(17L, 18L)))
+                .thenReturn(List.of(rowA, rowB));
 
         service.cascadeConceptDeletion(List.of(17L, 18L), OWNER_GRAPH);
 
@@ -347,33 +350,52 @@ class NkdSnapshotServiceImplTest {
     }
 
     @Test
-    void cascadeConceptDeletion_filtersOtherGraphRows() {
-        NkdConceptSnapshotEntity thisGraph = rowFor(NKD_IRI);
-        NkdConceptSnapshotEntity otherGraph = rowFor(NKD_IRI);
-        otherGraph.setGraphName("https://example.org/slovnik/jiny");
-        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of(thisGraph, otherGraph));
+    void cascadeConceptDeletion_deletesDriftedGraphRows() {
+        // A snapshot whose graph_name lagged an ontology rename must still be deleted with its owner,
+        // else the cascaded concept DELETE hits fk_nkd_snapshot_owning_concept.
+        NkdConceptSnapshotEntity driftedGraph = rowFor(NKD_IRI);
+        driftedGraph.setGraphName("https://example.org/slovnik/stary-nazev");
+        when(snapshotRepository.findByOwningConceptIdIn(List.of(17L)))
+                .thenReturn(List.of(driftedGraph));
 
         service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
 
-        verify(snapshotRepository).deleteAll(List.of(thisGraph));
+        verify(snapshotRepository).deleteAll(List.of(driftedGraph));
     }
 
     @Test
     void cascadeConceptDeletion_noSnapshots_deletesNothing() {
-        when(snapshotRepository.findByOwningConceptId(17L)).thenReturn(List.of());
+        when(snapshotRepository.findByOwningConceptIdIn(List.of(17L))).thenReturn(List.of());
         service.cascadeConceptDeletion(List.of(17L), OWNER_GRAPH);
         verify(snapshotRepository, never()).deleteAll(any());
     }
 
     @Test
-    void cascadeGraphDeletion_deletesAllRowsForGraph_noCopyRemoval() {
-        NkdConceptSnapshotEntity r1 = rowFor(NKD_IRI);
-        NkdConceptSnapshotEntity r2 = rowFor("https://slovník.gov.cz/agendový/104/pojem/jine");
-        when(snapshotRepository.findByGraphName(OWNER_GRAPH)).thenReturn(List.of(r1, r2));
+    void cascadeGraphDeletion_deletesOwnerAndGraphRows_dedup() {
+        NkdConceptSnapshotEntity byOwner = rowFor(NKD_IRI);
+        NkdConceptSnapshotEntity byGraph = rowFor("https://slovník.gov.cz/agendový/104/pojem/jine");
+        when(snapshotRepository.findByOwningConceptIdIn(List.of(17L, 18L)))
+                .thenReturn(List.of(byOwner));
+        // byOwner is also returned by the graph sweep — it must be deleted once, not twice.
+        when(snapshotRepository.findByGraphName(OWNER_GRAPH)).thenReturn(List.of(byOwner, byGraph));
 
-        service.cascadeGraphDeletion(OWNER_GRAPH);
+        service.cascadeGraphDeletion(List.of(17L, 18L), OWNER_GRAPH);
 
         // No refcount / copy-triple bookkeeping — the copy lives only in PG.
-        verify(snapshotRepository).deleteAll(List.of(r1, r2));
+        verify(snapshotRepository).deleteAll(List.of(byOwner, byGraph));
+    }
+
+    @Test
+    void cascadeGraphDeletion_deletesDriftedOwnerRowNotInGraphSweep() {
+        // Drifted snapshot: owned by a graph concept but tagged with the old graph, so the graph_name
+        // sweep alone would miss it and the cascaded concept DELETE would fail.
+        NkdConceptSnapshotEntity drifted = rowFor(NKD_IRI);
+        drifted.setGraphName("https://example.org/slovnik/stary-nazev");
+        when(snapshotRepository.findByOwningConceptIdIn(List.of(17L))).thenReturn(List.of(drifted));
+        when(snapshotRepository.findByGraphName(OWNER_GRAPH)).thenReturn(List.of());
+
+        service.cascadeGraphDeletion(List.of(17L), OWNER_GRAPH);
+
+        verify(snapshotRepository).deleteAll(List.of(drifted));
     }
 }
