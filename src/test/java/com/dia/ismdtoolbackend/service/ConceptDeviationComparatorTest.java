@@ -538,4 +538,70 @@ class ConceptDeviationComparatorTest {
             assertNotNull(result.getIdentifier());
         }
     }
+
+    @Nested
+    class EliHostCanonicalization {
+
+        private static final String CANONICAL =
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8";
+        private static final String LEGACY =
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8";
+
+        @Test
+        void legacyVsCanonicalHost_isNotADeviation_definingLegalSource() {
+            // We store canonical .gov.cz; NKD still publishes legacy .cz. Same ELI, must not deviate.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .definingLegalSources(List.of(CANONICAL)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .definingLegalSources(List.of(LEGACY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getDefiningLegalSources());
+        }
+
+        @Test
+        void legacyVsCanonicalHost_isNotADeviation_privacyProvisions() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .privacyProvisions(List.of(CANONICAL)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .privacyProvisions(List.of(LEGACY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getPrivacyProvisions());
+        }
+
+        @Test
+        void malformedCombinedNkdValue_isNotADeviation() {
+            // NKD's only legal source is a ';'-joined pair (malformed upstream) and local has none.
+            // The junk is dropped from the comparison, so this must NOT deviate forever.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .definingLegalSources(List.of()).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .definingLegalSources(List.of(
+                            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/256/2022-09-01/dokument/norma/cast_1/par_2/pism_a"
+                                    + ";https://www.e-sbirka.cz/eli/cz/sb/2013/256/2022-09-01/dokument/norma/cast_1/par_2/pism_b"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getDefiningLegalSources());
+        }
+
+        @Test
+        void differentEliPath_stillDeviates() {
+            // Canonicalization only collapses the host — a genuinely different ELI must still deviate.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .definingLegalSources(List.of(CANONICAL)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .definingLegalSources(List.of(
+                            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_9"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNotNull(result.getDefiningLegalSources());
+        }
+    }
 }

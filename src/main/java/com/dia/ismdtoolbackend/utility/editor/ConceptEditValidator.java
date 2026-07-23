@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.utility.UtilityMethods;
 
@@ -162,7 +163,10 @@ class ConceptEditValidator {
         for (String v : values) {
             if (v == null || v.trim().isEmpty()) continue;   // blank entry = ignored, not invalid
             String trimmed = v.trim();
-            if (!SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
+            // Legacy e-Sbírka hosts (.cz) are canonicalized to .gov.cz before the check, matching the
+            // read/parse path — so a legacy IRI is accepted here and stored canonically downstream.
+            String canonical = EsbirkaEliParser.canonicalizeHost(trimmed);
+            if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
                 problems.add(new InvalidInput(field, trimmed, REASON_ELI));
             }
         }

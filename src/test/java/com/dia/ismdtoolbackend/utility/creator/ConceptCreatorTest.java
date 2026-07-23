@@ -460,11 +460,11 @@ class ConceptCreatorTest {
         }
 
         @Test
-        void createSingleConcept_ShouldDropLegalSourcesOnBrokenLegacyHost() {
-            // Pre-#106 broken host (missing .gov) was silently accepted and host-rewritten;
-            // the new contract requires the canonical opendata.eselpoint.gov.cz host.
-            setupBasicClassConcept("Class with broken-host legal sources", "subjekt");
-            when(classConceptModel.getIdentifier()).thenReturn("LEGAL-BROKEN-HOST");
+        void createSingleConcept_ShouldCanonicalizeLegacyHostLegalSources() {
+            // Legacy e-Sbírka host (.cz) is a valid input: it is canonicalized to .gov.cz before
+            // validation and stored in canonical form, matching the read/parse path.
+            setupBasicClassConcept("Class with legacy-host legal sources", "subjekt");
+            when(classConceptModel.getIdentifier()).thenReturn("LEGAL-LEGACY-HOST");
             when(classConceptModel.getDefiningLegalSource())
                     .thenReturn(List.of("https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2021/12"));
             when(classConceptModel.getRelatedLegalSource())
@@ -474,8 +474,10 @@ class ConceptCreatorTest {
 
             Property defining = result.getModel().createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
             Property related = result.getModel().createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
-            assertFalse(result.hasProperty(defining));
-            assertFalse(result.hasProperty(related));
+            assertEquals("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/12",
+                    result.listProperties(defining).nextStatement().getObject().asResource().getURI());
+            assertEquals("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2022/100",
+                    result.listProperties(related).nextStatement().getObject().asResource().getURI());
         }
 
         @Test

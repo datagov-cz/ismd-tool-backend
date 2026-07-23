@@ -57,8 +57,17 @@ public final class SparqlIriValidator {
      * Validates that an IRI is a safe e-Sbírka ELI reference: it must pass
      * {@link #isSafeHttpIri(String)} and start with the canonical e-Sbírka host
      * + {@code /esel-esb/eli/} prefix.
+     *
+     * <p>A {@code ';'} is rejected outright: a single ELI never contains one, so its presence marks a
+     * malformed combined value (e.g. two ELIs joined into one URI upstream in NKD). Such a value would
+     * otherwise pass the prefix check on its first half and be stored/resolved as junk. Legacy-host
+     * tolerance is handled by the caller canonicalizing before this check — it does not extend to
+     * salvaging combined URLs.
      */
     public static boolean isEsbirkaEliIri(String iri) {
+        if (iri != null && iri.indexOf(';') >= 0) {
+            return false;
+        }
         return esbirka().accepts(iri);
     }
 

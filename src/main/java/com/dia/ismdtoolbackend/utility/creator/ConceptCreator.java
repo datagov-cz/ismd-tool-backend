@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
@@ -641,14 +642,14 @@ public class ConceptCreator {
         if (privacyProvisions != null && !privacyProvisions.isEmpty()) {
             for (String provision : privacyProvisions) {
                 if (provision == null || provision.trim().isEmpty()) continue;
-                String trimmed = provision.trim();
-                if (!SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-                    log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                String canonical = EsbirkaEliParser.canonicalizeHost(provision.trim());
+                if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+                    log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", provision.trim());
                     continue;
                 }
                 Property provisionProperty = ontModel.createProperty(
                         uriGenerator.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
-                resource.addProperty(provisionProperty, ontModel.createResource(trimmed));
+                resource.addProperty(provisionProperty, ontModel.createResource(canonical));
             }
         }
     }
@@ -677,12 +678,12 @@ public class ConceptCreator {
         Property property = ontModel.createProperty(OFN_NAMESPACE + propertyName);
 
         if (source == null || source.trim().isEmpty()) return;
-        String trimmed = source.trim();
-        if (!SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-            log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+        String canonical = EsbirkaEliParser.canonicalizeHost(source.trim());
+        if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+            log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", source.trim());
             return;
         }
-        resource.addProperty(property, ontModel.createResource(trimmed));
+        resource.addProperty(property, ontModel.createResource(canonical));
     }
 
     private void processNonLegalSource(Resource resource, DigitalObjectModel source, boolean isDefining) {
@@ -778,11 +779,11 @@ public class ConceptCreator {
         if (privacyProvisions != null) {
             for (String provision : privacyProvisions) {
                 if (provision == null || provision.trim().isEmpty()) continue;
-                String trimmed = provision.trim();
-                if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-                    validProvisions.add(trimmed);
+                String canonical = EsbirkaEliParser.canonicalizeHost(provision.trim());
+                if (SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+                    validProvisions.add(canonical);
                 } else {
-                    log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                    log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", provision.trim());
                 }
             }
         }
