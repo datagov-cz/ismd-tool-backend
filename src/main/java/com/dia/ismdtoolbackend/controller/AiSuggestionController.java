@@ -39,9 +39,10 @@ public class AiSuggestionController {
             summary = "Spustí generování návrhů tříd z právního aktu",
             description = """
                     Vytvoří asynchronní úlohu pro návrh nových tříd slovníku. Klient v těle požadavku
-                    předá vybrané části právního aktu, volitelný textový kontext a známý konceptuální model.
-                    Backend doplní počet návrhů z konfigurace a požadavek předá službě ISMD AI. Vyžaduje
-                    autentizaci.
+                    předá vybrané části právního aktu, volitelný textový kontext a volitelné slugy
+                    slovníků známého konceptuálního modelu. Backend podle slugů sestaví společný známý
+                    konceptuální model, doplní počet návrhů z konfigurace a požadavek předá službě
+                    ISMD AI. Vyžaduje autentizaci.
                     """
     )
     @PostMapping("/legal-acts/{year}/{number}/{date}/class-suggestions")
@@ -67,8 +68,9 @@ public class AiSuggestionController {
             description = """
                     Vytvoří asynchronní úlohu pro návrh nových atributů vybrané třídy. Klient v těle
                     požadavku předá identifikátor vybrané třídy, vybrané části právního aktu, volitelný
-                    textový kontext a známý konceptuální model. Backend doplní počet návrhů z konfigurace
-                    a požadavek předá službě ISMD AI. Vyžaduje autentizaci.
+                    textový kontext a volitelné slugy slovníků známého konceptuálního modelu. Backend
+                    podle slugů sestaví společný známý konceptuální model, doplní počet návrhů
+                    z konfigurace a požadavek předá službě ISMD AI. Vyžaduje autentizaci.
                     """
     )
     @PostMapping("/legal-acts/{year}/{number}/{date}/property-suggestions")
@@ -94,7 +96,8 @@ public class AiSuggestionController {
             description = """
                     Vytvoří asynchronní úlohu pro návrh nových vztahů vybrané zdrojové třídy. Klient
                     v těle požadavku předá identifikátor vybrané třídy, vybrané části právního aktu,
-                    volitelný textový kontext a známý konceptuální model. Backend doplní počet návrhů
+                    volitelný textový kontext a volitelné slugy slovníků známého konceptuálního modelu.
+                    Backend podle slugů sestaví společný známý konceptuální model, doplní počet návrhů
                     z konfigurace a požadavek předá službě ISMD AI. Vyžaduje autentizaci.
                     """
     )

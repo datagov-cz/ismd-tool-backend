@@ -180,28 +180,19 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
+    public OntologyDetailModel getOntologyDetail(String ontologySlug) {
+        return loadOntologyDetail(ontologySlug).detailModel();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
-        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
-        if (ontologyMetadataOpt.isEmpty()) {
-            log.error("ontologySlug {} not found", ontologySlug);
-            throw new OntologyNotFoundException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
-        }
+        LoadedOntologyDetail loadedDetail = loadOntologyDetail(ontologySlug);
+        OntologyMetadataEntity metadataEntity = loadedDetail.metadataEntity();
+        Model rawModel = loadedDetail.rawModel();
+        Model processedModel = loadedDetail.processedModel();
+        OntologyDetailModel detailModel = loadedDetail.detailModel();
 
-        OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
-        String graphName = metadataEntity.getGraphName();
-
-        Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
-
-        if (rawModel.isEmpty()) {
-            log.error("Ontology model is empty for graph: {}", graphName);
-            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
-        }
-
-        // OFN transform is expensive (filter + reformat over the full graph);
-        // run once and share with the deviation checker instead of re-running
-        // it three times across detail extraction and deviation checks.
-        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
-        OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
 
         enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
@@ -209,6 +200,7 @@ public class OntologyServiceImpl implements OntologyService {
         List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(metadataEntity.getId());
         metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
 
+        String graphName = metadataEntity.getGraphName();
         List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
         List<com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel> conceptModels =
                 conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList();
@@ -232,6 +224,39 @@ public class OntologyServiceImpl implements OntologyService {
         surfaceLinkSnapshots(result, graphName);
 
         return result;
+    }
+
+    private LoadedOntologyDetail loadOntologyDetail(String ontologySlug) {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
+        if (ontologyMetadataOpt.isEmpty()) {
+            log.error("ontologySlug {} not found", ontologySlug);
+            throw new OntologyNotFoundException("Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
+        }
+
+        OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
+        String graphName = metadataEntity.getGraphName();
+
+        Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
+
+        if (rawModel.isEmpty()) {
+            log.error("Ontology model is empty for graph: {}", graphName);
+            throw new OntologyNotFoundException("Slovník je prázdný, nebo nebyl nalezen.");
+        }
+
+        // OFN transform is expensive (filter + reformat over the full graph);
+        // run once and share with the deviation checker instead of re-running
+        // it three times across detail extraction and deviation checks.
+        Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
+        return new LoadedOntologyDetail(metadataEntity, rawModel, processedModel, detailModel);
+    }
+
+    private record LoadedOntologyDetail(
+            OntologyMetadataEntity metadataEntity,
+            Model rawModel,
+            Model processedModel,
+            OntologyDetailModel detailModel
+    ) {
     }
 
     /**

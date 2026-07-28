@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto.ai;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
 import java.util.List;
@@ -15,8 +14,10 @@ public record AiSelectedClassSuggestionRequestDto(
         List<@NotBlank String> structuralElementIds,
         @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
         String contextText,
-        @Schema(requiredMode = Schema.RequiredMode.NOT_REQUIRED)
-        @Valid
-        AiKnownConceptualModelDto knownConceptualModel
+        @Schema(
+                description = "Slugs of ontologies merged into the known conceptual model.",
+                requiredMode = Schema.RequiredMode.NOT_REQUIRED
+        )
+        List<@NotBlank String> knownConceptualModelSlugs
 ) {
 }

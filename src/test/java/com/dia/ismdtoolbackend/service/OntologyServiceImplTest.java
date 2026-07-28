@@ -323,6 +323,34 @@ class OntologyServiceImplTest {
     // ========== getOntologyDetailModel Tests ==========
 
     @Test
+    void getOntologyDetail_ReturnsCoreDetailWithoutBuildingFullApiResponse() {
+        Model modelWithData = createModelWithOntologyData();
+        OntologyDetailModel detailModel = OntologyDetailModel.builder()
+                .iri(TEST_GRAPH_NAME)
+                .concepts(List.of())
+                .build();
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
+
+        OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        assertSame(detailModel, result);
+        verify(jenaTDB2Repository).fetchGraph(TEST_GRAPH_NAME);
+        verify(detailExtractor).applyOFNTransformations(modelWithData);
+        verify(detailExtractor).extractOntologyDetail(modelWithData);
+        verifyNoInteractions(
+                ontologyMetadataMapper,
+                conceptMetadataMapper,
+                commentRepository,
+                conceptMetadataRepository,
+                deviationChecker
+        );
+    }
+
+    @Test
     void getOntologyDetailModel_Success() throws OntologyException {
         Model modelWithData = createModelWithOntologyData();
         OntologyDetailModel detailModel = OntologyDetailModel.builder()

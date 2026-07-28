@@ -8,7 +8,6 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiIdReferenceDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
-import com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
@@ -100,34 +99,7 @@ class AiSuggestionControllerTest {
                                 {
                                   "structuralElementIds": ["/eli/cz/sb/2024/1/par_2"],
                                   "contextText": "Zákon popisuje žádosti o povolení.",
-                                  "knownConceptualModel": {
-                                    "classes": [{
-                                      "termID": "class_001",
-                                      "name": {"cs": "Žadatel"},
-                                      "definition": {"cs": "Osoba podávající žádost."},
-                                      "explanation": {"cs": "Známá třída."},
-                                      "type": "CLASS",
-                                      "specializes": [{"id": "class_000"}],
-                                      "legalAct": "/eli/cz/sb/2024/1"
-                                    }],
-                                    "attributes": [{
-                                      "termID": "attribute_001",
-                                      "associatedClass": {"id": "class_001"},
-                                      "name": {"cs": "Jméno"},
-                                      "definition": {"cs": "Jméno žadatele."},
-                                      "explanation": {"cs": "Známý atribut."},
-                                      "legalAct": "/eli/cz/sb/2024/1"
-                                    }],
-                                    "relationships": [{
-                                      "termID": "relationship_001",
-                                      "sourceClass": {"id": "class_001"},
-                                      "targetClass": {"id": "class_002"},
-                                      "name": {"cs": "Podává"},
-                                      "definition": {"cs": "Žadatel podává žádost."},
-                                      "explanation": {"cs": "Známý vztah."},
-                                      "legalAct": "/eli/cz/sb/2024/1"
-                                    }]
-                                  }
+                                  "knownConceptualModelSlugs": ["zadosti-o-povoleni", "spravni-organy"]
                                 }
                                 """))
                 .andExpect(status().isAccepted())
@@ -147,20 +119,8 @@ class AiSuggestionControllerTest {
         AiClassSuggestionRequestDto request = requestCaptor.getValue();
         assertThat(request.structuralElementIds()).containsExactly("/eli/cz/sb/2024/1/par_2");
         assertThat(request.contextText()).isEqualTo("Zákon popisuje žádosti o povolení.");
-        AiKnownConceptualModelDto knownModel = request.knownConceptualModel();
-        assertThat(knownModel.classes()).singleElement().satisfies(term -> {
-            assertThat(term.termId()).isEqualTo("class_001");
-            assertThat(term.name()).containsEntry("cs", "Žadatel");
-            assertThat(term.type()).isEqualTo(AiTermType.CLASS);
-            assertThat(term.specializes()).containsExactly(new AiIdReferenceDto("class_000"));
-        });
-        assertThat(knownModel.attributes()).singleElement().satisfies(term ->
-                assertThat(term.associatedClass()).isEqualTo(new AiIdReferenceDto("class_001"))
-        );
-        assertThat(knownModel.relationships()).singleElement().satisfies(term -> {
-            assertThat(term.sourceClass()).isEqualTo(new AiIdReferenceDto("class_001"));
-            assertThat(term.targetClass()).isEqualTo(new AiIdReferenceDto("class_002"));
-        });
+        assertThat(request.knownConceptualModelSlugs())
+                .containsExactly("zadosti-o-povoleni", "spravni-organy");
     }
 
     @Test
@@ -176,7 +136,10 @@ class AiSuggestionControllerTest {
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/property-suggestions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"selectedClassId": "class_001"}
+                                {
+                                  "selectedClassId": "class_001",
+                                  "knownConceptualModelSlugs": ["zadosti-o-povoleni"]
+                                }
                                 """))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(FIRST_JOB_ID.toString()))
@@ -187,7 +150,12 @@ class AiSuggestionControllerTest {
                 2024,
                 1,
                 LocalDate.of(2024, 1, 15),
-                new AiSelectedClassSuggestionRequestDto("class_001", null, null, null)
+                new AiSelectedClassSuggestionRequestDto(
+                        "class_001",
+                        null,
+                        null,
+                        List.of("zadosti-o-povoleni")
+                )
         );
     }
 
@@ -206,7 +174,8 @@ class AiSuggestionControllerTest {
                         .content("""
                                 {
                                   "selectedClassId": "class_001",
-                                  "contextText": "Vztahy žadatele."
+                                  "contextText": "Vztahy žadatele.",
+                                  "knownConceptualModelSlugs": ["zadosti-o-povoleni"]
                                 }
                                 """))
                 .andExpect(status().isAccepted())
@@ -221,7 +190,7 @@ class AiSuggestionControllerTest {
                         "class_001",
                         null,
                         "Vztahy žadatele.",
-                        null
+                        List.of("zadosti-o-povoleni")
                 )
         );
     }
@@ -345,13 +314,13 @@ class AiSuggestionControllerTest {
     @Test
     void startRequest_exposesOnlyClientOwnedContext() {
         assertThat(recordComponentNames(AiClassSuggestionRequestDto.class))
-                .containsExactly("structuralElementIds", "contextText", "knownConceptualModel");
+                .containsExactly("structuralElementIds", "contextText", "knownConceptualModelSlugs");
         assertThat(recordComponentNames(AiSelectedClassSuggestionRequestDto.class))
                 .containsExactly(
                         "selectedClassId",
                         "structuralElementIds",
                         "contextText",
-                        "knownConceptualModel"
+                        "knownConceptualModelSlugs"
                 );
     }
 
@@ -361,7 +330,8 @@ class AiSuggestionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "structuralElementIds": [""]
+                                  "structuralElementIds": [""],
+                                  "knownConceptualModelSlugs": ["zadosti-o-povoleni"]
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
@@ -371,6 +341,24 @@ class AiSuggestionControllerTest {
 
     @Test
     void startClassSuggestions_withoutOptionalContext_isAccepted() throws Exception {
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/class-suggestions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"knownConceptualModelSlugs": ["zadosti-o-povoleni"]}
+                                """))
+                .andExpect(status().isAccepted());
+
+        verify(aiSuggestionService).startClassSuggestions(
+                BEARER_TOKEN,
+                2024,
+                1,
+                LocalDate.of(2024, 1, 15),
+                new AiClassSuggestionRequestDto(null, null, List.of("zadosti-o-povoleni"))
+        );
+    }
+
+    @Test
+    void startClassSuggestions_withoutKnownConceptualModelSlugs_isAccepted() throws Exception {
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/class-suggestions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -385,13 +373,45 @@ class AiSuggestionControllerTest {
         );
     }
 
+    @Test
+    void startClassSuggestions_withEmptyKnownConceptualModelSlugs_isAccepted() throws Exception {
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/class-suggestions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"knownConceptualModelSlugs": []}
+                                """))
+                .andExpect(status().isAccepted());
+
+        verify(aiSuggestionService).startClassSuggestions(
+                BEARER_TOKEN,
+                2024,
+                1,
+                LocalDate.of(2024, 1, 15),
+                new AiClassSuggestionRequestDto(null, null, List.of())
+        );
+    }
+
+    @Test
+    void startClassSuggestions_withBlankKnownConceptualModelSlug_returnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/class-suggestions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"knownConceptualModelSlugs": [""]}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(aiSuggestionService);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"property", "relationship"})
     void selectedClassSuggestion_withoutSelectedClassId_returnsBadRequest(String suggestionType) throws Exception {
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/" + suggestionType
                         + "-suggestions")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("""
+                                {"knownConceptualModelSlugs": ["zadosti-o-povoleni"]}
+                                """))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(aiSuggestionService);

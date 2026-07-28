@@ -8,10 +8,13 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDt
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
+import com.dia.ismdtoolbackend.mapper.AiKnownConceptualModelMapper;
 import com.dia.ismdtoolbackend.service.AiSuggestionService;
+import com.dia.ismdtoolbackend.service.OntologyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +28,8 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
 
     private final IsmdAiClient aiClient;
     private final AiServiceConfig config;
+    private final OntologyService ontologyService;
+    private final AiKnownConceptualModelMapper knownConceptualModelMapper;
 
     @Override
     public AiJobStartResponseDto startClassSuggestions(
@@ -43,7 +48,7 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
                         config.getSuggestionCount(),
                         request.structuralElementIds(),
                         request.contextText(),
-                        request.knownConceptualModel()
+                        knownConceptualModel(request.knownConceptualModelSlugs())
                 )
         );
     }
@@ -79,16 +84,6 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
                 number,
                 date,
                 selectedClassRequest(request)
-        );
-    }
-
-    private IsmdAiSelectedClassJobRequest selectedClassRequest(AiSelectedClassSuggestionRequestDto request) {
-        return new IsmdAiSelectedClassJobRequest(
-                config.getSuggestionCount(),
-                request.selectedClassId(),
-                request.structuralElementIds(),
-                request.contextText(),
-                request.knownConceptualModel()
         );
     }
 
@@ -134,5 +129,27 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
                     "Parametr jobIds může obsahovat nejvýše " + config.getMaxJobIds() + " hodnot."
             );
         }
+    }
+
+    private IsmdAiSelectedClassJobRequest selectedClassRequest(AiSelectedClassSuggestionRequestDto request) {
+        return new IsmdAiSelectedClassJobRequest(
+                config.getSuggestionCount(),
+                request.selectedClassId(),
+                request.structuralElementIds(),
+                request.contextText(),
+                knownConceptualModel(request.knownConceptualModelSlugs())
+        );
+    }
+
+    private AiKnownConceptualModelDto knownConceptualModel(List<String> knownConceptualModelSlugs) {
+        if (knownConceptualModelSlugs == null || knownConceptualModelSlugs.isEmpty()) {
+            return null;
+        }
+        return knownConceptualModelMapper.map(
+                knownConceptualModelSlugs.stream()
+                        .distinct()
+                        .map(ontologyService::getOntologyDetail)
+                        .toList()
+        );
     }
 }
