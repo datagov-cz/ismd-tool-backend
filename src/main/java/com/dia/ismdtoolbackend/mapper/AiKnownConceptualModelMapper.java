@@ -9,11 +9,14 @@ import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import org.springframework.stereotype.Component;
 
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
@@ -26,26 +29,28 @@ import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
 public class AiKnownConceptualModelMapper {
 
     public AiKnownConceptualModelDto map(List<OntologyDetailModel> ontologyDetails) {
-        List<OntologyDetailModel.ConceptDetailModel> concepts = ontologyDetails == null
-                ? List.of()
-                : ontologyDetails.stream()
+        Map<ConceptType, List<OntologyDetailModel.ConceptDetailModel>> conceptsByType =
+                ontologyDetails == null
+                        ? Map.of()
+                        : ontologyDetails.stream()
                         .filter(Objects::nonNull)
                         .flatMap(detail -> detail.getConcepts() == null
                                 ? Stream.empty()
                                 : detail.getConcepts().stream())
-                        .toList();
+                        .collect(Collectors.groupingBy(
+                                concept -> ConceptType.fromRdfTypes(concept.getTypes()),
+                                () -> new EnumMap<>(ConceptType.class),
+                                Collectors.toList()
+                        ));
 
         return new AiKnownConceptualModelDto(
-                distinctByTermId(concepts.stream()
-                        .filter(concept -> ConceptType.fromRdfTypes(concept.getTypes()) == ConceptType.TRIDA)
+                distinctByTermId(conceptsByType.getOrDefault(ConceptType.TRIDA, List.of()).stream()
                         .map(this::mapClass)
                         .toList(), AiKnownConceptualModelDto.KnownClassTermDto::termId),
-                distinctByTermId(concepts.stream()
-                        .filter(concept -> ConceptType.fromRdfTypes(concept.getTypes()) == ConceptType.VLASTNOST)
+                distinctByTermId(conceptsByType.getOrDefault(ConceptType.VLASTNOST, List.of()).stream()
                         .map(this::mapAttribute)
                         .toList(), AiKnownConceptualModelDto.KnownAttributeTermDto::termId),
-                distinctByTermId(concepts.stream()
-                        .filter(concept -> ConceptType.fromRdfTypes(concept.getTypes()) == ConceptType.VZTAH)
+                distinctByTermId(conceptsByType.getOrDefault(ConceptType.VZTAH, List.of()).stream()
                         .map(this::mapRelationship)
                         .toList(), AiKnownConceptualModelDto.KnownRelationshipTermDto::termId)
         );

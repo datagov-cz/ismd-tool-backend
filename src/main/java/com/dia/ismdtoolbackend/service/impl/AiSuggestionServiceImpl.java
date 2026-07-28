@@ -145,11 +145,23 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
         if (knownConceptualModelSlugs == null || knownConceptualModelSlugs.isEmpty()) {
             return null;
         }
+        List<String> distinctSlugs = knownConceptualModelSlugs.stream()
+                .distinct()
+                .toList();
+        validateKnownConceptualModelSlugs(distinctSlugs);
         return knownConceptualModelMapper.map(
-                knownConceptualModelSlugs.stream()
-                        .distinct()
+                distinctSlugs.stream()
                         .map(ontologyService::getOntologyDetail)
                         .toList()
         );
+    }
+
+    private void validateKnownConceptualModelSlugs(List<String> slugs) {
+        if (slugs.size() > config.getMaxKnownConceptualModelSlugs()) {
+            throw new IllegalArgumentException(
+                    "Maximální počet různých hodnot parametru knownConceptualModelSlugs je "
+                            + config.getMaxKnownConceptualModelSlugs() + "."
+            );
+        }
     }
 }

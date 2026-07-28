@@ -76,6 +76,7 @@ class AiSuggestionServiceImplTest {
 
     @Test
     void startClassSuggestionsAddsConfiguredCountAndMapsCompleteRequest() {
+        config.setMaxKnownConceptualModelSlugs(2);
         AiKnownConceptualModelDto knownModel = knownModelDto();
         AiClassSuggestionRequestDto input = new AiClassSuggestionRequestDto(
                 List.of("/eli/cz/sb/2024/1/par_2", "/eli/cz/sb/2024/1/par_3"),
@@ -120,6 +121,27 @@ class AiSuggestionServiceImplTest {
                 capturedRequest
         );
         assertSame(knownModel, capturedRequest.knownConceptualModel());
+    }
+
+    @Test
+    void startClassSuggestionsRejectsMoreThanConfiguredMaximumDistinctSlugsBeforeLoadingOntologies() {
+        config.setMaxKnownConceptualModelSlugs(1);
+        AiClassSuggestionRequestDto input = new AiClassSuggestionRequestDto(
+                null,
+                null,
+                List.of(FIRST_ONTOLOGY_SLUG, SECOND_ONTOLOGY_SLUG, FIRST_ONTOLOGY_SLUG)
+        );
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.startClassSuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input)
+        );
+
+        assertEquals(
+                "Maximální počet různých hodnot parametru knownConceptualModelSlugs je 1.",
+                exception.getMessage()
+        );
+        verifyNoInteractions(aiClient, ontologyService, knownConceptualModelMapper);
     }
 
     @ParameterizedTest

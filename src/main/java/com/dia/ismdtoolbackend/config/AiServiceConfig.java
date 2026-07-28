@@ -25,6 +25,10 @@ public class AiServiceConfig {
     @Max(100)
     private int maxJobIds = 100;
 
+    @Min(1)
+    @Max(100)
+    private int maxKnownConceptualModelSlugs = 10;
+
     private Duration connectTimeout = Duration.ofSeconds(5);
 
     private Duration readTimeout = Duration.ofSeconds(15);
