@@ -78,7 +78,7 @@ Prefix `outbox.*` (bound in `OutboxConfig`). All values are env-overridable in
 | `outbox.relay-cron` | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Backstop drain schedule (Spring 6-field cron). The hot path is the after-commit nudge; this only catches crash-left rows. |
 | `outbox.max-attempts` | `OUTBOX_MAX_ATTEMPTS` | `10` | Apply attempts before a row is marked FAILED (and blocks its aggregate). |
 | `outbox.batch-size` | `OUTBOX_BATCH_SIZE` | `100` | Max rows claimed per relay drain pass. |
-| `outbox.done-retention` | `OUTBOX_DONE_RETENTION` | `P7D` | How long DONE rows are kept (ISO-8601 duration) before the prune removes them. |
+| `outbox.done-retention` | `OUTBOX_DONE_RETENTION` | `P30D` | How long DONE rows are kept (ISO-8601 duration) before the prune removes them. |
 | `outbox.prune-cron` | `OUTBOX_PRUNE_CRON` | `0 30 3 * * *` | DONE-row retention prune schedule (Spring 6-field cron). |
 
 **Related — connection pool.** The after-commit nudge briefly holds **two** pool connections per

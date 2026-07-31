@@ -78,7 +78,7 @@ v `application.properties`.
 | `outbox.relay-cron` | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Rozvrh záchytného přenosu (cron Spring 6 polí). Horkou cestu řeší pošťouchnutí po commitu; toto jen zachytí řádky po pádu. |
 | `outbox.max-attempts` | `OUTBOX_MAX_ATTEMPTS` | `10` | Počet pokusů o aplikaci, než se řádek označí FAILED (a zablokuje svůj agregát). |
 | `outbox.batch-size` | `OUTBOX_BATCH_SIZE` | `100` | Max. počet řádků zpracovaných v jednom průchodu relaye. |
-| `outbox.done-retention` | `OUTBOX_DONE_RETENTION` | `P7D` | Jak dlouho se uchovávají řádky DONE (ISO-8601 doba) před promazáním. |
+| `outbox.done-retention` | `OUTBOX_DONE_RETENTION` | `P30D` | Jak dlouho se uchovávají řádky DONE (ISO-8601 doba) před promazáním. |
 | `outbox.prune-cron` | `OUTBOX_PRUNE_CRON` | `0 30 3 * * *` | Rozvrh promazání řádků DONE (cron Spring 6 polí). |
 
 **Související — fond připojení.** Posunutí po commitu krátce drží **dvě** připojení z fondu na
