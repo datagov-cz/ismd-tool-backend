@@ -53,7 +53,7 @@ public class DiagramMaterializeService {
                 failed.add(fail(nodeId, "VALIDATION", e.getMessage(), 400));
             } catch (RuntimeException e) {
                 log.error("Materialize failed for node {}", nodeId, e);
-                failed.add(fail(nodeId, "ERROR", e.getMessage(), 500));
+                failed.add(fail(nodeId, "ERROR", "Nastala neočekávaná chyba.", 500));
             }
         }
 

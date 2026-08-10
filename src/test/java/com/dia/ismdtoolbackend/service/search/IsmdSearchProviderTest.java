@@ -503,6 +503,36 @@ class IsmdSearchProviderTest {
                 "Ontology Fuseki hits must not carry a self-referential ontologyIri");
     }
 
+    @Test
+    void diagramOnGraphlessOntology_getsNonNullDedupKey() {
+        OntologyMetadataEntity ontology = new OntologyMetadataEntity();
+        ontology.setSlug("bez-grafu");
+        ontology.setGraphName(null);
+        ontology.setUserId("user1");
+        ontology.setIsPublished(false);
+
+        com.dia.ismdtoolbackend.entity.DiagramEntity diagram =
+                new com.dia.ismdtoolbackend.entity.DiagramEntity();
+        diagram.setId(42L);
+        diagram.setOntologyMetadata(ontology);
+        diagram.setUserId("user1");
+
+        when(diagramRepository.searchByOntologyText("bez-grafu")).thenReturn(List.of(diagram));
+        lenient().when(diagramRepository.countSearchByOntologyText("bez-grafu")).thenReturn(1L);
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "bez-grafu", SearchType.DIAGRAM, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertNotNull(dto.getIri(), "a graphless diagram must still carry a dedup key");
+        assertEquals("diagram:42", dto.getIri());
+        assertEquals(SearchType.DIAGRAM, dto.getType());
+    }
+
     // --- Helpers ---
 
     private ConceptMetadataEntity createConcept(String iri, String slug, String name,

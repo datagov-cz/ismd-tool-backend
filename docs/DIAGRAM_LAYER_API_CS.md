@@ -1,6 +1,7 @@
 # Diagramová vrstva: FE / REST kontrakt
 
-> Stav: **kontrakt uzamčen; controller zatím není hotový.** Anglická verze:
+> Stav: **hotovo** — `DiagramController` implementuje všechny níže uvedené endpointy a cesty jsou
+> v allowlistu SecurityConfig. Kontrakt je stabilní; integrace FE může začít. Anglická verze:
 > [`DIAGRAM_LAYER_API.md`](./docs/DIAGRAM_LAYER_API.md). Architektura a zdůvodnění:
 > [`DIAGRAM_LAYER_CS.md`](./docs/DIAGRAM_LAYER_CS.md).
 
@@ -193,6 +194,7 @@ Aplikuje každou nasazenou změnu. Jedna položka na nasazenou **změnu** (změn
 - `error: "VALIDATION"` (HTTP 400) — úprava pojmu neprošla validací; overlay ponechán, opravit a zkusit znovu.
 - `error: "STALE_BASE"` (HTTP 409) — podkladový pojem byl od nasazení overlaye editován (běžným `/api/concept`); FE by měl diagram znovu načíst a znovu nasadit.
 - `error: "CASCADE_CONFLICT"` — op 6 (vztah→hierarchie) zablokována, protože doména/obor hodnot jiného pojmu míří na daný VZTAH (jeho smazání by kaskádovalo); zobrazit a nechat uživatele vyřešit.
+- `error: "ERROR"` (HTTP 500) — neočekávaná chyba na straně serveru; překryv zůstává zachován. `message` je vždy obecné `"Nastala neočekávaná chyba."` — konkrétní příčina se pouze loguje na serveru a nikdy se nevrací, takže FE ji má zobrazit tak, jak je, a nepokoušet se ji parsovat.
 - `skippedStale` — odkazovaný pojem již neexistuje; nabídnout odebrat-nebo-znovu-vytvořit.
 
 ---

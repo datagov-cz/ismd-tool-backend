@@ -1,6 +1,7 @@
 # Diagramová vrstva: architektura a návrh
 
-> Stav: **návrh + entitní vrstva hotová; servisní/controller vrstva zatím ne.** Anglická verze:
+> Stav: **hotovo** — entitní vrstva/migrace, služby, controller i zabezpečení jsou implementovány a pokryty
+> testy. Před vydáním zbývá: end-to-end ověření proti dev Postgres + Fuseki. Anglická verze:
 > [`DIAGRAM_LAYER.md`](./docs/DIAGRAM_LAYER.md). FE/REST kontrakt: [`DIAGRAM_LAYER_API_CS.md`](./docs/DIAGRAM_LAYER_API_CS.md).
 
 Plátno založené na ReactFlow, které vizuálně zobrazuje a edituje ISMD ontologii — jeden kanonický diagram na ontologii — s modelem perzistence navrženým tak, aby se diagram *nikdy* nemohl tiše stát rozcházející se kopií dat pojmů.

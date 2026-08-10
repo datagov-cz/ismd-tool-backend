@@ -1,6 +1,7 @@
 # The Diagram Layer: Architecture & Design
 
-> Status: **design + entity layer built; service/controller not yet built.** Czech version:
+> Status: **built** — entity/migration, service, controller, and security are implemented and covered by the
+> test suite. Remaining before release: an end-to-end run against dev Postgres + Fuseki. Czech version:
 > [`DIAGRAM_LAYER_CS.md`](./docs/DIAGRAM_LAYER_CS.md). FE/REST contract: [`DIAGRAM_LAYER_API.md`](./docs/DIAGRAM_LAYER_API.md).
 
 A ReactFlow-based canvas that renders and edits an ISMD ontology visually — one canonical diagram per ontology — with a persistence model designed so the diagram *can never* silently become a divergent copy of your concept data.

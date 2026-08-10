@@ -1,6 +1,7 @@
 # The Diagram Layer: FE / REST Contract
 
-> Status: **contract locked; controller not yet built.** Czech version:
+> Status: **built** — `DiagramController` implements every endpoint below and the paths are in the
+> SecurityConfig allowlist. The contract is stable; FE integration can proceed. Czech version:
 > [`DIAGRAM_LAYER_API_CS.md`](./docs/DIAGRAM_LAYER_API_CS.md). Architecture & rationale:
 > [`DIAGRAM_LAYER.md`](./docs/DIAGRAM_LAYER.md).
 
@@ -191,6 +192,7 @@ Applies every staged change. One entry per staged **change** (a change may span 
 - `error: "VALIDATION"` (HTTP 400) — the concept edit failed validation; overlay retained, fix and retry.
 - `error: "STALE_BASE"` (HTTP 409) — the underlying concept was edited (via normal `/api/concept`) since the overlay was staged; the FE should reload the diagram and re-stage.
 - `error: "CASCADE_CONFLICT"` — op 6 (rel→hierarchy) blocked because another concept's domain/range points at the VZTAH (deleting it would cascade); surface and let the user resolve.
+- `error: "ERROR"` (HTTP 500) — an unexpected server-side failure; overlay retained. `message` is always the generic `"Nastala neočekávaná chyba."` — the underlying cause is server-logged, never returned, so the FE should show it as-is and not try to parse it.
 - `skippedStale` — the referenced concept no longer exists; offer remove-or-recreate.
 
 ---

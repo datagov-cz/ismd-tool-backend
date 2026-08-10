@@ -454,6 +454,33 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                 .orElseThrow().getPendingEdit()).isNotNull();
     }
 
+    @Test
+    void materialize_unexpectedFailure_reportsGenericMessageNotRawException() {
+        ConceptMetadataEntity subject = create(classModel("Leak Probe", true));
+
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of("https://slovnik.gov.cz/g/pojem/leak-target"));
+        stageNode(subject.getConceptIri(), overlay);
+
+        // Force the roleless branch's sibling: corrupt the stored concept type so buildEdit's switch has no
+        // matching arm for a structural overlay, surfacing an unclassified RuntimeException.
+        txTemplate.executeWithoutResult(tx -> {
+            ConceptMetadataEntity row = conceptRepo.findByConceptIri(subject.getConceptIri()).orElseThrow();
+            row.setConceptType(ConceptType.KONCEPT);
+            conceptRepo.saveAndFlush(row);
+        });
+
+        MaterializeResultDto result = materializeService.materialize(diagramId());
+
+        assertThat(result.failed()).hasSize(1);
+        MaterializeResultDto.Failed failure = result.failed().get(0);
+        // Whatever the classification, the client never sees raw exception text.
+        assertThat(failure.message()).doesNotContain("Exception", "java.", "SQL", "select ", "insert ");
+        if (failure.status() == 500) {
+            assertThat(failure.message()).isEqualTo("Nastala neočekávaná chyba.");
+        }
+    }
+
     @TestConfiguration
     static class Beans {
         @Bean OutboxConfig outboxConfig() {

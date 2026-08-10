@@ -277,11 +277,15 @@ public class IsmdSearchProvider implements SearchProvider {
                 .toList();
     }
 
+    private String diagramSearchKey(DiagramEntity d, String graphName) {
+        return graphName != null ? graphName + "#diagram" : "diagram:" + d.getId();
+    }
+
     private SearchResultDto mapDiagramEntity(DiagramEntity d) {
         String graphName = d.getOntologyMetadata().getGraphName();
         return SearchResultDto.builder()
                 .id(d.getId())
-                .iri(graphName != null ? graphName + "#diagram" : null)
+                .iri(diagramSearchKey(d, graphName))
                 .slug(d.getOntologyMetadata().getSlug())
                 .label(d.getOntologyMetadata().getSlug())
                 .type(SearchType.DIAGRAM)
