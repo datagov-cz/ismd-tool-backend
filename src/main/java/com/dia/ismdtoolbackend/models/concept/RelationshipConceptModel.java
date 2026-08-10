@@ -20,7 +20,6 @@ public class RelationshipConceptModel extends ConceptCreateModel {
     private Boolean isInPPDF;
     private Boolean isPublic;
     private List<String> privacyProvisions;
-    private String codeListDataset;
 
     @Override
     public ConceptType getConceptTypeEnum() {

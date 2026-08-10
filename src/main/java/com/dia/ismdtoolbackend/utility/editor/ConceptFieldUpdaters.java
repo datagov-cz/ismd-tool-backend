@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.utility.editor;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.UtilityMethods;
@@ -301,11 +302,11 @@ class ConceptFieldUpdaters {
 
         for (String provision : privacyProvisions) {
             if (provision == null || provision.trim().isEmpty()) continue;
-            String trimmed = provision.trim();
-            if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-                newProvisions.add(trimmed);
+            String canonical = EsbirkaEliParser.canonicalizeHost(provision.trim());
+            if (SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+                newProvisions.add(canonical);
             } else {
-                log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                log.warn("Skipping privacy provision — not a canonical e-Sbírka ELI IRI: {}", provision.trim());
             }
         }
 
@@ -511,11 +512,11 @@ class ConceptFieldUpdaters {
 
         for (String source : newSources) {
             if (source == null || source.trim().isEmpty()) continue;
-            String trimmed = source.trim();
-            if (SparqlIriValidator.isEsbirkaEliIri(trimmed)) {
-                newSourceURIs.add(trimmed);
+            String canonical = EsbirkaEliParser.canonicalizeHost(source.trim());
+            if (SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+                newSourceURIs.add(canonical);
             } else {
-                log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", trimmed);
+                log.warn("Skipping legal source — not a canonical e-Sbírka ELI IRI: {}", source.trim());
             }
         }
 
@@ -715,38 +716,45 @@ class ConceptFieldUpdaters {
         updateSharingMethodList(newConcept, sharingMethod, oldConcept, model, toRemove, toAdd);
     }
 
-    void updateCodeListDataset(Resource newConcept, String newDatasetUrl,
+    /**
+     * Rewrites the code-list structure: the číselník is a named subject carrying its type and
+     * its NKOD dataset. Class concepts only.
+     *
+     * <p>The removal branch drops the old číselník's own statements as well as the link. Fully exhaustive.
+     */
+    void updateCodeListDataset(Resource newConcept, String newCodeListIri, String newDatasetUrl,
                                          Resource oldConcept, Model model,
                                          Set<Statement> toRemove, Set<Statement> toAdd) {
-        if (newDatasetUrl == null) return;
+        if (newCodeListIri == null && newDatasetUrl == null) return;
 
         Property instanceDefinedByCodeList = model.createProperty(
                 OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
 
-        // Remove existing code list dataset structure (blank node and its statements)
         if (oldConcept.hasProperty(instanceDefinedByCodeList)) {
             StmtIterator stmtIter = oldConcept.listProperties(instanceDefinedByCodeList);
             while (stmtIter.hasNext()) {
                 Statement stmt = stmtIter.next();
                 toRemove.add(stmt);
                 if (stmt.getObject().isResource()) {
-                    Resource blankNode = stmt.getObject().asResource();
-                    StmtIterator bnIter = blankNode.listProperties();
-                    while (bnIter.hasNext()) {
-                        toRemove.add(bnIter.next());
+                    Resource codeListNode = stmt.getObject().asResource();
+                    StmtIterator nodeIter = codeListNode.listProperties();
+                    while (nodeIter.hasNext()) {
+                        toRemove.add(nodeIter.next());
                     }
                 }
             }
         }
 
-        // Add new structure if value is non-empty
-        if (!newDatasetUrl.trim().isEmpty()) {
+        // Add the new structure. Both IRIs are present together or not at all —
+        // ConceptEditValidator rejects the one-sided cases before this runs.
+        if (newCodeListIri != null && !newCodeListIri.trim().isEmpty()
+                && newDatasetUrl != null && !newDatasetUrl.trim().isEmpty()) {
             Resource codeListType = model.createResource(
                     OFN_NAMESPACE_LEGAL + CISELNIK);
             Property datasetProperty = model.createProperty(
                     OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
 
-            Resource codeListNode = model.createResource();
+            Resource codeListNode = model.createResource(newCodeListIri.trim());
             toAdd.add(model.createStatement(codeListNode, RDF.type, codeListType));
             toAdd.add(model.createStatement(codeListNode, datasetProperty,
                     model.createResource(newDatasetUrl.trim())));

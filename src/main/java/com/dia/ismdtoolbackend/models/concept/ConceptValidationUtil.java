@@ -9,6 +9,8 @@ public final class ConceptValidationUtil {
 
     private static final String NKOD_DATASET_PATTERN = "^https://data\\.gov\\.cz/zdroj/datové-sady/.*$";
 
+    private static final String ABSOLUTE_IRI_PATTERN = "^https?://\\S+$";
+
     private static final Set<String> ALLOWED_GOVERNANCE_VALUES = Set.of(
             // způsoby-sdílení-údajů
             "veřejně přístupné", "poskytované na žádost", "nesdílené",
@@ -49,6 +51,35 @@ public final class ConceptValidationUtil {
     public static void validateCodeListDataset(String codeListDataset) {
         if (codeListDataset != null && !codeListDataset.trim().isEmpty() && !codeListDataset.matches(NKOD_DATASET_PATTERN)) {
             throw new OntologyException("Neplatná URL datové sady v NKOD: " + codeListDataset);
+        }
+    }
+
+    /** The číselník IRI must be an absolute IRI; it identifies the code list itself. */
+    public static void validateCodeListIri(String codeListIri) {
+        if (codeListIri == null || codeListIri.trim().isEmpty()) {
+            return;
+        }
+        String value = codeListIri.trim();
+        if (!value.matches(ABSOLUTE_IRI_PATTERN)) {
+            throw new OntologyException("Neplatné IRI číselníku: " + codeListIri);
+        }
+    }
+
+    /**
+     * Both code-list IRIs are mandatory together: a class either has no code list at all,
+     * or it declares the číselník IRI and its NKOD dataset IRI.
+     */
+    public static void validateCodeListCompleteness(String codeListIri, String codeListDataset) {
+        boolean hasIri = codeListIri != null && !codeListIri.trim().isEmpty();
+        boolean hasDataset = codeListDataset != null && !codeListDataset.trim().isEmpty();
+
+        if (hasIri && !hasDataset) {
+            throw new OntologyException(
+                    "Je uvedeno IRI číselníku, ale chybí IRI zastřešující datové sady v NKOD");
+        }
+        if (hasDataset && !hasIri) {
+            throw new OntologyException(
+                    "Je uvedena datová sada v NKOD, ale chybí IRI číselníku");
         }
     }
 

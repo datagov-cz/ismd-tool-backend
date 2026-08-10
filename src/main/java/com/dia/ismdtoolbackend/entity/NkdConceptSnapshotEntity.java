@@ -6,6 +6,8 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.Dev
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -105,7 +107,14 @@ public class NkdConceptSnapshotEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // JavaTimeModule is required: ConceptDetailModel embeds ResolvedLegalSourceDto, which carries
+    // LocalDate fields. Without it, serializing any snapshot whose NKD twin has a dated legal source
+    // throws InvalidDefinitionException — silently caught below — leaving snapshot_json null and the
+    // LINK_TARGET deviation permanently QUERY_ERROR. ISO strings (not timestamp arrays) to match the
+    // app's Spring mapper on read-back.
     private static final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /** Deserialize the stored NKD detail. Returns {@code null} on absent/malformed JSON (logged). */

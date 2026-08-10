@@ -261,6 +261,7 @@ class ConceptEditorFieldEdgeCasesTest {
         seedClass(iri);
         Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
         ClassConceptEditModel m = classModel();
+        m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-1");
         m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-1");
 
         editor.editConcept(iri, m, model, null);
@@ -306,6 +307,75 @@ class ConceptEditorFieldEdgeCasesTest {
 
         editor.editConcept(iri, m, model, null);
         assertEquals(before, model.size());
+    }
+
+    // ---- named číselník: rewrite must leave no stale subject behind ----
+
+    @Test
+    void codeList_namedCiselnik_leavesNoStaleTriples_whenIriChanges() {
+        String iri = DEFAULT_NS + "codelist-swap";
+        Resource r = seedClass(iri);
+        String oldCodeList = "https://data.mvcr.gov.cz/zdroj/číselníky/stary";
+        String newCodeList = "https://data.mvcr.gov.cz/zdroj/číselníky/novy";
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+        Resource oldNode = model.createResource(oldCodeList);
+        oldNode.addProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK));
+        oldNode.addProperty(datasetProp, model.createResource("https://data.gov.cz/zdroj/datové-sady/stara"));
+        r.addProperty(instanceDefinedBy, oldNode);
+
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri(newCodeList);
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/nova");
+
+        editor.editConcept(iri, m, model, null);
+
+        // The old číselník carries no skos:inScheme, so a leaked subject would be invisible
+        // to the reconciler and could never be repaired — it must be gone entirely.
+        assertFalse(model.containsResource(model.createResource(oldCodeList)),
+                "old číselník subject must leave no triples behind");
+
+        Resource updated = model.getResource(iri);
+        Resource linked = updated.getProperty(instanceDefinedBy).getObject().asResource();
+        assertEquals(newCodeList, linked.getURI(), "concept must link to the new číselník");
+        assertTrue(linked.hasProperty(datasetProp), "new číselník must carry its dataset");
+    }
+
+    // ---- code-list completeness: both IRIs are mandatory together (class only) ----
+
+    @Test
+    void codeList_rejectsDatasetWithoutCodeListIri() {
+        String iri = DEFAULT_NS + "codelist-incomplete-dataset";
+        seedClass(iri);
+        ClassConceptEditModel m = classModel();
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-2");
+
+        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
+                "dataset without a číselník IRI must be rejected");
+    }
+
+    @Test
+    void codeList_rejectsCodeListIriWithoutDataset() {
+        String iri = DEFAULT_NS + "codelist-incomplete-iri";
+        seedClass(iri);
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-2");
+
+        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
+                "číselník IRI without a dataset must be rejected");
+    }
+
+    @Test
+    void codeList_rejectsMalformedCodeListIri() {
+        String iri = DEFAULT_NS + "codelist-malformed-iri";
+        seedClass(iri);
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("nikoliv-iri");
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-3");
+
+        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
+                "a non-absolute číselník IRI must be rejected");
     }
 
     // ---- updateSuperPropertyList (relationship superRelation): clear ----

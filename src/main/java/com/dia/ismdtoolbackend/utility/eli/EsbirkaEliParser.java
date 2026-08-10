@@ -82,6 +82,16 @@ public final class EsbirkaEliParser {
                 versionDate, List.copyOf(fragmentSegments), ParsedEli.Level.FRAGMENT);
     }
 
+    /**
+     * Rewrites a legacy e-Sbírka host ({@code opendata.eselpoint.cz}, bare {@code eselpoint.cz}) to the
+     * canonical {@code opendata.eselpoint.gov.cz} form, leaving already-canonical or unrelated IRIs
+     * untouched. Write paths call this before validating/storing so a legacy IRI is accepted and persisted
+     * canonically — matching what {@link #parse} does on the read side.
+     */
+    public static String canonicalizeHost(String url) {
+        return normalizeHost(url);
+    }
+
     static String normalizeHost(String url) {
         int legacy = url.indexOf(LEGACY_HOST_PREFIX);
         if (legacy >= 0) {

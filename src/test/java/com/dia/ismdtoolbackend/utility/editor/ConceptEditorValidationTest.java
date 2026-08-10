@@ -83,6 +83,25 @@ class ConceptEditorValidationTest {
     }
 
     @Test
+    void acceptsLegacyHostEliAndStoresCanonical() {
+        // Legacy e-Sbírka host (.cz) is canonicalized to .gov.cz, so the edit is accepted (not a 400)
+        // and the legal source is written in canonical form — consistent with the read/parse path.
+        ClassConceptEditModel m = baseModel();
+        m.setDefiningLegalSource(List.of(
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8"));
+
+        assertDoesNotThrow(() -> conceptEditor.editConcept(conceptIri, m, model, null));
+
+        org.apache.jena.rdf.model.Property defining =
+                model.createProperty(OFN_NAMESPACE + com.dia.constants.VocabularyConstants.DEFINUJICI_USTANOVENI);
+        String stored = model.getResource(conceptIri).listProperties(defining)
+                .nextStatement().getObject().asResource().getURI();
+        assertEquals(
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8",
+                stored);
+    }
+
+    @Test
     void rejectsBlankAndInvalidNonLegalUrls() {
         ClassConceptEditModel m = baseModel();
         m.setDefiningNonLegalSource(List.of(new DigitalObjectModel("Doc", "Popis", "")));

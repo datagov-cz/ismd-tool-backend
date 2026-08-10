@@ -11,6 +11,9 @@ public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSn
     /** All snapshots owned by one concept (detail view, concept-delete cleanup). */
     List<NkdConceptSnapshotEntity> findByOwningConceptId(Long owningConceptId);
 
+    /** All snapshots owned by any of the given concepts (concept-delete cleanup). */
+    List<NkdConceptSnapshotEntity> findByOwningConceptIdIn(List<Long> owningConceptIds);
+
     /** All snapshots in one graph (ontology-delete cleanup). */
     List<NkdConceptSnapshotEntity> findByGraphName(String graphName);
 

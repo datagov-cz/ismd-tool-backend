@@ -20,7 +20,6 @@ public class RelationshipConceptEditModel extends ConceptEditModel {
     private List<String> sharingMethod;
     private String acquisitionMethod;
     private String contentType;
-    private String codeListDataset;
 
     @Override
     public ConceptType getConceptTypeEnum() {

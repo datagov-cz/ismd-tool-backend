@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -275,7 +276,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areDifferent(local.getDefiningLegalSources(), published.getDefiningLegalSources())) {
+        if (eliListsDiffer(local.getDefiningLegalSources(), published.getDefiningLegalSources())) {
             builder.definingLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getDefiningLegalSources())
                     .publishedValue(published.getDefiningLegalSources())
@@ -291,7 +292,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areDifferent(local.getRelatedLegalSources(), published.getRelatedLegalSources())) {
+        if (eliListsDiffer(local.getRelatedLegalSources(), published.getRelatedLegalSources())) {
             builder.relatedLegalSources(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getRelatedLegalSources())
                     .publishedValue(published.getRelatedLegalSources())
@@ -519,7 +520,7 @@ public class ConceptDeviationComparator {
             OntologyDetailModel.ConceptDetailModel published,
             PublishedConceptDeviationModel.PublishedConceptDeviationModelBuilder builder) {
 
-        if (areDifferent(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
+        if (eliListsDiffer(local.getPrivacyProvisions(), published.getPrivacyProvisions())) {
             builder.privacyProvisions(PublishedConceptDeviationModel.PropertyDeviation.<List<String>>builder()
                     .localValue(local.getPrivacyProvisions())
                     .publishedValue(published.getPrivacyProvisions())
@@ -528,6 +529,34 @@ public class ConceptDeviationComparator {
             return true;
         }
         return false;
+    }
+
+    /**
+     * ELI-list deviation: like {@link #areDifferent} for {@code List<String>}, but each IRI is
+     * host-canonicalized first. We store legal-source/provision ELIs in canonical {@code .gov.cz} form
+     * while NKD still publishes the legacy {@code .cz} host; without canonicalizing both sides the two
+     * would deviate forever on the host alone. Malformed combined values (a {@code ';'}-joined pair from
+     * upstream) are dropped from both sides — they are not valid ELIs, so a concept whose only NKD source
+     * is such junk must not deviate forever. Order-insensitive; null/empty on both sides is not a deviation.
+     */
+    private boolean eliListsDiffer(List<String> local, List<String> published) {
+        Set<String> localSet = canonicalizeEliSet(local);
+        Set<String> publishedSet = canonicalizeEliSet(published);
+        if (localSet.isEmpty() && publishedSet.isEmpty()) return false;
+        return !localSet.equals(publishedSet);
+    }
+
+    private Set<String> canonicalizeEliSet(List<String> iris) {
+        Set<String> out = new HashSet<>();
+        if (iris == null) return out;
+        for (String iri : iris) {
+            if (iri == null) continue;
+            String canonical = EsbirkaEliParser.canonicalizeHost(iri);
+            // Drop malformed combined values (a ';'-joined ELI is not a single valid reference).
+            if (canonical.indexOf(';') >= 0) continue;
+            out.add(canonical);
+        }
+        return out;
     }
 
     private <T> boolean areDifferent(T value1, T value2) {

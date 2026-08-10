@@ -25,7 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -185,25 +187,34 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
         if (deletedConceptIds == null || deletedConceptIds.isEmpty()) {
             return;
         }
-        List<NkdConceptSnapshotEntity> rows = deletedConceptIds.stream()
-                .flatMap(id -> snapshotRepository.findByOwningConceptId(id).stream())
-                .filter(s -> graphName.equals(s.getGraphName()))
-                .toList();
+        // Key on the owning-concept FK alone. The denormalized graph_name drifts on ontology rename
+        // (concepts move to the new graph, snapshots keep the old one), so filtering by graphName would
+        // strand rows and the concept DELETE would hit fk_nkd_snapshot_owning_concept.
+        List<NkdConceptSnapshotEntity> rows = snapshotRepository.findByOwningConceptIdIn(deletedConceptIds);
         if (rows.isEmpty()) {
             return;
         }
         snapshotRepository.deleteAll(rows);
-        log.debug("Concept-deletion cascade: removed {} snapshot row(s) in {}", rows.size(), graphName);
+        log.debug("Concept-deletion cascade: removed {} snapshot row(s) for {} concept(s)",
+                rows.size(), deletedConceptIds.size());
     }
 
     @Override
     @Transactional
-    public void cascadeGraphDeletion(String graphName) {
-        List<NkdConceptSnapshotEntity> rows = snapshotRepository.findByGraphName(graphName);
-        if (!rows.isEmpty()) {
-            snapshotRepository.deleteAll(rows);
-            log.debug("Ontology-deletion cascade: removed {} snapshot row(s) for graph {}", rows.size(), graphName);
+    public void cascadeGraphDeletion(List<Long> conceptIds, String graphName) {
+        // Union of owner-FK rows (drift-proof — catches snapshots whose graph_name lags a rename) and any
+        // rows still tagged with the graph (belt-and-suspenders for orphans). Dedup by id before deleting.
+        Map<Long, NkdConceptSnapshotEntity> rows = new LinkedHashMap<>();
+        if (conceptIds != null && !conceptIds.isEmpty()) {
+            snapshotRepository.findByOwningConceptIdIn(conceptIds).forEach(r -> rows.put(r.getId(), r));
         }
+        snapshotRepository.findByGraphName(graphName).forEach(r -> rows.put(r.getId(), r));
+        if (rows.isEmpty()) {
+            return;
+        }
+        List<NkdConceptSnapshotEntity> toDelete = List.copyOf(rows.values());
+        snapshotRepository.deleteAll(toDelete);
+        log.debug("Ontology-deletion cascade: removed {} snapshot row(s) for graph {}", toDelete.size(), graphName);
     }
 
     @Override
