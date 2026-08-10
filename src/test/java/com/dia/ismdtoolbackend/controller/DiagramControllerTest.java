@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -23,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -66,7 +69,7 @@ class DiagramControllerTest {
                 .andExpect(jsonPath("$.data[0].ontologySlug").value("pracovni-pomer"))
                 .andExpect(jsonPath("$.data[0].nodeCount").value(7));
     }
-    
+
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void getDetail_readableByNonOwner() throws Exception {
@@ -98,5 +101,38 @@ class DiagramControllerTest {
 
         mockMvc.perform(post("/api/diagram/pracovni-pomer/materialize"))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * The node id travels in the BODY, not the path — a real {@code iri:https://…/pojem/…} contains slashes
+     * that no path segment can carry (Tomcat rejects {@code %2F}). Uses a full slash-bearing IRI on purpose:
+     * a slash-free placeholder would pass regardless and prove nothing.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void stageOverlay_nodeIdWithSlashesTravelsInBody() throws Exception {
+        String nodeId = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
+        when(diagramService.stageOverlay(eq("pracovni-pomer"), eq(nodeId), any()))
+                .thenReturn(new DiagramDto.Node("n1", "relationNode",
+                        new PositionDto(0.0, 0.0), null, null));
+
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nodeId": "%s",
+                                 "domain": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/parcela",
+                                 "range": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova"}
+                                """.formatted(nodeId)))
+                .andExpect(status().isOk());
+    }
+
+    /** {@code nodeId} is mandatory — addressing, not content. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void stageOverlay_rejectsMissingNodeId() throws Exception {
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"domain\": \"https://x/A\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

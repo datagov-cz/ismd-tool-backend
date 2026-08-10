@@ -55,6 +55,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -424,7 +425,7 @@ public class ConceptServiceImpl implements ConceptService {
         ConceptEditModel editModel = newEditModelFor(metadata.getConceptType());
         editModel.setConceptType(metadata.getConceptType().name());
 
-        carryCurrentDataClassification(editModel, metadata, accepted);
+        carryCurrentDataClassification(editModel, metadata);
         accepted.forEach(key -> syncFields.apply(key, editModel, nkd));
         return editModel;
     }
@@ -450,7 +451,7 @@ public class ConceptServiceImpl implements ConceptService {
      * Do not reuse this read-then-edit shape where that lock is not held.
      */
     private void carryCurrentDataClassification(
-            ConceptEditModel editModel, ConceptMetadataEntity metadata, Set<String> accepted) {
+            ConceptEditModel editModel, ConceptMetadataEntity metadata) {
         Model model = jenaTDB2Repository.fetchGraph(metadata.getGraphName());
         Resource concept = model.getResource(metadata.getConceptIri());
         Boolean isPublic = currentIsPublic(model, concept);
@@ -880,8 +881,13 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
+    /**
+     * Persist the metadata row at the end of an edit. {@code updatedAt} is stamped explicitly so it means
+     * "the concept last changed" — including RDF-only changes.
+     */
     private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI) {
         try {
+            metadata.setUpdatedAt(LocalDateTime.now());
             ConceptMetadataEntity savedMetadata = conceptMetadataRepository.save(metadata);
             log.info("Metadata updated successfully for concept: {}", conceptIRI);
             return conceptMetadataMapper.toDto(savedMetadata);
