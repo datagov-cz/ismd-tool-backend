@@ -20,7 +20,6 @@ import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -201,13 +200,18 @@ public class DiagramServiceImpl implements DiagramService {
                 .orElseGet(() -> provisionDiagram(ontology));
     }
 
+    /**
+     * Create the diagram row for an ontology. {@code userId} mirrors the ontology's owner, never the
+     * requesting user — a diagram belongs to whoever owns the ontology it describes.
+     */
     private DiagramEntity provisionDiagram(OntologyMetadataEntity ontology) {
         DiagramEntity diagram = new DiagramEntity();
         diagram.setOntologyMetadata(ontology);
-        diagram.setUserId(SecurityUtils.getCurrentUser().getUserId());
+        diagram.setUserId(ontology.getUserId());
         try {
             return diagramRepository.saveAndFlush(diagram);
         } catch (DataIntegrityViolationException e) {
+            // Concurrent provision won the uq_diagrams_ontology_metadata race; adopt its row.
             return diagramRepository.findByOntologyMetadataId(ontology.getId()).orElseThrow(() -> e);
         }
     }
