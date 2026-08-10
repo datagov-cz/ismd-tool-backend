@@ -37,11 +37,15 @@ class IsmdSearchProviderTest {
     @Mock
     private DiagramRepository diagramRepository;
 
+    @Mock
+    private DiagramSearchLookup diagramSearchLookup;
+
     private IsmdSearchProvider createProvider() {
         Executor directExecutor = Runnable::run;
         return new IsmdSearchProvider(
                 ontologyMetadataRepository, conceptMetadataRepository,
-                jenaTDB2Repository, diagramRepository, directExecutor, 10_000L, 10_000L);
+                jenaTDB2Repository, diagramRepository, diagramSearchLookup,
+                directExecutor, 10_000L, 10_000L);
     }
 
     // --- Phase 3 tests ---
@@ -503,22 +507,25 @@ class IsmdSearchProviderTest {
                 "Ontology Fuseki hits must not carry a self-referential ontologyIri");
     }
 
+    /**
+     * The provider passes DIAGRAM rows through from {@link DiagramSearchLookup} untouched. Entity→DTO
+     * mapping (and the graphless {@code diagram:<id>} dedup key) now lives in that bean, where it runs
+     * inside an open session — it is covered by {@code DiagramSearchLookupIntegrationTest} against a
+     * real database, which is the only place a detached-proxy regression can be caught.
+     */
     @Test
-    void diagramOnGraphlessOntology_getsNonNullDedupKey() {
-        OntologyMetadataEntity ontology = new OntologyMetadataEntity();
-        ontology.setSlug("bez-grafu");
-        ontology.setGraphName(null);
-        ontology.setUserId("user1");
-        ontology.setIsPublished(false);
+    void diagramResults_passThroughFromLookup() {
+        SearchResultDto diagramRow = SearchResultDto.builder()
+                .id(42L)
+                .iri("diagram:42")
+                .slug("bez-grafu")
+                .label("bez-grafu")
+                .type(SearchType.DIAGRAM)
+                .source(SearchSource.ISMD)
+                .build();
 
-        com.dia.ismdtoolbackend.entity.DiagramEntity diagram =
-                new com.dia.ismdtoolbackend.entity.DiagramEntity();
-        diagram.setId(42L);
-        diagram.setOntologyMetadata(ontology);
-        diagram.setUserId("user1");
-
-        when(diagramRepository.searchByOntologyText("bez-grafu")).thenReturn(List.of(diagram));
-        lenient().when(diagramRepository.countSearchByOntologyText("bez-grafu")).thenReturn(1L);
+        when(diagramSearchLookup.search("bez-grafu")).thenReturn(List.of(diagramRow));
+        lenient().when(diagramSearchLookup.count("bez-grafu")).thenReturn(1L);
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();

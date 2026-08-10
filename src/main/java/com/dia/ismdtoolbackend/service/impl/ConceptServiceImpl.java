@@ -239,7 +239,8 @@ public class ConceptServiceImpl implements ConceptService {
             outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
             updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
             outboxRelayTrigger.nudgeAfterCommit();
-            return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+            return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
+                    contentChanged(toRemove, toAdd));
         }
 
         // Direct (outbox-disabled) path: the editor already applied its delta to `model`. Apply the merged
@@ -249,7 +250,12 @@ public class ConceptServiceImpl implements ConceptService {
         model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
-        return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+        return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
+                contentChanged(toRemove, toAdd));
+    }
+
+    private boolean contentChanged(Set<Statement> toRemove, Set<Statement> toAdd) {
+        return !toRemove.isEmpty() || !toAdd.isEmpty();
     }
 
     @Override
@@ -882,12 +888,16 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     /**
-     * Persist the metadata row at the end of an edit. {@code updatedAt} is stamped explicitly so it means
-     * "the concept last changed" — including RDF-only changes.
+     * Persist the metadata row at the end of an edit. When {@code contentChanged}, {@code updatedAt} is
+     * stamped explicitly so the column means "the concept last changed" — including RDF-only changes.
+     * A no-op edit leaves it unchanged.
      */
-    private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI) {
+    private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI,
+                                                       boolean contentChanged) {
         try {
-            metadata.setUpdatedAt(LocalDateTime.now());
+            if (contentChanged) {
+                metadata.setUpdatedAt(LocalDateTime.now());
+            }
             ConceptMetadataEntity savedMetadata = conceptMetadataRepository.save(metadata);
             log.info("Metadata updated successfully for concept: {}", conceptIRI);
             return conceptMetadataMapper.toDto(savedMetadata);

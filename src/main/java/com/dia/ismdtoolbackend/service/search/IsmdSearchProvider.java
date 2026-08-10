@@ -41,6 +41,7 @@ public class IsmdSearchProvider implements SearchProvider {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final DiagramRepository diagramRepository;
+    private final DiagramSearchLookup diagramSearchLookup;
     private final Executor searchExecutor;
     private final long fusekiTimeoutMs;
     private final long pgTimeoutMs;
@@ -49,6 +50,7 @@ public class IsmdSearchProvider implements SearchProvider {
                               ConceptMetadataRepository conceptMetadataRepository,
                               JenaTDB2Repository jenaTDB2Repository,
                               DiagramRepository diagramRepository,
+                              DiagramSearchLookup diagramSearchLookup,
                               @Qualifier("searchExecutor") Executor searchExecutor,
                               @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
                               @Value("${search.pg-timeout-ms:10000}") long pgTimeoutMs) {
@@ -56,6 +58,7 @@ public class IsmdSearchProvider implements SearchProvider {
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
         this.diagramRepository = diagramRepository;
+        this.diagramSearchLookup = diagramSearchLookup;
         this.searchExecutor = searchExecutor;
         this.fusekiTimeoutMs = fusekiTimeoutMs;
         this.pgTimeoutMs = pgTimeoutMs;
@@ -272,32 +275,12 @@ public class IsmdSearchProvider implements SearchProvider {
      * ontology's ONTOLOGY row through dedup.
      */
     private List<SearchResultDto> searchDiagrams(String query) {
-        return diagramRepository.searchByOntologyText(query).stream()
-                .map(this::mapDiagramEntity)
-                .toList();
-    }
-
-    private String diagramSearchKey(DiagramEntity d, String graphName) {
-        return graphName != null ? graphName + "#diagram" : "diagram:" + d.getId();
-    }
-
-    private SearchResultDto mapDiagramEntity(DiagramEntity d) {
-        String graphName = d.getOntologyMetadata().getGraphName();
-        return SearchResultDto.builder()
-                .id(d.getId())
-                .iri(diagramSearchKey(d, graphName))
-                .slug(d.getOntologyMetadata().getSlug())
-                .label(d.getOntologyMetadata().getSlug())
-                .type(SearchType.DIAGRAM)
-                .source(SearchSource.ISMD)
-                .ontologyIri(graphName)
-                .lastModified(d.getUpdatedAt() != null ? d.getUpdatedAt().toString() : null)
-                .build();
+        return diagramSearchLookup.search(query);
     }
 
     private Integer countDiagramMatches(String query) {
         try {
-            return (int) diagramRepository.countSearchByOntologyText(query);
+            return (int) diagramSearchLookup.count(query);
         } catch (RuntimeException e) {
             log.warn("PG diagram total-count failed: {}", e.getMessage());
             return null;
