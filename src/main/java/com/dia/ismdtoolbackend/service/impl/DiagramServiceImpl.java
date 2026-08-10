@@ -25,6 +25,7 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,12 +71,12 @@ public class DiagramServiceImpl implements DiagramService {
                 diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
     }
 
-    // Not readOnly: first open lazy-provisions the diagram row (getOrCreateDiagram INSERTs).
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public DiagramDto getDiagram(String ontologySlug) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
-        DiagramEntity diagram = getOrCreateDiagram(ontology);
+        DiagramEntity diagram = diagramRepository.findByOntologyMetadataId(ontology.getId())
+                .orElseGet(() -> transientDiagram(ontology));
         return assemble(ontologySlug, diagram, liveConcepts(ontology.getGraphName()));
     }
 
@@ -204,7 +205,22 @@ public class DiagramServiceImpl implements DiagramService {
         DiagramEntity diagram = new DiagramEntity();
         diagram.setOntologyMetadata(ontology);
         diagram.setUserId(SecurityUtils.getCurrentUser().getUserId());
-        return diagramRepository.save(diagram);
+        try {
+            return diagramRepository.saveAndFlush(diagram);
+        } catch (DataIntegrityViolationException e) {
+            return diagramRepository.findByOntologyMetadataId(ontology.getId()).orElseThrow(() -> e);
+        }
+    }
+
+    /**
+     * Unsaved stand-in for an ontology with no diagram yet — renders as an empty canvas without
+     * creating a row. Carries only what {@link #assemble} reads: the ontology, an empty node list
+     * and a null viewport.
+     */
+    private DiagramEntity transientDiagram(OntologyMetadataEntity ontology) {
+        DiagramEntity diagram = new DiagramEntity();
+        diagram.setOntologyMetadata(ontology);
+        return diagram;
     }
 
     /** Live concept detail keyed by IRI; empty when the ontology graph has no concepts yet. */

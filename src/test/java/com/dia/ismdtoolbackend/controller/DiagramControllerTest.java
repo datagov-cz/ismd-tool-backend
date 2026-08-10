@@ -66,8 +66,7 @@ class DiagramControllerTest {
                 .andExpect(jsonPath("$.data[0].ontologySlug").value("pracovni-pomer"))
                 .andExpect(jsonPath("$.data[0].nodeCount").value(7));
     }
-
-    // Read authz is deliberate: a NON-owner authenticated user may read (and lazily provision) any diagram.
+    
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void getDetail_readableByNonOwner() throws Exception {
