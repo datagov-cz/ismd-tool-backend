@@ -196,7 +196,7 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("GET", "/api/diagram/all"),
                 Arguments.of("GET", "/api/diagram/test/detail"),
                 Arguments.of("PUT", "/api/diagram/test/layout"),
-                Arguments.of("PATCH", "/api/diagram/test/nodes/iri:x/overlay"),
+                Arguments.of("PATCH", "/api/diagram/test/nodes/overlay"),
                 Arguments.of("POST", "/api/diagram/test/materialize")
         );
     }

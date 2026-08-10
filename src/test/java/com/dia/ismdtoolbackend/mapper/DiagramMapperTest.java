@@ -49,7 +49,8 @@ class DiagramMapperTest {
 
     @Test
     void toPendingEdit_allNullBody_discards() {
-        NodeOverlayDto allNull = new NodeOverlayDto(null, null, null, null, null, null, null);
+        // nodeId is addressing, not content — a body carrying only nodeId is still a discard.
+        NodeOverlayDto allNull = new NodeOverlayDto("iri:https://x/pojem/n", null, null, null, null, null, null, null);
         assertThat(mapper.toPendingEdit(allNull)).isNull();   // discard
         assertThat(mapper.toPendingEdit(null)).isNull();
     }
@@ -58,7 +59,7 @@ class DiagramMapperTest {
     void toPendingEdit_emptyListBody_stagesAsClearPredicate() {
         // op 2 flip A-side: "remove all superclasses" — an explicitly-empty list is NOT a discard.
         NodeOverlayDto clearBroader =
-                new NodeOverlayDto(null, null, List.of(), null, null, null, null);
+                new NodeOverlayDto("iri:https://x/pojem/n", null, null, List.of(), null, null, null, null);
 
         DiagramPendingEdit edit = mapper.toPendingEdit(clearBroader);
 
@@ -69,6 +70,7 @@ class DiagramMapperTest {
     @Test
     void toPendingEdit_copiesAllFieldsIncludingConvertMarker() {
         NodeOverlayDto dto = new NodeOverlayDto(
+                "iri:https://x/pojem/n",
                 "https://x/pojem/domain",
                 "https://x/pojem/range",
                 List.of("https://x/pojem/super-c"),

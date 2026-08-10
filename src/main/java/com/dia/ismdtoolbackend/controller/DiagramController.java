@@ -81,21 +81,21 @@ public class DiagramController {
 
     @Operation(
             summary = "Uložení překryvu uzlu",
-            description = "Uloží překryv (pending edit) jednoho uzlu do databáze. Prázdné tělo (všechna pole null) "
-                    + "překryv zahodí. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+            description = "Uloží překryv (pending edit) jednoho uzlu do databáze. Cílový uzel je určen polem "
+                    + "`nodeId` v těle požadavku. Tělo bez jakéhokoli pole překryvu (pouze `nodeId`) překryv "
+                    + "zahodí. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
-    @PatchMapping("/{ontologySlug}/nodes/{nodeId}/overlay")
+    @PatchMapping("/{ontologySlug}/nodes/overlay")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
     public ResponseEntity<ApiResponseDto<DiagramDto.Node>> stageOverlay(
             @PathVariable String ontologySlug,
-            @PathVariable String nodeId,
-            @RequestBody NodeOverlayDto overlay,
+            @Valid @RequestBody NodeOverlayDto overlay,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
         log.info("Diagram overlay stage requested, ontologySlug: {}, nodeId: {}, userId: {}",
-                ontologySlug, nodeId, securityUser.getUserId());
+                ontologySlug, overlay.nodeId(), securityUser.getUserId());
 
-        DiagramDto.Node node = diagramService.stageOverlay(ontologySlug, nodeId, overlay);
+        DiagramDto.Node node = diagramService.stageOverlay(ontologySlug, overlay.nodeId(), overlay);
         return ResponseEntity.ok().body(ApiResponseDto.success(node, "Překryv uzlu byl úspěšně uložen."));
     }
 

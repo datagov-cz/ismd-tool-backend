@@ -16,7 +16,7 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 | `GET /all` | Lightweight list of every diagram (identity + node count), e.g. for a diagram picker. Any authenticated user. | → `List<DiagramSummaryDto>` |
 | `GET /{ontologySlug}/detail` | Load the canonical diagram, layout joined to live concept content with overlays applied. Lazily provisions an empty diagram on first open. | → `DiagramDto` (fat, render-ready) |
 | `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edges-as-projections) *and* node overlays. Idempotent full-replace — this call **is** canvas membership: a node present is added (a previously-unseen IRI is hydrated in the response), a node omitted is removed from the canvas. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
-| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Stage/update one node's structural edit (end-state fields), or **discard** it with an empty body (`{}` / null → revert to live content). Not materialized. | `NodeOverlayDto` → node |
+| `PATCH /{ontologySlug}/nodes/overlay` | Stage/update one node's structural edit (end-state fields) for the node named by `nodeId` **in the body**, or **discard** it by sending only `nodeId` (all overlay fields null → revert to live content). Not materialized. | `NodeOverlayDto` → node |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Apply each staged change via the existing concept CRUD → outbox → RDF; multi-call changes all-or-nothing; per-change partial-ok. | → `MaterializeResultDto` + refreshed `DiagramDto` |
 
 **Canvas membership rides the layout save.** There is no dedicated add/remove-node endpoint. Because `PUT …/layout` is an idempotent full-replace, **add** = include the node (a bare `{id, position}` for a concept not yet on the canvas; the `DiagramDto` response hydrates its label/type/slug from live RDF) and **remove-from-canvas** = omit it. The concept is never touched by either — the single RDF delete the diagram causes is implicit, inside op 6, handled by `/materialize`.
@@ -134,13 +134,17 @@ Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send
 
 `edgeKind` ∈ `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH`.
 
-## Write — stage a structural edit: `PATCH /api/diagram/{ontologySlug}/nodes/{nodeId}/overlay` · `NodeOverlayDto`
+## Write — stage a structural edit: `PATCH /api/diagram/{ontologySlug}/nodes/overlay` · `NodeOverlayDto`
+
+**The target node is named by `nodeId` in the body, not in the path.** A node id is `iri:<full-iri>` and a concept IRI contains slashes, which cannot survive a path segment — percent-encoded, Tomcat rejects `%2F` outright (`400 Invalid URI: [The encoded slash character is not allowed]`); raw, the extra segments match no mapping. `nodeId` is mandatory (`@NotBlank`).
 
 Only the changed structural fields. Persisted to `pending_edit_json`; not sent to RDF until Převzít. The overlay is **structural-only** — there is no `label`/`name` here; label editing is done through the normal concept editor, not the diagram (a label change renames the concept IRI).
 
-**Discard = an all-null body.** A `PATCH` with `{}` (or a body where every field is null) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. Any payload carrying a field replaces the staged diff. **An explicitly-empty list is *not* a discard — it means "clear this predicate"**: e.g. `{ "broaderConcept": [] }` stages "remove all superclasses" (the flip op-2 A-side dropping its last broader), and materializes as a `subClassOf` clear.
+**Discard = a body carrying only `nodeId`.** A `PATCH` with `{"nodeId": "iri:…"}` (every overlay field null) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. `nodeId` is addressing, not content, so it never counts toward emptiness. Any payload carrying an overlay field replaces the staged diff. **An explicitly-empty list is *not* a discard — it means "clear this predicate"**: e.g. `{ "nodeId": "iri:…", "broaderConcept": [] }` stages "remove all superclasses" (the flip op-2 A-side dropping its last broader), and materializes as a `subClassOf` clear.
 
 Hierarchy is type-specific — send the field matching the node's concept type:
+
+Every body below also carries `"nodeId": "iri:…"` naming the node being staged (omitted here for brevity):
 
 ```jsonc
 // op 1 (swap direction, VZTAH):        { "domain": "iri:…/A", "range": "iri:…/B" }

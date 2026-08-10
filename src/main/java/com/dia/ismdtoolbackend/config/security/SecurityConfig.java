@@ -213,7 +213,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/diagram/all").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/diagram/*/detail").authenticated()
                         .requestMatchers(HttpMethod.PUT,   "/api/diagram/*/layout").authenticated()
-                        .requestMatchers(HttpMethod.PATCH, "/api/diagram/*/nodes/*/overlay").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/diagram/*/nodes/overlay").authenticated()
                         .requestMatchers(HttpMethod.POST,  "/api/diagram/*/materialize").authenticated()
                         // Admin-only PG↔TDB2 reconciler. Role check is enforced by
                         // @PreAuthorize("hasRole('ADMIN')") on the controller; this matcher
