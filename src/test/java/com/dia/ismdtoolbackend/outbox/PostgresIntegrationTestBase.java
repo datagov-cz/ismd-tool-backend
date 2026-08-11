@@ -23,6 +23,9 @@ public abstract class PostgresIntegrationTestBase {
     @SuppressWarnings("resource")
     static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
+                    // Raise the 100-slot default: each subclass is a separate Spring context with
+                    // its own pool, and all of them stay cached for the JVM's lifetime.
+                    .withCommand("postgres", "-c", "max_connections=300")
                     // Create the app schema as a DB init script — runs once at container start,
                     // before Liquibase connects. (Hikari connection-init-sql is not reliably
                     // applied to the Liquibase connection under @ServiceConnection.)
