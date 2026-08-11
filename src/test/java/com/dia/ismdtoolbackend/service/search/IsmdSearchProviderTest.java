@@ -513,6 +513,35 @@ class IsmdSearchProviderTest {
      * inside an open session — it is covered by {@code DiagramSearchLookupIntegrationTest} against a
      * real database, which is the only place a detached-proxy regression can be caught.
      */
+    /**
+     * A failing diagram lookup must not abort the whole ISMD provider. An uncaught throw here
+     * discarded the ontology and concept results already gathered and reported the entire source as
+     * ERROR — finding F4's blast radius, which outlived the fix to its lazy-proxy cause.
+     */
+    @Test
+    void diagramLookupFailure_degradesButKeepsOntologyAndConceptResults() {
+        OntologyMetadataEntity ontology = createOntology(
+                "https://example.org/ontology/1", "osoba-ontology", true);
+        when(ontologyMetadataRepository.searchByText("osoba")).thenReturn(List.of(ontology));
+        when(conceptMetadataRepository.searchByText(eq("osoba"), eq(false), anyList(), eq(false), isNull()))
+                .thenReturn(List.of(createConcept("https://example.org/concept/osoba", "osoba", "Osoba",
+                        ConceptType.TRIDA, "https://example.org/ontology/1", true)));
+        when(diagramSearchLookup.search("osoba", null))
+                .thenThrow(new RuntimeException("simulated diagram-lookup failure"));
+        lenient().when(diagramSearchLookup.count("osoba", null))
+                .thenThrow(new RuntimeException("simulated diagram-count failure"));
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "osoba", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        // The ontology and concept rows survive; only the diagram slice is missing.
+        assertEquals(2, result.results().size());
+        assertNull(result.totalDiagrams(), "a failed diagram count reports null, not a wrong number");
+    }
+
     @Test
     void diagramResults_passThroughFromLookup() {
         SearchResultDto diagramRow = SearchResultDto.builder()
@@ -524,8 +553,8 @@ class IsmdSearchProviderTest {
                 .source(SearchSource.ISMD)
                 .build();
 
-        when(diagramSearchLookup.search("bez-grafu")).thenReturn(List.of(diagramRow));
-        lenient().when(diagramSearchLookup.count("bez-grafu")).thenReturn(1L);
+        when(diagramSearchLookup.search("bez-grafu", null)).thenReturn(List.of(diagramRow));
+        lenient().when(diagramSearchLookup.count("bez-grafu", null)).thenReturn(1L);
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();

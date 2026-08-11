@@ -30,10 +30,30 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
             """, nativeQuery = true)
     List<DiagramEntity> searchByOntologyText(@Param("query") String query);
 
+    /**
+     * As {@link #searchByOntologyText}, narrowed to diagrams of unpublished ontologies. A diagram has no
+     * publish state of its own — it mirrors its ontology's, so an UNPUBLISHED search filters on the join.
+     */
+    @Query(value = """
+            SELECT d.* FROM ismd_schema.diagrams d
+            JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
+            WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+              AND o.is_published = false
+            """, nativeQuery = true)
+    List<DiagramEntity> searchByOntologyTextUnpublished(@Param("query") String query);
+
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.diagrams d
             JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
             """, nativeQuery = true)
     long countSearchByOntologyText(@Param("query") String query);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM ismd_schema.diagrams d
+            JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
+            WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+              AND o.is_published = false
+            """, nativeQuery = true)
+    long countSearchByOntologyTextUnpublished(@Param("query") String query);
 }

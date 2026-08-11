@@ -41,7 +41,13 @@ Two ways to surface diagrams to the user:
 | `iri` | synthetic `{graphName}#diagram` | **dedup-only — do not link on it**; it exists so a `type=null` search doesn't collapse the DIAGRAM row into the ontology's `ONTOLOGY` row |
 | `id` | the diagram row id | not a concept id; not needed for routing |
 | `ontologyIri` | the ontology graph IRI | if you need the ontology identity |
+| `isPublished` | the **ontology's** publish state | a diagram has none of its own — it is exactly as visible as its slovník |
 | `lastModified` | diagram `updatedAt` | |
+
+**Publish scoping.** A diagram mirrors its ontology's visibility. `?source=UNPUBLISHED` returns only
+diagrams of unpublished ontologies (and `totalDiagrams` counts only those); with no publish filter
+(`source=ISMD`/`ALL`) diagrams come back regardless of publish state. There is no published-only
+source, and no way to publish a diagram independently of its ontology.
 
 So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `result.slug`. Never derive a link from `result.iri` for DIAGRAM rows.
 

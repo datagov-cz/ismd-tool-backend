@@ -36,22 +36,32 @@ public class DiagramSearchLookup {
      * <p>{@code REQUIRED}, not {@code REQUIRES_NEW}: the search provider runs without an ambient
      * transaction, so this opens one either way, and joining an existing transaction (rather than
      * suspending it for a second pooled connection) is the cheaper behaviour if a caller ever has one.
+     *
+     * <p>{@code publishedFilter} mirrors the ontology branch: {@code FALSE} narrows to unpublished
+     * ontologies' diagrams, {@code null} (no filter) returns them regardless of publish state.
      */
     @Transactional(readOnly = true)
-    public List<SearchResultDto> search(String query) {
-        return diagramRepository.searchByOntologyText(query).stream()
+    public List<SearchResultDto> search(String query, Boolean publishedFilter) {
+        List<DiagramEntity> rows = Boolean.FALSE.equals(publishedFilter)
+                ? diagramRepository.searchByOntologyTextUnpublished(query)
+                : diagramRepository.searchByOntologyText(query);
+        return rows.stream()
                 .map(this::toDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public long count(String query) {
-        return diagramRepository.countSearchByOntologyText(query);
+    public long count(String query, Boolean publishedFilter) {
+        return Boolean.FALSE.equals(publishedFilter)
+                ? diagramRepository.countSearchByOntologyTextUnpublished(query)
+                : diagramRepository.countSearchByOntologyText(query);
     }
 
     /**
      * Synthetic IRI ({@code <graphName>#diagram}) so a diagram row never dedup-collides with its
      * ontology's own ONTOLOGY row on a {@code type=null} pass.
+     *
+     * <p>{@code isPublished} is the ontology's — a diagram has no publish state of its own.
      */
     private SearchResultDto toDto(DiagramEntity d) {
         String graphName = d.getOntologyMetadata().getGraphName();
@@ -64,6 +74,7 @@ public class DiagramSearchLookup {
                 .type(SearchType.DIAGRAM)
                 .source(SearchSource.ISMD)
                 .ontologyIri(graphName)
+                .isPublished(d.getOntologyMetadata().getIsPublished())
                 .lastModified(d.getUpdatedAt() != null ? d.getUpdatedAt().toString() : null)
                 .build();
     }

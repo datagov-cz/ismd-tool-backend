@@ -88,7 +88,7 @@ public class IsmdSearchProvider implements SearchProvider {
         // ontology's ONTOLOGY row on a type=null pass. A DIAGRAM-only request skips the
         // ontology and concept branches entirely (they contribute nothing of that kind).
         if (type == SearchType.DIAGRAM) {
-            allResults.addAll(searchDiagrams(query));
+            allResults.addAll(searchDiagrams(query, publishedFilter));
 
             List<SearchResultDto> diagramResults = allResults.stream()
                     .filter(r -> matchesType(r, type))
@@ -97,7 +97,7 @@ public class IsmdSearchProvider implements SearchProvider {
             int toIndex = Math.min(fromIndex + limit, diagramResults.size());
             List<SearchResultDto> paged = diagramResults.subList(fromIndex, toIndex);
 
-            Integer totalDiagrams = countDiagramMatches(query);
+            Integer totalDiagrams = countDiagramMatches(query, publishedFilter);
             return new SearchProviderResult(paged, diagramResults.size(), 0, 0, totalDiagrams);
         }
 
@@ -110,7 +110,7 @@ public class IsmdSearchProvider implements SearchProvider {
 
         // On a type=null pass diagrams ride along with ontologies and concepts.
         if (type == null) {
-            allResults.addAll(searchDiagrams(query));
+            allResults.addAll(searchDiagrams(query, publishedFilter));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -167,7 +167,7 @@ public class IsmdSearchProvider implements SearchProvider {
         // type is null here (DIAGRAM-only returned early; ONTOLOGY/CONCEPT/role never match).
         Integer totalDiagrams = SearchProvider.countIfMatches(
                 type == null,
-                () -> countDiagramMatches(query));
+                () -> countDiagramMatches(query, publishedFilter));
 
         if (fusekiDegraded.get()) {
             return new SearchProviderResult(paged, results.size(),
@@ -274,13 +274,18 @@ public class IsmdSearchProvider implements SearchProvider {
      * synthetic {@code graphName + "#diagram"} IRI so a type=null pass keeps it distinct from the
      * ontology's ONTOLOGY row through dedup.
      */
-    private List<SearchResultDto> searchDiagrams(String query) {
-        return diagramSearchLookup.search(query);
+    private List<SearchResultDto> searchDiagrams(String query, Boolean publishedFilter) {
+        try {
+            return diagramSearchLookup.search(query, publishedFilter);
+        } catch (RuntimeException e) {
+            log.warn("PG diagram search failed, continuing without diagram results: {}", e.getMessage());
+            return List.of();
+        }
     }
 
-    private Integer countDiagramMatches(String query) {
+    private Integer countDiagramMatches(String query, Boolean publishedFilter) {
         try {
-            return (int) diagramSearchLookup.count(query);
+            return (int) diagramSearchLookup.count(query, publishedFilter);
         } catch (RuntimeException e) {
             log.warn("PG diagram total-count failed: {}", e.getMessage());
             return null;

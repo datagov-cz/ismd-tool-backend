@@ -41,7 +41,13 @@ Dvě cesty, jak diagramy nabídnout uživateli:
 | `iri` | syntetické `{graphName}#diagram` | **jen pro deduplikaci — nelinkovat podle něj**; existuje, aby hledání `type=null` nesloučilo řádek DIAGRAM do řádku `ONTOLOGY` daného slovníku |
 | `id` | id řádku diagramu | není id pojmu; ke směrování není potřeba |
 | `ontologyIri` | IRI grafu slovníku | pokud potřebujete identitu slovníku |
+| `isPublished` | stav publikace **slovníku** | diagram vlastní stav nemá — je viditelný přesně tak jako jeho slovník |
 | `lastModified` | `updatedAt` diagramu | |
+
+**Rozsah publikace.** Diagram zrcadlí viditelnost svého slovníku. `?source=UNPUBLISHED` vrací pouze
+diagramy nepublikovaných slovníků (a `totalDiagrams` počítá jen je); bez filtru publikace
+(`source=ISMD`/`ALL`) se diagramy vracejí bez ohledu na stav publikace. Zdroj „pouze publikované"
+neexistuje a diagram nelze publikovat nezávisle na jeho slovníku.
 
 Takže: při `result.type === 'DIAGRAM'` přejít rovnou na diagram pomocí `result.slug`. Pro řádky DIAGRAM nikdy neodvozovat odkaz z `result.iri`.
 

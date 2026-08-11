@@ -79,11 +79,60 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramRepository.save(d);
     }
 
+    private OntologyMetadataEntity publishedOntology(String slug, String graphName) {
+        OntologyMetadataEntity o = new OntologyMetadataEntity();
+        o.setSlug(slug);
+        o.setGraphName(graphName);
+        o.setUserId("u1");
+        o.setIsPublished(true);
+        return ontologyRepository.save(o);
+    }
+
+    /**
+     * A diagram has no publish state of its own — it mirrors its ontology's. An UNPUBLISHED-scoped
+     * search must therefore exclude diagrams of published ontologies, in both the rows and the count.
+     */
+    @Test
+    void unpublishedFilterExcludesPublishedOntologiesDiagrams() {
+        diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
+        diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));   // ontology() is unpublished
+
+        List<SearchResultDto> unpublishedOnly = lookup.search("pomer", Boolean.FALSE);
+
+        assertThat(unpublishedOnly).extracting(SearchResultDto::getSlug)
+                .containsExactly("draft-pomer");
+        assertThat(lookup.count("pomer", Boolean.FALSE)).isEqualTo(1);
+    }
+
+    /** No publish filter (source=ISMD/ALL) returns diagrams regardless of their ontology's state. */
+    @Test
+    void noPublishedFilterReturnsBothPublishedAndUnpublished() {
+        diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
+        diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));
+
+        assertThat(lookup.search("pomer", null)).extracting(SearchResultDto::getSlug)
+                .containsExactlyInAnyOrder("published-pomer", "draft-pomer");
+        assertThat(lookup.count("pomer", null)).isEqualTo(2);
+    }
+
+    /** {@code isPublished} carries the ontology's value, so the FE can tell the two apart. */
+    @Test
+    void isPublishedMirrorsTheOntology() {
+        diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
+        diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));
+
+        assertThat(lookup.search("pomer", null))
+                .extracting(SearchResultDto::getSlug, SearchResultDto::getIsPublished)
+                .containsExactlyInAnyOrder(
+                        org.assertj.core.api.Assertions.tuple("published-pomer", true),
+                        org.assertj.core.api.Assertions.tuple("draft-pomer", false));
+    }
+
     @Test
     void mapsOntologyFieldsWithoutLazyInitializationException() {
         diagramFor(ontology("pracovni-pomer", "https://x/pracovni-pomer"));
 
-        List<SearchResultDto> hits = lookup.search("pomer");
+        List<SearchResultDto> hits = lookup.search("pomer", null);
 
         assertThat(hits).hasSize(1);
         SearchResultDto dto = hits.get(0);
@@ -99,7 +148,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     void syntheticIriDiffersFromTheOntologyIri() {
         diagramFor(ontology("obchodni-rejstrik", "https://x/obchodni-rejstrik"));
 
-        SearchResultDto dto = lookup.search("rejstrik").get(0);
+        SearchResultDto dto = lookup.search("rejstrik", null).get(0);
 
         assertThat(dto.getIri()).isNotEqualTo(dto.getOntologyIri());
         assertThat(dto.getIri()).endsWith("#diagram");
@@ -110,7 +159,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     void graphlessOntologyFallsBackToDiagramIdKey() {
         diagramFor(ontology("bez-grafu", null));
 
-        SearchResultDto dto = lookup.search("bez-grafu").get(0);
+        SearchResultDto dto = lookup.search("bez-grafu", null).get(0);
 
         assertThat(dto.getIri()).isNotNull().startsWith("diagram:");
         assertThat(dto.getOntologyIri()).isNull();
@@ -121,7 +170,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramFor(ontology("pracovni-pomer", "https://x/pracovni-pomer"));
         diagramFor(ontology("pomerne-jina", "https://x/pomerne-jina"));
 
-        assertThat(lookup.count("pomer")).isEqualTo(2);
-        assertThat(lookup.search("pomer")).hasSize(2);
+        assertThat(lookup.count("pomer", null)).isEqualTo(2);
+        assertThat(lookup.search("pomer", null)).hasSize(2);
     }
 }
