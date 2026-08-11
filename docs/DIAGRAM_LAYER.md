@@ -60,6 +60,8 @@ Creating a concept and removing a node are immediate/local; **structural edits s
 
 **The only RDF delete the diagram can cause is implicit** — op 6's VZTAH deletion, and only after its replacement hierarchy edge is successfully added. There is no free-standing "delete concept" affordance. Op 6 is offered only when nothing points its `domain`/`range` at the VZTAH (else deleting it would transitively cascade other concepts); otherwise the conversion surfaces a conflict.
 
+**Op 6 adds a super-class; it never replaces the target class's hierarchy.** The concept edit model's `broaderConcept` is a *full replace*, so the applier reads the class's current `rdfs:subClassOf` set and passes the union. Without that merge the convert would silently drop every pre-existing super-class — unreported, and unrecoverable in-request because the VZTAH is deleted in the same transaction. Pinned by `op6_preservesTargetClassExistingBroaderConcepts`; the mirrored `nadřazená-třída` predicate is rewritten from the same merged set, so the two never diverge.
+
 ## Edges are projections, not content
 
 A relationship (VZTAH) is itself a concept — a node. Its `rdfs:domain`/`rdfs:range` are fields on that node, staged in that node's overlay. The `DOMAIN`/`RANGE` edges drawn from the VZTAH node to its endpoint classes are the *visual rendering* of those fields. A class property (VLASTNOST) is likewise a node, linked to its owning class by a `DOMAIN` edge from the property node to the class node.

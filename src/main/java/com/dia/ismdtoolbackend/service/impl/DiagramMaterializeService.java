@@ -75,7 +75,7 @@ public class DiagramMaterializeService {
         if (node == null || node.getPendingEdit() == null) {
             return false;
         }
-        return changeApplier.classify(node.getPendingEdit(), node.getConceptIri()) == DiagramOp.CONVERT_TO_HIERARCHY;
+        return changeApplier.classify(node.getPendingEdit()) == DiagramOp.CONVERT_TO_HIERARCHY;
     }
 
     /**
@@ -86,7 +86,7 @@ public class DiagramMaterializeService {
         DiagramNodeEntity node = diagramNodeRepository.findById(nodeId).orElse(null);
         String iri = node != null ? node.getConceptIri() : null;
         DiagramOp op = (node != null && node.getPendingEdit() != null)
-                ? changeApplier.classify(node.getPendingEdit(), node.getConceptIri())
+                ? changeApplier.classify(node.getPendingEdit())
                 : null;
         return new MaterializeResultDto.Failed(nodeId, iri, op, error, message, status);
     }

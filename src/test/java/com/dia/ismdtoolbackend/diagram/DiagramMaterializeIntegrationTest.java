@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
@@ -231,6 +232,16 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         return tdb2.dataset().getNamedModel(GRAPH);
     }
 
+    /** The concept's current {@code rdfs:subClassOf} targets in the live graph. */
+    private List<String> broaderOf(String conceptIri) {
+        Model g = graph();
+        return g.listStatements(g.getResource(conceptIri), org.apache.jena.vocabulary.RDFS.subClassOf,
+                        (org.apache.jena.rdf.model.RDFNode) null)
+                .toList().stream()
+                .map(s -> s.getObject().toString())
+                .toList();
+    }
+
     // ---- tests ----------------------------------------------------------------------------------
 
     // V1: Převzít never renames the concept IRI (overlay is structural-only).
@@ -377,6 +388,66 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         // Overlay stays staged for a retry after the user resolves the reference.
         assertThat(nodeRepo.findByDiagramIdAndConceptIri(diagramId(), v.getConceptIri())
                 .orElseThrow().getPendingEdit()).isNotNull();
+    }
+
+    // Op 6 ADDS a super-class. The edit model's broaderConcept is a full replace, so without a read-merge
+    // the convert silently wipes the target class's existing subClassOf links — unreported RDF data loss,
+    // unrecoverable in-request because the VZTAH is deleted in the same transaction. The other op-6 tests
+    // all use freshly-created classes with no hierarchy, where replace and add are indistinguishable.
+    @Test
+    void op6_preservesTargetClassExistingBroaderConcepts() {
+        ConceptMetadataEntity a = create(classModel("Merge A", true));
+        ConceptMetadataEntity b = create(classModel("Merge B", true));
+        ConceptMetadataEntity existingParent = create(classModel("Merge Existing Parent", true));
+        ConceptMetadataEntity newBroader = create(classModel("Merge New Broader", true));
+        ConceptMetadataEntity v = create(relModel("merge-rel", a.getConceptIri(), b.getConceptIri()));
+
+        // Give A a pre-existing super-class through the normal edit path.
+        ClassConceptEditModel seed = new ClassConceptEditModel();
+        seed.setConceptType(ConceptType.TRIDA.getValue());
+        seed.setBroaderConcept(List.of(existingParent.getConceptIri()));
+        conceptService.editConcept(a.getId(), seed);
+        assertThat(broaderOf(a.getConceptIri())).containsExactly(existingParent.getConceptIri());
+
+        // Op 6 on V, adding a DIFFERENT broader to the same class.
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(a.getConceptIri());
+        marker.setBroader(newBroader.getConceptIri());
+        convert.setConvertToHierarchy(marker);
+        stageNode(v.getConceptIri(), convert);
+
+        assertThat(materializeService.materialize(diagramId()).materialized()).hasSize(1);
+
+        assertThat(broaderOf(a.getConceptIri()))
+                .as("op-6 adds its broader and keeps the class's existing hierarchy")
+                .containsExactlyInAnyOrder(existingParent.getConceptIri(), newBroader.getConceptIri());
+    }
+
+    /** An already-present broader must not be duplicated, and must not disturb the existing set. */
+    @Test
+    void op6_broaderAlreadyPresent_isNoOpOnHierarchy() {
+        ConceptMetadataEntity a = create(classModel("Dup A", true));
+        ConceptMetadataEntity b = create(classModel("Dup B", true));
+        ConceptMetadataEntity parent = create(classModel("Dup Parent", true));
+        ConceptMetadataEntity v = create(relModel("dup-rel", a.getConceptIri(), b.getConceptIri()));
+
+        ClassConceptEditModel seed = new ClassConceptEditModel();
+        seed.setConceptType(ConceptType.TRIDA.getValue());
+        seed.setBroaderConcept(List.of(parent.getConceptIri()));
+        conceptService.editConcept(a.getId(), seed);
+
+        // Convert names the broader A already has.
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(a.getConceptIri());
+        marker.setBroader(parent.getConceptIri());
+        convert.setConvertToHierarchy(marker);
+        stageNode(v.getConceptIri(), convert);
+
+        assertThat(materializeService.materialize(diagramId()).materialized()).hasSize(1);
+
+        assertThat(broaderOf(a.getConceptIri())).containsExactly(parent.getConceptIri());
     }
 
     // op-6 idempotent retry: after a successful convert clears the overlay, re-staging + re-materializing

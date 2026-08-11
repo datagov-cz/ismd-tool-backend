@@ -17,11 +17,17 @@ import com.dia.ismdtoolbackend.service.ConceptService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.vocabulary.RDFS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -103,10 +109,36 @@ public class DiagramChangeApplier {
 
         ClassConceptEditModel addBroader = new ClassConceptEditModel();
         addBroader.setConceptType(ConceptType.TRIDA.getValue());
-        addBroader.setBroaderConcept(List.of(marker.getBroader()));
+        addBroader.setBroaderConcept(mergedBroaderFor(targetClass, marker.getBroader()));
         conceptService.editConcept(targetClass.getId(), addBroader);
 
         conceptService.deleteConcept(vztah.getId());
+    }
+
+    /**
+     * Op 6 <em>adds</em> a super-class; the edit model's {@code broaderConcept} is a full replace, so the
+     * class's existing {@code rdfs:subClassOf} links must be read and carried through or the edit silently
+     * drops them. Order is stable (existing first, new appended) and an already-present broader is a no-op.
+     */
+    private List<String> mergedBroaderFor(ConceptMetadataEntity targetClass, String newBroader) {
+        Model graph = jenaTDB2Repository.fetchGraph(targetClass.getGraphName());
+        Resource classRes = graph.getResource(targetClass.getConceptIri());
+
+        List<String> merged = new ArrayList<>();
+        StmtIterator it = classRes.listProperties(RDFS.subClassOf);
+        while (it.hasNext()) {
+            RDFNode object = it.next().getObject();
+            if (object.isURIResource()) {
+                String existing = object.asResource().getURI();
+                if (!merged.contains(existing)) {
+                    merged.add(existing);
+                }
+            }
+        }
+        if (newBroader != null && !merged.contains(newBroader)) {
+            merged.add(newBroader);
+        }
+        return merged;
     }
 
     // ---- op classification ----------------------------------------------------------------------
@@ -117,7 +149,7 @@ public class DiagramChangeApplier {
      * on a VLASTNOST — reported as {@code CHANGE_PROPERTY_PARENT} (a set-on-empty is a parent change from
      * "none").
      */
-    DiagramOp classify(DiagramPendingEdit overlay, String conceptIri) {
+    DiagramOp classify(DiagramPendingEdit overlay) {
         if (overlay.getConvertToHierarchy() != null) {
             return DiagramOp.CONVERT_TO_HIERARCHY;
         }

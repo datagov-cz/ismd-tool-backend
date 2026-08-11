@@ -60,6 +60,8 @@ Vytvoření pojmu a odebrání uzlu jsou okamžité/lokální; **strukturální 
 
 **Jediné smazání v RDF, které diagram může způsobit, je implicitní** — smazání VZTAHu v op 6, a to až poté, co je úspěšně přidána nahrazující hierarchická hrana. Neexistuje samostatná akce „smazat pojem". Op 6 se nabízí jen tehdy, když na `domain`/`range` daného VZTAHu nic nemíří (jinak by jeho smazání tranzitivně kaskádovalo další pojmy); jinak převod vyvolá konflikt.
 
+**Op 6 nadtřídu přidává, hierarchii cílové třídy nikdy nenahrazuje.** Pole `broaderConcept` v editačním modelu pojmu je *úplná náhrada*, takže applier načte aktuální množinu `rdfs:subClassOf` dané třídy a předá sjednocení. Bez tohoto sloučení by převod tiše zahodil všechny dosavadní nadtřídy — bez hlášení a v rámci požadavku nevratně, protože VZTAH je mazán ve stejné transakci. Zajištěno testem `op6_preservesTargetClassExistingBroaderConcepts`; zrcadlený predikát `nadřazená-třída` se přepisuje ze stejné sloučené množiny, takže se oba nikdy nerozejdou.
+
 ## Hrany jsou projekce, ne obsah
 
 Vztah (VZTAH) je sám pojmem — uzlem. Jeho `rdfs:domain`/`rdfs:range` jsou pole na tomto uzlu, nasazená v overlayi uzlu. Hrany `DOMAIN`/`RANGE` vedené z uzlu VZTAHu k cílovým třídám jsou *vizuálním vykreslením* těchto polí. Vlastnost třídy (VLASTNOST) je rovněž uzel, spojený se svou vlastnící třídou hranou `DOMAIN` z uzlu vlastnosti k uzlu třídy.
