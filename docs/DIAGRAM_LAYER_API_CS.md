@@ -55,6 +55,8 @@ Takže: při `result.type === 'DIAGRAM'` přejít rovnou na diagram pomocí `res
 
 `GET …/all` i `GET …/detail` jsou chráněny přes `canViewResource()` — **libovolný přihlášený uživatel** může číst diagram jakéhokoli slovníku, v souladu s celokódovým modelem čtení, kde každý přihlášený volající vidí všechny grafy. Pouze zápisové cesty (`/layout`, `/overlay`, `/materialize`) jsou omezené na vlastníka přes `belongsToUserBySlug`.
 
+**Autorizace zápisu omezuje slug *i* IRI.** `belongsToUserBySlug` autorizuje slovník v cestě, ale IRI pojmů cestují v těle požadavku, takže zápisové cesty navíc vyžadují, aby každý odkazovaný pojem patřil do vlastního grafu slovníku daného diagramu. IRI uzlu ukazující na pojem jiného slovníku způsobí u `PUT …/layout` chybu HTTP 400 a nic se neuloží; táž kontrola proběhne znovu při materializaci (`FOREIGN_CONCEPT`), takže ani řádek zapsaný před zavedením této pojistky nelze aplikovat, a vztahuje se i na `addBroaderOn` / `broader` u op 6, které pojmenovávají pojmy, jež nikdy nemusely být na plátně. Uzel, jehož řádek pojmu prostě *chybí*, odmítnut není — jde o smazaný pojem, hlášený jako `skippedStale`.
+
 **Čtení nikdy nezapisuje.** `GET …/detail` je jen pro čtení: slovník bez diagramu je obsloužen z neuloženého objektu v paměti, takže otevřením cizího plátna nemůže nevlastník vytvořit řádek v `diagrams`. Řádek vznikne až prvním úspěšným zápisem a `GET /all` diagram uvede teprve tehdy, když byl skutečně uložen — pouhé otevření plátna jej tam nezobrazí. Diagram patří vlastníkovi svého slovníku; samostatné pole vlastníka diagramu neexistuje.
 
 ## Čtení — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
@@ -64,6 +66,7 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
 ```jsonc
 {
   "ontologySlug": "pracovni-pomer",
+  "version": 7,                   // vraťte v dalším PUT …/layout (optimistický zámek); null = řádek diagramu zatím neexistuje
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
 
   "nodes": [
@@ -123,8 +126,13 @@ Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a po�
 
 **Toto volání je směrodatné pro členství na plátně.** Pole `nodes[]` je úplná sada — přítomný uzel je zachován (nebo **přidán**, je-li jeho IRI na plátně nové; odpověď `DiagramDto` hydratuje jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen). Přidání uzlu vyžaduje jen `{id, position}`; zbytek backend spojí z živého RDF.
 
+**`version` je povinná — vraťte tu, ze které jste vykreslovali.** Protože členství je úplná náhrada, uložení postavené na zastaralém pohledu by tiše smazalo uzly přidané jiným editorem i s jejich nasazenými overlayi. Vraťte `version` z `DiagramDto`, ze kterého tato úprava vycházela (z načtení, nebo z odpovědi vašeho posledního uložení). Pokud mezitím uložil jiný editor, volání vrátí **409** a nic se nezapíše; načtěte diagram znovu a změny aplikujte znovu. Verzi posouvá každý úspěšný `PUT …/layout` **i** `PATCH …/nodes/overlay`, používejte tedy vždy nejnovější obdrženou hodnotu.
+
+`version` smí být `null` **pouze** při úplně prvním uložení plátna, které dosud nemá řádek diagramu. Jakmile diagram existuje, je `null` verze chybou 409 — klient, který nikdy nenačetl aktuální stav, nemůže bezpečně provést úplnou náhradu členství.
+
 ```jsonc
 {
+  "version": 7,
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
@@ -206,6 +214,7 @@ Aplikuje každou nasazenou změnu. Jedna položka na nasazenou **změnu** (změn
 - `error: "VALIDATION"` (HTTP 400) — úprava pojmu neprošla validací; overlay ponechán, opravit a zkusit znovu.
 - `error: "STALE_BASE"` (HTTP 409) — podkladový pojem byl od nasazení overlaye editován (běžným `/api/concept`); FE by měl diagram znovu načíst a znovu nasadit.
 - `error: "CASCADE_CONFLICT"` — op 6 (vztah→hierarchie) zablokována, protože doména/obor hodnot jiného pojmu míří na daný VZTAH (jeho smazání by kaskádovalo); zobrazit a nechat uživatele vyřešit.
+- `error: "FOREIGN_CONCEPT"` (HTTP 400) — IRI pojmu v dané změně patří jinému slovníku než diagramu (buď samotný uzel, nebo `addBroaderOn` / `broader` u op 6). Diagram smí zapisovat jen pojmy vlastního slovníku; legitimní klient tuto chybu nikdy nevyvolá.
 - `error: "ERROR"` (HTTP 500) — neočekávaná chyba na straně serveru; překryv zůstává zachován. `message` je vždy obecné `"Nastala neočekávaná chyba."` — konkrétní příčina se pouze loguje na serveru a nikdy se nevrací, takže FE ji má zobrazit tak, jak je, a nepokoušet se ji parsovat.
 - `skippedStale` — odkazovaný pojem již neexistuje; nabídnout odebrat-nebo-znovu-vytvořit.
 
