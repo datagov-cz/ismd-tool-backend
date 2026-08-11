@@ -53,13 +53,12 @@ public class DiagramEntity {
     /**
      * The ontology this canvas visualizes. Unique — one canonical diagram per ontology. DB-cascade on
      * ontology delete drops the diagram (and, via their own FKs, its nodes and edges).
+     *
+     * <p>Ownership is gated by diagram's ontology. Diagram carries no owner column of its own.
      */
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)
     private OntologyMetadataEntity ontologyMetadata;
-
-    @Column(name = "user_id")
-    private String userId;
 
     /** Saved pan/zoom, restored on load. Null until the canvas is first saved. */
     @Column(name = "viewport_x")

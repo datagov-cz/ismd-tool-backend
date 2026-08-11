@@ -78,7 +78,7 @@ Tři entity ve dvou + jedné tabulkách, podle vzoru `CommentEntity` (FK na `ont
 
 Model obsahu overlaye (`DiagramPendingEdit`) je **pouze strukturální**: `domain`, `range`, hierarchické pole podle typu (`broaderConcept` / `superProperty` / `superRelation`), `exactMatch` a značka `convertToHierarchy` pro op 6.
 
-## Sémantika Převzít (materializace)
+## Sémantika materializace
 
 Materializace se rozvětvuje **v procesu** do stávajících pojmových služeb (ne přes HTTP volání sebe sama), takže znovu využívá stávající validaci a outbox. Pro každý uzel s neprázdným overlayem:
 

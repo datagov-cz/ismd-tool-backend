@@ -204,7 +204,6 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                     .orElseGet(() -> {
                         DiagramEntity d = new DiagramEntity();
                         d.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
-                        d.setUserId(USER);
                         return diagramRepo.save(d);
                     });
             DiagramNodeEntity node = new DiagramNodeEntity();

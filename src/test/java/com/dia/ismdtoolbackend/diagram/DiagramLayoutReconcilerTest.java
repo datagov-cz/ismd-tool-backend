@@ -61,7 +61,6 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         DiagramEntity d = new DiagramEntity();
         d.setOntologyMetadata(o);
-        d.setUserId("u1");
         return diagramRepository.save(d);
     }
 

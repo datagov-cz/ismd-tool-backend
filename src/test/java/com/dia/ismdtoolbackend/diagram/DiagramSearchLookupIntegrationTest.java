@@ -76,7 +76,6 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     private void diagramFor(OntologyMetadataEntity o) {
         DiagramEntity d = new DiagramEntity();
         d.setOntologyMetadata(o);
-        d.setUserId("u1");
         diagramRepository.save(d);
     }
 

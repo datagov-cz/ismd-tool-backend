@@ -78,7 +78,7 @@ Three entities in two-plus-one tables, mirroring the `CommentEntity` pattern (FK
 
 The overlay content model (`DiagramPendingEdit`) is **structural-only**: `domain`, `range`, the type-resolved hierarchy field (`broaderConcept` / `superProperty` / `superRelation`), `exactMatch`, and a `convertToHierarchy` marker for op 6. It deliberately excludes **label/name editing** — a name change renames the concept's IRI (relocating all its triples), which would strand the diagram node's IRI reference. Label editing stays in the normal concept editor, outside the diagram.
 
-## Materialize (Převzít) semantics
+## Materialize semantics
 
 Materialize fans out **in-process** to the existing concept services (not via HTTP self-calls), so it reuses the existing validators and outbox. For each node with a non-empty overlay:
 

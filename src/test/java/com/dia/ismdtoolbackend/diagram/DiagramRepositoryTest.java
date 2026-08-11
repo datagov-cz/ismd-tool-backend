@@ -60,7 +60,6 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
     private DiagramEntity diagramFor(OntologyMetadataEntity ontology) {
         DiagramEntity d = new DiagramEntity();
         d.setOntologyMetadata(ontology);
-        d.setUserId("u1");
         d.setViewportX(-120.0);
         d.setViewportY(40.0);
         d.setViewportZoom(0.85);

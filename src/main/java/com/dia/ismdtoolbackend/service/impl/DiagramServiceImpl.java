@@ -201,13 +201,12 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Create the diagram row for an ontology. {@code userId} mirrors the ontology's owner, never the
-     * requesting user — a diagram belongs to whoever owns the ontology it describes.
+     * Create the diagram row for an ontology. Ownership is not stored here — it is the ontology's, read
+     * through {@code ontologyMetadata}.
      */
     private DiagramEntity provisionDiagram(OntologyMetadataEntity ontology) {
         DiagramEntity diagram = new DiagramEntity();
         diagram.setOntologyMetadata(ontology);
-        diagram.setUserId(ontology.getUserId());
         try {
             return diagramRepository.saveAndFlush(diagram);
         } catch (DataIntegrityViolationException e) {
