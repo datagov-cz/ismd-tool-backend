@@ -78,4 +78,5 @@ public class DiagramSearchLookup {
                 .lastModified(d.getUpdatedAt() != null ? d.getUpdatedAt().toString() : null)
                 .build();
     }
+
 }

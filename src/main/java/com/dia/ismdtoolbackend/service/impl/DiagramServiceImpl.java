@@ -17,6 +17,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -47,7 +48,7 @@ public class DiagramServiceImpl implements DiagramService {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final OntologyDetailExtractor detailExtractor;
-    private final com.dia.ismdtoolbackend.repository.JenaTDB2Repository jenaTDB2Repository;
+    private final JenaTDB2Repository jenaTDB2Repository;
     private final DiagramMaterializeService materializeService;
     private final DiagramLayoutReconciler layoutReconciler;
     private final DiagramMapper mapper;

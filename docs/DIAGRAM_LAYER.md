@@ -33,18 +33,18 @@ Everything else is **staleness**, handled at read time: a **dangling reference**
 The canvas exposes exactly two backend-touching actions for content:
 
 - **Save the diagram** — persists layout *and* the staged structural edits not yet projected to the ontology. Postgres only; **never touches RDF.**
-- **Převzít (materialize to the ontology)** — applies the staged edits to the ontology concepts via the existing `/api/concept` CRUD → outbox → RDF, then clears the overlay.
+- **Materialize to the ontology** — applies the staged edits to the ontology concepts via the existing `/api/concept` CRUD → outbox → RDF, then clears the overlay.
 
 ## Where each write goes
 
-Creating a concept and removing a node are immediate/local; **structural edits stage until Převzít.** There is one node kind — every node references a materialized concept.
+Creating a concept and removing a node are immediate/local; **structural edits stage until materialized.** There is one node kind — every node references a materialized concept.
 
 **Immediate — not staged:**
 
 - **Create a concept from the canvas** → existing `POST /api/concept` create → outbox → RDF. A property or relationship may be created *without a domain* (still fully materialized, a real IRI); the domain is filled in later as a staged edit. (Note: a property always receives an `rdfs:range` — `Literal` by default — so only the *domain* can genuinely be absent.) The FE then places it on the canvas by including it in the next layout save.
 - **Add / remove a node from the canvas** → ride the **layout save** (`PUT …/layout`, an idempotent full-replace): a node present is on the canvas, a node omitted is off it. **The concept is untouched** either way. There is no dedicated add/remove-node endpoint and no "delete concept" action on the diagram.
 
-**Staged — Save keeps them in PG, Převzít applies them to RDF.** The overlay stages exactly these structural edits, expressed as *end-state field values* on the affected node(s) — not an op-log:
+**Staged — Save keeps them in PG, materialize applies them to RDF.** The overlay stages exactly these structural edits, expressed as *end-state field values* on the affected node(s) — not an op-log:
 
 | # | User action | End-state edit | Concept-CRUD on Převzít |
 |---|---|---|---|
