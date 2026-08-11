@@ -64,6 +64,7 @@ The backend has already joined layout rows to live concept content and applied e
 ```jsonc
 {
   "ontologySlug": "pracovni-pomer",
+  "version": 7,                   // echo this in the next PUT …/layout (optimistic lock); null = no diagram row yet
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
 
   "nodes": [
@@ -123,8 +124,13 @@ Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send
 
 **This call is authoritative for canvas membership.** The `nodes[]` array is the complete set — a node present is kept (or **added** if its IRI is new to the canvas; the response `DiagramDto` hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
+**`version` is required — send back the one you rendered from.** Because membership is a full replace, a save built on a stale view would silently delete nodes another editor added, taking their staged overlays with them. Echo the `version` from the `DiagramDto` this edit started from (the read, or the response of your own last save). If another editor saved in the meantime the call returns **409** and nothing is written; reload the diagram and re-apply. Every successful `PUT …/layout` **and** `PATCH …/nodes/overlay` advances the version, so always use the newest one you have received.
+
+`version` may be `null` **only** for the very first save of a canvas that has no diagram row yet. Once a diagram exists, a null version is a 409 — a client that never read the current state cannot safely full-replace its membership.
+
 ```jsonc
 {
+  "version": 7,
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",

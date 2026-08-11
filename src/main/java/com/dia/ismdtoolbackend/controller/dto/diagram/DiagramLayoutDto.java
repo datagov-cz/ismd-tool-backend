@@ -14,6 +14,7 @@ import java.util.List;
  * See {@code docs/DIAGRAM_LAYER_API.md}.
  */
 public record DiagramLayoutDto(
+        Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
         @Valid List<Edge> edges

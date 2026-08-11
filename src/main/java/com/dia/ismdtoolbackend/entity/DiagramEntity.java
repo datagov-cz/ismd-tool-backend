@@ -22,7 +22,10 @@ import java.util.List;
  * this entity lives purely in Postgres — no outbox, no RDF write, no reconciler.
  *
  * <p>The {@code version} column backs an optimistic lock on the layout save so concurrent editors of the
- * same canvas get a conflict instead of a silent last-write-wins clobber.
+ * same canvas get a conflict instead of a silent last-write-wins clobber. The comparison is made in
+ * {@code DiagramServiceImpl.requireCurrentVersion} against the version the CLIENT sends, not by JPA:
+ * the save loads this row fresh in its own transaction, so Hibernate would only ever compare the
+ * just-read version against itself and always win.
  *
  * <p><strong>Save-path obligation.</strong> {@code @Version} only bumps when a column of the
  * {@code diagrams} row itself changes. Node/edge edits touch child tables and do <em>not</em> dirty this

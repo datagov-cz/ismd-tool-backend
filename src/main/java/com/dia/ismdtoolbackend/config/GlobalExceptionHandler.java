@@ -4,6 +4,7 @@ import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
 import com.dia.ismdtoolbackend.exception.*;
+import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -37,6 +38,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleAccessDenied(AccessDeniedException e) {
         log.error("Access denied: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    @ExceptionHandler(DiagramServiceImpl.DiagramVersionConflictException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramVersionConflict(
+            DiagramServiceImpl.DiagramVersionConflictException e) {
+        log.warn("Diagram version conflict: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

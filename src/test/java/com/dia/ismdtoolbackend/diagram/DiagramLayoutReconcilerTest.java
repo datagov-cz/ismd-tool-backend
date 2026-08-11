@@ -115,6 +115,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
         DiagramLayoutDto layout = new DiagramLayoutDto(
+                null,
                 new ViewportDto(1.0, 2.0, 0.9),
                 List.of(
                         node("https://x/pojem/keep", 5, 5),        // matching → updated in place
@@ -142,7 +143,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         // First save: establish the parent→child grouping.
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(managed, new DiagramLayoutDto(null,
+        save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/parent", 0, 0),
                         node("https://x/pojem/child", 1, 1, "https://x/pojem/parent")),
                 List.of()));
@@ -153,7 +154,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         // Second save: omit the parent → it's removed, and the child's parentNodeId must be nulled.
         DiagramEntity managed2 = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(managed2, new DiagramLayoutDto(null,
+        save(managed2, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/child", 1, 1)),      // parent omitted
                 List.of()));
 
@@ -193,7 +194,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         conceptRepository.saveAndFlush(foreign);
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        DiagramLayoutDto layout = new DiagramLayoutDto(null, List.of(node(foreignIri, 0, 0)), List.of());
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null, List.of(node(foreignIri, 0, 0)), List.of());
 
         assertThatThrownBy(() -> reconciler.reconcileNodes(managed, layout))
                 .isInstanceOf(ConceptValidationException.class)
@@ -216,7 +217,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         em.clear();
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(managed, new DiagramLayoutDto(null,
+        save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/no-row/pojem/deleted", 0, 0)), List.of()));
 
         assertThat(nodeRepository.findByDiagramId(diagram.getId()))
@@ -231,7 +232,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         em.clear();
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        DiagramLayoutDto layout = new DiagramLayoutDto(null,
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
                 List.of(new DiagramLayoutDto.Edge(

@@ -75,7 +75,7 @@ class DiagramControllerTest {
     void getDetail_readableByNonOwner() throws Exception {
         TestOntologySecurityService.setAllowModify(false);   // not the owner → writes would 403
         when(diagramService.getDiagram(eq("pracovni-pomer")))
-                .thenReturn(new DiagramDto("pracovni-pomer", null, List.of(), List.of(), 0));
+                .thenReturn(new DiagramDto("pracovni-pomer", 0L, null, List.of(), List.of(), 0));
 
         // canViewResource() (any authenticated) gates the read, NOT belongsToUserBySlug → still 200.
         mockMvc.perform(get("/api/diagram/pracovni-pomer/detail"))

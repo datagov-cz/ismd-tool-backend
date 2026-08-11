@@ -84,6 +84,7 @@ public class DiagramServiceImpl implements DiagramService {
     public DiagramDto saveLayout(String ontologySlug, DiagramLayoutDto layout) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         DiagramEntity diagram = getOrCreateDiagram(ontology);
+        requireCurrentVersion(diagram, layout.version());
 
         Map<String, DiagramNodeEntity> incoming = layoutReconciler.reconcileNodes(diagram, layout);
         // Flush so newly-inserted nodes receive their identity before parentId references resolve
@@ -91,7 +92,10 @@ public class DiagramServiceImpl implements DiagramService {
         diagramRepository.saveAndFlush(diagram);
         layoutReconciler.finalizeLayout(diagram, layout, incoming);
         diagram.touch();
-        diagramRepository.save(diagram);
+        // saveAndFlush (not save): assemble() reads @Version off this instance for the response and the
+        // client echoes it on its NEXT save, so the value must be the post-increment one. The flush above
+        // makes this hold today even with a plain save; flushing here keeps it true independently of that.
+        diagramRepository.saveAndFlush(diagram);
 
         return assemble(ontologySlug, diagram, liveConcepts(ontology.getGraphName()));
     }
@@ -122,6 +126,38 @@ public class DiagramServiceImpl implements DiagramService {
 
         ConceptDetailModel detail = liveConcept(ontology.getGraphName(), node.getConceptIri());
         return toNode(diagram, node, detail);
+    }
+
+    /**
+     * The optimistic lock, enforced in the service rather than by JPA. {@code @Version} alone cannot catch
+     * this: {@code saveLayout} loads the diagram fresh inside its own transaction, so Hibernate compares the
+     * just-read version against itself and always wins. The client's version — the one it rendered from —
+     * is the only value that carries the "has anyone saved since?" signal.
+     *
+     * <p>This matters because membership is a full replace: a stale save would silently delete nodes another
+     * editor added, taking their staged overlays with them.
+     *
+     * <p>A null version is accepted only when the diagram has no saved state yet (version 0, just
+     * provisioned by this very call) — the first save of an empty canvas has nothing to conflict with.
+     */
+    private void requireCurrentVersion(DiagramEntity diagram, Long clientVersion) {
+        Long stored = diagram.getVersion();
+        if (clientVersion == null && (stored == null || stored == 0L) && diagram.getNodes().isEmpty()) {
+            return;
+        }
+        if (!java.util.Objects.equals(clientVersion, stored)) {
+            log.warn("Rejected stale diagram save for {}: client version {}, stored {}",
+                    diagram.getOntologyMetadata().getSlug(), clientVersion, stored);
+            throw new DiagramVersionConflictException(
+                    "Diagram byl mezitím uložen jiným editorem; načtěte jej znovu a uložte změny znovu.");
+        }
+    }
+
+    /** A layout save carried a version behind the stored one — another editor saved first (409). */
+    public static class DiagramVersionConflictException extends RuntimeException {
+        public DiagramVersionConflictException(String message) {
+            super(message);
+        }
     }
 
     /**
@@ -185,7 +221,8 @@ public class DiagramServiceImpl implements DiagramService {
                 .filter(n -> n.getPendingEdit() != null)
                 .count();
 
-        return new DiagramDto(ontologySlug, mapper.toViewport(diagram), nodes, edges, pendingChangeCount);
+        return new DiagramDto(ontologySlug, diagram.getVersion(), mapper.toViewport(diagram), nodes, edges,
+                pendingChangeCount);
     }
 
     /** Build one render-ready node; looks up its type/slug from PG (used by the lean stage response). */
