@@ -2,10 +2,13 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -27,6 +30,7 @@ import java.util.Map;
 public class DiagramLayoutReconciler {
 
     private final DiagramMapper mapper;
+    private final ConceptMetadataRepository conceptMetadataRepository;
 
     /**
      * Reconcile the node set: update/keep matching rows, insert rows for new IRIs, remove any persisted node
@@ -39,9 +43,11 @@ public class DiagramLayoutReconciler {
             existing.put(n.getConceptIri(), n);
         }
 
+        String diagramGraphName = diagram.getOntologyMetadata().getGraphName();
         Map<String, DiagramNodeEntity> incoming = new HashMap<>();
         for (DiagramLayoutDto.Node in : layout.nodes()) {
             String iri = mapper.conceptIriFromNodeId(in.id());
+            requireSameGraph(diagramGraphName, iri);
             DiagramNodeEntity node = existing.get(iri);
             if (node == null) {
                 node = new DiagramNodeEntity();
@@ -57,6 +63,27 @@ public class DiagramLayoutReconciler {
                 .toList();
         toRemove.forEach(diagram::removeNode);
         return incoming;
+    }
+
+    /**
+     * A node may only reference a concept in the diagram's own ontology graph. Save authorizes the ontology
+     * slug, so persisting a foreign IRI here would stage a write the caller was never authorized for — the
+     * canvas is the ingress for every later materialize.
+     *
+     * <p>An IRI with no concept row is NOT rejected: a node whose concept was deleted out from under the
+     * canvas is a legitimate state that Převzít reports as {@code skippedStale}, and failing the whole save
+     * would strand the user with an unsaveable canvas. Only a row in a <em>different</em> graph is foreign.
+     */
+    private void requireSameGraph(String diagramGraphName, String conceptIri) {
+        String graphName = conceptMetadataRepository.findByConceptIri(conceptIri)
+                .map(ConceptMetadataEntity::getGraphName)
+                .orElse(null);
+        if (graphName != null && !java.util.Objects.equals(diagramGraphName, graphName)) {
+            log.warn("Rejected diagram node {} (graph {}) on a diagram for graph {}",
+                    conceptIri, graphName, diagramGraphName);
+            throw new ConceptValidationException(
+                    "Pojem " + conceptIri + " nepatří do slovníku tohoto diagramu.");
+        }
     }
 
     /**

@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.CascadeConflictException;
+import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.ForeignConceptException;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.Outcome;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.StaleBaseException;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,8 @@ public class DiagramMaterializeService {
                 failed.add(fail(nodeId, "STALE_BASE", e.getMessage(), 409));
             } catch (CascadeConflictException e) {
                 failed.add(fail(nodeId, "CASCADE_CONFLICT", e.getMessage(), 409));
+            } catch (ForeignConceptException e) {
+                failed.add(fail(nodeId, "FOREIGN_CONCEPT", e.getMessage(), 400));
             } catch (ConceptValidationException | OntologyValidationException e) {
                 failed.add(fail(nodeId, "VALIDATION", e.getMessage(), 400));
             } catch (RuntimeException e) {

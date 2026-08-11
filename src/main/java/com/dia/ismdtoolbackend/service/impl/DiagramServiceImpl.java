@@ -113,6 +113,7 @@ public class DiagramServiceImpl implements DiagramService {
         if (edit == null) {
             node.setPendingEdit(null);
         } else {
+            requireOwnGraph(ontology.getGraphName(), edit);
             edit.setBaseUpdatedAt(baseUpdatedAt(node.getConceptIri()));
             node.setPendingEdit(edit);
         }
@@ -121,6 +122,38 @@ public class DiagramServiceImpl implements DiagramService {
 
         ConceptDetailModel detail = liveConcept(ontology.getGraphName(), node.getConceptIri());
         return toNode(diagram, node, detail);
+    }
+
+    /**
+     * Op 6's {@code addBroaderOn} / {@code broader} name concepts that need never be on the canvas, so they
+     * are the one overlay input that can reach {@code editConcept}/{@code deleteConcept} on its own. Reject a
+     * foreign target at stage time rather than letting it sit staged until Převzít. The applier re-asserts
+     * this — an overlay staged before this check existed is still refused there.
+     */
+    private void requireOwnGraph(String diagramGraphName, DiagramPendingEdit edit) {
+        DiagramPendingEdit.ConvertToHierarchy marker = edit.getConvertToHierarchy();
+        if (marker == null) {
+            return;
+        }
+        requireOwnGraph(diagramGraphName, marker.getAddBroaderOn());
+        requireOwnGraph(diagramGraphName, marker.getBroader());
+    }
+
+    private void requireOwnGraph(String diagramGraphName, String conceptIri) {
+        if (conceptIri == null) {
+            return;
+        }
+        // An unknown IRI is left to materialize, which reports it as a per-change VALIDATION failure;
+        // only a concept that exists in ANOTHER ontology's graph is a cross-tenant reach.
+        String graphName = conceptMetadataRepository.findByConceptIri(conceptIri)
+                .map(ConceptMetadataEntity::getGraphName)
+                .orElse(null);
+        if (graphName != null && !java.util.Objects.equals(diagramGraphName, graphName)) {
+            log.warn("Rejected overlay referencing concept {} (graph {}) on a diagram for graph {}",
+                    conceptIri, graphName, diagramGraphName);
+            throw new com.dia.ismdtoolbackend.exception.ConceptValidationException(
+                    "Pojem " + conceptIri + " nepatří do slovníku tohoto diagramu.");
+        }
     }
 
     // Not transactional: each staged change materializes in its OWN transaction (REQUIRES_NEW) so a

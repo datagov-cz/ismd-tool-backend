@@ -4,18 +4,22 @@ import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -28,6 +32,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Save-time layout membership reconcile ({@code PUT …/layout}) on real Postgres: the incoming node set is
@@ -39,17 +44,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
-@EntityScan(basePackageClasses = DiagramEntity.class)
-@EnableJpaRepositories(basePackageClasses = DiagramRepository.class)
+@EntityScan(basePackageClasses = {DiagramEntity.class, ConceptMetadataEntity.class})
+@EnableJpaRepositories(basePackageClasses = {DiagramRepository.class, ConceptMetadataRepository.class})
 @Import(JpaAuditingConfig.class)
 class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
-    private final DiagramLayoutReconciler reconciler = new DiagramLayoutReconciler(new DiagramMapper());
-
+    @Autowired private ConceptMetadataRepository conceptRepository;
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private DiagramNodeRepository nodeRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private EntityManager em;
+
+    private DiagramLayoutReconciler reconciler;
+
+    @BeforeEach
+    void initReconciler() {
+        reconciler = new DiagramLayoutReconciler(new DiagramMapper(), conceptRepository);
+    }
 
     private DiagramEntity newDiagram(String slug) {
         OntologyMetadataEntity o = new OntologyMetadataEntity();
@@ -150,6 +161,67 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         assertThat(remaining).extracting(DiagramNodeEntity::getConceptIri)
                 .containsExactly("https://x/pojem/child");         // parent removed
         assertThat(remaining.get(0).getParentNodeId()).isNull();   // child detached, not dangling
+    }
+
+    /**
+     * B2 ingress: Save authorizes the ontology SLUG, but node IRIs travel in the body. A node referencing a
+     * concept in ANOTHER ontology's graph must be rejected and no row persisted — otherwise the canvas
+     * becomes the staging ground for a later cross-tenant materialize.
+     */
+    @Test
+    void foreignGraphNode_isRejected_andNotPersisted() {
+        DiagramEntity diagram = newDiagram("tenant-a");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        // A concept row belonging to a DIFFERENT ontology graph (another tenant's).
+        OntologyMetadataEntity victimOntology = new OntologyMetadataEntity();
+        victimOntology.setSlug("victim");
+        victimOntology.setGraphName("https://x/victim");
+        victimOntology.setUserId("victim-user");
+        victimOntology.setIsPublished(false);
+        ontologyRepository.saveAndFlush(victimOntology);
+
+        String foreignIri = "https://x/victim/pojem/secret";
+        ConceptMetadataEntity foreign = new ConceptMetadataEntity();
+        foreign.setConceptIri(foreignIri);
+        foreign.setGraphName("https://x/victim");
+        foreign.setSlug("secret");
+        foreign.setConceptName("Secret");
+        foreign.setUserId("victim-user");
+        foreign.setOntologyMetadata(victimOntology);
+        conceptRepository.saveAndFlush(foreign);
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, List.of(node(foreignIri, 0, 0)), List.of());
+
+        assertThatThrownBy(() -> reconciler.reconcileNodes(managed, layout))
+                .isInstanceOf(ConceptValidationException.class)
+                .hasMessageContaining(foreignIri);
+
+        em.clear();
+        assertThat(nodeRepository.findByDiagramId(diagram.getId()))
+                .as("no node row persisted for the foreign concept").isEmpty();
+    }
+
+    /**
+     * The complement: a node whose concept row is missing entirely is NOT rejected. That is a concept
+     * deleted out from under the canvas — a legitimate state Převzít reports as {@code skippedStale}.
+     * Failing the save would strand the user with an unsaveable canvas.
+     */
+    @Test
+    void nodeWithNoConceptRow_isStillAccepted() {
+        DiagramEntity diagram = newDiagram("no-row");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null,
+                List.of(node("https://x/no-row/pojem/deleted", 0, 0)), List.of()));
+
+        assertThat(nodeRepository.findByDiagramId(diagram.getId()))
+                .extracting(DiagramNodeEntity::getConceptIri)
+                .containsExactly("https://x/no-row/pojem/deleted");
     }
 
     @Test

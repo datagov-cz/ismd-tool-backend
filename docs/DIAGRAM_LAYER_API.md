@@ -57,6 +57,8 @@ The backend has already joined layout rows to live concept content and applied e
 
 **Read authorization (deliberate).** `GET …/all` and `GET …/detail` are gated by `canViewResource()` — **any authenticated user** may read any ontology's diagram, matching the codebase-wide read posture where every authenticated caller sees all graphs. Only the write paths (`/layout`, `/overlay`, `/materialize`) are ownership-scoped via `belongsToUserBySlug`.
 
+**Write authorization scopes the slug *and* the IRIs.** `belongsToUserBySlug` authorizes the ontology in the path, but every concept IRI travels inside the request body, so the write paths additionally require each referenced concept to belong to the diagram's own ontology graph. A node IRI resolving to another ontology's concept fails `PUT …/layout` with HTTP 400 and persists nothing; the same check re-runs at materialize (`FOREIGN_CONCEPT`) so a row written before this guard existed still cannot be applied, and it covers op 6's `addBroaderOn` / `broader`, which name concepts that need never be on the canvas. A node whose concept row is simply *missing* is not rejected — that is a deleted concept, reported as `skippedStale`.
+
 **Reads never write.** `GET …/detail` is read-only: an ontology with no diagram is served from an unsaved in-memory stand-in, so a non-owner opening someone else's canvas cannot bring a `diagrams` row into existence. The row appears on the first successful write, and a diagram is listed by `GET /all` only once it has actually been saved — opening a canvas does not make it show up there. A diagram belongs to whoever owns its ontology; there is no separate diagram-owner field.
 
 ```jsonc
@@ -204,6 +206,7 @@ Applies every staged change. One entry per staged **change** (a change may span 
 - `error: "VALIDATION"` (HTTP 400) — the concept edit failed validation; overlay retained, fix and retry.
 - `error: "STALE_BASE"` (HTTP 409) — the underlying concept was edited (via normal `/api/concept`) since the overlay was staged; the FE should reload the diagram and re-stage.
 - `error: "CASCADE_CONFLICT"` — op 6 (rel→hierarchy) blocked because another concept's domain/range points at the VZTAH (deleting it would cascade); surface and let the user resolve.
+- `error: "FOREIGN_CONCEPT"` (HTTP 400) — a concept IRI in the change belongs to a different ontology than the diagram's own (either the node itself, or op 6's `addBroaderOn` / `broader`). The diagram may only write its own ontology's concepts; a legitimate client never produces this.
 - `error: "ERROR"` (HTTP 500) — an unexpected server-side failure; overlay retained. `message` is always the generic `"Nastala neočekávaná chyba."` — the underlying cause is server-logged, never returned, so the FE should show it as-is and not try to parse it.
 - `skippedStale` — the referenced concept no longer exists; offer remove-or-recreate.
 

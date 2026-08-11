@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
+import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
@@ -39,6 +40,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
 import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +64,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -133,6 +137,7 @@ public class ConceptServiceImpl implements ConceptService {
     @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public void deleteConcept(Long conceptId) {
+        assertCanModify(conceptId);
         // On the outbox path, take a row lock FIRST (see ConceptMetadataRepository.findWithLockById)
         // so a concurrent edit/delete of the same concept can't enqueue an out-of-order same-aggregate
         // outbox row. Direct path keeps the plain findById (byte-for-byte unchanged when flag off).
@@ -185,6 +190,7 @@ public class ConceptServiceImpl implements ConceptService {
     @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
+        assertCanModify(conceptId);
         // A rename relocates the conceptIri, which for a working copy IS its NKD twin's IRI — so a rename
         // orphans it from the twin. The generic edit path treats that as chosen divergence and severs the
         // working copy to a draft. The sync path passes false: it owns its own sever decision (a name sync
@@ -694,6 +700,34 @@ public class ConceptServiceImpl implements ConceptService {
         entity.setOntologyMetadata(ontologyMetadata);
 
         return entity;
+    }
+
+    /**
+     * Defence in depth: the caller may only edit/delete a concept it owns. {@code ConceptController} already
+     * gates both operations with {@code @PreAuthorize canModifyConcept}, but that check is controller-resident
+     * — a service-to-service caller (the diagram layer is the first) inherits none of it. Asserting here means
+     * the guarantee holds at the layer that actually performs the write.
+     *
+     * <p>Enforced only when a request context is present. A caller running outside one (the outbox relay, a
+     * scheduler, a warmer) has no user to check and is trusted by construction; requiring authentication here
+     * would break those paths instead of protecting them.
+     */
+    private void assertCanModify(Long conceptId) {
+        SecurityUser currentUser;
+        try {
+            currentUser = SecurityUtils.getCurrentUser();
+        } catch (IllegalStateException e) {
+            return;   // no authenticated context — a non-request caller, not a cross-tenant reach
+        }
+        if (currentUser.isAdmin()) {
+            return;
+        }
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId);
+        if (!Objects.equals(metadata.getUserId(), currentUser.getUserId())) {
+            log.warn("User {} attempted to modify concept {} owned by {}",
+                    currentUser.getUserId(), conceptId, metadata.getUserId());
+            throw new AccessDeniedException("Nemáte oprávnění upravovat tento pojem.");
+        }
     }
 
     private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {

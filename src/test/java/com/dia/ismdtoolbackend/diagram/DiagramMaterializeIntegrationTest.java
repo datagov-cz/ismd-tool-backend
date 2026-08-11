@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.diagram;
 
+import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
@@ -52,6 +53,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,6 +67,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -89,6 +94,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String USER = "user123";
+    private static final String VICTIM_GRAPH = "https://slovnik.gov.cz/victim";
+    private static final String VICTIM_USER = "victim-user-999";
 
     @Autowired private ConceptMetadataRepository conceptRepo;
     @Autowired private OntologyMetadataRepository ontologyRepo;
@@ -108,6 +115,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void setUp() {
+        // No authenticated principal by default: the materialize tests drive the service as a non-request
+        // caller, which the ownership assertion deliberately lets through.
+        SecurityContextHolder.clearContext();
         outboxConfig.setEnabled(true);
         outboxConfig.setBatchSize(100);
         txTemplate.executeWithoutResult(tx -> {
@@ -194,6 +204,51 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                 .filter(c -> c.getConceptName() != null && c.getConceptName().contains(cs))
                 .reduce((a, b) -> b.getId() > a.getId() ? b : a)
                 .orElseThrow(() -> new IllegalStateException("No concept row for " + cs));
+    }
+
+    // ---- cross-tenant fixture (B2) ---------------------------------------------------------------
+
+    /**
+     * A SECOND ontology on its own graph, owned by another user — the victim in the IDOR probes below.
+     * Must be committed before a concept can be created in it ({@code ConceptServiceImpl.createConcept}
+     * resolves the ontology by graph name).
+     */
+    private void seedVictimOntology() {
+        txTemplate.executeWithoutResult(tx -> {
+            OntologyMetadataEntity victim = new OntologyMetadataEntity();
+            victim.setSlug("victim-ontology");
+            victim.setGraphName(VICTIM_GRAPH);
+            victim.setUserId(VICTIM_USER);
+            victim.setIsPublished(false);
+            victim.setCreatedAt(LocalDateTime.now());
+            ontologyRepo.save(victim);
+        });
+    }
+
+    /** Create a class in the VICTIM's graph, owned by the victim — never legitimately on this diagram. */
+    private ConceptMetadataEntity createVictimClass(String name) {
+        ClassConceptModel m = new ClassConceptModel();
+        m.setConceptType("třída");
+        m.setType("objekt");
+        m.setOntologyGraphName(VICTIM_GRAPH);
+        m.setNamespace(VICTIM_GRAPH);
+        m.setIsPublic(true);
+        m.setNameModel(name(name));
+        conceptService.createConcept(m, VICTIM_USER);
+        return latestByName(name);
+    }
+
+    private Model victimGraph() {
+        return tdb2.dataset().getNamedModel(VICTIM_GRAPH);
+    }
+
+    /** Every triple about the concept, as stable strings — for a byte-identical before/after comparison. */
+    private List<String> triplesOf(Model model, String conceptIri) {
+        return model.listStatements(model.getResource(conceptIri), null, (org.apache.jena.rdf.model.RDFNode) null)
+                .toList().stream()
+                .map(Object::toString)
+                .sorted()
+                .toList();
     }
 
     // ---- diagram seeding ------------------------------------------------------------------------
@@ -549,6 +604,181 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         if (failure.status() == 500) {
             assertThat(failure.message()).isEqualTo("Nastala neočekávaná chyba.");
         }
+    }
+
+    // ---- B2: cross-tenant IDOR ------------------------------------------------------------------
+    // The diagram write endpoints authorize the ontology SLUG, but the concept IRIs travel inside the
+    // request body. Without a graph-scope check, staging another user's concept as a node made materialize
+    // edit — and via op 6 delete — concepts in that user's ontology. These pin each unguarded hop.
+
+    /**
+     * Hop 2 (apply): a foreign concept already persisted as a node (a bad row written before the ingress
+     * guard existed) must be REFUSED at materialize, not applied. A foreign IRI is a rejected request, not
+     * a stale reference — so it lands in {@code failed}, not {@code skippedStale}.
+     */
+    @Test
+    void materialize_foreignGraphNode_refusedAndVictimConceptUntouched() {
+        seedVictimOntology();
+        ConceptMetadataEntity victimConcept = createVictimClass("Victim Secret");
+        ConceptMetadataEntity localTarget = create(classModel("Local Target", true));
+        List<String> before = triplesOf(victimGraph(), victimConcept.getConceptIri());
+        assertThat(before).as("victim concept has triples to protect").isNotEmpty();
+
+        // The attack: the victim's concept staged as a node on THIS diagram (whose ontology is GRAPH).
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(localTarget.getConceptIri()));
+        stageNode(victimConcept.getConceptIri(), overlay);
+
+        MaterializeResultDto result = materializeService.materialize(diagramId());
+
+        assertThat(result.materialized())
+                .as("a foreign concept must never be materialized").isEmpty();
+        assertThat(result.failed()).hasSize(1);
+        assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
+        assertThat(result.failed().get(0).status()).isEqualTo(400);
+        // The victim's RDF is byte-identical — the edit never reached their graph.
+        assertThat(triplesOf(victimGraph(), victimConcept.getConceptIri()))
+                .as("victim concept's triples unchanged").isEqualTo(before);
+    }
+
+    /**
+     * Hop 3 (op 6): the worst primitive — {@code addBroaderOn} is a raw IRI from the overlay body and the
+     * target need never have been on the canvas, so op 6 alone could edit AND delete an arbitrary concept.
+     * The foreign target must be refused, and the VZTAH must survive (the delete is gated on the edit).
+     */
+    @Test
+    void op6_foreignAddBroaderOn_refusedAndNothingDeleted() {
+        seedVictimOntology();
+        ConceptMetadataEntity victimClass = createVictimClass("Victim Class");
+        ConceptMetadataEntity a = create(classModel("Op6 Foreign A", true));
+        ConceptMetadataEntity b = create(classModel("Op6 Foreign B", true));
+        ConceptMetadataEntity v = create(relModel("op6-foreign-rel", a.getConceptIri(), b.getConceptIri()));
+        List<String> victimBefore = triplesOf(victimGraph(), victimClass.getConceptIri());
+
+        // Op 6 on a LOCAL vztah, but pointing addBroaderOn at the VICTIM's class.
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(victimClass.getConceptIri());
+        marker.setBroader(a.getConceptIri());
+        convert.setConvertToHierarchy(marker);
+        stageNode(v.getConceptIri(), convert);
+
+        MaterializeResultDto result = materializeService.materialize(diagramId());
+
+        assertThat(result.materialized()).isEmpty();
+        assertThat(result.failed()).hasSize(1);
+        assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
+        // The victim's class was not edited...
+        assertThat(triplesOf(victimGraph(), victimClass.getConceptIri()))
+                .as("victim class untouched by the refused op-6").isEqualTo(victimBefore);
+        // ...and the local VZTAH was NOT deleted (all-or-nothing: the delete follows the edit).
+        assertThat(graph().containsResource(graph().getResource(v.getConceptIri())))
+                .as("VZTAH survives a refused convert").isTrue();
+    }
+
+    /** Op 6's other raw IRI: a foreign {@code broader} must be refused too. */
+    @Test
+    void op6_foreignBroader_refused() {
+        seedVictimOntology();
+        ConceptMetadataEntity victimClass = createVictimClass("Victim Broader");
+        ConceptMetadataEntity a = create(classModel("Op6 Broader A", true));
+        ConceptMetadataEntity b = create(classModel("Op6 Broader B", true));
+        ConceptMetadataEntity v = create(relModel("op6-broader-rel", a.getConceptIri(), b.getConceptIri()));
+
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(a.getConceptIri());              // local target
+        marker.setBroader(victimClass.getConceptIri());          // foreign broader
+        convert.setConvertToHierarchy(marker);
+        stageNode(v.getConceptIri(), convert);
+
+        MaterializeResultDto result = materializeService.materialize(diagramId());
+
+        assertThat(result.failed()).hasSize(1);
+        assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
+        // The local class did not gain the foreign super-class, and the VZTAH survives.
+        assertThat(broaderOf(a.getConceptIri())).doesNotContain(victimClass.getConceptIri());
+        assertThat(graph().containsResource(graph().getResource(v.getConceptIri()))).isTrue();
+    }
+
+    // ---- B2 layer 2: ownership assertion inside ConceptServiceImpl -------------------------------
+    // Defence in depth. The diagram guards above scope by GRAPH; this one scopes by OWNER at the layer
+    // that performs the write, so the next service-to-service caller of editConcept/deleteConcept cannot
+    // silently reintroduce the hole. Driven directly against the service, bypassing the diagram entirely.
+
+    /** With an authenticated non-owner in the context, edit and delete are refused. */
+    @Test
+    void editAndDelete_byNonOwner_areRefusedAtTheServiceLayer() {
+        seedVictimOntology();
+        ConceptMetadataEntity victimConcept = createVictimClass("Service Layer Victim");
+        List<String> before = triplesOf(victimGraph(), victimConcept.getConceptIri());
+
+        authenticateAs("attacker-user", false);
+        try {
+            ClassConceptEditModel edit = new ClassConceptEditModel();
+            edit.setConceptType(ConceptType.TRIDA.getValue());
+            edit.setBroaderConcept(List.of("https://slovnik.gov.cz/g/pojem/anything"));
+
+            assertThatThrownBy(() -> conceptService.editConcept(victimConcept.getId(), edit))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> conceptService.deleteConcept(victimConcept.getId()))
+                    .isInstanceOf(AccessDeniedException.class);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(triplesOf(victimGraph(), victimConcept.getConceptIri()))
+                .as("victim concept untouched by the refused service-layer calls").isEqualTo(before);
+    }
+
+    /** The owner is unaffected — the assertion gates non-owners, not the legitimate edit path. */
+    @Test
+    void edit_byOwner_isPermitted() {
+        ConceptMetadataEntity a = create(classModel("Owner Edit A", true));
+        ConceptMetadataEntity parent = create(classModel("Owner Edit Parent", true));
+
+        authenticateAs(USER, false);
+        try {
+            ClassConceptEditModel edit = new ClassConceptEditModel();
+            edit.setConceptType(ConceptType.TRIDA.getValue());
+            edit.setBroaderConcept(List.of(parent.getConceptIri()));
+            conceptService.editConcept(a.getId(), edit);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(broaderOf(a.getConceptIri())).containsExactly(parent.getConceptIri());
+    }
+
+    /** An admin may modify another user's concept, matching {@code canModifyConcept}'s admin bypass. */
+    @Test
+    void edit_byAdmin_isPermittedOnAnotherUsersConcept() {
+        seedVictimOntology();
+        ConceptMetadataEntity victimConcept = createVictimClass("Admin Editable");
+        ConceptMetadataEntity parent = createVictimClass("Admin Editable Parent");
+
+        authenticateAs("admin-user", true);
+        try {
+            ClassConceptEditModel edit = new ClassConceptEditModel();
+            edit.setConceptType(ConceptType.TRIDA.getValue());
+            edit.setBroaderConcept(List.of(parent.getConceptIri()));
+            conceptService.editConcept(victimConcept.getId(), edit);
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(victimGraph().listStatements(
+                        victimGraph().getResource(victimConcept.getConceptIri()),
+                        org.apache.jena.vocabulary.RDFS.subClassOf, (org.apache.jena.rdf.model.RDFNode) null)
+                .toList()).isNotEmpty();
+    }
+
+    /** Put an authenticated principal in the SecurityContext, the way the JWT filter would. */
+    private void authenticateAs(String userId, boolean admin) {
+        SecurityUser user = new SecurityUser(userId, userId,
+                admin ? List.of("ROLE_ADMIN") : List.of("ROLE_USER"));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }
 
     @TestConfiguration

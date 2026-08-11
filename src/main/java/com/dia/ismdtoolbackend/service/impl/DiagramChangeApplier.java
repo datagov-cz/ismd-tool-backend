@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
@@ -68,20 +69,21 @@ public class DiagramChangeApplier {
             return new Outcome(null, Outcome.Kind.MATERIALIZED);
         }
 
-        DiagramOp op = classify(overlay, node.getConceptIri());
+        DiagramOp op = classify(overlay);
 
         ConceptMetadataEntity concept =
                 conceptMetadataRepository.findByConceptIri(node.getConceptIri()).orElse(null);
         if (concept == null) {
             return new Outcome(op, Outcome.Kind.SKIPPED_STALE);
         }
+        requireSameGraph(node.getDiagram(), concept);
 
         if (isStaleBase(concept, overlay)) {
             throw new StaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
         }
 
         if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
-            applyConvertToHierarchy(overlay, concept);
+            applyConvertToHierarchy(overlay, concept, diagramGraphName(node));
         } else {
             conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
         }
@@ -94,7 +96,8 @@ public class DiagramChangeApplier {
      * VZTAH. All-or-nothing — the delete is gated on the broader-edit succeeding, and both run in this
      * change's transaction so a delete failure rolls back the broader-edit too.
      */
-    private void applyConvertToHierarchy(DiagramPendingEdit overlay, ConceptMetadataEntity vztah) {
+    private void applyConvertToHierarchy(DiagramPendingEdit overlay, ConceptMetadataEntity vztah,
+                                         String diagramGraphName) {
         DiagramPendingEdit.ConvertToHierarchy marker = overlay.getConvertToHierarchy();
         List<String> related =
                 jenaTDB2Repository.findRelatedConceptUris(vztah.getConceptIri(), vztah.getGraphName());
@@ -106,6 +109,8 @@ public class DiagramChangeApplier {
         ConceptMetadataEntity targetClass = conceptMetadataRepository.findByConceptIri(marker.getAddBroaderOn())
                 .orElseThrow(() -> new ConceptValidationException(
                         "Cílová třída " + marker.getAddBroaderOn() + " nebyla nalezena."));
+        requireSameGraph(diagramGraphName, targetClass.getGraphName(), targetClass.getConceptIri());
+        requireSameGraphIri(diagramGraphName, marker.getBroader());
 
         ClassConceptEditModel addBroader = new ClassConceptEditModel();
         addBroader.setConceptType(ConceptType.TRIDA.getValue());
@@ -139,6 +144,47 @@ public class DiagramChangeApplier {
             merged.add(newBroader);
         }
         return merged;
+    }
+
+    // ---- graph scoping --------------------------------------------------------------------------
+
+    /**
+     * The graph the diagram is allowed to write. Read through the node's diagram → ontology, so it is the
+     * authorized slug's graph — the same ontology {@code belongsToUserBySlug} checked at the controller.
+     */
+    private String diagramGraphName(DiagramNodeEntity node) {
+        return node.getDiagram().getOntologyMetadata().getGraphName();
+    }
+
+    private void requireSameGraph(DiagramEntity diagram, ConceptMetadataEntity concept) {
+        requireSameGraph(diagram.getOntologyMetadata().getGraphName(), concept.getGraphName(),
+                concept.getConceptIri());
+    }
+
+    /**
+     * A concept outside the diagram's own graph is a rejected request, not a stale reference: the diagram
+     * endpoints authorize the ontology slug, so writing any other ontology's concept would escape that check.
+     */
+    private void requireSameGraph(String diagramGraphName, String conceptGraphName, String conceptIri) {
+        if (!Objects.equals(diagramGraphName, conceptGraphName)) {
+            log.warn("Rejected diagram write to foreign concept {} (graph {}) from a diagram on graph {}",
+                    conceptIri, conceptGraphName, diagramGraphName);
+            throw new ForeignConceptException(
+                    "Pojem " + conceptIri + " nepatří do slovníku tohoto diagramu.");
+        }
+    }
+
+    /**
+     * Same check for a raw overlay IRI that need not have a PG row. An unresolvable IRI is not rejected here
+     * — it becomes an ordinary rdfs:subClassOf object and cannot reach another ontology's concept; only a
+     * row in a different graph is a cross-tenant reach.
+     */
+    private void requireSameGraphIri(String diagramGraphName, String conceptIri) {
+        if (conceptIri == null) {
+            return;
+        }
+        conceptMetadataRepository.findByConceptIri(conceptIri)
+                .map(ConceptMetadataEntity::getGraphName).ifPresent(graphName -> requireSameGraph(diagramGraphName, graphName, conceptIri));
     }
 
     // ---- op classification ----------------------------------------------------------------------
@@ -212,6 +258,13 @@ public class DiagramChangeApplier {
     /** The referenced concept moved under the overlay since it was staged (409 STALE_BASE). */
     public static class StaleBaseException extends RuntimeException {
         public StaleBaseException(String message) {
+            super(message);
+        }
+    }
+
+    /** A concept IRI in the request does not belong to the diagram's own ontology graph (400). */
+    public static class ForeignConceptException extends RuntimeException {
+        public ForeignConceptException(String message) {
             super(message);
         }
     }
