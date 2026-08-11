@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionReques
 import com.dia.ismdtoolbackend.service.AiSuggestionService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -128,7 +129,7 @@ public class AiSuggestionController {
     )
     @GetMapping("/legal-acts/class-suggestions-jobs")
     public ResponseEntity<List<AiClassSuggestionsJobResponseDto>> getClassSuggestions(
-            @RequestParam("jobIds") List<UUID> jobIds,
+            @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getClassSuggestions(jwt.getTokenValue(), jobIds));
@@ -144,7 +145,7 @@ public class AiSuggestionController {
     )
     @GetMapping("/legal-acts/property-suggestions-jobs")
     public ResponseEntity<List<AiPropertySuggestionsJobResponseDto>> getPropertySuggestions(
-            @RequestParam("jobIds") List<UUID> jobIds,
+            @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getPropertySuggestions(jwt.getTokenValue(), jobIds));
@@ -160,7 +161,7 @@ public class AiSuggestionController {
     )
     @GetMapping("/legal-acts/relationship-suggestions-jobs")
     public ResponseEntity<List<AiRelationshipSuggestionsJobResponseDto>> getRelationshipSuggestions(
-            @RequestParam("jobIds") List<UUID> jobIds,
+            @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getRelationshipSuggestions(jwt.getTokenValue(), jobIds));
