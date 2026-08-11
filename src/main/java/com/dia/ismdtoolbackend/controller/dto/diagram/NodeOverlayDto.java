@@ -7,8 +7,8 @@ import java.util.List;
 
 /**
  * Stage one node's structural overlay via {@code PATCH /api/diagram/{slug}/nodes/overlay}.
- * Only the changed structural fields; IRIs as strings. Structural-only. An empty/all-null body discards the overlay.
- * See {@code docs/DIAGRAM_LAYER_API.md}.
+ * Only the changed structural fields; IRIs as strings. Structural-only. A body carrying just {@code nodeId}
+ * (every overlay field null) discards the overlay. See {@code docs/DIAGRAM_LAYER_API.md}.
  *
  * <p>{@code nodeId} identifies the target node ({@code iri:<full-iri>}). It travels in the body, not the
  * path: a concept IRI contains slashes, which cannot survive a path segment.

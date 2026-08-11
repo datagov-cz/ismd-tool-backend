@@ -1,7 +1,7 @@
 # PG ↔ TDB2 Consistency: Outbox & Reconciler
 
 > Status: both features ship **dark** (disabled by default). Enabling either is an opt-in,
-> per-environment decision. Czech version: [`PG_TDB2_CONSISTENCY_CS.md`](./docs/PG_TDB2_CONSISTENCY_CS.md).
+> per-environment decision. Czech version: [`PG_TDB2_CONSISTENCY_CS.md`](./PG_TDB2_CONSISTENCY_CS.md).
 
 ## What problem this solves
 

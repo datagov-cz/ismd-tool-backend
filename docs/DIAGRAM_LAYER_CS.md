@@ -2,13 +2,13 @@
 
 > Stav: **hotovo** — entitní vrstva/migrace, služby, controller i zabezpečení jsou implementovány a pokryty
 > testy. Před vydáním zbývá: end-to-end ověření proti dev Postgres + Fuseki. Anglická verze:
-> [`DIAGRAM_LAYER.md`](./docs/DIAGRAM_LAYER.md). FE/REST kontrakt: [`DIAGRAM_LAYER_API_CS.md`](./docs/DIAGRAM_LAYER_API_CS.md).
+> [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md). FE/REST kontrakt: [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md).
 
 Plátno založené na ReactFlow, které vizuálně zobrazuje a edituje ISMD ontologii — jeden kanonický diagram na ontologii — s modelem perzistence navrženým tak, aby se diagram *nikdy* nemohl tiše stát rozcházející se kopií dat pojmů.
 
 ## Jaký problém řešíme
 
-Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovní plochou s vlastním CRUD. Právě tato kombinace vyvolává obavy z „rozcházení" (drift). Tato codebase už podobný problém s „dvě úložiště držící kopie téhož obsahu" řešila: duální zápis PG↔TDB2 bez sdílené transakce, outbox, rekonciliátor, dokumentovaný základ známého šumu (viz [`PG_TDB2_CONSISTENCY_CS.md`](./docs/PG_TDB2_CONSISTENCY_CS.md)). Diagram, který by ukládal vlastní kopii obsahu pojmu, by tento problém — třetí úložiště — otevřel znovu.
+Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovní plochou s vlastním CRUD. Právě tato kombinace vyvolává obavy z „rozcházení" (drift). Tato codebase už podobný problém s „dvě úložiště držící kopie téhož obsahu" řešila: duální zápis PG↔TDB2 bez sdílené transakce, outbox, rekonciliátor, dokumentovaný základ známého šumu (viz [`PG_TDB2_CONSISTENCY_CS.md`](./PG_TDB2_CONSISTENCY_CS.md)). Diagram, který by ukládal vlastní kopii obsahu pojmu, by tento problém — třetí úložiště — otevřel znovu.
 
 ## Řídicí princip
 

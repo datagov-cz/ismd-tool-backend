@@ -2,10 +2,10 @@
 
 > Stav: **hotovo** — `DiagramController` implementuje všechny níže uvedené endpointy a cesty jsou
 > v allowlistu SecurityConfig. Kontrakt je stabilní; integrace FE může začít. Anglická verze:
-> [`DIAGRAM_LAYER_API.md`](./docs/DIAGRAM_LAYER_API.md). Architektura a zdůvodnění:
-> [`DIAGRAM_LAYER_CS.md`](./docs/DIAGRAM_LAYER_CS.md).
+> [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md). Architektura a zdůvodnění:
+> [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md).
 
-Kontrakt na drátě pro diagramovou funkci: **tence při zápisu, tučně při čtení.** Backend spojí řádky rozvržení s živým obsahem pojmů a aplikuje overlay každého uzlu, takže FE dostane payload, který lze předat téměř přímo do ReactFlow. Tento dokument je integrační referencí pro FE; proč je model takto tvarován, viz [`DIAGRAM_LAYER_CS.md`](./docs/DIAGRAM_LAYER_CS.md).
+Kontrakt na drátě pro diagramovou funkci: **tence při zápisu, tučně při čtení.** Backend spojí řádky rozvržení s živým obsahem pojmů a aplikuje overlay každého uzlu, takže FE dostane payload, který lze předat téměř přímo do ReactFlow. Tento dokument je integrační referencí pro FE; proč je model takto tvarován, viz [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md).
 
 ## REST rozhraní
 
@@ -14,9 +14,9 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 | Sloveso · Cesta | Účel | Tělo → Odpověď |
 |---|---|---|
 | `GET /all` | Odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. Libovolný přihlášený uživatel. | → `List<DiagramSummaryDto>` |
-| `GET /{ontologySlug}/detail` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Při prvním otevření líně vytvoří prázdný diagram. | → `DiagramDto` (tučný, připravený k vykreslení) |
+| `GET /{ontologySlug}/detail` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Slovník, který zatím diagram nemá, se načte jako prázdné plátno — **čtení nic nevytváří**; řádek vznikne až prvním zápisem. | → `DiagramDto` (tučný, připravený k vykreslení) |
 | `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, hrany-jako-projekce) *a* overlaye uzlů. Idempotentní úplná náhrada — toto volání **je** členstvím na plátně: přítomný uzel je přidán (dosud neznámé IRI se v odpovědi hydratuje), vynechaný uzel je z plátna odebrán. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
-| `PATCH /{ontologySlug}/nodes/{nodeId}/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole), nebo ji **zahodit** prázdným tělem (`{}` / null → návrat k živému obsahu). Nematerializuje se. | `NodeOverlayDto` → uzel |
+| `PATCH /{ontologySlug}/nodes/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole) pro uzel určený polem `nodeId` **v těle požadavku**, nebo ji **zahodit** odesláním samotného `nodeId` (všechna overlay pole null → návrat k živému obsahu). Nematerializuje se. | `NodeOverlayDto` → uzel |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` + obnovený `DiagramDto` |
 
 **Členství na plátně jede na uložení rozvržení.** Není žádný vyhrazený endpoint pro přidání/odebrání uzlu. Protože `PUT …/layout` je idempotentní úplná náhrada, **přidat** = uzel zahrnout (holé `{id, position}` pro pojem dosud ne na plátně; odpověď `DiagramDto` hydratuje jeho label/typ/slug z živého RDF) a **odebrat z plátna** = vynechat. Pojem není v žádném případě dotčen — jediné smazání v RDF, které diagram způsobí, je implicitní, uvnitř op 6, řešené `/materialize`.
@@ -47,7 +47,9 @@ Takže: při `result.type === 'DIAGRAM'` přejít rovnou na diagram pomocí `res
 
 ## Autorizace čtení (záměrná)
 
-`GET …/all` i `GET …/detail` jsou chráněny přes `canViewResource()` — **libovolný přihlášený uživatel** může číst (a líně vytvořit) diagram jakéhokoli slovníku, v souladu s celokódovým modelem čtení, kde každý přihlášený volající vidí všechny grafy. Pouze zápisové cesty (`/layout`, `/overlay`, `/materialize`) jsou omezené na vlastníka přes `belongsToUserBySlug`.
+`GET …/all` i `GET …/detail` jsou chráněny přes `canViewResource()` — **libovolný přihlášený uživatel** může číst diagram jakéhokoli slovníku, v souladu s celokódovým modelem čtení, kde každý přihlášený volající vidí všechny grafy. Pouze zápisové cesty (`/layout`, `/overlay`, `/materialize`) jsou omezené na vlastníka přes `belongsToUserBySlug`.
+
+**Čtení nikdy nezapisuje.** `GET …/detail` je jen pro čtení: slovník bez diagramu je obsloužen z neuloženého objektu v paměti, takže otevřením cizího plátna nemůže nevlastník vytvořit řádek v `diagrams`. Řádek vznikne až prvním úspěšným zápisem a `GET /all` diagram uvede teprve tehdy, když byl skutečně uložen — pouhé otevření plátna jej tam nezobrazí. Diagram patří vlastníkovi svého slovníku; samostatné pole vlastníka diagramu neexistuje.
 
 ## Čtení — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
 
@@ -136,13 +138,17 @@ Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a po�
 
 `edgeKind` ∈ `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH`.
 
-## Zápis — nasadit strukturální úpravu: `PATCH /api/diagram/{ontologySlug}/nodes/{nodeId}/overlay` · `NodeOverlayDto`
+## Zápis — nasadit strukturální úpravu: `PATCH /api/diagram/{ontologySlug}/nodes/overlay` · `NodeOverlayDto`
+
+**Cílový uzel se určuje polem `nodeId` v těle požadavku, nikoli v cestě.** Id uzlu má tvar `iri:<plné-iri>` a IRI pojmu obsahuje lomítka, která v segmentu cesty neprojdou — procentuálně zakódovaná je Tomcat odmítne (`400 Invalid URI: [The encoded slash character is not allowed]`), nezakódovaná vytvoří segmenty navíc, které neodpovídají žádnému mapování. `nodeId` je povinné (`@NotBlank`).
 
 Jen změněná strukturální pole. Uloženo do `pending_edit_json`; do RDF neposláno až do Převzít. Overlay je **pouze strukturální** — žádný `label`/`name`; editace labelu se dělá běžným editorem pojmů, ne diagramem (změna labelu přejmenuje IRI pojmu).
 
-**Zahození = tělo se samými null.** `PATCH` s `{}` (nebo tělem, kde je každé pole null) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. Jakýkoli payload nesoucí pole nahradí nasazený diff. **Explicitně prázdný seznam *není* zahození — znamená „vymaž tento predikát"**: např. `{ "broaderConcept": [] }` nasadí „odeber všechny nadtřídy" (A-strana otočení op 2 zahazující svou poslední nadtřídu) a materializuje se jako vymazání `subClassOf`.
+**Zahození = tělo obsahující pouze `nodeId`.** `PATCH` s `{"nodeId": "iri:…"}` (všechna overlay pole null) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. `nodeId` je adresace, nikoli obsah, takže se nikdy nezapočítává do prázdnosti. Jakýkoli payload nesoucí overlay pole nahradí nasazený diff. **Explicitně prázdný seznam *není* zahození — znamená „vymaž tento predikát"**: např. `{ "nodeId": "iri:…", "broaderConcept": [] }` nasadí „odeber všechny nadtřídy" (A-strana otočení op 2 zahazující svou poslední nadtřídu) a materializuje se jako vymazání `subClassOf`.
 
 Hierarchie je závislá na typu — pošlete pole odpovídající typu pojmu uzlu:
+
+Každé tělo níže nese také `"nodeId": "iri:…"` určující nasazovaný uzel (pro stručnost vynecháno):
 
 ```jsonc
 // op 1 (přehození směru, VZTAH):          { "domain": "iri:…/A", "range": "iri:…/B" }

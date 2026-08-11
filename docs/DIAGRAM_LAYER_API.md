@@ -2,10 +2,10 @@
 
 > Status: **built** — `DiagramController` implements every endpoint below and the paths are in the
 > SecurityConfig allowlist. The contract is stable; FE integration can proceed. Czech version:
-> [`DIAGRAM_LAYER_API_CS.md`](./docs/DIAGRAM_LAYER_API_CS.md). Architecture & rationale:
-> [`DIAGRAM_LAYER.md`](./docs/DIAGRAM_LAYER.md).
+> [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md). Architecture & rationale:
+> [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md).
 
-The wire contract for the diagram feature: **thin on write, fat on read.** The backend joins layout rows to live concept content and applies each node's overlay, so the FE receives a payload it can pass almost directly to ReactFlow. This document is the FE integration reference; see [`DIAGRAM_LAYER.md`](./docs/DIAGRAM_LAYER.md) for why the model is shaped this way.
+The wire contract for the diagram feature: **thin on write, fat on read.** The backend joins layout rows to live concept content and applies each node's overlay, so the FE receives a payload it can pass almost directly to ReactFlow. This document is the FE integration reference; see [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md) for why the model is shaped this way.
 
 ## REST surface
 
@@ -14,7 +14,7 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 | Verb · Path | Purpose | Body → Response |
 |---|---|---|
 | `GET /all` | Lightweight list of every diagram (identity + node count), e.g. for a diagram picker. Any authenticated user. | → `List<DiagramSummaryDto>` |
-| `GET /{ontologySlug}/detail` | Load the canonical diagram, layout joined to live concept content with overlays applied. Lazily provisions an empty diagram on first open. | → `DiagramDto` (fat, render-ready) |
+| `GET /{ontologySlug}/detail` | Load the canonical diagram, layout joined to live concept content with overlays applied. An ontology with no diagram yet reads as an empty canvas — **the read creates nothing**; the row is provisioned by the first write. | → `DiagramDto` (fat, render-ready) |
 | `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edges-as-projections) *and* node overlays. Idempotent full-replace — this call **is** canvas membership: a node present is added (a previously-unseen IRI is hydrated in the response), a node omitted is removed from the canvas. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
 | `PATCH /{ontologySlug}/nodes/overlay` | Stage/update one node's structural edit (end-state fields) for the node named by `nodeId` **in the body**, or **discard** it by sending only `nodeId` (all overlay fields null → revert to live content). Not materialized. | `NodeOverlayDto` → node |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Apply each staged change via the existing concept CRUD → outbox → RDF; multi-call changes all-or-nothing; per-change partial-ok. | → `MaterializeResultDto` + refreshed `DiagramDto` |
@@ -49,7 +49,9 @@ So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `resu
 
 The backend has already joined layout rows to live concept content and applied each node's overlay.
 
-**Read authorization (deliberate).** `GET …/all` and `GET …/detail` are gated by `canViewResource()` — **any authenticated user** may read (and lazily provision) any ontology's diagram, matching the codebase-wide read posture where every authenticated caller sees all graphs. Only the write paths (`/layout`, `/overlay`, `/materialize`) are ownership-scoped via `belongsToUserBySlug`.
+**Read authorization (deliberate).** `GET …/all` and `GET …/detail` are gated by `canViewResource()` — **any authenticated user** may read any ontology's diagram, matching the codebase-wide read posture where every authenticated caller sees all graphs. Only the write paths (`/layout`, `/overlay`, `/materialize`) are ownership-scoped via `belongsToUserBySlug`.
+
+**Reads never write.** `GET …/detail` is read-only: an ontology with no diagram is served from an unsaved in-memory stand-in, so a non-owner opening someone else's canvas cannot bring a `diagrams` row into existence. The row appears on the first successful write, and a diagram is listed by `GET /all` only once it has actually been saved — opening a canvas does not make it show up there. A diagram belongs to whoever owns its ontology; there is no separate diagram-owner field.
 
 ```jsonc
 {

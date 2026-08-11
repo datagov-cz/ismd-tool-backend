@@ -4,9 +4,16 @@
 
 **Database**: PostgreSQL
 **Schema Name**: `ismd_schema`
-**DDL Management**: Hibernate auto-update
+**DDL Management**: Liquibase (`db/changelog/`); Hibernate runs `ddl-auto=validate` on every profile, so an entity/schema mismatch fails startup rather than altering the database
 **Auditing**: Enabled via JPA Auditing
 **Application**: ISMD Tool Backend - Ontology and Semantic Data Management System
+
+> **Coverage note.** The table definitions below cover `ontologies`, `concepts`, `comments`,
+> `validation_reports` and the three diagram tables. `outbox_entry` and `nkd_concept_snapshots` are
+> **not yet documented here** — see [`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md) and
+> [`NKD_LOCAL_COPY_SNAPSHOT.md`](./NKD_LOCAL_COPY_SNAPSHOT.md) for those. The `comments` entry below
+> also predates changeset `010`, which replaced its `ontology_iri`/`concept_iri` string locators with
+> FK columns.
 
 ---
 
@@ -198,6 +205,90 @@
 
 **Query Methods**:
 - `findByOntologyMetadataId(Long id)`
+
+---
+
+### 5. `diagrams`
+
+**Purpose**: One ReactFlow canvas per ontology — presentation data only (viewport + the node/edge children). Never stores concept content; nodes reference concepts by IRI and are joined to live PG/RDF on read.
+
+**Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramEntity`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | BIGINT | PK, AUTO_INCREMENT | Unique identifier |
+| `ontology_metadata_id` | BIGINT | NOT NULL, FK → `ontologies(id)` ON DELETE CASCADE, UNIQUE | The ontology this canvas visualizes — also its **only ownership record** |
+| `viewport_x` | DOUBLE PRECISION | | Saved pan X; null until first save |
+| `viewport_y` | DOUBLE PRECISION | | Saved pan Y |
+| `viewport_zoom` | DOUBLE PRECISION | | Saved zoom |
+| `version` | BIGINT | NOT NULL, DEFAULT 0 | `@Version` optimistic lock for concurrent layout saves |
+| `created_at` | TIMESTAMP | NOT NULL | Creation time |
+| `updated_at` | TIMESTAMP | | Last modification |
+
+**Indexes / Constraints**:
+- Primary key on `id`
+- `uq_diagrams_ontology_metadata` UNIQUE on `ontology_metadata_id` — one canonical diagram per ontology
+
+**Notes**:
+- **No owner column.** A diagram belongs to whoever owns its ontology, reached through the NOT NULL FK; write paths authorize with `belongsToUserBySlug` against the ontology. A denormalized `user_id` existed until changeset `014` dropped it as unused.
+- The row is created by the **first write**, never by a read — `GET …/detail` is read-only and serves an unsaved in-memory stand-in for an ontology with no diagram.
+- `@Version` only bumps when a `diagrams` column changes, so the save path must call `touch()` (or take `OPTIMISTIC_FORCE_INCREMENT`) when only child nodes/edges changed.
+
+**Repository**: `DiagramRepository`
+
+---
+
+### 6. `diagram_nodes`
+
+**Purpose**: One node on the canvas — its position and, optionally, a staged structural edit ("overlay") not yet applied to RDF.
+
+**Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramNodeEntity`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | BIGINT | PK, AUTO_INCREMENT | Unique identifier |
+| `diagram_id` | BIGINT | NOT NULL, FK → `diagrams(id)` ON DELETE CASCADE | Owning diagram |
+| `backing` | VARCHAR(50) | NOT NULL | Node kind; `ISMD_CONCEPT` (every node references a materialized concept) |
+| `concept_iri` | VARCHAR(1024) | NOT NULL | The concept this node renders |
+| `pos_x` / `pos_y` | DOUBLE PRECISION | NOT NULL | Canvas position |
+| `collapsed` | BOOLEAN | NOT NULL | Group collapse state |
+| `hidden` | BOOLEAN | NOT NULL | Visibility |
+| `parent_node_id` | BIGINT | | Grouping parent (nullable) |
+| `pending_edit_json` | VARCHAR (unbounded) | | Staged structural overlay, serialized `DiagramPendingEdit`; null when nothing is staged. Entity declares `columnDefinition = "text"` — the same type in Postgres |
+
+**Indexes / Constraints**:
+- Primary key on `id`
+- `idx_diagram_nodes_diagram_id` on `diagram_id`
+- `uq_diagram_nodes_diagram_concept` UNIQUE on (`diagram_id`, `concept_iri`) — plain, not partial (changeset `013`)
+- `ck_diagram_nodes_backing_content` CHECK — `backing = 'ISMD_CONCEPT' AND concept_iri IS NOT NULL`
+
+**Repository**: `DiagramNodeRepository`
+
+---
+
+### 7. `diagram_edges`
+
+**Purpose**: Diagram-owned edges. In the current model edges are **projections** computed from live concept RDF (⊕ overlay) on read, so this table stays empty in normal operation; it exists for edges a diagram would own outright.
+
+**Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramEdgeEntity`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | BIGINT | PK, AUTO_INCREMENT | Unique identifier |
+| `diagram_id` | BIGINT | NOT NULL, FK → `diagrams(id)` ON DELETE CASCADE | Owning diagram |
+| `source_node_id` | BIGINT | NOT NULL, FK → `diagram_nodes(id)` ON DELETE CASCADE | Edge source |
+| `target_node_id` | BIGINT | NOT NULL, FK → `diagram_nodes(id)` ON DELETE CASCADE | Edge target |
+| `edge_kind` | VARCHAR(50) | NOT NULL | `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH` |
+| `source_handle` | VARCHAR(255) | | ReactFlow source handle |
+| `target_handle` | VARCHAR(255) | | ReactFlow target handle |
+
+**Indexes**:
+- Primary key on `id`
+- `idx_diagram_edges_diagram_id`, `idx_diagram_edges_source_node_id`, `idx_diagram_edges_target_node_id`
+
+**Repository**: `DiagramEdgeRepository`
+
+**Related docs**: [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md) (architecture), [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md) (REST contract).
 
 ---
 
