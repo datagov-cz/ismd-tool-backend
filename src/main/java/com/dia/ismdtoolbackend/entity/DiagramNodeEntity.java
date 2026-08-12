@@ -48,11 +48,9 @@ public class DiagramNodeEntity {
     @Column(name = "pos_y", nullable = false)
     private Double posY;
 
+    /** Group node rendered collapsed; round-trips through the layout save and the read. */
     @Column(name = "collapsed", nullable = false)
     private boolean collapsed = false;
-
-    @Column(name = "hidden", nullable = false)
-    private boolean hidden = false;
 
     /** Parent node id for grouping/containers (ReactFlow {@code parentId}); null for top-level nodes. */
     @Column(name = "parent_node_id")

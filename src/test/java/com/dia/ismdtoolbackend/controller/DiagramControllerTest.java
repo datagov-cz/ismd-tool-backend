@@ -119,7 +119,7 @@ class DiagramControllerTest {
         String nodeId = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
         when(diagramService.stageOverlay(eq("pracovni-pomer"), eq(nodeId), any()))
                 .thenReturn(new DiagramDto.Node("n1", "relationNode",
-                        new PositionDto(0.0, 0.0), null, null));
+                        new PositionDto(0.0, 0.0), null, false, null));
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -159,7 +159,7 @@ class DiagramControllerTest {
     void stageOverlay_responseSerializesVersion() throws Exception {
         when(diagramService.stageOverlay(eq("pracovni-pomer"), any(), any()))
                 .thenReturn(new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
-                        new PositionDto(10.0, 20.0), null, null, 8L));
+                        new PositionDto(10.0, 20.0), null, false, null, 8L));
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -213,7 +213,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void getDetail_nodesOmitVersion_diagramCarriesIt() throws Exception {
         DiagramDto.Node node = new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
-                new PositionDto(0.0, 0.0), null, null);          // in-diagram form: no version
+                new PositionDto(0.0, 0.0), null, true, null);     // in-diagram form: no version
         when(diagramService.getDiagram(eq("pracovni-pomer")))
                 .thenReturn(new DiagramDto("pracovni-pomer", 7L, null, List.of(node), List.of(), 0));
 
@@ -221,6 +221,8 @@ class DiagramControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.version").value(7))
                 .andExpect(jsonPath("$.data.nodes[0].id").value("iri:https://x/pojem/a"))
+                // collapsed is a primitive, so NON_NULL never suppresses it — it must always be on the wire.
+                .andExpect(jsonPath("$.data.nodes[0].collapsed").value(true))
                 .andReturn().getResponse().getContentAsString();
 
         // Asserted on the raw body, NOT with jsonPath(...).doesNotExist(): JsonPath resolves an explicit

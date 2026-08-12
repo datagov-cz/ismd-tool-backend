@@ -298,6 +298,42 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 assertThat(n.version()).as("nodes inside the fat read carry no version").isNull());
     }
 
+    /**
+     * The layout round-trip for {@code collapsed}: the FE sends it, PG stores it, and the read must give it
+     * back — otherwise a collapsed group silently re-expands on every reload. It was persisted but never
+     * returned; only an end-to-end save-then-read catches that, since each half worked in isolation.
+     */
+    @Test
+    void collapsed_survivesTheSaveAndComesBackOnTheRead() {
+        DiagramLayoutDto layout = new DiagramLayoutDto(
+                null, null,
+                List.of(new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + CLASS_A,
+                                new PositionDto(0.0, 0.0), null, true),
+                        new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + CLASS_B,
+                                new PositionDto(100.0, 0.0), null, false)),
+                List.of());
+
+        DiagramDto saved = diagramService.saveLayout(SLUG, layout);
+
+        // Echoed straight back on the save response...
+        assertThat(saved.nodes())
+                .filteredOn(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_A).equals(n.id()))
+                .singleElement()
+                .satisfies(n -> assertThat(n.collapsed()).isTrue());
+
+        // ...and still there on a fresh read, which is what a page reload actually does.
+        DiagramDto reloaded = diagramService.getDiagram(SLUG);
+        assertThat(reloaded.nodes())
+                .filteredOn(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_A).equals(n.id()))
+                .singleElement()
+                .satisfies(n -> assertThat(n.collapsed())
+                        .as("a collapsed group must not re-expand on reload").isTrue());
+        assertThat(reloaded.nodes())
+                .filteredOn(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_B).equals(n.id()))
+                .singleElement()
+                .satisfies(n -> assertThat(n.collapsed()).isFalse());
+    }
+
     // ---- write/read split -----------------------------------------------------------------------
     // The PG write and the Fuseki content read are deliberately NOT in one transaction: the fetch is an
     // HTTP call behind a 30s-timeout semaphore, and holding a Hikari connection (pool of 20) across it lets

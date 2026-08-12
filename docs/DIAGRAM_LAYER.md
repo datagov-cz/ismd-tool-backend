@@ -74,7 +74,7 @@ Three entities in two-plus-one tables, mirroring the `CommentEntity` pattern (FK
 
 **`diagrams`** — one canonical diagram per ontology (`@OneToOne` unique FK → `OntologyMetadataEntity`, ON DELETE CASCADE), viewport pan/zoom, a `@Version` optimistic-lock column, and `@OneToMany` node/edge collections (cascade ALL, orphanRemoval). Aggregate helpers `addNode`/`addEdge`/`removeNode` keep callers on managed instances; `touch()` forces the `@Version` bump on node/edge-only changes.
 
-**`diagram_nodes`** — every row references a materialized concept: `concept_iri` **NOT NULL**, `backing` (single-valued `ISMD_CONCEPT`, kept for forward-compat), position, `collapsed`/`hidden`, `parent_node_id`, and `pending_edit_json` — **nullable**; non-null holds the structural overlay diff. `pending_edit_json` **coexists with** `concept_iri` (it is a diff, not a substitute). An entity `@PrePersist`/`@PreUpdate` guard and a Postgres CHECK enforce `concept_iri` always present.
+**`diagram_nodes`** — every row references a materialized concept: `concept_iri` **NOT NULL**, `backing` (single-valued `ISMD_CONCEPT`, kept for forward-compat), position, `collapsed`, `parent_node_id`, and `pending_edit_json` — **nullable**; non-null holds the structural overlay diff. `pending_edit_json` **coexists with** `concept_iri` (it is a diff, not a substitute). An entity `@PrePersist`/`@PreUpdate` guard and a Postgres CHECK enforce `concept_iri` always present.
 
 **`diagram_edges`** — endpoints (`source_node_id`/`target_node_id`, both FK-indexed and cascade-deleting), `edge_kind`, and nullable handle anchors. Endpoints + kind only; **no content**.
 

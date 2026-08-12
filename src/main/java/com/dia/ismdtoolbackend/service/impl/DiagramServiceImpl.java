@@ -364,6 +364,7 @@ public class DiagramServiceImpl implements DiagramService {
                 mapper.nodeType(type),
                 mapper.toPosition(node),
                 parentId,
+                node.isCollapsed(),
                 data);
     }
 

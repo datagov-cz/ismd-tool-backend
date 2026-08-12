@@ -28,6 +28,9 @@ public record DiagramDto(
     /**
      * A canvas node: layout from PG, {@code data} joined from live RDF ⊕ overlay.
      *
+     * <p>{@code collapsed} completes the layout round-trip — the FE sends it on {@code PUT …/layout} and
+     * gets it back here, so a collapsed group survives a reload. A primitive, so it always serializes.
+     *
      * <p>{@code version} is the diagram's version after the write that returned this node — set only on the
      * lean {@code PATCH …/nodes/overlay} response, which has no enclosing {@link DiagramDto} to carry it.
      * Inside {@code DiagramDto.nodes} it is null (and so omitted): the version there belongs to the
@@ -39,18 +42,20 @@ public record DiagramDto(
             String type,
             PositionDto position,
             String parentId,
+            boolean collapsed,
             NodeData data,
             Long version
     ) {
 
         /** The in-diagram form: no version, because the enclosing {@link DiagramDto} carries it. */
-        public Node(String id, String type, PositionDto position, String parentId, NodeData data) {
-            this(id, type, position, parentId, data, null);
+        public Node(String id, String type, PositionDto position, String parentId, boolean collapsed,
+                    NodeData data) {
+            this(id, type, position, parentId, collapsed, data, null);
         }
 
         /** The lean stage-response form: same node, stamped with the post-write diagram version. */
         public Node withVersion(Long version) {
-            return new Node(id, type, position, parentId, data, version);
+            return new Node(id, type, position, parentId, collapsed, data, version);
         }
     }
 

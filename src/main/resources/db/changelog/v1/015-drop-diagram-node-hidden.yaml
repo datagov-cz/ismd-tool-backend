@@ -1,0 +1,29 @@
+databaseChangeLog:
+  # Drop the never-used diagram_nodes.hidden column. Nothing read or wrote it: it reached no DTO, so no
+  # client could set or observe it. Preconditioned on the column existing so a fresh database (or a rerun)
+  # marks the changeset ran instead of failing.
+  - changeSet:
+      id: 015-drop-diagram-nodes-hidden
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: hidden
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: hidden
+      rollback:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columns:
+              - column:
+                  name: hidden
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

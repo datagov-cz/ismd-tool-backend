@@ -74,6 +74,7 @@ The backend has already joined layout rows to live concept content and applied e
       "type": "classNode",
       "position": { "x": 240, "y": 80 },
       "parentId": null,
+      "collapsed": false,           // round-trips: what you sent on PUT …/layout comes back here
       "data": {
         "conceptType": "TRIDA",
         "iri": "https://…/pojem/zamestnanec",
@@ -210,6 +211,7 @@ Field reference for `DiagramPendingEdit`:
   "type": "relationNode",
   "position": { "x": 520, "y": 210 },
   "parentId": null,
+  "collapsed": false,
   "data": { "conceptType": "VZTAH", "iri": "https://…/pojem/je-zamestnan-u",
             "hasPendingEdits": true, "pendingEdit": { … } },
   "version": 8                    // the advanced version — echo this in your next PUT …/layout

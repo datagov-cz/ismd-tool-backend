@@ -76,6 +76,7 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
       "type": "classNode",
       "position": { "x": 240, "y": 80 },
       "parentId": null,
+      "collapsed": false,           // vrací se zpět: co pošlete v PUT …/layout, dostanete zde
       "data": {
         "conceptType": "TRIDA",
         "iri": "https://…/pojem/zamestnanec",
@@ -126,9 +127,28 @@ Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a po�
 
 **Toto volání je směrodatné pro členství na plátně.** Pole `nodes[]` je úplná sada — přítomný uzel je zachován (nebo **přidán**, je-li jeho IRI na plátně nové; odpověď `DiagramDto` hydratuje jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen). Přidání uzlu vyžaduje jen `{id, position}`; zbytek backend spojí z živého RDF.
 
-**`version` je povinná — vraťte tu, ze které jste vykreslovali.** Protože členství je úplná náhrada, uložení postavené na zastaralém pohledu by tiše smazalo uzly přidané jiným editorem i s jejich nasazenými overlayi. Vraťte `version` z `DiagramDto`, ze kterého tato úprava vycházela (z načtení, nebo z odpovědi vašeho posledního uložení). Pokud mezitím uložil jiný editor, volání vrátí **409** a nic se nezapíše; načtěte diagram znovu a změny aplikujte znovu. Verzi posouvá každý úspěšný `PUT …/layout` **i** `PATCH …/nodes/overlay`, používejte tedy vždy nejnovější obdrženou hodnotu.
+**`version` je povinná — vraťte tu, ze které jste vykreslovali.** Protože členství je úplná náhrada, uložení postavené na zastaralém pohledu by tiše smazalo uzly přidané jiným editorem i s jejich nasazenými overlayi. Vraťte `version` z `DiagramDto`, ze kterého tato úprava vycházela (z načtení, nebo z odpovědi vašeho posledního uložení). Pokud mezitím uložil jiný editor, volání vrátí **409** a nic se nezapíše; načtěte diagram znovu a změny aplikujte znovu. Verzi posouvá každý úspěšný `PUT …/layout` **i** `PATCH …/nodes/overlay`, používejte tedy vždy nejnovější obdrženou hodnotu. Obě volání ji vracejí: `PUT …/layout` v `DiagramDto`, `PATCH …/nodes/overlay` v poli `version` vráceného uzlu — nasazení overlaye tedy nikdy nevynutí opětovné načtení jen kvůli udržení aktuální verze.
 
 `version` smí být `null` **pouze** při úplně prvním uložení plátna, které dosud nemá řádek diagramu. Jakmile diagram existuje, je `null` verze chybou 409 — klient, který nikdy nenačetl aktuální stav, nemůže bezpečně provést úplnou náhradu členství.
+
+### `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) — zápis se povedl, data pro vykreslení ne
+
+Platí pro **oba** zapisovací endpointy. Zápis diagramu je čistě Postgres; obsah pojmů v odpovědi se pak čte z Fuseki. Obojí záměrně **není** v jedné transakci — načtení je HTTP volání, které může trvat desítky sekund, a držení databázového spojení po celou tu dobu by při pomalé Fuseki vyčerpalo pool a zablokovalo i nesouvisející endpointy. Zároveň by kvůli selhání *čtení* zahodilo zcela v pořádku provedený zápis rozvržení.
+
+Důsledkem je chybový stav, který dříve neexistoval: zápis je **potvrzený a trvalý**, ale tělo odpovědi nelze sestavit.
+
+```jsonc
+{
+  "success": false,
+  "errorCode": "DIAGRAM_SAVED_READBACK_FAILED",
+  "message": "Změny diagramu byly uloženy, ale nepodařilo se načíst obsah pojmů pro zobrazení. …",
+  "data": { "version": 8 }        // verze PO potvrzeném zápisu
+}
+```
+
+**Zápis neopakujte.** Uložení již proběhlo a verze se posunula; opětovné odeslání s verzí, kterou jste drželi, by bylo zastaralé a vrátilo by **409**. Buď znovu zavolejte `GET …/detail` a vykreslete aktuální stav, nebo pokračujte s verzí z `data`, pokud chcete uložit znovu bez tohoto načtení. Chápejte to jako „uloženo, ale zatím nemohu zobrazit výsledek" — nikdy jako „uložení selhalo".
+
+Je to jediný stav, kdy odpověď s `success: false` přesto znamená, že zápis proběhl — proto má vlastní kód místo obecné chyby 500.
 
 ```jsonc
 {
@@ -184,6 +204,23 @@ Referenční pole `DiagramPendingEdit`:
 | `superRelation` | VZTAH | seznam `subPropertyOf` (IRI) |
 | `exactMatch` | libovolné | seznam `skos:exactMatch` (IRI) — „ekvivalent" v op 3 |
 | `convertToHierarchy` | VZTAH | značka op 6: `{ addBroaderOn, broader }` — přidat broader na třídu, poté smazat tento VZTAH |
+
+**Odpověď — jediný nasazený uzel, nesoucí novou `version`.** PATCH vrací pouze dotčený uzel (nikoli celý diagram), orazítkovaný verzí diagramu *po* tomto zápisu:
+
+```jsonc
+{
+  "id": "iri:https://…/pojem/je-zamestnan-u",
+  "type": "relationNode",
+  "position": { "x": 520, "y": 210 },
+  "parentId": null,
+  "collapsed": false,
+  "data": { "conceptType": "VZTAH", "iri": "https://…/pojem/je-zamestnan-u",
+            "hasPendingEdits": true, "pendingEdit": { … } },
+  "version": 8                    // posunutá verze — vraťte ji v dalším PUT …/layout
+}
+```
+
+`version` se objevuje **pouze** v této úsporné odpovědi, kde není nadřazené `DiagramDto`, které by ji neslo. V poli `nodes[]` z `GET …/detail` je vynechána: verze patří diagramu, nikoli jednotlivému uzlu, a její opakování u každého uzlu by naznačovalo zámek na úrovni uzlu, který neexistuje. Zahození overlaye (tělo pouze s `nodeId`) je také úspěšný PATCH, takže rovněž posouvá verzi a vrací ji stejným způsobem.
 
 ## Materializace — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
 

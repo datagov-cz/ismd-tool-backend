@@ -22,7 +22,7 @@ Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovn
 
 ## Tři druhy rozcházení — nebezpečný byl vždy jen jeden
 
-- **🟢 Rozcházení rozvržení — bezpečné, záměrně.** Kde uzel leží, co je uvnitř, viewport. RDF k tomu nemá co říct. Pouze diagramové, nezávislé, nikdy se nesynchronizuje.
+- **🟢 Rozcházení rozvržení — bezpečné, záměrně.** Kde uzel leží, co je sbalené, viewport. RDF k tomu nemá co říct. Pouze diagramové, nezávislé, nikdy se nesynchronizuje.
 - **🟡 Rozpracované úpravy — záměrné, ohraničené, samoopravné.** Nasazená změna domény/oboru hodnot/hierarchie, dosud nematerializovaná. Obsah vlastněný diagramem, ale navázaný diff, který existuje proto, aby byl materializován, a při Převzít se vyprázdní. Nemůže tiše přetrvat jako stínová pravda: FE ho vykresluje jako „N nezapsaných změn" a Převzít je vědomá akce uživatele.
 - **🔴 Tichá třetí kopie — konstrukčně zakázaná.** Uzel držící *samostatnou* kopii obsahu pojmu, která se rozchází bez vlastníka. Overlay není nikdy samostatný (vždy navázaný na živé IRI) a nikdy trvalý (Převzít ho vyprázdní).
 
@@ -74,7 +74,7 @@ Tři entity ve dvou + jedné tabulkách, podle vzoru `CommentEntity` (FK na `ont
 
 **`diagrams`** — jeden kanonický diagram na slovník (`@OneToOne` unikátní FK → `OntologyMetadataEntity`, ON DELETE CASCADE), viewport pan/zoom, sloupec `@Version` pro optimistický zámek a kolekce `@OneToMany` uzlů/hran (cascade ALL, orphanRemoval). Agregátní metody `addNode`/`addEdge`/`removeNode` drží volající na spravovaných instancích; `touch()` vynutí posun `@Version` i při změně jen uzlů/hran.
 
-**`diagram_nodes`** — každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro možnou budoucí rozšiřitelnost na NKD), pozice, `collapsed`/`hidden`, `parent_node_id` a `pending_edit_json` — **nullable**; je-li neprázdné, drží strukturální diff overlaye. `pending_edit_json` **koexistuje** s `concept_iri` (je to diff, ne náhrada). Ochrana `@PrePersist`/`@PreUpdate` a Postgres CHECK vynucují, že `concept_iri` je vždy přítomné.
+**`diagram_nodes`** — každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro možnou budoucí rozšiřitelnost na NKD), pozice, `collapsed`, `parent_node_id` a `pending_edit_json` — **nullable**; je-li neprázdné, drží strukturální diff overlaye. `pending_edit_json` **koexistuje** s `concept_iri` (je to diff, ne náhrada). Ochrana `@PrePersist`/`@PreUpdate` a Postgres CHECK vynucují, že `concept_iri` je vždy přítomné.
 
 **`diagram_edges`** — koncové body (`source_node_id`/`target_node_id`, oba s indexem na FK a kaskádovým mazáním), `edge_kind` a nullable kotvy úchytů. Pouze koncové body + druh; **žádný obsah**.
 
@@ -94,6 +94,20 @@ Materializace se rozvětvuje **v procesu** do stávajících pojmových služeb 
 ## Verzování
 
 Protože diagram nedrží žádný *samostatný* obsah pojmu, „verzování diagramu" zůstává malé. **Historie rozvržení** je čistě PG záležitost (snímky řádků rozvržení) — odloženo; nejprve jedno aktuální rozvržení. **Nasazené úpravy** jsou záměrně dočasné a historii verzí nepotřebují. **Forma verzování pojmů/slovníků** už žije ve stávajícím modelu (RDF, publikováno-vs-koncept, odchylky) a diagram ho zdědí zdarma čtením živého obsahu.
+
+## Zápis do PG a čtení z Fuseki nikdy nejsou v jedné transakci
+
+Každý endpoint diagramu vrací **tučnou** odpověď: řádky rozvržení z PG spojené s živým obsahem pojmů načteným z Fuseki. Zjevná implementace — jedna metoda s `@Transactional`, která dělá obojí — je špatně hned ze dvou důvodů.
+
+**Drží databázové spojení po celou dobu externího HTTP volání.** Načtení z Fuseki prochází semaforem, jehož samotné získání má povoleno 30 s, ještě než se přenese jediný bajt. Hikari pool má 20 spojení. Pomalá nebo zahlcená Fuseki tedy nezpomalí jen požadavky na diagram — drží spojení, dokud není pool prázdný, a začnou selhávat i nesouvisející endpointy.
+
+**Kvůli selhání čtení zahodí v pořádku provedený zápis.** Vrstva diagramu *nikdy nezapisuje RDF* — jediná volání Fuseki v této službě jsou čtení `fetchGraph` a nastávají striktně až po dokončení všech zápisů do PG. Není zde tedy žádný duální zápis, který by bylo třeba držet atomicky; transakce chránila zápis před selháním, které ho nemůže poškodit.
+
+Služba proto každou veřejnou metodu rozděluje: krok s `@Transactional` (`commitLayout` / `commitOverlay` / `loadForRead`) provede práci v PG a vrátí **odpojený snímek** všeho, co odpověď potřebuje — verzi, viewport, řádky uzlů, typy a slugy pojmů. Načtení z Fuseki i sestavení odpovědi pak běží bez otevřené transakce. Krok se volá přes `@Lazy` self-proxy: přímé `this.commitLayout(...)` by obešlo Spring proxy a tiše běželo zcela bez transakce.
+
+**Pořadí je nejprve zápis, pak čtení.** Opačné pořadí by sice odstranilo níže popsaný chybový stav, ale platilo by úplným načtením grafu při každém zastaralém uložení, jen aby ho zahodilo — a 409 je na sdíleném plátně *běžný* výsledek, nikoli výjimečný. Zároveň by rozšířilo okno mezi kontrolou verze a potvrzením zápisu. Zápis první ponechává levné odmítnutí na straně PG jako první krok a činí obě selhání rozlišitelnými: 409 znamená, že zápis byl odmítnut, selhání zpětného načtení znamená, že proběhl.
+
+Cenou je skutečně nový stav: **potvrzený zápis, nevykreslitelná odpověď.** Hlásí se jako `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) s verzí po zápisu, aby FE načetl znovu místo opakování zápisu do falešného 409. Vrátit zde obecnou chybu 500 by byla lež — změna uživatele je uložená a po znovunačtení se zobrazí. Viz [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md).
 
 ## Export
 
