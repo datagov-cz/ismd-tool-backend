@@ -215,7 +215,7 @@ public class OntologyServiceImpl implements OntologyService {
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 
-        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(processedModel, metadataModel);
+        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(detailModel, metadataModel);
         result.setPublishedOntologyDeviationModel(ontologyDeviations);
 
         Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);

@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -14,7 +15,12 @@ public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSn
     /** All snapshots owned by any of the given concepts (concept-delete cleanup). */
     List<NkdConceptSnapshotEntity> findByOwningConceptIdIn(List<Long> owningConceptIds);
 
-    /** All snapshots in one graph (ontology-delete cleanup). */
+    /**
+     * All snapshots in one graph (ontology detail, ontology-delete cleanup). Join-fetches the owner:
+     * every caller reads {@code owningConcept.conceptIri}, which on the LAZY association costs one
+     * extra SELECT per row.
+     */
+    @EntityGraph(attributePaths = "owningConcept")
     List<NkdConceptSnapshotEntity> findByGraphName(String graphName);
 
     /** The unique snapshot for an (owner, NKD IRI) link, if any (upsert lookup). */

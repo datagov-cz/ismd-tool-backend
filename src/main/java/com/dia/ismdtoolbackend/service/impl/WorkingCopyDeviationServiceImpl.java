@@ -12,10 +12,16 @@ import com.dia.ismdtoolbackend.service.WorkingCopyDeviationService;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -41,6 +47,7 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
     private final ConceptDeviationComparator conceptDeviationComparator;
     private final NkdSparqlClient nkdSparqlClient;
     private final DeviationResolutionEnricher deviationEnricher;
+    private final CacheManager cacheManager;
 
     // Self-reference through the Spring proxy so canonicalLocalConcept's @Cacheable is honoured when called from deviationFor
     private final WorkingCopyDeviationService self;
@@ -51,6 +58,7 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
                                            ConceptDeviationComparator conceptDeviationComparator,
                                            NkdSparqlClient nkdSparqlClient,
                                            DeviationResolutionEnricher deviationEnricher,
+                                           CacheManager cacheManager,
                                            @Lazy WorkingCopyDeviationService self) {
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
@@ -58,6 +66,7 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
         this.conceptDeviationComparator = conceptDeviationComparator;
         this.nkdSparqlClient = nkdSparqlClient;
         this.deviationEnricher = deviationEnricher;
+        this.cacheManager = cacheManager;
         this.self = self;
     }
 
@@ -67,12 +76,70 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
      */
     @Override
     public PublishedConceptDeviationModel deviationFor(String conceptIri) {
-        ConceptDetailModel local = self.canonicalLocalConcept(conceptIri);
+        return compareAgainstNkd(conceptIri, self.canonicalLocalConcept(conceptIri), null);
+    }
+
+    @Override
+    public Map<String, PublishedConceptDeviationModel> deviationForAll(Model processedModel, List<String> conceptIris) {
+        Map<String, ConceptDetailModel> locals = self.canonicalLocalConcepts(processedModel, conceptIris);
+        Map<String, Optional<ConceptDetailModel>> prefetched = prefetchNkdSide(conceptIris);
+        Map<String, PublishedConceptDeviationModel> out = new LinkedHashMap<>();
+        for (String conceptIri : conceptIris) {
+            out.put(conceptIri, compareAgainstNkd(conceptIri, locals.get(conceptIri),
+                    prefetched.get(conceptIri)));
+        }
+        return out;
+    }
+
+    /**
+     * Collapses the NKD side of a bulk check into one round-trip: fetches every not-yet-cached concept
+     * in a single batched CONSTRUCT, seeds the per-IRI {@code nkdPublishedResource} entries (so later
+     * single fetches hit cache) and returns the results for immediate use.
+     */
+    private Map<String, Optional<ConceptDetailModel>> prefetchNkdSide(List<String> conceptIris) {
+        Cache cache = cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);
+        List<String> misses = conceptIris.stream()
+                .filter(iri -> cache == null || cache.get("concept:" + iri) == null)
+                .distinct()
+                .toList();
+        if (misses.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Map<String, Optional<ConceptDetailModel>> out = new LinkedHashMap<>();
+            nkdSparqlClient.fetchPublishedConceptsBatched(misses)
+                    .forEach((iri, published) -> {
+                        Optional<ConceptDetailModel> detail =
+                                published.map(NkdSparqlClient.PublishedConcept::detail);
+                        if (cache != null) {
+                            // Mirror both keys the per-IRI methods would have written.
+                            cache.put("concept:" + iri, detail);
+                            cache.put("conceptWithScheme:" + iri, published);
+                        }
+                        out.put(iri, detail);
+                    });
+            return out;
+        } catch (Exception e) {
+            log.warn("Batched NKD prefetch failed for {} concepts; falling back to per-concept fetch: {}",
+                    misses.size(), e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * The one comparison both entry points run, so a bulk result and a per-IRI result for the same
+     * concept are identical by construction. {@code local} is the canonical projection (may be null);
+     * {@code prefetched} is the batched NKD result when the caller has one, else {@code null} to fetch
+     * this concept on its own.
+     */
+    private PublishedConceptDeviationModel compareAgainstNkd(String conceptIri, ConceptDetailModel local,
+                                                             Optional<ConceptDetailModel> prefetched) {
         if (local == null) {
             return error(DeviationStatus.QUERY_ERROR, "Local concept detail not available", conceptIri);
         }
         try {
-            Optional<ConceptDetailModel> publishedOpt = nkdSparqlClient.fetchPublishedConcept(conceptIri);
+            Optional<ConceptDetailModel> publishedOpt =
+                    prefetched.isPresent() ? prefetched : nkdSparqlClient.fetchPublishedConcept(conceptIri);
             if (publishedOpt.isEmpty()) {
                 log.warn("Published concept not found in NKD: {}", conceptIri);
                 return error(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
@@ -109,6 +176,40 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
         }
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         return detailExtractor.extractConceptDetail(processedModel, conceptIri);
+    }
+
+    /**
+     * Bulk canonical local read. Serves whatever {@link #canonicalLocalConcept} already cached, then
+     * extracts only the misses from the caller's already-transformed model in one pass and caches them
+     * under the same per-IRI keys.
+     */
+    @Override
+    public Map<String, ConceptDetailModel> canonicalLocalConcepts(Model processedModel, List<String> conceptIris) {
+        Cache cache = cacheManager.getCache(LOCAL_CONCEPT_PROJECTION_CACHE);
+        Map<String, ConceptDetailModel> out = new LinkedHashMap<>();
+        List<String> misses = new ArrayList<>();
+
+        for (String conceptIri : conceptIris) {
+            Cache.ValueWrapper hit = (cache == null) ? null : cache.get(conceptIri);
+            if (hit != null) {
+                // A cached null is a real answer (no metadata row / empty graph), not a miss.
+                out.put(conceptIri, (ConceptDetailModel) hit.get());
+            } else {
+                misses.add(conceptIri);
+            }
+        }
+
+        if (!misses.isEmpty()) {
+            Map<String, ConceptDetailModel> extracted = detailExtractor.extractConceptDetails(processedModel, misses);
+            for (String conceptIri : misses) {
+                ConceptDetailModel model = extracted.get(conceptIri);
+                if (cache != null) {
+                    cache.put(conceptIri, model);
+                }
+                out.put(conceptIri, model);
+            }
+        }
+        return out;
     }
 
     private PublishedConceptDeviationModel error(DeviationStatus status, String message, String conceptIri) {

@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.springframework.cache.annotation.Cacheable;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
@@ -84,6 +85,83 @@ public class NkdSparqlClient {
         log.debug("Successfully extracted published concept detail from NKD: {} (inScheme={})",
                 conceptIri, inSchemeIri);
         return Optional.of(new PublishedConcept(conceptDetail, inSchemeIri));
+    }
+
+    /**
+     * Batched counterpart to {@link #fetchPublishedConcept}: one CONSTRUCT for every requested IRI,
+     * then the same per-concept processing applied to each subject's slice. A concept absent from NKD
+     * maps to {@link Optional#empty()}, exactly as the per-IRI path reports it.
+     */
+    public Map<String, Optional<PublishedConcept>> fetchPublishedConceptsBatched(List<String> conceptIris) {
+        List<String> safeIris = conceptIris.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .distinct()
+                .toList();
+        Map<String, Optional<PublishedConcept>> out = new LinkedHashMap<>();
+        conceptIris.forEach(iri -> out.put(iri, Optional.empty()));
+        if (safeIris.isEmpty()) {
+            return out;
+        }
+
+        log.debug("Batched NKD concept fetch for {} IRIs", safeIris.size());
+        String query = NKDSPARQLConstructQuery.buildBatchedConstructQuery(safeIris);
+        Optional<Model> resultModel = executor.construct(
+                "NKD batched concept fetch (" + safeIris.size() + " IRIs)", query);
+        if (resultModel.isEmpty()) {
+            log.info("No data found for any of the {} batched concepts in NKD", safeIris.size());
+            return out;
+        }
+
+        Model batched = resultModel.get();
+        log.debug("Fetched {} triples from NKD for {} concepts", batched.size(), safeIris.size());
+        for (String conceptIri : safeIris) {
+            Model slice = sliceForSubject(batched, conceptIri);
+            if (slice.isEmpty()) {
+                log.debug("No data found for concept in NKD: {}", conceptIri);
+                continue;
+            }
+            String inSchemeIri = extractInSchemeIri(slice, conceptIri);
+            Model processedModel = detailExtractor.applyOFNTransformationsForNkd(slice);
+            OntologyDetailModel.ConceptDetailModel conceptDetail =
+                    detailExtractor.extractConceptDetail(processedModel, conceptIri,
+                            OntologyDetailExtractor.iriResolver());
+            out.put(conceptIri, Optional.of(new PublishedConcept(conceptDetail, inSchemeIri)));
+        }
+        return out;
+    }
+
+    /**
+     * The triples of one concept out of a batched CONSTRUCT: its own statements plus everything
+     * reachable through blank-node objects (the batched query's second UNION branch).
+     */
+    private static Model sliceForSubject(Model batched, String conceptIri) {
+        Model slice = ModelFactory.createDefaultModel();
+        slice.setNsPrefixes(batched.getNsPrefixMap());
+        Deque<Resource> pending = new ArrayDeque<>();
+        Set<Resource> visited = new HashSet<>();
+        pending.add(batched.getResource(conceptIri));
+        while (!pending.isEmpty()) {
+            Resource subject = pending.poll();
+            if (!visited.add(subject)) {
+                continue;
+            }
+            StmtIterator stmts = batched.listStatements(subject, null, (RDFNode) null);
+            try {
+                while (stmts.hasNext()) {
+                    Statement stmt = stmts.next();
+                    slice.add(stmt);
+                    RDFNode object = stmt.getObject();
+                    // Only blank objects are expanded; following URI objects would pull in
+                    // neighbouring concepts that the single-IRI query never returns.
+                    if (object.isAnon()) {
+                        pending.add(object.asResource());
+                    }
+                }
+            } finally {
+                stmts.close();
+            }
+        }
+        return slice;
     }
 
     private static String extractInSchemeIri(Model rawModel, String conceptIri) {

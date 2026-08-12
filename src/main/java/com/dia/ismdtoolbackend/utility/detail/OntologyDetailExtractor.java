@@ -55,6 +55,33 @@ public class OntologyDetailExtractor {
     }
 
     /**
+     * Batch-prefetched variant of {@link #dbSlugResolver()} for the whole-ontology path.
+     *
+     * <p>Falls back to the per-IRI resolver for IRIs outside the model (cross-graph members), so
+     * resolution stays identical to {@link #dbSlugResolver()} rather than silently narrowing to
+     * this graph.
+     */
+    Function<String, String> graphSlugResolver(Model processedModel) {
+        Set<String> subjectIris = new LinkedHashSet<>();
+        ResIterator it = processedModel.listSubjects();
+        while (it.hasNext()) {
+            Resource r = it.nextResource();
+            if (r.isURIResource()) {
+                subjectIris.add(r.getURI());
+            }
+        }
+        if (subjectIris.isEmpty()) {
+            return dbSlugResolver();
+        }
+
+        Map<String, String> slugByIri = new HashMap<>();
+        conceptMetadataRepository.findByConceptIriIn(new ArrayList<>(subjectIris))
+                .forEach(e -> slugByIri.put(e.getConceptIri(), e.getSlug()));
+        Function<String, String> fallback = dbSlugResolver();
+        return iri -> subjectIris.contains(iri) ? slugByIri.get(iri) : fallback.apply(iri);
+    }
+
+    /**
      * Batch-prefetched variant of {@link #dbSlugResolver()} for the single-concept detail path.
      * Collects every property/relationship member IRI reachable from {@code conceptIri} in the
      * model, resolves their slugs in one {@code findByConceptIriIn}, and serves each
@@ -125,7 +152,7 @@ public class OntologyDetailExtractor {
 
    @Transactional(readOnly = true)
     public OntologyDetailModel extractOntologyDetail(Model processedModel) {
-        return extractOntologyDetail(processedModel, dbSlugResolver());
+        return extractOntologyDetail(processedModel, graphSlugResolver(processedModel));
     }
 
     public OntologyDetailModel extractOntologyDetail(Model processedModel, Function<String, String> refResolver) {
@@ -149,6 +176,27 @@ public class OntologyDetailExtractor {
                                                                       Function<String, String> refResolver) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
         return extractConceptDetail(ontModel, processedModel, conceptIri, refResolver);
+    }
+
+    /**
+     * Extracts several concepts from ONE shared {@code OntModel} + {@code ModelStructure}.
+     *
+     * <p>IRIs absent from the model map to {@code null}.
+     */
+    public Map<String, OntologyDetailModel.ConceptDetailModel> extractConceptDetails(Model processedModel,
+                                                                                     Collection<String> conceptIris) {
+        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
+        ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
+        ConceptProcessor conceptProcessor = new ConceptProcessor();
+        ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
+
+        Map<String, OntologyDetailModel.ConceptDetailModel> out = new LinkedHashMap<>();
+        for (String conceptIri : conceptIris) {
+            Map<String, Object> conceptMap = conceptProcessor.processConceptByIri(ontModel, structure, conceptIri);
+            out.put(conceptIri, mapToConceptDetailModel(
+                    conceptMap, null, ontModel, batchSlugResolver(ontModel, conceptIri)));
+        }
+        return out;
     }
 
     private OntologyDetailModel.ConceptDetailModel extractConceptDetail(OntModel ontModel, Model processedModel,
