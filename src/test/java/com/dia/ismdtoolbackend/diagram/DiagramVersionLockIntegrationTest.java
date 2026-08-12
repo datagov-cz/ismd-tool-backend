@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
+import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
@@ -19,16 +20,21 @@ import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 
@@ -50,7 +56,11 @@ import static org.mockito.Mockito.mock;
 @ActiveProfiles("junit")
 @EntityScan(basePackageClasses = {DiagramEntity.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {DiagramRepository.class, ConceptMetadataRepository.class})
-@Import(JpaAuditingConfig.class)
+@Import({JpaAuditingConfig.class, DiagramVersionLockIntegrationTest.Beans.class,
+        TransactionTemplateConfig.class})
+// NOT_SUPPORTED: the service opens its own transaction per write, exactly as it does behind a real
+// request. An ambient test transaction would mask that — and would hide a self-call that never opens one.
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String SLUG = "lock-ontology";
@@ -60,45 +70,41 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
     @Autowired private DiagramNodeRepository nodeRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private ConceptMetadataRepository conceptRepository;
-    @Autowired private EntityManager em;
-
-    private DiagramServiceImpl service;
+    @Autowired private TransactionTemplate txTemplate;
+    @Autowired private DiagramServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        nodeRepository.deleteAllInBatch();
-        diagramRepository.deleteAllInBatch();
-        conceptRepository.deleteAllInBatch();
-        ontologyRepository.deleteAllInBatch();
-
-        OntologyMetadataEntity ontology = new OntologyMetadataEntity();
-        ontology.setSlug(SLUG);
-        ontology.setGraphName(GRAPH);
-        ontology.setUserId("u1");
-        ontology.setIsPublished(false);
-        ontologyRepository.saveAndFlush(ontology);
-
-        DiagramMapper mapper = new DiagramMapper();
-        // The graph is empty, so the detail extractor is never consulted for content.
-        service = new DiagramServiceImpl(
-                diagramRepository, ontologyRepository, conceptRepository,
-                mock(OntologyDetailExtractor.class), mock(JenaTDB2Repository.class),
-                mock(DiagramMaterializeService.class),
-                new DiagramLayoutReconciler(mapper, conceptRepository), mapper);
+        txTemplate.executeWithoutResult(tx -> {
+            nodeRepository.deleteAllInBatch();
+            diagramRepository.deleteAllInBatch();
+            conceptRepository.deleteAllInBatch();
+            ontologyRepository.deleteAllInBatch();
+        });
+        txTemplate.executeWithoutResult(tx -> {
+            OntologyMetadataEntity ontology = new OntologyMetadataEntity();
+            ontology.setSlug(SLUG);
+            ontology.setGraphName(GRAPH);
+            ontology.setUserId("u1");
+            ontology.setIsPublished(false);
+            ontologyRepository.saveAndFlush(ontology);
+        });
     }
 
     /** A concept row in THIS ontology's graph, so the node passes the graph-scope guard. */
     private String seedConcept(String local) {
         String iri = GRAPH + "/pojem/" + local;
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setGraphName(GRAPH);
-        c.setSlug(local);
-        c.setConceptName(local);
-        c.setUserId("u1");
-        c.setOntologyMetadata(ontologyRepository.findBySlug(SLUG).orElseThrow());
-        conceptRepository.saveAndFlush(c);
-        return iri;
+        return txTemplate.execute(tx -> {
+            ConceptMetadataEntity c = new ConceptMetadataEntity();
+            c.setConceptIri(iri);
+            c.setGraphName(GRAPH);
+            c.setSlug(local);
+            c.setConceptName(local);
+            c.setUserId("u1");
+            c.setOntologyMetadata(ontologyRepository.findBySlug(SLUG).orElseThrow());
+            conceptRepository.saveAndFlush(c);
+            return iri;
+        });
     }
 
     private DiagramLayoutDto layout(Long version, String... iris) {
@@ -109,10 +115,11 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     private List<String> persistedIris() {
-        return nodeRepository.findByDiagramId(diagramRepository.findByOntologyMetadataSlug(SLUG)
-                        .orElseThrow().getId()).stream()
-                .map(DiagramNodeEntity::getConceptIri)
-                .toList();
+        return txTemplate.execute(tx ->
+                nodeRepository.findByDiagramId(diagramRepository.findByOntologyMetadataSlug(SLUG)
+                                .orElseThrow().getId()).stream()
+                        .map(DiagramNodeEntity::getConceptIri)
+                        .toList());
     }
 
     /** The first save of a canvas with no diagram row has nothing to conflict with — null is allowed. */
@@ -142,8 +149,8 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
     /**
      * The returned version must equal what is actually STORED, not the pre-increment in-memory value.
      * {@code @Version} is bumped at flush; if the save path does not flush before assembling the response,
-     * the client echoes a stale number and its next perfectly-legitimate save 409s. Read back through a
-     * cleared persistence context — the next HTTP request is a different one.
+     * the client echoes a stale number and its next perfectly-legitimate save 409s. The read below runs in
+     * its own transaction — a fresh persistence context, like the client's next HTTP request.
      */
     @Test
     void saveResponse_versionMatchesTheStoredRow() {
@@ -151,9 +158,8 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
 
         DiagramDto saved = service.saveLayout(SLUG, layout(null, a));
 
-        em.flush();
-        em.clear();
-        Long stored = diagramRepository.findByOntologyMetadataSlug(SLUG).orElseThrow().getVersion();
+        Long stored = txTemplate.execute(tx ->
+                diagramRepository.findByOntologyMetadataSlug(SLUG).orElseThrow().getVersion());
         assertThat(saved.version())
                 .as("response version must be the stored one, or the client's next save falsely conflicts")
                 .isEqualTo(stored);
@@ -198,5 +204,40 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         assertThatThrownBy(() -> service.saveLayout(SLUG, layout(null, a)))
                 .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
         assertThat(persistedIris()).containsExactlyInAnyOrder(a, b);
+    }
+
+    @TestConfiguration
+    static class Beans {
+
+        /** The graph is empty, so the detail extractor is never consulted for content. */
+        @Bean JenaTDB2Repository jenaTDB2Repository() {
+            return mock(JenaTDB2Repository.class);
+        }
+
+        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
+            return mock(OntologyDetailExtractor.class);
+        }
+
+        @Bean DiagramMapper diagramMapper() {
+            return new DiagramMapper();
+        }
+
+        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
+                                                              ConceptMetadataRepository conceptRepo) {
+            return new DiagramLayoutReconciler(mapper, conceptRepo);
+        }
+
+        /**
+         * Built with the PROXIED self so the {@code @Transactional} commit steps actually open a
+         * transaction — this test runs {@code NOT_SUPPORTED}, so there is no ambient one to fall back on.
+         */
+        @Bean DiagramServiceImpl diagramServiceImpl(
+                DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
+                ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
+                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler, DiagramMapper mapper,
+                @Lazy DiagramServiceImpl self) {
+            return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
+                    mock(DiagramMaterializeService.class), reconciler, mapper, self);
+        }
     }
 }

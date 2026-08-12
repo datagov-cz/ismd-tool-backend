@@ -5,11 +5,13 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -22,9 +24,9 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import jakarta.persistence.EntityNotFoundException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +43,6 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DiagramServiceImpl implements DiagramService {
 
     private final DiagramRepository diagramRepository;
@@ -52,6 +53,33 @@ public class DiagramServiceImpl implements DiagramService {
     private final DiagramMaterializeService materializeService;
     private final DiagramLayoutReconciler layoutReconciler;
     private final DiagramMapper mapper;
+
+    /**
+     * Self-reference through the Spring proxy so the {@code @Transactional} commit/load steps are actually
+     * proxied when called from the public methods. A direct {@code this.commitLayout(...)} would bypass the
+     * proxy and run with NO transaction, silently undoing the write/read split.
+     */
+    private final DiagramServiceImpl self;
+
+    public DiagramServiceImpl(DiagramRepository diagramRepository,
+                              OntologyMetadataRepository ontologyMetadataRepository,
+                              ConceptMetadataRepository conceptMetadataRepository,
+                              OntologyDetailExtractor detailExtractor,
+                              JenaTDB2Repository jenaTDB2Repository,
+                              DiagramMaterializeService materializeService,
+                              DiagramLayoutReconciler layoutReconciler,
+                              DiagramMapper mapper,
+                              @Lazy DiagramServiceImpl self) {
+        this.diagramRepository = diagramRepository;
+        this.ontologyMetadataRepository = ontologyMetadataRepository;
+        this.conceptMetadataRepository = conceptMetadataRepository;
+        this.detailExtractor = detailExtractor;
+        this.jenaTDB2Repository = jenaTDB2Repository;
+        this.materializeService = materializeService;
+        this.layoutReconciler = layoutReconciler;
+        this.mapper = mapper;
+        this.self = self;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -71,18 +99,48 @@ public class DiagramServiceImpl implements DiagramService {
                 diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
     }
 
+    /**
+     * No {@code @Transactional} on the public method — the Fuseki read must NOT run inside a PG transaction.
+     * {@link #loadForRead} does the PG work in its own short transaction and returns a detached snapshot;
+     * the graph fetch then happens with no connection held.
+     */
     @Override
-    @Transactional(readOnly = true)
     public DiagramDto getDiagram(String ontologySlug) {
+        DiagramSnapshot snapshot = self.loadForRead(ontologySlug);
+        // A read has nothing committed to lose, so a Fuseki failure surfaces as its own error, not a readback.
+        return assemble(ontologySlug, snapshot, liveConcepts(snapshot.graphName()));
+    }
+
+    @Transactional(readOnly = true)
+    public DiagramSnapshot loadForRead(String ontologySlug) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         DiagramEntity diagram = diagramRepository.findByOntologyMetadataId(ontology.getId())
                 .orElseGet(() -> transientDiagram(ontology));
-        return assemble(ontologySlug, diagram, liveConcepts(ontology.getGraphName()));
+        return snapshot(diagram, ontology);
     }
 
+    /**
+     * Write then read: the PG write commits in {@link #commitLayout}, and only then is the graph fetched.
+     *
+     * <p>The two must not share a transaction. The fetch is an HTTP call to Fuseki behind a semaphore whose
+     * acquire alone can take 30s; holding a Hikari connection (pool of 20) across it lets a slow Fuseki
+     * exhaust the pool and stall unrelated endpoints. It would also roll back a perfectly good layout write
+     * because a *read* failed — and this layer never writes RDF, so there is no dual-write to keep atomic.
+     *
+     * <p>Ordering is write-first, not read-first: the 409 check is the common failure here (two editors on
+     * one canvas), and read-first would pay a full graph fetch on every stale save just to discard it, while
+     * widening the window between the version check and the commit. The cost is that a fetch failure now
+     * arrives after a durable write — reported as {@link DiagramReadbackFailedException} so the client is
+     * told the save survived and must reload rather than retry into a spurious 409.
+     */
     @Override
-    @Transactional
     public DiagramDto saveLayout(String ontologySlug, DiagramLayoutDto layout) {
+        DiagramSnapshot snapshot = self.commitLayout(ontologySlug, layout);
+        return assemble(ontologySlug, snapshot, readbackConcepts(snapshot));
+    }
+
+    @Transactional
+    public DiagramSnapshot commitLayout(String ontologySlug, DiagramLayoutDto layout) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         DiagramEntity diagram = getOrCreateDiagram(ontology);
         requireCurrentVersion(diagram, layout.version());
@@ -93,17 +151,26 @@ public class DiagramServiceImpl implements DiagramService {
         diagramRepository.saveAndFlush(diagram);
         layoutReconciler.finalizeLayout(diagram, layout, incoming);
         diagram.touch();
-        // saveAndFlush (not save): assemble() reads @Version off this instance for the response and the
-        // client echoes it on its NEXT save, so the value must be the post-increment one. The flush above
-        // makes this hold today even with a plain save; flushing here keeps it true independently of that.
+        // saveAndFlush (not save): the snapshot copies @Version for the response and the client echoes it on
+        // its NEXT save, so the value must be the post-increment one. The flush above makes this hold today
+        // even with a plain save; flushing here keeps it true independently of that.
         diagramRepository.saveAndFlush(diagram);
 
-        return assemble(ontologySlug, diagram, liveConcepts(ontology.getGraphName()));
+        return snapshot(diagram, ontology);
     }
 
+    /** Same write-then-read split as {@link #saveLayout}; see that method for why the two are separated. */
     @Override
-    @Transactional
     public DiagramDto.Node stageOverlay(String ontologySlug, String nodeId, NodeOverlayDto overlay) {
+        DiagramSnapshot snapshot = self.commitOverlay(ontologySlug, nodeId, overlay);
+        String conceptIri = mapper.conceptIriFromNodeId(nodeId);
+        Map<String, ConceptDetailModel> live = readbackConcepts(snapshot, conceptIri);
+        return toNode(snapshot, snapshot.node(conceptIri), live.get(conceptIri))
+                .withVersion(snapshot.version());
+    }
+
+    @Transactional
+    public DiagramSnapshot commitOverlay(String ontologySlug, String nodeId, NodeOverlayDto overlay) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         DiagramEntity diagram = getOrCreateDiagram(ontology);
 
@@ -123,10 +190,30 @@ public class DiagramServiceImpl implements DiagramService {
             node.setPendingEdit(edit);
         }
         diagram.touch();
-        diagramRepository.save(diagram);
+        // saveAndFlush (not save): the snapshot copies @Version for the response, so it must be the
+        // post-increment value — the transaction commits before anything reads it back.
+        diagramRepository.saveAndFlush(diagram);
 
-        ConceptDetailModel detail = liveConcept(ontology.getGraphName(), node.getConceptIri());
-        return toNode(diagram, node, detail);
+        return snapshot(diagram, ontology);
+    }
+
+    /** Fetch live content for an ALREADY-COMMITTED write; a Fuseki failure here is a readback, not a rollback. */
+    private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot) {
+        try {
+            return liveConcepts(snapshot.graphName());
+        } catch (RuntimeException e) {
+            throw new DiagramReadbackFailedException(snapshot.version(), e);
+        }
+    }
+
+    /** As {@link #readbackConcepts}, narrowed to the one concept the lean stage response renders. */
+    private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot, String conceptIri) {
+        try {
+            ConceptDetailModel detail = liveConcept(snapshot.graphName(), conceptIri);
+            return detail == null ? Map.of() : Map.of(conceptIri, detail);
+        } catch (RuntimeException e) {
+            throw new DiagramReadbackFailedException(snapshot.version(), e);
+        }
     }
 
     /**
@@ -202,60 +289,87 @@ public class DiagramServiceImpl implements DiagramService {
         return materializeService.materialize(diagram.getId());
     }
 
+    // ---- snapshot -------------------------------------------------------------------------------
+
+    /**
+     * Everything the response needs from PG, detached from the persistence context. Built INSIDE the
+     * transaction so the subsequent Fuseki fetch — and the assembly that follows it — touch no lazy
+     * association and hold no connection. {@code nodes} preserves the diagram's node order.
+     */
+    public record DiagramSnapshot(
+            String graphName,
+            Long version,
+            ViewportDto viewport,
+            List<DiagramNodeEntity> nodes,
+            Map<String, ConceptType> types,
+            Map<String, String> slugs,
+            Map<Long, String> nodeIriByRowId
+    ) {
+
+        /** The snapshot node for a concept IRI, or null when the diagram has no such node. */
+        DiagramNodeEntity node(String conceptIri) {
+            return nodes.stream()
+                    .filter(n -> conceptIri.equals(n.getConceptIri()))
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    /** Capture the diagram's PG state; must be called inside the transaction that read/wrote it. */
+    private DiagramSnapshot snapshot(DiagramEntity diagram, OntologyMetadataEntity ontology) {
+        String graphName = ontology.getGraphName();
+        List<DiagramNodeEntity> nodes = new ArrayList<>(diagram.getNodes());
+        Map<Long, String> nodeIriByRowId = new HashMap<>();
+        for (DiagramNodeEntity n : nodes) {
+            if (n.getId() != null) {
+                nodeIriByRowId.put(n.getId(), n.getConceptIri());
+            }
+        }
+        return new DiagramSnapshot(graphName, diagram.getVersion(), mapper.toViewport(diagram), nodes,
+                conceptTypes(graphName), conceptSlugs(graphName), nodeIriByRowId);
+    }
+
     // ---- assembly -------------------------------------------------------------------------------
 
     /** Join layout rows to live content, apply overlays, project edges. */
-    private DiagramDto assemble(String ontologySlug, DiagramEntity diagram, Map<String, ConceptDetailModel> live) {
-        Map<String, ConceptType> types = conceptTypes(diagram.getOntologyMetadata().getGraphName());
-        Map<String, String> slugs = conceptSlugs(diagram.getOntologyMetadata().getGraphName());
-
+    private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot,
+                                Map<String, ConceptDetailModel> live) {
         List<DiagramDto.Node> nodes = new ArrayList<>();
-        for (DiagramNodeEntity node : diagram.getNodes()) {
-            nodes.add(toNode(diagram, node,
-                    live.get(node.getConceptIri()),
-                    types.get(node.getConceptIri()),
-                    slugs.get(node.getConceptIri())));
+        for (DiagramNodeEntity node : snapshot.nodes()) {
+            nodes.add(toNode(snapshot, node, live.get(node.getConceptIri())));
         }
 
-        List<DiagramDto.Edge> edges = new EdgeProjector(mapper).project(diagram.getNodes(), live);
-        int pendingChangeCount = (int) diagram.getNodes().stream()
+        List<DiagramDto.Edge> edges = new EdgeProjector(mapper).project(snapshot.nodes(), live);
+        int pendingChangeCount = (int) snapshot.nodes().stream()
                 .filter(n -> n.getPendingEdit() != null)
                 .count();
 
-        return new DiagramDto(ontologySlug, diagram.getVersion(), mapper.toViewport(diagram), nodes, edges,
+        return new DiagramDto(ontologySlug, snapshot.version(), snapshot.viewport(), nodes, edges,
                 pendingChangeCount);
     }
 
-    /** Build one render-ready node; looks up its type/slug from PG (used by the lean stage response). */
-    private DiagramDto.Node toNode(DiagramEntity diagram, DiagramNodeEntity node, ConceptDetailModel detail) {
-        ConceptMetadataEntity meta =
-                conceptMetadataRepository.findByConceptIri(node.getConceptIri()).orElse(null);
-        ConceptType type = meta != null ? meta.getConceptType() : null;
-        String slug = meta != null ? meta.getSlug() : null;
-        return toNode(diagram, node, detail, type, slug);
-    }
-
-    private DiagramDto.Node toNode(DiagramEntity diagram, DiagramNodeEntity node,
-                                   ConceptDetailModel detail, ConceptType type, String slug) {
+    /** Build one render-ready node; type/slug come from the snapshot, never a fresh PG read. */
+    private DiagramDto.Node toNode(DiagramSnapshot snapshot, DiagramNodeEntity node,
+                                   ConceptDetailModel detail) {
+        String conceptIri = node.getConceptIri();
+        ConceptType type = snapshot.types().get(conceptIri);
+        String slug = snapshot.slugs().get(conceptIri);
         Map<String, String> label = detail != null ? detail.getName() : null;
         DiagramDto.NodeData data = mapper.toNodeData(node, type, slug, label, detail);
         String parentId = node.getParentNodeId() != null
-                ? parentWireId(diagram, node.getParentNodeId())
+                ? parentWireId(snapshot, node.getParentNodeId())
                 : null;
         return new DiagramDto.Node(
-                mapper.nodeId(node.getConceptIri()),
+                mapper.nodeId(conceptIri),
                 mapper.nodeType(type),
                 mapper.toPosition(node),
                 parentId,
                 data);
     }
 
-    private String parentWireId(DiagramEntity diagram, Long parentNodeRowId) {
-        return diagram.getNodes().stream()
-                .filter(n -> parentNodeRowId.equals(n.getId()))
-                .findFirst()
-                .map(n -> mapper.nodeId(n.getConceptIri()))
-                .orElse(null);
+    private String parentWireId(DiagramSnapshot snapshot, Long parentNodeRowId) {
+        String conceptIri = snapshot.nodeIriByRowId().get(parentNodeRowId);
+        return conceptIri != null ? mapper.nodeId(conceptIri) : null;
     }
 
     // ---- lookups --------------------------------------------------------------------------------

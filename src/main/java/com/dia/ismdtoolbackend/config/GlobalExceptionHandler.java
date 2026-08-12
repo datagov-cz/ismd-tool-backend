@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.config;
 import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramReadbackFailureDto;
 import com.dia.ismdtoolbackend.exception.*;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import jakarta.persistence.EntityNotFoundException;
@@ -45,6 +46,22 @@ public class GlobalExceptionHandler {
             DiagramServiceImpl.DiagramVersionConflictException e) {
         log.warn("Diagram version conflict: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.CONFLICT);
+    }
+
+    /**
+     * The write COMMITTED; only the Fuseki read that renders it failed. 502 (not 500): the failure is in an
+     * upstream dependency, and the code + version tell the FE to reload rather than retry the save — a retry
+     * would carry the stale version and 409.
+     */
+    @ExceptionHandler(DiagramReadbackFailedException.class)
+    public ResponseEntity<ApiResponseDto<DiagramReadbackFailureDto>> handleDiagramReadbackFailed(
+            DiagramReadbackFailedException e) {
+        log.error("Diagram write committed but content read-back failed (version {}): {}",
+                e.getVersion(), e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
+                new DiagramReadbackFailureDto(e.getVersion()),
+                e.getMessage(),
+                DiagramReadbackFailedException.ERROR_CODE));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

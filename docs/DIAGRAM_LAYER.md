@@ -95,6 +95,20 @@ Materialize fans out **in-process** to the existing concept services (not via HT
 
 Because the diagram holds no *standalone* concept content, "diagram versioning" stays small. **Layout history** is a pure-PG concern (snapshot layout rows) — deferred; ship a single current layout first. **Staged edits** are transient by design and need no version history. **Concept/ontology versioning** already lives in the existing model (RDF, published-vs-draft, deviations) and the diagram inherits it for free by reading live content.
 
+## The PG write and the Fuseki read are never in one transaction
+
+Every diagram endpoint returns a **fat** response: layout rows from PG joined to live concept content fetched from Fuseki. The obvious implementation — one `@Transactional` method doing both — is wrong on two counts.
+
+**It holds a DB connection across an external HTTP call.** The Fuseki fetch goes through a semaphore whose acquire alone is allowed 30s, before any bytes move. The Hikari pool is 20. A slow or saturated Fuseki therefore doesn't just make diagram requests slow — it pins connections until the pool is empty and unrelated endpoints start failing.
+
+**It rolls back a good write because a read failed.** The diagram layer *never writes RDF* — the only Fuseki calls in the service are `fetchGraph` reads, and they happen strictly after every PG write is done. So there is no dual-write to keep atomic here; the transaction was protecting the write against a failure that cannot corrupt it.
+
+The service therefore splits each public method: a `@Transactional` step (`commitLayout` / `commitOverlay` / `loadForRead`) does the PG work and returns a **detached snapshot** of everything the response needs — version, viewport, node rows, concept types and slugs. The Fuseki fetch and the assembly then run with no transaction open. The step is invoked through a `@Lazy` self-proxy: a direct `this.commitLayout(...)` would bypass the Spring proxy and silently run with no transaction at all.
+
+**Order is write-then-read.** Read-first would avoid the failure mode below, but it pays a full graph fetch on every stale save just to throw it away — and the 409 is the *common* outcome on a shared canvas, not the rare one. It would also widen the window between the version check and the commit. Write-first keeps the cheap PG rejection first and makes the two failures distinguishable: a 409 means the write was refused, a readback failure means it landed.
+
+The cost is a genuinely new state: **committed write, unrenderable response.** That is reported as `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) carrying the post-write version, so the FE reloads instead of retrying into a spurious 409. Returning a generic 500 there would be a lie — the user's change is saved, and a reload would show it. See [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md).
+
 ## Export
 
 PNG/SVG export is a **frontend** concern (`html-to-image` `toPng`/`toSvg` against the ReactFlow viewport, client-side). The backend has no pixel-accurate view of the canvas. A server-side export endpoint only makes sense for headless use (scheduled reports) — a separate, later feature.

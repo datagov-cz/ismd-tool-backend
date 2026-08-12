@@ -8,7 +8,10 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
+import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.service.DiagramService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,12 +24,14 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -134,5 +139,96 @@ class DiagramControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"domain\": \"https://x/A\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ---- version on the wire --------------------------------------------------------------------
+    // DiagramOverlayVersionIntegrationTest pins the version the SERVICE computes; these pin that it
+    // survives serialization — that the FE can actually read it off the PATCH response, and that it does
+    // NOT appear per-node in the fat read (where the version belongs to the enclosing diagram).
+
+    private static final String OVERLAY_BODY = """
+            {"nodeId": "iri:https://x/pojem/a", "broaderConcept": ["https://x/pojem/b"]}
+            """;
+
+    /**
+     * The reviewer's finding, at the wire level: the stage response must expose the advanced version so the
+     * client can echo it into its next {@code PUT …/layout} without re-reading the whole diagram.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void stageOverlay_responseSerializesVersion() throws Exception {
+        when(diagramService.stageOverlay(eq("pracovni-pomer"), any(), any()))
+                .thenReturn(new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
+                        new PositionDto(10.0, 20.0), null, null, 8L));
+
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(OVERLAY_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(8))
+                .andExpect(jsonPath("$.data.id").value("iri:https://x/pojem/a"));
+    }
+
+    /**
+     * The readback contract on the wire: the write committed, so the client must be told to RELOAD, not
+     * retry. 502 + a stable code + the post-write version is what makes that actionable — a blind retry
+     * would send the stale version and earn a spurious 409.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void stageOverlay_readbackFailure_returns502WithCodeAndVersion() throws Exception {
+        when(diagramService.stageOverlay(eq("pracovni-pomer"), any(), any()))
+                .thenThrow(new DiagramReadbackFailedException(9L, new RuntimeException("fuseki down")));
+
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(OVERLAY_BODY))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("DIAGRAM_SAVED_READBACK_FAILED"))
+                .andExpect(jsonPath("$.data.version").value(9));
+    }
+
+    /** Same contract on the layout save. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void saveLayout_readbackFailure_returns502WithCodeAndVersion() throws Exception {
+        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+                .thenThrow(new DiagramReadbackFailedException(4L, new RuntimeException("fuseki down")));
+
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\": 3, \"nodes\": [], \"edges\": []}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.errorCode").value("DIAGRAM_SAVED_READBACK_FAILED"))
+                .andExpect(jsonPath("$.data.version").value(4));
+    }
+
+    /**
+     * {@code @JsonInclude(NON_NULL)} is what keeps the field off the in-diagram form. A node built without a
+     * version must omit the key entirely rather than emit {@code "version": null}, which a client could read
+     * as "this node has no version" instead of "version lives on the diagram".
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getDetail_nodesOmitVersion_diagramCarriesIt() throws Exception {
+        DiagramDto.Node node = new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
+                new PositionDto(0.0, 0.0), null, null);          // in-diagram form: no version
+        when(diagramService.getDiagram(eq("pracovni-pomer")))
+                .thenReturn(new DiagramDto("pracovni-pomer", 7L, null, List.of(node), List.of(), 0));
+
+        String body = mockMvc.perform(get("/api/diagram/pracovni-pomer/detail"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(7))
+                .andExpect(jsonPath("$.data.nodes[0].id").value("iri:https://x/pojem/a"))
+                .andReturn().getResponse().getContentAsString();
+
+        // Asserted on the raw body, NOT with jsonPath(...).doesNotExist(): JsonPath resolves an explicit
+        // `"version": null` to absent, so that matcher passes even when the key IS serialized — which is the
+        // one thing this test has to rule out. Only the raw text distinguishes omitted from present-and-null.
+        JsonNode serialized = new ObjectMapper().readTree(body).path("data").path("nodes").get(0);
+        assertThat(serialized.has("version"))
+                .as("nodes inside the fat read omit the version key entirely; body was: %s", body)
+                .isFalse();
     }
 }

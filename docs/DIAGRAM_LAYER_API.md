@@ -124,9 +124,28 @@ Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send
 
 **This call is authoritative for canvas membership.** The `nodes[]` array is the complete set — a node present is kept (or **added** if its IRI is new to the canvas; the response `DiagramDto` hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
-**`version` is required — send back the one you rendered from.** Because membership is a full replace, a save built on a stale view would silently delete nodes another editor added, taking their staged overlays with them. Echo the `version` from the `DiagramDto` this edit started from (the read, or the response of your own last save). If another editor saved in the meantime the call returns **409** and nothing is written; reload the diagram and re-apply. Every successful `PUT …/layout` **and** `PATCH …/nodes/overlay` advances the version, so always use the newest one you have received.
+**`version` is required — send back the one you rendered from.** Because membership is a full replace, a save built on a stale view would silently delete nodes another editor added, taking their staged overlays with them. Echo the `version` from the `DiagramDto` this edit started from (the read, or the response of your own last save). If another editor saved in the meantime the call returns **409** and nothing is written; reload the diagram and re-apply. Every successful `PUT …/layout` **and** `PATCH …/nodes/overlay` advances the version, so always use the newest one you have received. Both return it: `PUT …/layout` in the `DiagramDto`, `PATCH …/nodes/overlay` in the returned node's own `version` field — so staging an overlay never forces a re-read just to stay current.
 
 `version` may be `null` **only** for the very first save of a canvas that has no diagram row yet. Once a diagram exists, a null version is a 409 — a client that never read the current state cannot safely full-replace its membership.
+
+### `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) — the write succeeded, the render data did not
+
+Applies to **both** write endpoints. A diagram write is pure Postgres; the concept content in the response is then read from Fuseki. The two are deliberately **not** in one transaction — the fetch is an HTTP call that can take tens of seconds, and holding a DB connection across it would let a slow Fuseki exhaust the pool and stall unrelated endpoints. It would also discard a perfectly good layout write because a *read* failed.
+
+The consequence is a failure mode with no equivalent before: the write is **committed and durable**, but the response body cannot be assembled.
+
+```jsonc
+{
+  "success": false,
+  "errorCode": "DIAGRAM_SAVED_READBACK_FAILED",
+  "message": "Změny diagramu byly uloženy, ale nepodařilo se načíst obsah pojmů pro zobrazení. …",
+  "data": { "version": 8 }        // the version AFTER the committed write
+}
+```
+
+**Do not retry the write.** The save already happened and the version has advanced; re-sending it with the version you held would be stale and return **409**. Either re-issue `GET …/detail` to render the current state, or continue from the `version` in `data` if you want to save again without that read first. Treat it as "saved, but I can't show you the result yet" — never as "the save failed".
+
+This is the one status where a `success: false` response still means the write landed, which is why it has its own code instead of a generic 500.
 
 ```jsonc
 {
@@ -182,6 +201,22 @@ Field reference for `DiagramPendingEdit`:
 | `superRelation` | VZTAH | `subPropertyOf` list (IRIs) |
 | `exactMatch` | any | `skos:exactMatch` list (IRIs) — op 3's "equivalent" |
 | `convertToHierarchy` | VZTAH | op 6 marker: `{ addBroaderOn, broader }` — add broader on a class, then delete this VZTAH |
+
+**Response — the single staged node, carrying the new `version`.** The PATCH returns just the affected node (not the whole diagram), stamped with the diagram version *after* this write:
+
+```jsonc
+{
+  "id": "iri:https://…/pojem/je-zamestnan-u",
+  "type": "relationNode",
+  "position": { "x": 520, "y": 210 },
+  "parentId": null,
+  "data": { "conceptType": "VZTAH", "iri": "https://…/pojem/je-zamestnan-u",
+            "hasPendingEdits": true, "pendingEdit": { … } },
+  "version": 8                    // the advanced version — echo this in your next PUT …/layout
+}
+```
+
+`version` appears **only** on this lean stage response, where there is no enclosing `DiagramDto` to carry it. Inside `GET …/detail`'s `nodes[]` it is omitted: the version belongs to the diagram, not to any one node, and repeating it per node would suggest a per-node lock that does not exist. A discard (body with only `nodeId`) is a successful PATCH too, so it advances the version and returns the new one the same way.
 
 ## Materialize — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
 
