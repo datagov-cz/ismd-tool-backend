@@ -150,9 +150,14 @@ public class NkdSnapshotServiceImpl implements NkdSnapshotService {
                     local, publishedOpt.get(), snapshot.getOrigin(), snapshot.getNkdIri());
             deviationEnricher.enrich(deviation);
             return deviation;
-        } catch (Exception e) {
-            log.error("Deviation check failed for snapshot {}: {}", snapshot.getNkdIri(), e.getMessage(), e);
+        } catch (SparqlEndpointUnavailableException e) {
+            log.error("NKD unavailable for snapshot {}: {}", snapshot.getNkdIri(), e.getMessage());
             return error(snapshot, DeviationStatus.ENDPOINT_UNAVAILABLE, "NKD unavailable: " + e.getMessage());
+        } catch (Exception e) {
+            // Not an upstream outage: a bug or bad stored data. QUERY_ERROR keeps the comparison untrusted
+            // without blaming NKD for a fault on our side.
+            log.error("Deviation check failed for snapshot {}: {}", snapshot.getNkdIri(), e.getMessage(), e);
+            return error(snapshot, DeviationStatus.QUERY_ERROR, "Deviation check failed: " + e.getMessage());
         }
     }
 
