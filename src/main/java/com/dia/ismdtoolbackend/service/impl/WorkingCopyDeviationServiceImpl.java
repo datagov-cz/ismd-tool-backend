@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
@@ -138,8 +139,9 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
             return error(DeviationStatus.QUERY_ERROR, "Local concept detail not available", conceptIri);
         }
         try {
+            // A non-null prefetched is authoritative, including when it is empty (absent from NKD).
             Optional<ConceptDetailModel> publishedOpt =
-                    prefetched.isPresent() ? prefetched : nkdSparqlClient.fetchPublishedConcept(conceptIri);
+                    prefetched != null ? prefetched : nkdSparqlClient.fetchPublishedConcept(conceptIri);
             if (publishedOpt.isEmpty()) {
                 log.warn("Published concept not found in NKD: {}", conceptIri);
                 return error(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
@@ -150,10 +152,16 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
                     local, publishedOpt.get(), SnapshotOrigin.WORKING_COPY, conceptIri);
             deviationEnricher.enrich(deviation);
             return deviation;
-        } catch (Exception e) {
-            log.error("Error checking working-copy deviation for {}: {}", conceptIri, e.getMessage(), e);
+        } catch (SparqlEndpointUnavailableException e) {
+            log.error("NKD unavailable while checking working-copy deviation for {}: {}", conceptIri, e.getMessage());
             return error(DeviationStatus.ENDPOINT_UNAVAILABLE,
                     "NKD SPARQL endpoint unavailable: " + e.getMessage(), conceptIri);
+        } catch (Exception e) {
+            // Not an upstream outage: a bug or bad local data. QUERY_ERROR keeps the comparison untrusted
+            // (no snapshot actions offered) without blaming NKD for a fault on our side.
+            log.error("Failed to compute working-copy deviation for {}: {}", conceptIri, e.getMessage(), e);
+            return error(DeviationStatus.QUERY_ERROR,
+                    "Deviation check failed: " + e.getMessage(), conceptIri);
         }
     }
 

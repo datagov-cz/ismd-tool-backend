@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
+import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
@@ -155,11 +156,27 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviation_nkdThrows_returnsEndpointUnavailable() {
-        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenThrow(new RuntimeException("NKD timeout"));
+        // The NKD client funnels every upstream failure through SparqlEndpointUnavailableException.
+        when(nkdSparqlClient.fetchPublishedConcept(IRI))
+                .thenThrow(new SparqlEndpointUnavailableException(NkdSparqlClient.NKD_LABEL, "NKD timeout"));
 
         PublishedConceptDeviationModel result = service.deviationFor(IRI);
 
         assertThat(result.getStatus()).isEqualTo(DeviationStatus.ENDPOINT_UNAVAILABLE);
+    }
+
+    @Test
+    void deviation_unexpectedFailure_returnsQueryErrorNotEndpointUnavailable() {
+        // A fault on our side must not be reported as an NKD outage — that disguise hid an NPE here before.
+        when(nkdSparqlClient.fetchPublishedConcept(IRI))
+                .thenReturn(Optional.of(ConceptDetailModel.builder().iri(IRI).build()));
+        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("comparator bug"));
+
+        PublishedConceptDeviationModel result = service.deviationFor(IRI);
+
+        assertThat(result.getStatus()).isEqualTo(DeviationStatus.QUERY_ERROR);
+        assertThat(result.getErrorMessage()).contains("comparator bug");
     }
 
     @Test
