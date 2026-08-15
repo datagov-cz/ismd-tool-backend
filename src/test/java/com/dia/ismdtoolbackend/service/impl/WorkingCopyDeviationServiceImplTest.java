@@ -347,7 +347,11 @@ class WorkingCopyDeviationServiceImplTest {
         Map<String, PublishedConceptDeviationModel> bulk = service.deviationForAll(callerModel, List.of(IRI));
 
         assertThat(bulk.get(IRI)).isSameAs(expected).isSameAs(service.deviationFor(IRI));
-        verify(deviationEnricher, org.mockito.Mockito.times(2)).enrich(expected);
+        // Both surfaces enrich the same deviation, but via different entry points: the bulk path
+        // defers to one enrichAll for the whole set (so N deviations cost ONE resolve round-trip
+        // rather than N), while the per-IRI path enriches inline.
+        verify(deviationEnricher).enrichAll(org.mockito.ArgumentMatchers.anyList());
+        verify(deviationEnricher).enrich(expected);
     }
 
     @Test

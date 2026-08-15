@@ -86,9 +86,12 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
         Map<String, Optional<ConceptDetailModel>> prefetched = prefetchNkdSide(conceptIris);
         Map<String, PublishedConceptDeviationModel> out = new LinkedHashMap<>();
         for (String conceptIri : conceptIris) {
+            // enrich=false: reference resolution is deferred so all N deviations resolve in ONE
+            // round-trip below, instead of one per concept.
             out.put(conceptIri, compareAgainstNkd(conceptIri, locals.get(conceptIri),
-                    prefetched.get(conceptIri)));
+                    prefetched.get(conceptIri), false));
         }
+        deviationEnricher.enrichAll(new ArrayList<>(out.values()));
         return out;
     }
 
@@ -135,6 +138,16 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
      */
     private PublishedConceptDeviationModel compareAgainstNkd(String conceptIri, ConceptDetailModel local,
                                                              Optional<ConceptDetailModel> prefetched) {
+        return compareAgainstNkd(conceptIri, local, prefetched, true);
+    }
+
+    /**
+     * {@code enrich=false} leaves reference resolution to the caller, which is what lets the bulk path
+     * resolve every deviation's references in ONE {@code resolveAll} instead of one per concept.
+     */
+    private PublishedConceptDeviationModel compareAgainstNkd(String conceptIri, ConceptDetailModel local,
+                                                             Optional<ConceptDetailModel> prefetched,
+                                                             boolean enrich) {
         if (local == null) {
             return error(DeviationStatus.QUERY_ERROR, "Local concept detail not available", conceptIri);
         }
@@ -150,7 +163,9 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
             // WORKING_COPY: this concept's own IRI is the NKD twin it is compared against.
             PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(
                     local, publishedOpt.get(), SnapshotOrigin.WORKING_COPY, conceptIri);
-            deviationEnricher.enrich(deviation);
+            if (enrich) {
+                deviationEnricher.enrich(deviation);
+            }
             return deviation;
         } catch (SparqlEndpointUnavailableException e) {
             log.error("NKD unavailable while checking working-copy deviation for {}: {}", conceptIri, e.getMessage());
