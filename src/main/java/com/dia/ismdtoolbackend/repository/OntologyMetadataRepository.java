@@ -19,6 +19,7 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
+            ORDER BY o.is_published NULLS FIRST, o.updated_at DESC NULLS LAST, o.id
             """, nativeQuery = true)
     List<OntologyMetadataEntity> searchByText(@Param("query") String query);
 
@@ -32,6 +33,7 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
               AND o.is_published = false
+            ORDER BY o.updated_at DESC NULLS LAST, o.id
             """, nativeQuery = true)
     List<OntologyMetadataEntity> searchByTextUnpublished(@Param("query") String query);
 
@@ -49,8 +51,6 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
     long countSearchByTextUnpublished(@Param("query") String query);
 
     Optional<OntologyMetadataEntity> findByGraphName(String graphName);
-
-    Optional<OntologyMetadataEntity> findByGraphNameAndUserId(String graphName, String userId);
 
     List<OntologyMetadataEntity> findAllByUserId(String userId);
 

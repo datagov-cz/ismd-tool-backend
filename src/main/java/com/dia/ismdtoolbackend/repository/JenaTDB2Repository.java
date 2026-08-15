@@ -807,6 +807,12 @@ public class JenaTDB2Repository {
                     // (concepts carry skos:Concept + ofn:pojem + owl:DatatypeProperty/…;
                     // ontologies carry skos:ConceptScheme + owl:Ontology + ofn:slovník) into
                     // one row per resource so LIMIT counts resources, not type triples.
+                    //
+                    // ORDER BY makes the LIMIT slice deterministic. Without it the engine may
+                    // return any subset, so a resource present in the index can vanish from
+                    // results run to run. Publish state is not in the graph (it lives in PG),
+                    // so the caller re-ranks after merge — this ordering only guarantees the
+                    // truncation is stable and repeatable.
                     String sparql = "PREFIX text: <http://jena.apache.org/text#> " +
                             "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
                             "PREFIX dcterms: <http://purl.org/dc/terms/> " +
@@ -828,7 +834,7 @@ public class JenaTDB2Repository {
                             "    OPTIONAL { ?resource skos:definition ?definitionS } " +
                             "    OPTIONAL { ?resource a ?typeS } " +
                             "  } " +
-                            "} GROUP BY ?resource ?g LIMIT " + limit;
+                            "} GROUP BY ?resource ?g ORDER BY ?resource ?g LIMIT " + limit;
                     log.debug("Fuseki text search SPARQL: {}", sparql);
                     List<Map<String, String>> results = new ArrayList<>();
                     try (QueryExecution qExec = conn.query(sparql)) {

@@ -35,6 +35,31 @@ public class IsmdSearchProvider implements SearchProvider {
     private static final String SKOS_CONCEPT_SCHEME = "http://www.w3.org/2004/02/skos/core#ConceptScheme";
     private static final String OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
+    /**
+     * Total order applied to the merged result set before the page slice.
+     * <p>
+     * Ordering, outermost key first:
+     * <ol>
+     *   <li>drafts before published — an unpublished row is the one the author is
+     *       actively working on, and is the row most likely to be looked for;</li>
+     *   <li>ontologies before concepts — an ontology hit is the broader container
+     *       and orients the user before its individual concepts;</li>
+     *   <li>most recently modified first, then IRI — recency is the useful tiebreak,
+     *       and IRI makes the order total so pagination never repeats or skips a row
+     *       when two rows share a timestamp.</li>
+     * </ol>
+     * Null publish state sorts with drafts and null timestamps sort last, so a row
+     * with incomplete metadata is never silently pushed off the page.
+     */
+    static final Comparator<SearchResultDto> RESULT_ORDER =
+            Comparator.<SearchResultDto, Boolean>comparing(
+                            r -> Boolean.TRUE.equals(r.getIsPublished()))
+                    .thenComparing(r -> r.getType() != SearchType.ONTOLOGY)
+                    .thenComparing(SearchResultDto::getLastModified,
+                            Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(SearchResultDto::getIri,
+                            Comparator.nullsLast(Comparator.naturalOrder()));
+
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
@@ -79,7 +104,7 @@ public class IsmdSearchProvider implements SearchProvider {
         // has no indexable labels. Role filters (CLASS/PROPERTY/RELATIONSHIP) are
         // concept-only by definition, so they skip the ontology branch entirely.
         if (type == null || type == SearchType.ONTOLOGY) {
-            allResults.addAll(searchOntologies(query, userId, isAdmin, publishedFilter));
+            allResults.addAll(searchOntologies(query, publishedFilter));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -116,6 +141,7 @@ public class IsmdSearchProvider implements SearchProvider {
         // — sourced from PG's concept_type column or enriched from Fuseki rdf:types.
         List<SearchResultDto> results = deduped.values().stream()
                 .filter(r -> matchesType(r, type))
+                .sorted(RESULT_ORDER)
                 .toList();
 
         // Apply offset and limit in-memory
@@ -129,10 +155,10 @@ public class IsmdSearchProvider implements SearchProvider {
         // Per-source totals from dedicated count queries (cheap — no LIMIT/OFFSET).
         Integer totalOntologies = SearchProvider.countIfMatches(
                 type == null || type == SearchType.ONTOLOGY,
-                () -> countOntologyMatches(query, userId, isAdmin, publishedFilter));
+                () -> countOntologyMatches(query, publishedFilter));
         Integer totalConcepts = SearchProvider.countIfMatches(
                 type == null || type.isAnyConcept(),
-                () -> countConceptMatches(query, userId, isAdmin, publishedFilter, ontologyIris, type));
+                () -> countConceptMatches(query, publishedFilter, ontologyIris, type));
 
         if (fusekiDegraded.get()) {
             return new SearchProviderResult(paged, results.size(),
@@ -175,8 +201,7 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private Integer countOntologyMatches(String query, String userId,
-                                          boolean isAdmin, Boolean publishedFilter) {
+    private Integer countOntologyMatches(String query, Boolean publishedFilter) {
         try {
             long count = Boolean.FALSE.equals(publishedFilter)
                     ? ontologyMetadataRepository.countSearchByTextUnpublished(query)
@@ -188,8 +213,7 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private Integer countConceptMatches(String query, String userId,
-                                         boolean isAdmin, Boolean publishedFilter,
+    private Integer countConceptMatches(String query, Boolean publishedFilter,
                                          List<String> ontologyIris, SearchType type) {
         try {
             boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
@@ -211,8 +235,7 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private List<SearchResultDto> searchOntologies(String query, String userId,
-                                                    boolean isAdmin, Boolean publishedFilter) {
+    private List<SearchResultDto> searchOntologies(String query, Boolean publishedFilter) {
         List<OntologyMetadataEntity> entities;
         if (Boolean.FALSE.equals(publishedFilter)) {
             entities = ontologyMetadataRepository.searchByTextUnpublished(query);
@@ -245,7 +268,7 @@ public class IsmdSearchProvider implements SearchProvider {
                 visibleGraphsFor(userId, isAdmin, publishedFilter));
 
         ParallelSearchResults raw = runParallelConceptSearch(
-                query, userId, isAdmin, publishedFilter, filter, limit, fusekiDegraded, type);
+                query, publishedFilter, filter, limit, fusekiDegraded, type);
 
         List<SearchResultDto> merged = mergeByIri(raw.pg(), raw.fuseki());
         backfillPgIdsForFusekiOnlyRows(merged);
@@ -263,7 +286,7 @@ public class IsmdSearchProvider implements SearchProvider {
         boolean unpublishedOnly = Boolean.FALSE.equals(publishedFilter);
         return unpublishedOnly
                 ? getUnpublishedVisibleGraphNames(userId, isAdmin)
-                : getVisibleGraphNames(userId);
+                : getVisibleGraphNames();
     }
 
     /**
@@ -292,8 +315,7 @@ public class IsmdSearchProvider implements SearchProvider {
      * Fuseki failure → PG-only results AND {@code fusekiDegraded} flipped to
      * true so the outer response carries {@link SearchSourceStatus#DEGRADED}.
      */
-    private ParallelSearchResults runParallelConceptSearch(String query, String userId,
-                                                            boolean isAdmin, Boolean publishedFilter,
+    private ParallelSearchResults runParallelConceptSearch(String query, Boolean publishedFilter,
                                                             GraphFilter filter, int limit,
                                                             AtomicBoolean fusekiDegraded,
                                                             SearchType type) {
@@ -695,7 +717,7 @@ public class IsmdSearchProvider implements SearchProvider {
      * {@code userId} parameter is retained for signature symmetry with the
      * unpublished-only path but is no longer needed to narrow visibility.
      */
-    private List<String> getVisibleGraphNames(String userId) {
+    private List<String> getVisibleGraphNames() {
         return ontologyMetadataRepository.findAll().stream()
                 .map(OntologyMetadataEntity::getGraphName)
                 .filter(Objects::nonNull)
