@@ -19,6 +19,7 @@ import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.io.StringWriter;
@@ -219,7 +220,18 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         }
     }
 
+    /**
+     * Shares {@link NkdSparqlClient#PUBLISHED_RESOURCE_CACHE} with the other NKD-published
+     * projections — same source, same 24h-TTL freshness model — under its own key prefix, alongside
+     * the client's {@code concept:} / {@code ontology:} keys.
+     *
+     * <p>Caching is not optional here: the previous implementation reached NKD through the
+     * {@code @Cacheable} {@code fetchPublishedOntology}, so dropping to a raw SELECT made the query
+     * cheaper but sent every warm request to NKD live (measured: 2ms → ~1s).
+     */
     @Override
+    @Cacheable(cacheNames = NkdSparqlClient.PUBLISHED_RESOURCE_CACHE,
+            key = "'conceptList:' + #ontologyIri")
     public List<MinimalConceptDto> listOntologyConcepts(String ontologyIri) {
         validateIri(ontologyIri);
         ensureEndpointConfigured();

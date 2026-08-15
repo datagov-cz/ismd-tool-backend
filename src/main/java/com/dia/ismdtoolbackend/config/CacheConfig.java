@@ -86,7 +86,10 @@ public class CacheConfig {
                 .maximumSize(CONCEPT_METADATA_MAX_ENTRIES)
                 .build());
 
-        // NKD-published deviation projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).
+        // NKD-published projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE). Three key shapes share
+        // it, all NKD-sourced with the same 24h-TTL freshness model: 'concept:' / 'conceptWithScheme:'
+        // / 'ontology:' from NkdSparqlClient, and 'conceptList:' from
+        // NkdDetailServiceImpl.listOntologyConcepts.
         mgr.registerCustomCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, Caffeine.newBuilder()
                 .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
