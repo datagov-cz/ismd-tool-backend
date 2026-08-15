@@ -4,7 +4,9 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
@@ -215,6 +217,50 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         if (!SparqlIriValidator.isSafeHttpIri(iri)) {
             throw new IllegalArgumentException("IRI není platné http(s) URI: " + iri);
         }
+    }
+
+    @Override
+    public List<MinimalConceptDto> listOntologyConcepts(String ontologyIri) {
+        validateIri(ontologyIri);
+        ensureEndpointConfigured();
+
+        List<Map<String, String>> rows;
+        try {
+            rows = nkdSparqlClient.executeSelect(
+                    NKDSPARQLBrowseQuery.buildOntologyConceptsQuery(ontologyIri, DEFAULT_LANG));
+        } catch (RuntimeException e) {
+            log.warn("NKD SPARQL error while listing concepts of {}: {}", ontologyIri, e.getMessage());
+            throw new NkdEndpointException("NKD SPARQL endpoint je nedostupný.", e);
+        }
+
+        List<MinimalConceptDto> concepts = new ArrayList<>(rows.size());
+        for (Map<String, String> row : rows) {
+            String iri = row.get("concept");
+            if (iri == null) {
+                continue;
+            }
+            String label = row.get("label");
+            concepts.add(MinimalConceptDto.builder()
+                    .iri(iri)
+                    // NKD concepts have no local slug — the FE deep-links via IRI only.
+                    .name(label == null || label.isBlank() ? Map.of() : Map.of(DEFAULT_LANG, label))
+                    .conceptType(conceptTypeFromRoleMarkers(row))
+                    .build());
+        }
+        log.debug("Listed {} NKD concepts for ontology {}", concepts.size(), ontologyIri);
+        return concepts;
+    }
+
+    /**
+     * Role markers are three independent OPTIONAL binds, so a concept tagged as more than one role
+     * resolves in this fixed order — matching {@code NkdSearchProvider}. Null when NKD publishes no
+     * recognizable role.
+     */
+    private ConceptType conceptTypeFromRoleMarkers(Map<String, String> row) {
+        if (row.get("roleTrida") != null) return ConceptType.TRIDA;
+        if (row.get("roleVlastnost") != null) return ConceptType.VLASTNOST;
+        if (row.get("roleVztah") != null) return ConceptType.VZTAH;
+        return null;
     }
 
     @Override

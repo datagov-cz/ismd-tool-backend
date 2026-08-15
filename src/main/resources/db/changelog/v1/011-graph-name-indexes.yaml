@@ -1,0 +1,43 @@
+databaseChangeLog:
+  # graph_name is the lookup key on nearly every read path — ontology detail, concept detail, the
+  # snapshot warmer and the reconciler all resolve a graph before doing anything else — but neither
+  # table indexes it. slug and concept_iri are UNIQUE (so already backed by an index); graph_name is
+  # not unique on either table and was left as a seq scan.
+  #
+  # concepts.graph_name is the hotter of the two: findByGraphName there returns every concept in a
+  # vocabulary and runs once per ontology-detail load.
+  - changeSet:
+      id: 011-ontologies-graph-name-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_ontologies_graph_name
+                schemaName: ismd_schema
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: ontologies
+            indexName: idx_ontologies_graph_name
+            columns:
+              - column:
+                  name: graph_name
+
+  - changeSet:
+      id: 011-concepts-graph-name-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_concepts_graph_name
+                schemaName: ismd_schema
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: concepts
+            indexName: idx_concepts_graph_name
+            columns:
+              - column:
+                  name: graph_name

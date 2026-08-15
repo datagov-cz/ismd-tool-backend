@@ -529,6 +529,7 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {
