@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import jakarta.persistence.LockModeType;
+import org.jspecify.annotations.NonNull;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -41,6 +42,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
+            ORDER BY c.is_published NULLS FIRST, c.updated_at DESC NULLS LAST, c.id
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByText(@Param("query") String query,
                                               @Param("hasGraphFilter") boolean hasGraphFilter,
@@ -61,6 +63,7 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
               AND c.is_published = false
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
+            ORDER BY c.updated_at DESC NULLS LAST, c.id
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByTextUnpublished(@Param("query") String query,
                                                          @Param("hasGraphFilter") boolean hasGraphFilter,
@@ -136,7 +139,20 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
     @EntityGraph(attributePaths = "ontologyMetadata")
     List<ConceptMetadataEntity> findAllByIsPublished(Boolean isPublished);
 
+    /**
+     * Overridden solely to attach the {@code ontologyMetadata} fetch graph.
+     * <p>
+     * The association is {@link jakarta.persistence.FetchType#LAZY}, and callers map
+     * every row through {@code ConceptMetadataMapper} which reads
+     * {@code ontologyMetadata.slug} — without the graph that is one extra query per
+     * concept. Behaviour is otherwise identical to the inherited method.
+     * <p>
+     * {@code @NonNull} restates the nullness the inherited declaration already
+     * carries: Spring Data marks {@code org.springframework.data.repository}
+     * {@code @NullMarked}, so an unannotated override is read as opting out.
+     */
     @Override
+    @NonNull
     @EntityGraph(attributePaths = "ontologyMetadata")
     List<ConceptMetadataEntity> findAll();
 }
