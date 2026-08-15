@@ -88,12 +88,27 @@ public class OntologyDetailExtractor {
      * {@code apply} from the resulting map.
      */
     private Function<String, String> batchSlugResolver(OntModel ontModel, String conceptIri) {
-        Resource conceptResource = ontModel.getResource(conceptIri);
+        return batchSlugResolver(ontModel, List.of(conceptIri));
+    }
+
+    /**
+     * Batch-prefetched variant of {@link #dbSlugResolver()} for the single-concept detail path.
+     * Collects every property/relationship member IRI reachable from {@code conceptIris} in the
+     * model, resolves their slugs in one {@code findByConceptIriIn}, and serves each
+     * {@code apply} from the resulting map.
+     *
+     * <p>Takes the whole IRI collection at once so the bulk path pays ONE query for all concepts
+     * rather than one per concept.
+     */
+    private Function<String, String> batchSlugResolver(OntModel ontModel, Collection<String> conceptIris) {
         Set<String> memberIris = new LinkedHashSet<>();
-        ontModel.listSubjectsWithProperty(RDFS.domain, conceptResource)
-                .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
-        ontModel.listSubjectsWithProperty(RDFS.range, conceptResource)
-                .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+        for (String conceptIri : conceptIris) {
+            Resource conceptResource = ontModel.getResource(conceptIri);
+            ontModel.listSubjectsWithProperty(RDFS.domain, conceptResource)
+                    .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+            ontModel.listSubjectsWithProperty(RDFS.range, conceptResource)
+                    .forEachRemaining(r -> { if (r.isURIResource()) memberIris.add(r.getURI()); });
+        }
 
         if (memberIris.isEmpty()) {
             return iri -> null;
@@ -190,11 +205,13 @@ public class OntologyDetailExtractor {
         ConceptProcessor conceptProcessor = new ConceptProcessor();
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
 
+        // One slug query for every concept's members, not one per concept.
+        Function<String, String> refResolver = batchSlugResolver(ontModel, conceptIris);
+
         Map<String, OntologyDetailModel.ConceptDetailModel> out = new LinkedHashMap<>();
         for (String conceptIri : conceptIris) {
             Map<String, Object> conceptMap = conceptProcessor.processConceptByIri(ontModel, structure, conceptIri);
-            out.put(conceptIri, mapToConceptDetailModel(
-                    conceptMap, null, ontModel, batchSlugResolver(ontModel, conceptIri)));
+            out.put(conceptIri, mapToConceptDetailModel(conceptMap, null, ontModel, refResolver));
         }
         return out;
     }
@@ -213,8 +230,12 @@ public class OntologyDetailExtractor {
 
     private OntologyDetailModel mapToOntologyDetailModel(ModelStructure structure, ConceptData conceptData,
                                                          Function<String, String> refResolver) {
+        // Built once for the whole ontology: without it each concept re-scans the full concept
+        // list twice (once for properties, once for relationships), which is quadratic in N.
+        MemberIndex memberIndex = MemberIndex.build(conceptData);
+
         List<OntologyDetailModel.ConceptDetailModel> concepts = conceptData.getConcepts().stream()
-                .map(conceptMap -> mapToConceptDetailModel(conceptMap, conceptData, null, refResolver))
+                .map(conceptMap -> mapToConceptDetailModel(conceptMap, memberIndex, null, refResolver))
                 .toList();
 
         Map<String, String> descriptionMap = extractMultilingualDescription(structure.getVocabularyResource());
@@ -231,36 +252,26 @@ public class OntologyDetailExtractor {
                 .build();
     }
 
-    public List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, ConceptData conceptData,
-                                                                 Function<String, String> refResolver) {
+    private List<ConceptPropertiesModel> extractConceptProperties(String conceptIri, MemberIndex memberIndex,
+                                                                  Function<String, String> refResolver) {
         List<ConceptPropertiesModel> properties = new ArrayList<>();
 
-        for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
-            @SuppressWarnings("unchecked")
-            List<String> types = (List<String>) conceptMap.get("typ");
+        for (Map<String, Object> conceptMap : memberIndex.propertiesWithDomain(conceptIri)) {
             String propertyIri = (String) conceptMap.get("iri");
+            ConceptPropertiesModel propertyModel = new ConceptPropertiesModel();
 
-            if (types != null && types.contains("Vlastnost")) {
-                Object domainObj = conceptMap.get(DEFINICNI_OBOR);
-                String domain = domainObj instanceof String ? (String) domainObj : null;
+            Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), conceptIri, NAZEV);
+            String name = extractFirstAvailableName(nameMap);
 
-                if (conceptIri.equals(domain)) {
-                    ConceptPropertiesModel propertyModel = new ConceptPropertiesModel();
+            propertyModel.setName(name);
+            propertyModel.setIri(propertyIri);
+            propertyModel.setRef(refResolver.apply(propertyIri));
 
-                    Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), conceptIri, NAZEV);
-                    String name = extractFirstAvailableName(nameMap);
+            Object rawRange = conceptMap.get(OBOR_HODNOT);
+            propertyModel.setRange(rawRange instanceof String s ? s : null);
+            propertyModel.setRangeResolved(buildDataTypeDto(rawRange));
 
-                    propertyModel.setName(name);
-                    propertyModel.setIri(propertyIri);
-                    propertyModel.setRef(refResolver.apply(propertyIri));
-
-                    Object rawRange = conceptMap.get(OBOR_HODNOT);
-                    propertyModel.setRange(rawRange instanceof String s ? s : null);
-                    propertyModel.setRangeResolved(buildDataTypeDto(rawRange));
-
-                    properties.add(propertyModel);
-                }
-            }
+            properties.add(propertyModel);
         }
 
         return properties;
@@ -305,35 +316,22 @@ public class OntologyDetailExtractor {
         return properties;
     }
 
-    public List<ConceptRelationshipsModel> extractConceptRelationships(String conceptIri, ConceptData conceptData,
-                                                                      Function<String, String> refResolver) {
+    private List<ConceptRelationshipsModel> extractConceptRelationships(String conceptIri, MemberIndex memberIndex,
+                                                                        Function<String, String> refResolver) {
         List<ConceptRelationshipsModel> relationships = new ArrayList<>();
 
-        for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
-            @SuppressWarnings("unchecked")
-            List<String> types = (List<String>) conceptMap.get("typ");
+        for (Map<String, Object> conceptMap : memberIndex.relationshipsTouching(conceptIri)) {
             String relationshipIri = (String) conceptMap.get("iri");
+            ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
 
-            if (types != null && types.contains("Vztah")) {
-                Object domainObj = conceptMap.get(DEFINICNI_OBOR);
-                String domain = domainObj instanceof String ? (String) domainObj : null;
+            Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), relationshipIri, NAZEV);
+            String name = extractFirstAvailableName(nameMap);
 
-                Object rangeObj = conceptMap.get(OBOR_HODNOT);
-                String range = rangeObj instanceof String ? (String) rangeObj : null;
+            relationshipModel.setName(name);
+            relationshipModel.setIri(relationshipIri);
+            relationshipModel.setRef(refResolver.apply(relationshipIri));
 
-                if (conceptIri.equals(domain) || conceptIri.equals(range)) {
-                    ConceptRelationshipsModel relationshipModel = new ConceptRelationshipsModel();
-
-                    Map<String, String> nameMap = coerceToStringMap(conceptMap.get(NAZEV), relationshipIri, NAZEV);
-                    String name = extractFirstAvailableName(nameMap);
-
-                    relationshipModel.setName(name);
-                    relationshipModel.setIri(relationshipIri);
-                    relationshipModel.setRef(refResolver.apply(relationshipIri));
-
-                    relationships.add(relationshipModel);
-                }
-            }
+            relationships.add(relationshipModel);
         }
 
         return relationships;
@@ -426,9 +424,13 @@ public class OntologyDetailExtractor {
         return out.isEmpty() ? null : out;
     }
 
+    /**
+     * Exactly one of {@code memberIndex} (whole-ontology path) and {@code ontModel} (single-concept
+     * path) is set; neither means the concept carries no members.
+     */
     @SuppressWarnings("unchecked")
     private OntologyDetailModel.ConceptDetailModel mapToConceptDetailModel(Map<String, Object> conceptMap,
-                                                                          ConceptData conceptData,
+                                                                          MemberIndex memberIndex,
                                                                           OntModel ontModel,
                                                                           Function<String, String> refResolver) {
         String conceptIri = (String) conceptMap.get("iri");
@@ -436,9 +438,9 @@ public class OntologyDetailExtractor {
         List<ConceptPropertiesModel> properties;
         List<ConceptRelationshipsModel> relationships;
 
-        if (conceptData != null) {
-            properties = extractConceptProperties(conceptIri, conceptData, refResolver);
-            relationships = extractConceptRelationships(conceptIri, conceptData, refResolver);
+        if (memberIndex != null) {
+            properties = extractConceptProperties(conceptIri, memberIndex, refResolver);
+            relationships = extractConceptRelationships(conceptIri, memberIndex, refResolver);
         } else if (ontModel != null) {
             properties = extractConceptPropertiesFromModel(ontModel, conceptIri, refResolver);
             relationships = extractConceptRelationshipsFromModel(ontModel, conceptIri, refResolver);
@@ -692,4 +694,57 @@ public class OntologyDetailExtractor {
                 .enrichmentStatus(status)
                 .build();
     }
+
+    /**
+         * Domain/range lookup over an ontology's concept list, built in one pass so per-concept
+         * property/relationship extraction is a map hit instead of a full rescan.
+         *
+         * <p>Insertion order of the underlying concept list is preserved within each bucket, and a
+         * relationship whose domain and range are the same concept appears once — both matching the
+         * single-pass scan this replaces.
+         */
+        private record MemberIndex(Map<String, List<Map<String, Object>>> propertiesByDomain,
+                                   Map<String, List<Map<String, Object>>> relationshipsByConcept) {
+
+        @SuppressWarnings("unchecked")
+            static MemberIndex build(ConceptData conceptData) {
+                Map<String, List<Map<String, Object>>> byDomain = new HashMap<>();
+                Map<String, List<Map<String, Object>>> byConcept = new HashMap<>();
+
+                for (Map<String, Object> conceptMap : conceptData.getConcepts()) {
+                    List<String> types = (List<String>) conceptMap.get("typ");
+                    if (types == null) {
+                        continue;
+                    }
+                    Object domainObj = conceptMap.get(DEFINICNI_OBOR);
+                    String domain = domainObj instanceof String s ? s : null;
+
+                    if (types.contains("Vlastnost")) {
+                        if (domain != null) {
+                            byDomain.computeIfAbsent(domain, k -> new ArrayList<>()).add(conceptMap);
+                        }
+                    } else if (types.contains("Vztah")) {
+                        Object rangeObj = conceptMap.get(OBOR_HODNOT);
+                        String range = rangeObj instanceof String s ? s : null;
+
+                        if (domain != null) {
+                            byConcept.computeIfAbsent(domain, k -> new ArrayList<>()).add(conceptMap);
+                        }
+                        // Only when range differs, so a self-referencing vztah is not listed twice.
+                        if (range != null && !range.equals(domain)) {
+                            byConcept.computeIfAbsent(range, k -> new ArrayList<>()).add(conceptMap);
+                        }
+                    }
+                }
+                return new MemberIndex(byDomain, byConcept);
+            }
+
+            List<Map<String, Object>> propertiesWithDomain(String conceptIri) {
+                return propertiesByDomain.getOrDefault(conceptIri, List.of());
+            }
+
+            List<Map<String, Object>> relationshipsTouching(String conceptIri) {
+                return relationshipsByConcept.getOrDefault(conceptIri, List.of());
+            }
+        }
 }

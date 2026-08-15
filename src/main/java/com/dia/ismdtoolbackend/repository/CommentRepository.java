@@ -7,6 +7,7 @@ import java.util.List;
 
 public interface CommentRepository extends JpaRepository<CommentEntity, Long> {
     List<CommentEntity> findByOntologyMetadataId(Long ontologyMetadataId);
+    List<CommentEntity> findByOntologyMetadataIdIn(List<Long> ontologyMetadataIds);
     List<CommentEntity> findByConceptMetadataId(Long conceptMetadataId);
     List<CommentEntity> findByConceptMetadataIdIn(List<Long> conceptMetadataIds);
 }

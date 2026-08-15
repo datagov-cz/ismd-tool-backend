@@ -20,6 +20,7 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
@@ -48,19 +49,32 @@ public class NkdSparqlClient {
     private final HttpSparqlExecutor executor;
     private final OntologyDetailExtractor detailExtractor;
 
+    /**
+     * Self-reference through the Spring proxy so {@link #fetchPublishedConceptWithScheme}'s
+     * {@code @Cacheable} is honoured when called from {@link #fetchPublishedConcept}. A plain
+     * {@code this.} call would bypass the cache proxy, so the two keys would each pay their own
+     * SPARQL round-trip instead of sharing one.
+     */
+    private final NkdSparqlClient self;
+
     public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor,
-                           @Qualifier("externalSparqlHttpClient") HttpClient externalSparqlHttpClient) {
+                           @Qualifier("externalSparqlHttpClient") HttpClient externalSparqlHttpClient,
+                           @Lazy NkdSparqlClient self) {
         this.executor = new HttpSparqlExecutor(
                 NKD_LABEL,
                 config.getSparql().getEndpoint(),
                 config.getSparql().getTimeout(),
-                externalSparqlHttpClient);
+                externalSparqlHttpClient,
+                config.getSparql().getMaxConcurrentRequests());
         this.detailExtractor = detailExtractor;
+        // Falls back to this when constructed outside Spring (tests): no proxy means no cache to
+        // re-enter, so a direct call is the correct behaviour rather than an NPE.
+        this.self = self != null ? self : this;
     }
 
     @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'concept:' + #conceptIri")
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
-        return fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
+        return self.fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
     }
 
     /**

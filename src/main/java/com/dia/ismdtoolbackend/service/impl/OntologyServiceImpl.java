@@ -530,12 +530,23 @@ public class OntologyServiceImpl implements OntologyService {
         Model batchMetadata = jenaTDB2Repository.fetchMetadataProperties(graphNames);
         Map<String, Model> perGraphModels = partitionModelBySubject(batchMetadata, graphNames);
 
+        // One comment query for the whole page, grouped in memory — a per-entity lookup here would
+        // undo the batched RDF fetch above with 1+N queries on an unfiltered list.
+        List<Long> ontologyIds = entities.stream()
+                .map(OntologyMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByOntologyId = ontologyIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByOntologyMetadataIdIn(ontologyIds).stream()
+                        .collect(java.util.stream.Collectors.groupingBy(c -> c.getOntologyMetadata().getId()));
+
         return entities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
                     Model graphModel = perGraphModels.get(entity.getGraphName());
                     enrichMetadataFromModel(model, entity, graphModel);
-                    List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(entity.getId());
+                    List<CommentEntity> commentEntities =
+                            commentsByOntologyId.getOrDefault(entity.getId(), List.of());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })

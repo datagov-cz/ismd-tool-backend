@@ -79,12 +79,20 @@ class NkdSparqlClientTest {
     }
 
     private NkdSparqlClient newClient(OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor,
-                HttpClient.newHttpClient());
+        return newClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor);
     }
 
     private NkdSparqlClient newUnconfiguredClient(OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(configWithEndpoint(""), extractor, HttpClient.newHttpClient());
+        return newClient(configWithEndpoint(""), extractor);
+    }
+
+    /**
+     * Builds the client without Spring. {@code self} is null here: it exists only so the cache
+     * proxy is re-entered in production, and these tests drive the real HTTP path with no cache,
+     * so no call under test dereferences it.
+     */
+    private NkdSparqlClient newClient(NkdConfig cfg, OntologyDetailExtractor extractor) {
+        return new NkdSparqlClient(cfg, extractor, HttpClient.newHttpClient(), null);
     }
 
     private static void stubTurtle(String turtle) {

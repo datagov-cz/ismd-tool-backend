@@ -852,10 +852,10 @@ class OntologyServiceImplTest {
         when(ontologyMetadataMapper.toDto(e2)).thenReturn(m2);
         when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
 
+        // Comments come back in ONE batched query and are grouped by owning ontology in memory.
         CommentEntity comment = new CommentEntity();
-        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of(comment));
-        when(commentRepository.findByOntologyMetadataId(2L)).thenReturn(List.of());
-        when(commentRepository.findByOntologyMetadataId(3L)).thenReturn(List.of());
+        comment.setOntologyMetadata(e1);
+        when(commentRepository.findByOntologyMetadataIdIn(List.of(1L, 2L, 3L))).thenReturn(List.of(comment));
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
@@ -870,7 +870,9 @@ class OntologyServiceImplTest {
         // fallback value — what matters is enrichMetadataFromModel was called and returned
         // without throwing).
         assertNotNull(mNoGraph);
-        verify(commentRepository).findByOntologyMetadataId(1L);
+        // One query for the whole page, and never the per-row variant (guards the N+1 regression).
+        verify(commentRepository).findByOntologyMetadataIdIn(List.of(1L, 2L, 3L));
+        verify(commentRepository, never()).findByOntologyMetadataId(anyLong());
     }
 
     @Test
