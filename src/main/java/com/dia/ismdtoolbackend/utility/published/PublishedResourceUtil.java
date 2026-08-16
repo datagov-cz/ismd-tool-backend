@@ -104,9 +104,21 @@ public class PublishedResourceUtil {
         // never disagree. The bulk entry point reads every local projection off the processedModel this
         // request already transformed — the per-IRI path would re-fetch and re-transform the whole
         // ontology graph once per concept, since a concept's graphName IS the ontology graph.
+        // The concepts all belong to one graph, so the NKD side can be sliced out of that scheme's
+        // ontology CONSTRUCT — which the ontology deviation check fetches anyway — instead of paying
+        // a second batched concept round-trip.
+        String ontologyIri = publishedConcepts.stream()
+                .map(ConceptMetadataEntity::getGraphName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count() == 1
+                ? publishedConcepts.get(0).getGraphName()
+                : null;
+
         Map<String, PublishedConceptDeviationModel> deviations = new HashMap<>();
         try {
-            deviations.putAll(workingCopyDeviationService.deviationForAll(processedModel, conceptIris));
+            deviations.putAll(workingCopyDeviationService.deviationForAllInOntology(
+                    processedModel, conceptIris, ontologyIri));
         } catch (Exception e) {
             // Bulk local extraction failed as a unit; degrade to a per-concept error rather than
             // failing the whole detail response.

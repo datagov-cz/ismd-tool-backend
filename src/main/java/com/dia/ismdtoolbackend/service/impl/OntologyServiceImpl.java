@@ -187,12 +187,14 @@ public class OntologyServiceImpl implements OntologyService {
     @Override
     @Transactional(readOnly = true)
     public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
+        long tTotal = System.currentTimeMillis();
         LoadedOntologyDetail loadedDetail = loadOntologyDetail(ontologySlug);
         OntologyMetadataEntity metadataEntity = loadedDetail.metadataEntity();
         Model rawModel = loadedDetail.rawModel();
         Model processedModel = loadedDetail.processedModel();
         OntologyDetailModel detailModel = loadedDetail.detailModel();
 
+        long tMeta = System.currentTimeMillis();
         OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
 
         enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
@@ -205,6 +207,8 @@ public class OntologyServiceImpl implements OntologyService {
         List<com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel> conceptModels =
                 conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList();
         metadataModel.setConcepts(conceptModels);
+        log.info("[timing] getOntologyDetailModel stage4 (PG metadata+comments+concepts, {} concepts) took {} ms",
+                conceptMetadataEntities.size(), System.currentTimeMillis() - tMeta);
 
         GetOntologyDto result = new GetOntologyDto();
         // Single source of truth: conceptCount on both projections of the
@@ -215,14 +219,25 @@ public class OntologyServiceImpl implements OntologyService {
         result.setOntologyMetadata(metadataModel);
         result.setOntologyDetail(detailModel);
 
+        long tOntDev = System.currentTimeMillis();
         PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(detailModel, metadataModel);
         result.setPublishedOntologyDeviationModel(ontologyDeviations);
+        log.info("[timing] getOntologyDetailModel stage5 (checkOntologyDeviation) took {} ms",
+                System.currentTimeMillis() - tOntDev);
 
+        long tConDev = System.currentTimeMillis();
         Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);
         result.setPublishedConceptDeviations(conceptDeviations);
+        log.info("[timing] getOntologyDetailModel stage6 (checkConceptsDeviation, {} concepts) took {} ms",
+                conceptMetadataEntities.size(), System.currentTimeMillis() - tConDev);
 
+        long tSnap = System.currentTimeMillis();
         surfaceLinkSnapshots(result, graphName);
+        log.info("[timing] getOntologyDetailModel stage7 (surfaceLinkSnapshots) took {} ms",
+                System.currentTimeMillis() - tSnap);
 
+        log.info("[timing] getOntologyDetailModel TOTAL ({}) took {} ms",
+                ontologySlug, System.currentTimeMillis() - tTotal);
         return result;
     }
 
@@ -236,7 +251,10 @@ public class OntologyServiceImpl implements OntologyService {
         OntologyMetadataEntity metadataEntity = ontologyMetadataOpt.get();
         String graphName = metadataEntity.getGraphName();
 
+        long tFetch = System.currentTimeMillis();
         Model rawModel = jenaTDB2Repository.fetchGraph(graphName);
+        log.info("[timing] loadOntologyDetail stage1 (fetchGraph, {} statements) took {} ms",
+                rawModel.size(), System.currentTimeMillis() - tFetch);
 
         if (rawModel.isEmpty()) {
             log.error("Ontology model is empty for graph: {}", graphName);
@@ -246,8 +264,15 @@ public class OntologyServiceImpl implements OntologyService {
         // OFN transform is expensive (filter + reformat over the full graph);
         // run once and share with the deviation checker instead of re-running
         // it three times across detail extraction and deviation checks.
+        long tOfn = System.currentTimeMillis();
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
+        log.info("[timing] loadOntologyDetail stage2 (applyOFNTransformations) took {} ms",
+                System.currentTimeMillis() - tOfn);
+
+        long tExtract = System.currentTimeMillis();
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
+        log.info("[timing] loadOntologyDetail stage3 (extractOntologyDetail) took {} ms",
+                System.currentTimeMillis() - tExtract);
         return new LoadedOntologyDetail(metadataEntity, rawModel, processedModel, detailModel);
     }
 

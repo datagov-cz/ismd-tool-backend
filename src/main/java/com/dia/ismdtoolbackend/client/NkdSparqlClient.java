@@ -119,8 +119,11 @@ public class NkdSparqlClient {
 
         log.debug("Batched NKD concept fetch for {} IRIs", safeIris.size());
         String query = NKDSPARQLConstructQuery.buildBatchedConstructQuery(safeIris);
+        long tWire = System.currentTimeMillis();
         Optional<Model> resultModel = executor.construct(
                 "NKD batched concept fetch (" + safeIris.size() + " IRIs)", query);
+        log.info("[timing] fetchPublishedConceptsBatched stage1 (CONSTRUCT over the wire, {} iris) took {} ms",
+                safeIris.size(), System.currentTimeMillis() - tWire);
         if (resultModel.isEmpty()) {
             log.info("No data found for any of the {} batched concepts in NKD", safeIris.size());
             return out;
@@ -128,10 +131,61 @@ public class NkdSparqlClient {
 
         Model batched = resultModel.get();
         log.debug("Fetched {} triples from NKD for {} concepts", batched.size(), safeIris.size());
+        long tPost = System.currentTimeMillis();
+        long sliceMs = 0;
+        long ofnMs = 0;
+        long extractMs = 0;
         for (String conceptIri : safeIris) {
+            long t = System.currentTimeMillis();
             Model slice = sliceForSubject(batched, conceptIri);
+            sliceMs += System.currentTimeMillis() - t;
             if (slice.isEmpty()) {
                 log.debug("No data found for concept in NKD: {}", conceptIri);
+                continue;
+            }
+            String inSchemeIri = extractInSchemeIri(slice, conceptIri);
+            t = System.currentTimeMillis();
+            Model processedModel = detailExtractor.applyOFNTransformationsForNkd(slice);
+            ofnMs += System.currentTimeMillis() - t;
+            t = System.currentTimeMillis();
+            OntologyDetailModel.ConceptDetailModel conceptDetail =
+                    detailExtractor.extractConceptDetail(processedModel, conceptIri,
+                            OntologyDetailExtractor.iriResolver());
+            extractMs += System.currentTimeMillis() - t;
+            out.put(conceptIri, Optional.of(new PublishedConcept(conceptDetail, inSchemeIri)));
+        }
+        log.info("[timing] fetchPublishedConceptsBatched stage2 (post-processing {} iris) took {} ms"
+                        + " [sliceForSubject {} ms, applyOFNTransformationsForNkd {} ms, extractConceptDetail {} ms]",
+                safeIris.size(), System.currentTimeMillis() - tPost, sliceMs, ofnMs, extractMs);
+        return out;
+    }
+
+    /**
+     * Scheme-scoped counterpart to {@link #fetchPublishedConceptsBatched}: derives every requested
+     * concept from the ontology model the caller already fetched, with no further round-trip.
+     *
+     * <p>{@link NKDSPARQLConstructQuery#buildOntologyConstructQuery} returns the scheme's own triples
+     * <em>and</em> every {@code skos:inScheme} member with blank-node expansion, so it is a strict
+     * superset of the batched concept CONSTRUCT for concepts of that scheme. Per-concept output is
+     * produced by the same slice → OFN → extract pipeline, so it matches the batched path field-for-field.
+     *
+     * <p>Only for concepts belonging to {@code ontologyModel}'s scheme. A concept absent from the
+     * model maps to {@link Optional#empty()}, exactly as the batched path reports it.
+     */
+    public Map<String, Optional<PublishedConcept>> derivePublishedConceptsFromOntology(
+            Model ontologyModel, List<String> conceptIris) {
+        Map<String, Optional<PublishedConcept>> out = new LinkedHashMap<>();
+        conceptIris.forEach(iri -> out.put(iri, Optional.empty()));
+        if (ontologyModel == null || ontologyModel.isEmpty()) {
+            return out;
+        }
+        for (String conceptIri : conceptIris.stream().distinct().toList()) {
+            if (!SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+                continue;
+            }
+            Model slice = sliceForSubject(ontologyModel, conceptIri);
+            if (slice.isEmpty()) {
+                log.debug("Concept not present in NKD ontology model: {}", conceptIri);
                 continue;
             }
             String inSchemeIri = extractInSchemeIri(slice, conceptIri);
@@ -233,7 +287,7 @@ public class NkdSparqlClient {
 
     @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontology:' + #ontologyIri")
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
-        return fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
+        return self.fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
             Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);
             return detailExtractor.extractOntologyDetail(processedModel,
                     OntologyDetailExtractor.iriResolver());
@@ -244,7 +298,13 @@ public class NkdSparqlClient {
      * Raw NKD ontology model — same CONSTRUCT as {@link #fetchPublishedOntology}
      * but returned before OFN extraction, for callers that need to serialize
      * the source RDF (e.g. download endpoint).
+     *
+     * <p>Cached under its own key so the ontology deviation check and
+     * {@link #derivePublishedConceptsFromOntology} share a single round-trip: the CONSTRUCT already
+     * carries every in-scheme concept, so the concept side needs no query of its own. Callers must
+     * treat the returned model as read-only — it is the shared cached instance.
      */
+    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontologyRaw:' + #ontologyIri")
     public Optional<Model> fetchPublishedOntologyRaw(String ontologyIri) {
         log.debug("Fetching raw NKD ontology model: {}", ontologyIri);
         String query = NKDSPARQLConstructQuery.buildOntologyConstructQuery(ontologyIri);

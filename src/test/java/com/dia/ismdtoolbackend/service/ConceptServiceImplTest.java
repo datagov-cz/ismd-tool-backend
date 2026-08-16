@@ -1167,13 +1167,23 @@ class ConceptServiceImplTest {
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
                 .status(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION)
                 .build();
-        when(workingCopyDeviationService.deviationFor(TEST_CONCEPT_IRI)).thenReturn(deviationResult);
+        OntologyDetailModel.ConceptDetailModel canonicalLocal =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        when(workingCopyDeviationService.canonicalLocalConcept(eq(TEST_CONCEPT_IRI), any(Model.class)))
+                .thenReturn(canonicalLocal);
+        when(workingCopyDeviationService.deviationForWithLocal(TEST_CONCEPT_IRI, canonicalLocal))
+                .thenReturn(deviationResult);
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
         assertNotNull(result);
         assertEquals(deviationResult, result.getPublishedConceptDeviationModel());
-        verify(workingCopyDeviationService).deviationFor(TEST_CONCEPT_IRI);
+        // The canonical projection is computed off the graph this request already fetched and handed
+        // to the deviation service, so it never re-reads the graph.
+        verify(workingCopyDeviationService).canonicalLocalConcept(eq(TEST_CONCEPT_IRI), any(Model.class));
+        verify(workingCopyDeviationService).deviationForWithLocal(TEST_CONCEPT_IRI, canonicalLocal);
+        verify(workingCopyDeviationService, never()).deviationFor(any());
+        verify(jenaTDB2Repository, times(1)).fetchGraph(TEST_GRAPH_NAME);
     }
 
     @Test
