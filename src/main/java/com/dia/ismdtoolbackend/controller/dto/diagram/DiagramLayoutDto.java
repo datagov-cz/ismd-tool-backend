@@ -20,13 +20,20 @@ public record DiagramLayoutDto(
         @Valid List<Edge> edges
 ) {
 
-    /** A node's persisted layout. {@code id} is {@code iri:<full-iri>}; a new IRI adds the node. */
+    /**
+     * A node's persisted layout. {@code id} is {@code iri:<full-iri>}; a new IRI adds the node.
+     * {@code collapsed} is optional on the wire — omitted or null means not collapsed.
+     */
     public record Node(
             @NotBlank String id,
             @NotNull @Valid PositionDto position,
             String parentId,
-            boolean collapsed
+            Boolean collapsed
     ) {
+
+        public Node {
+            collapsed = collapsed != null && collapsed;
+        }
     }
 
     /** A projected edge's persisted handles/positions. Endpoints are node ids ({@code iri:...}). */

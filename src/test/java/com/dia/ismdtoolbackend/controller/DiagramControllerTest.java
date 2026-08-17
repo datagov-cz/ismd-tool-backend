@@ -205,6 +205,37 @@ class DiagramControllerTest {
     }
 
     /**
+     * A node's optional flags are absent from a real client's save body, and a client that tracks them may
+     * send an explicit {@code null}. Neither form is a malformed request: both must bind, defaulting
+     * {@code collapsed} to false, rather than 400 out of the message converter.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void saveLayout_nodeFlagsAbsentOrNull_bindWithoutParseError() throws Exception {
+        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null,
+                        List.of(), List.of(), 0));
+
+        String absent = """
+                {"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5}}],
+                 "edges":[{"id":"e1","source":"https://x/pojem/a","target":"https://x/pojem/b",
+                           "edgeKind":"SUBCLASS_OF","sourceHandle":"https://x/pojem/a",
+                           "targetHandle":"https://x/pojem/b"}]}
+                """;
+        String explicitNull = """
+                {"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5},
+                           "parentId":null,"collapsed":null}],"edges":[]}
+                """;
+
+        for (String body : List.of(absent, explicitNull)) {
+            mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    /**
      * {@code @JsonInclude(NON_NULL)} is what keeps the field off the in-diagram form. A node built without a
      * version must omit the key entirely rather than emit {@code "version": null}, which a client could read
      * as "this node has no version" instead of "version lives on the diagram".

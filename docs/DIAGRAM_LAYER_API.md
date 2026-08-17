@@ -155,6 +155,7 @@ This is the one status where a `success: false` response still means the write l
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
       "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false },
+    // parentId/collapsed are optional — omitted or null means no parent / not collapsed
     { "id": "iri:https://…/pojem/je-zamestnan-u",
       "position": { "x": 520, "y": 210 } }
   ],
