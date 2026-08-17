@@ -132,6 +132,8 @@ public class OntologyDetailExtractor {
      * Local-detail OFN transform. Infers role tags + labels but does NOT derive
      * {@code skos:inScheme}: local vocabularies are written via the authoritative
      * upload path, which guarantees an explicit inScheme on every owned concept.
+     *
+     * <p>{@code rawModel} is left unchanged; the transform works on a copy.
      */
     public Model applyOFNTransformations(Model rawModel) {
         return applyOFNTransformations(rawModel, false);
@@ -140,6 +142,8 @@ public class OntologyDetailExtractor {
     /**
      * NKD-detail OFN transform. Same as the local transform PLUS {@code skos:inScheme}
      * derivation, since NKD data is out of our control and often arrives without one.
+     *
+     * <p>{@code rawModel} is left unchanged; the transform works on a copy.
      */
     public Model applyOFNTransformationsForNkd(Model rawModel) {
         return applyOFNTransformations(rawModel, true);
@@ -147,21 +151,28 @@ public class OntologyDetailExtractor {
 
     private Model applyOFNTransformations(Model rawModel, boolean deriveInScheme) {
         log.debug("Applying OFN transformations (deriveInScheme={})", deriveInScheme);
+        // The normalizers mutate the model they are handed, so they run over a copy:
+        // callers pass models they do not own (a cached NKD model, or a graph the
+        // request extracts from again afterwards) and must get them back unchanged.
+        Model workingModel = ModelFactory.createDefaultModel();
+        workingModel.setNsPrefixes(rawModel.getNsPrefixMap());
+        workingModel.add(rawModel);
+
         // Normalize before filtering: NKD-published concepts often carry only
         // generic types (slovníky:pojem + owl:Class/ObjectProperty/DatatypeProperty),
         // all of which TurtleFilterUtil treats as "vocabulary noise" and would
         // strip. Inferring the role tags (skos:Concept, slovníky:třída/vztah/
         // vlastnost) here keeps real concepts past the filter.
         int normalized = deriveInScheme
-                ? OFNTypeNormalizer.normalizeForNkd(rawModel)
-                : OFNTypeNormalizer.normalizeForLocalDetail(rawModel);
+                ? OFNTypeNormalizer.normalizeForNkd(workingModel)
+                : OFNTypeNormalizer.normalizeForLocalDetail(workingModel);
         if (normalized > 0) {
             log.debug("Inferred OFN role tags on {} resources before filtering", normalized);
         }
-        Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
+        Model filteredModel = TurtleFilterUtil.createFilteredModel(workingModel);
         Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
         log.debug("OFN transformation complete: {} -> {} -> {} statements",
-                rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
+                workingModel.size(), filteredModel.size(), ofnFormattedModel.size());
         return ofnFormattedModel;
     }
 

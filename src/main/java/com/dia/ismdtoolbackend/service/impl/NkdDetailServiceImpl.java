@@ -112,23 +112,22 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             return new NkdResourceNotFoundException("Slovník s IRI " + iri + " nebyl v NKD nalezen.");
         });
 
-        try {
-            String body;
-            if (normalized.equals("ttl")) {
-                StringWriter writer = new StringWriter();
-                model.write(writer, "TTL");
-                body = writer.toString();
-            } else {
-                // NKD already publishes OFN-aligned RDF. We bypass the local-store
-                // OFN re-formatting pipeline (TurtleFilterUtil/TurtleFormatterUtil)
-                // because applying it to an already-OFN payload is a noop at best
-                // and lossy at worst. JsonExporter is enough.
-                body = jsonExporter.exportToJson(model);
-            }
-            return body.getBytes(StandardCharsets.UTF_8);
-        } finally {
-            model.close();
+        // Not closed here: fetchPublishedOntologyRaw is @Cacheable, so this is the shared
+        // cached instance. Closing it would leave the cache entry pointing at a closed
+        // model for the rest of its TTL.
+        String body;
+        if (normalized.equals("ttl")) {
+            StringWriter writer = new StringWriter();
+            model.write(writer, "TTL");
+            body = writer.toString();
+        } else {
+            // NKD already publishes OFN-aligned RDF. We bypass the local-store
+            // OFN re-formatting pipeline (TurtleFilterUtil/TurtleFormatterUtil)
+            // because applying it to an already-OFN payload is a noop at best
+            // and lossy at worst. JsonExporter is enough.
+            body = jsonExporter.exportToJson(model);
         }
+        return body.getBytes(StandardCharsets.UTF_8);
     }
 
     @Override
