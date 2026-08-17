@@ -405,6 +405,110 @@ class OntologyServiceImplTest {
         verify(conceptMetadataMapper).toDto(conceptEntity);
     }
 
+    // ========== foreign member count Tests ==========
+
+    /**
+     * Ontology detail scopes members to its own graph while concept detail merges cross-graph
+     * ones in; the counts are what the two surfaces differ by, so they must reach the DTO.
+     */
+    @Test
+    void getOntologyDetail_annotatesConceptsWithForeignMemberCounts() {
+        String classIri = TEST_GRAPH_NAME + "/pojem/osoba";
+        String bareIri = TEST_GRAPH_NAME + "/pojem/bez-cizích";
+
+        OntologyDetailModel detailModel = detailWithConcepts(classIri, bareIri);
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
+        when(jenaTDB2Repository.countExternalDomainMembers(eq(TEST_GRAPH_NAME), anyList()))
+                .thenReturn(java.util.Map.of(classIri, new JenaTDB2Repository.ForeignMemberCount(3, 1)));
+
+        OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        OntologyDetailModel.ConceptDetailModel annotated = conceptByIri(result, classIri);
+        assertEquals(3, annotated.getForeignPropertyCount());
+        assertEquals(1, annotated.getForeignRelationshipCount());
+
+        // Absent from the count map => null, not 0, so the keys stay out of the JSON entirely.
+        OntologyDetailModel.ConceptDetailModel untouched = conceptByIri(result, bareIri);
+        assertNull(untouched.getForeignPropertyCount());
+        assertNull(untouched.getForeignRelationshipCount());
+    }
+
+    /** One batched call for the whole ontology — a per-concept call would be an N+1 fan-out. */
+    @Test
+    void getOntologyDetail_countsForeignMembersInASingleBatchedCall() {
+        String a = TEST_GRAPH_NAME + "/pojem/a";
+        String b = TEST_GRAPH_NAME + "/pojem/b";
+        String c = TEST_GRAPH_NAME + "/pojem/c";
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailWithConcepts(a, b, c));
+        when(jenaTDB2Repository.countExternalDomainMembers(anyString(), anyList())).thenReturn(java.util.Map.of());
+
+        ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        ArgumentCaptor<List<String>> irisCaptor = ArgumentCaptor.forClass(List.class);
+        verify(jenaTDB2Repository, times(1))
+                .countExternalDomainMembers(eq(TEST_GRAPH_NAME), irisCaptor.capture());
+        assertEquals(List.of(a, b, c), irisCaptor.getValue());
+    }
+
+    /** Counting is supplementary: a Fuseki failure must not take ontology detail down with it. */
+    @Test
+    void getOntologyDetail_survivesForeignMemberCountFailure() {
+        String classIri = TEST_GRAPH_NAME + "/pojem/osoba";
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailWithConcepts(classIri));
+        when(jenaTDB2Repository.countExternalDomainMembers(anyString(), anyList()))
+                .thenThrow(new RuntimeException("Fuseki down"));
+
+        OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        assertNotNull(result);
+        assertNull(conceptByIri(result, classIri).getForeignPropertyCount());
+    }
+
+    /** No concepts => no query at all. */
+    @Test
+    void getOntologyDetail_skipsForeignMemberCountWhenNoConcepts() {
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData))
+                .thenReturn(OntologyDetailModel.builder().iri(TEST_GRAPH_NAME).concepts(List.of()).build());
+
+        ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        verify(jenaTDB2Repository, never()).countExternalDomainMembers(anyString(), anyList());
+    }
+
+    private static OntologyDetailModel detailWithConcepts(String... conceptIris) {
+        List<OntologyDetailModel.ConceptDetailModel> concepts = new ArrayList<>();
+        for (String iri : conceptIris) {
+            concepts.add(OntologyDetailModel.ConceptDetailModel.builder().iri(iri).build());
+        }
+        return OntologyDetailModel.builder().iri(TEST_GRAPH_NAME).concepts(concepts).build();
+    }
+
+    private static OntologyDetailModel.ConceptDetailModel conceptByIri(OntologyDetailModel detail, String iri) {
+        return detail.getConcepts().stream()
+                .filter(c -> iri.equals(c.getIri()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("concept not in detail: " + iri));
+    }
+
     @Test
     void getOntologyDetailModel_OntologyNotFound() {
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());

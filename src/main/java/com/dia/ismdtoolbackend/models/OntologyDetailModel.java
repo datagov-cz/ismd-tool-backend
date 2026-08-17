@@ -168,6 +168,19 @@ public class OntologyDetailModel {
         private List<ConceptRelationshipsModel> conceptRelationships;
 
         /**
+         * How many properties/relationships from OTHER vocabularies point at this concept.
+         * Set on the local ontology detail only, where the member lists are scoped to the
+         * ontology's own graph; the concept detail lists those members in full instead, so
+         * {@code conceptProperties.size() + foreignPropertyCount} there agrees with the
+         * concept detail's list length. Null when there are none.
+         */
+        @JsonProperty("počet-cizích-vlastností")
+        private Integer foreignPropertyCount;
+
+        @JsonProperty("počet-cizích-vztahů")
+        private Integer foreignRelationshipCount;
+
+        /**
          * Pre-resolved metadata for every referenced concept IRI in this detail
          * (exact matches, broader classes/relations/properties, domain, range,
          * and each property/relationship IRI). Keyed by concept IRI; unresolved

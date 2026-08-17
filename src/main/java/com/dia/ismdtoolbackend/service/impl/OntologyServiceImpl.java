@@ -51,6 +51,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.apache.jena.rdf.model.ModelFactory;
@@ -248,7 +249,47 @@ public class OntologyServiceImpl implements OntologyService {
         // it three times across detail extraction and deviation checks.
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
+        applyForeignMemberCounts(detailModel, graphName);
         return new LoadedOntologyDetail(metadataEntity, rawModel, processedModel, detailModel);
+    }
+
+    /**
+     * Annotates each concept with how many properties/relationships point at it from other
+     * vocabularies. The detail's own member lists are scoped to this graph, so without the
+     * counts an ontology detail silently shows fewer members than the same concept's detail
+     * page (which merges cross-graph members in).
+     *
+     * <p>One batched query for the whole ontology — a per-concept call would reintroduce the
+     * N+1 fan-out the read-path work removed. Never lets counting break ontology detail.
+     */
+    private void applyForeignMemberCounts(OntologyDetailModel detailModel, String graphName) {
+        List<OntologyDetailModel.ConceptDetailModel> concepts = detailModel.getConcepts();
+        if (concepts == null || concepts.isEmpty()) {
+            return;
+        }
+
+        try {
+            List<String> conceptIris = concepts.stream()
+                    .map(OntologyDetailModel.ConceptDetailModel::getIri)
+                    .filter(Objects::nonNull)
+                    .toList();
+
+            Map<String, JenaTDB2Repository.ForeignMemberCount> counts =
+                    jenaTDB2Repository.countExternalDomainMembers(graphName, conceptIris);
+            if (counts.isEmpty()) {
+                return;
+            }
+
+            for (OntologyDetailModel.ConceptDetailModel concept : concepts) {
+                JenaTDB2Repository.ForeignMemberCount count = counts.get(concept.getIri());
+                if (count != null) {
+                    concept.setForeignPropertyCount(count.properties());
+                    concept.setForeignRelationshipCount(count.relationships());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to count cross-graph members for graph {}: {}", graphName, e.getMessage());
+        }
     }
 
     private record LoadedOntologyDetail(
