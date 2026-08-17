@@ -114,13 +114,10 @@ public final class HttpSparqlExecutor {
             throw new SparqlEndpointUnavailableException(
                     endpointLabel, endpointLabel + " is busy, try again later");
         }
-        long tWire = System.currentTimeMillis();
         try {
             return action.get();
         } finally {
             concurrencyLimiter.release();
-            log.info("[timing] {} wire call ({}) took {} ms",
-                    endpointLabel, operationLabel, System.currentTimeMillis() - tWire);
         }
     }
 

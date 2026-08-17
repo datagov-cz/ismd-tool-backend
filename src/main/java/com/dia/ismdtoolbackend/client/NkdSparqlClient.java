@@ -119,11 +119,8 @@ public class NkdSparqlClient {
 
         log.debug("Batched NKD concept fetch for {} IRIs", safeIris.size());
         String query = NKDSPARQLConstructQuery.buildBatchedConstructQuery(safeIris);
-        long tWire = System.currentTimeMillis();
         Optional<Model> resultModel = executor.construct(
                 "NKD batched concept fetch (" + safeIris.size() + " IRIs)", query);
-        log.info("[timing] fetchPublishedConceptsBatched stage1 (CONSTRUCT over the wire, {} iris) took {} ms",
-                safeIris.size(), System.currentTimeMillis() - tWire);
         if (resultModel.isEmpty()) {
             log.info("No data found for any of the {} batched concepts in NKD", safeIris.size());
             return out;
@@ -131,32 +128,19 @@ public class NkdSparqlClient {
 
         Model batched = resultModel.get();
         log.debug("Fetched {} triples from NKD for {} concepts", batched.size(), safeIris.size());
-        long tPost = System.currentTimeMillis();
-        long sliceMs = 0;
-        long ofnMs = 0;
-        long extractMs = 0;
         for (String conceptIri : safeIris) {
-            long t = System.currentTimeMillis();
             Model slice = sliceForSubject(batched, conceptIri);
-            sliceMs += System.currentTimeMillis() - t;
             if (slice.isEmpty()) {
                 log.debug("No data found for concept in NKD: {}", conceptIri);
                 continue;
             }
             String inSchemeIri = extractInSchemeIri(slice, conceptIri);
-            t = System.currentTimeMillis();
             Model processedModel = detailExtractor.applyOFNTransformationsForNkd(slice);
-            ofnMs += System.currentTimeMillis() - t;
-            t = System.currentTimeMillis();
             OntologyDetailModel.ConceptDetailModel conceptDetail =
                     detailExtractor.extractConceptDetail(processedModel, conceptIri,
                             OntologyDetailExtractor.iriResolver());
-            extractMs += System.currentTimeMillis() - t;
             out.put(conceptIri, Optional.of(new PublishedConcept(conceptDetail, inSchemeIri)));
         }
-        log.info("[timing] fetchPublishedConceptsBatched stage2 (post-processing {} iris) took {} ms"
-                        + " [sliceForSubject {} ms, applyOFNTransformationsForNkd {} ms, extractConceptDetail {} ms]",
-                safeIris.size(), System.currentTimeMillis() - tPost, sliceMs, ofnMs, extractMs);
         return out;
     }
 

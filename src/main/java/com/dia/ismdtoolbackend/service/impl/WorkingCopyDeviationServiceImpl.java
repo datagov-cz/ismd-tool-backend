@@ -95,17 +95,9 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
     public Map<String, PublishedConceptDeviationModel> deviationForAllInOntology(Model processedModel,
                                                                                   List<String> conceptIris,
                                                                                   String ontologyIri) {
-        long tLocal = System.currentTimeMillis();
         Map<String, ConceptDetailModel> locals = self.canonicalLocalConcepts(processedModel, conceptIris);
-        log.info("[timing] deviationForAll stage1 (canonicalLocalConcepts, {} iris) took {} ms",
-                conceptIris.size(), System.currentTimeMillis() - tLocal);
-
-        long tNkd = System.currentTimeMillis();
         Map<String, Optional<ConceptDetailModel>> prefetched = prefetchNkdSide(conceptIris, ontologyIri);
-        log.info("[timing] deviationForAll stage2 (prefetchNkdSide) took {} ms",
-                System.currentTimeMillis() - tNkd);
 
-        long tCompare = System.currentTimeMillis();
         Map<String, PublishedConceptDeviationModel> out = new LinkedHashMap<>();
         for (String conceptIri : conceptIris) {
             // enrich=false: reference resolution is deferred so all N deviations resolve in ONE
@@ -113,13 +105,8 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
             out.put(conceptIri, compareAgainstNkd(conceptIri, locals.get(conceptIri),
                     prefetched.get(conceptIri), false));
         }
-        log.info("[timing] deviationForAll stage3 (compare loop) took {} ms",
-                System.currentTimeMillis() - tCompare);
 
-        long tEnrich = System.currentTimeMillis();
         deviationEnricher.enrichAll(new ArrayList<>(out.values()));
-        log.info("[timing] deviationForAll stage4 (enrichAll) took {} ms",
-                System.currentTimeMillis() - tEnrich);
         return out;
     }
 

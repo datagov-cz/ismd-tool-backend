@@ -123,14 +123,8 @@ public class ReferencedConceptResolutionEngine {
             // its NKD context. IRIs NKD can't resolve are simply left unresolved.
             freshHits = new HashMap<>(nkdSparqlClient.fetchConceptResolutions(misses));
         } else {
-            long tIsmd = System.currentTimeMillis();
             Map<String, ResolvedConceptDto> rawIsmdHits = jenaTDB2Repository.fetchConceptResolutions(misses);
-            log.info("[timing] resolveAll ismd fetchConceptResolutions ({} misses) took {} ms",
-                    misses.size(), System.currentTimeMillis() - tIsmd);
-            long tSlug = System.currentTimeMillis();
             Map<String, ResolvedConceptDto> ismdHits = rawIsmdHits.isEmpty() ? rawIsmdHits : enrichWithSlugs(rawIsmdHits);
-            log.info("[timing] resolveAll enrichWithSlugs ({} hits) took {} ms",
-                    rawIsmdHits.size(), System.currentTimeMillis() - tSlug);
 
             freshHits = new HashMap<>(ismdHits);
 
@@ -138,10 +132,7 @@ public class ReferencedConceptResolutionEngine {
                     .filter(iri -> !ismdHits.containsKey(iri))
                     .toList();
             if (!remaining.isEmpty()) {
-                long tNkd = System.currentTimeMillis();
                 freshHits.putAll(nkdSparqlClient.fetchConceptResolutions(remaining));
-                log.info("[timing] resolveAll nkd fallback fetchConceptResolutions ({} iris) took {} ms",
-                        remaining.size(), System.currentTimeMillis() - tNkd);
             }
         }
 
@@ -150,9 +141,7 @@ public class ReferencedConceptResolutionEngine {
         // Targets are classes (not relationships), so this recursion terminates.
         // The stub expansion inherits the same source gate so an NKD-only detail
         // view resolves its domain/range targets against NKD too.
-        long tStubs = System.currentTimeMillis();
         Map<String, ResolvedConceptDto> finalHits = resolveDomainRangeStubs(freshHits, source);
-        log.info("[timing] resolveAll resolveDomainRangeStubs took {} ms", System.currentTimeMillis() - tStubs);
 
         finalHits.forEach((iri, dto) -> {
             if (cache != null) cache.put(cacheKey(iri, nkdOnly), dto);
