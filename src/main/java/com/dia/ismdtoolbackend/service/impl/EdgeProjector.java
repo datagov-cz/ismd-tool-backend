@@ -13,18 +13,24 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Re-derives diagram edges from each node's {@code live ⊕ overlay} — edges are a pure projection, never
- * read from storage as truth. An edge whose endpoint comes from an unmaterialized overlay is flagged
- * {@code pending}. Only edges whose both endpoints are nodes on the canvas are emitted. Hierarchy edges
- * project from the child side's overlay so a half-staged flip has one deterministic direction. See
- * {@code docs/DIAGRAM_LAYER.md}.
+ * Re-derives diagram edges from each node's {@code live ⊕ overlay} — an edge's existence and kind are a
+ * pure projection, never read from storage as truth. An edge whose endpoint comes from an unmaterialized
+ * overlay is flagged {@code pending}. Only edges whose both endpoints are nodes on the canvas are emitted.
+ * Hierarchy edges project from the child side's overlay so a half-staged flip has one deterministic
+ * direction.
+ *
+ * <p>Presentation state that RDF cannot express — the handle each end attaches to and the edge's
+ * waypoints — is joined on from the persisted {@code diagram_edges} rows, keyed by
+ * {@link #projectedEdgeId}. See {@code docs/DIAGRAM_LAYER.md}.
  */
 class EdgeProjector {
 
     private final DiagramMapper mapper;
+    private final Map<String, DiagramServiceImpl.EdgePresentation> presentation;
 
-    EdgeProjector(DiagramMapper mapper) {
+    EdgeProjector(DiagramMapper mapper, Map<String, DiagramServiceImpl.EdgePresentation> presentation) {
         this.mapper = mapper;
+        this.presentation = presentation != null ? presentation : Map.of();
     }
 
     List<DiagramDto.Edge> project(List<DiagramNodeEntity> nodes, Map<String, ConceptDetailModel> live) {
@@ -99,13 +105,16 @@ class EdgeProjector {
         if (target == null || target.isBlank() || !onCanvas.contains(target)) {
             return;
         }
+        String id = projectedEdgeId(kind, source, target);
+        DiagramServiceImpl.EdgePresentation saved = presentation.get(id);
         edges.add(new DiagramDto.Edge(
-                projectedEdgeId(kind, source, target),
+                id,
                 mapper.nodeId(source),
                 mapper.nodeId(target),
                 edgeType(kind),
-                null,
-                null,
+                saved != null ? saved.sourceHandle() : null,
+                saved != null ? saved.targetHandle() : null,
+                saved != null ? saved.segments() : null,
                 Map.of("type", "arrowclosed"),
                 new DiagramDto.EdgeData(kind, pending)));
     }
@@ -113,9 +122,11 @@ class EdgeProjector {
     /**
      * Deterministic id for a projected edge, unique per (kind, source, target). Edges are re-derived on
      * every read, so a stable id lets ReactFlow keep an edge's identity (selection/animation) across reloads
-     * instead of seeing a brand-new edge each time.
+     * instead of seeing a brand-new edge each time. It doubles as the join key onto the persisted
+     * presentation row, which is why repointing an endpoint deliberately drops the old handles: the
+     * geometry was drawn for an endpoint the edge no longer has.
      */
-    private String projectedEdgeId(DiagramEdgeKind kind, String source, String target) {
+    static String projectedEdgeId(DiagramEdgeKind kind, String source, String target) {
         return String.join("|", "edge", kind.name(), source, target);
     }
 

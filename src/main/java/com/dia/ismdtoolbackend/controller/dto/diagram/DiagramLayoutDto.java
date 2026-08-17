@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
+import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -14,10 +15,12 @@ import java.util.List;
  * See {@code docs/DIAGRAM_LAYER_API.md}.
  */
 public record DiagramLayoutDto(
-        Long version,
+        /* Required on every save, including the first — a fresh canvas sends 0. */
+        @NotNull Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
-        @Valid List<Edge> edges
+        /* Full-replace: the set sent here becomes the persisted edge set, so an omission is a wipe. */
+        @NotNull @Valid List<Edge> edges
 ) {
 
     /**
@@ -36,14 +39,18 @@ public record DiagramLayoutDto(
         }
     }
 
-    /** A projected edge's persisted handles/positions. Endpoints are node ids ({@code iri:...}). */
+    /**
+     * A projected edge's persisted presentation state. Endpoints are node ids ({@code iri:...}).
+     * {@code segments} is optional — omitted or null means default routing.
+     */
     public record Edge(
             @NotBlank String id,
             @NotBlank String source,
             @NotBlank String target,
             @NotNull DiagramEdgeKind edgeKind,
             String sourceHandle,
-            String targetHandle
+            String targetHandle,
+            List<EdgeWaypoint> segments
     ) {
     }
 }

@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
 import java.util.List;
@@ -25,11 +26,15 @@ public record NodeOverlayDto(
         List<String> superProperty,
         List<String> superRelation,
         List<String> exactMatch,
-        ConvertToHierarchy convertToHierarchy
+        @Valid ConvertToHierarchy convertToHierarchy
 ) {
 
-    /** Op 6 marker: add {@code broader} as a super-class of {@code addBroaderOn}, then delete the VZTAH. */
-    public record ConvertToHierarchy(String addBroaderOn, String broader) {
+    /**
+     * Op 6 marker: add {@code broader} as a super-class of {@code addBroaderOn}, then delete the VZTAH.
+     * Both endpoints are mandatory — the marker deletes a concept, and a missing endpoint would delete it
+     * without establishing the hierarchy link that replaces it.
+     */
+    public record ConvertToHierarchy(@NotBlank String addBroaderOn, @NotBlank String broader) {
     }
 
     /**

@@ -107,11 +107,14 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
   "edges": [
     {
       // projekce z (živý ⊕ overlay) oboru hodnot uzlu VZTAHu — odráží nasazené přesměrování
-      "id": "e-201",
+      // id je deterministické: edge|<edgeKind>|<sourceIri>|<targetIri>
+      "id": "edge|RANGE|https://…/pojem/je-zamestnan-u|https://…/pojem/organizace",
       "source": "iri:https://…/pojem/je-zamestnan-u",
       "target": "iri:https://…/pojem/organizace",
       "type": "relationEdge",
-      "sourceHandle": null, "targetHandle": null,
+      // vrácené z posledního uložení; null, pokud nikdy neuloženo nebo byl koncový bod přesměrován
+      "sourceHandle": "s-right", "targetHandle": "t-left",
+      "segments": [{ "x": 120, "y": 40 }],   // body lomu čistě pro FE; vynechané při výchozím vedení
       "markerEnd": { "type": "arrowclosed" },
       "data": { "edgeKind": "RANGE", "pending": true }   // pending ⇒ koncový bod pochází z overlaye
     }
@@ -125,11 +128,15 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
 
 Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a pošlete jen to, co se ukládá. Backend zde ignoruje obsah `data` uzlů — toto volání je pouze rozvržení; strukturální úpravy jdou přes overlay endpoint. Hrany jsou projekce; poslání aktuální sady uloží jejich úchyty/pozice, ale směrodatnou hodnotou koncového bodu pro nasazené přesměrování je vždy overlay uzlu (backend při čtení znovu projektuje).
 
+**Hrany se ukládají úplnou náhradou — pošlete zpět každou hranu, u které chcete zachovat prezentační stav.** Uložení nahradí celou uloženou sadu hran, takže hrana vynechaná z `edges` přijde o uložené `sourceHandle`/`targetHandle`/`segments`. Samotná hrana se stále vykreslí (znovu se projektuje z RDF), ale tato pole se vrátí null. Přesměrování koncového bodu je rovněž záměrně zahodí: projektované id se s koncovým bodem mění a geometrie nakreslená pro původní cíl by novému neodpovídala.
+
+`segments` je volitelné — pro hranu s výchozím vedením je vynechte nebo pošlete `[]`; obojí se uloží jako „bez bodů lomu". Body lomu jsou čistě prezentační: určují, jak se spojnice vykreslí, a nenesou žádný význam pro propojené pojmy, takže se z RDF neodvozují ani se proti němu nevalidují.
+
 **Toto volání je směrodatné pro členství na plátně.** Pole `nodes[]` je úplná sada — přítomný uzel je zachován (nebo **přidán**, je-li jeho IRI na plátně nové; odpověď `DiagramDto` hydratuje jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen). Přidání uzlu vyžaduje jen `{id, position}`; zbytek backend spojí z živého RDF.
 
 **`version` je povinná — vraťte tu, ze které jste vykreslovali.** Protože členství je úplná náhrada, uložení postavené na zastaralém pohledu by tiše smazalo uzly přidané jiným editorem i s jejich nasazenými overlayi. Vraťte `version` z `DiagramDto`, ze kterého tato úprava vycházela (z načtení, nebo z odpovědi vašeho posledního uložení). Pokud mezitím uložil jiný editor, volání vrátí **409** a nic se nezapíše; načtěte diagram znovu a změny aplikujte znovu. Verzi posouvá každý úspěšný `PUT …/layout` **i** `PATCH …/nodes/overlay`, používejte tedy vždy nejnovější obdrženou hodnotu. Obě volání ji vracejí: `PUT …/layout` v `DiagramDto`, `PATCH …/nodes/overlay` v poli `version` vráceného uzlu — nasazení overlaye tedy nikdy nevynutí opětovné načtení jen kvůli udržení aktuální verze.
 
-`version` smí být `null` **pouze** při úplně prvním uložení plátna, které dosud nemá řádek diagramu. Jakmile diagram existuje, je `null` verze chybou 409 — klient, který nikdy nenačetl aktuální stav, nemůže bezpečně provést úplnou náhradu členství.
+`version` je **vždy povinná** — její vynechání vrací **400** s uvedením pole, a to při každém uložení včetně prvního. Plátno, které dosud nemá řádek diagramu, posílá `version: 0`. Pole je ve schématu deklarováno jako povinné, takže je generovaný klient netypuje jako volitelné a nevynechá je.
 
 ### `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) — zápis se povedl, data pro vykreslení ne
 

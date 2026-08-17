@@ -150,6 +150,7 @@ public class DiagramLayoutReconciler {
             edge.setEdgeKind(in.edgeKind());
             edge.setSourceHandle(in.sourceHandle());
             edge.setTargetHandle(in.targetHandle());
+            edge.setSegments(in.segments());
             diagram.addEdge(edge);
         }
     }

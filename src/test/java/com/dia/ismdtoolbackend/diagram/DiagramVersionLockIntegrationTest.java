@@ -122,12 +122,16 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
                         .toList());
     }
 
-    /** The first save of a canvas with no diagram row has nothing to conflict with — null is allowed. */
+    /**
+     * The first save of a canvas with no diagram row has nothing to conflict with. Clients send 0 — the
+     * version a freshly provisioned row carries — since {@code version} is mandatory on every save. Null is
+     * still tolerated here at the service boundary, but the API rejects it before this point.
+     */
     @Test
-    void firstSave_withNullVersion_isAccepted() {
+    void firstSave_withZeroVersion_isAccepted() {
         String a = seedConcept("a");
 
-        DiagramDto saved = service.saveLayout(SLUG, layout(null, a));
+        DiagramDto saved = service.saveLayout(SLUG, layout(0L, a));
 
         assertThat(saved.version()).isNotNull();
         assertThat(persistedIris()).containsExactly(a);

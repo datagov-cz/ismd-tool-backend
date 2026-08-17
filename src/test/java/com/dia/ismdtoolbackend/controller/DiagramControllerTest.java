@@ -27,6 +27,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -205,6 +207,49 @@ class DiagramControllerTest {
     }
 
     /**
+     * {@code version} and {@code edges} are mandatory, so a generated client declares them and a missing one
+     * is a 400 naming the field — not a save that silently succeeds now and 409s as a phantom version
+     * conflict on the next write, nor one that wipes the persisted edge rows.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void saveLayout_missingRequiredField_returns400() throws Exception {
+        String noVersion = "{\"nodes\": [], \"edges\": []}";
+        String noEdges = "{\"version\": 3, \"nodes\": []}";
+
+        for (String body : List.of(noVersion, noEdges)) {
+            mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(diagramService, never()).saveLayout(any(), any());
+    }
+
+    /**
+     * The op-6 marker deletes the VZTAH, so an endpoint-less marker would destroy a concept without adding
+     * the hierarchy link meant to replace it. Both endpoints are rejected at the edge.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void stageOverlay_convertToHierarchyMissingEndpoint_returns400() throws Exception {
+        String noBroader = """
+                {"nodeId":"https://x/pojem/rel","convertToHierarchy":{"addBroaderOn":"https://x/pojem/a"}}
+                """;
+        String noTarget = """
+                {"nodeId":"https://x/pojem/rel","convertToHierarchy":{"broader":"https://x/pojem/b"}}
+                """;
+
+        for (String body : List.of(noBroader, noTarget)) {
+            mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        verify(diagramService, never()).stageOverlay(any(), any(), any());
+    }
+
+    /**
      * A node's optional flags are absent from a real client's save body, and a client that tracks them may
      * send an explicit {@code null}. Neither form is a malformed request: both must bind, defaulting
      * {@code collapsed} to false, rather than 400 out of the message converter.
@@ -217,13 +262,13 @@ class DiagramControllerTest {
                         List.of(), List.of(), 0));
 
         String absent = """
-                {"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5}}],
+                {"version":1,"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5}}],
                  "edges":[{"id":"e1","source":"https://x/pojem/a","target":"https://x/pojem/b",
                            "edgeKind":"SUBCLASS_OF","sourceHandle":"https://x/pojem/a",
                            "targetHandle":"https://x/pojem/b"}]}
                 """;
         String explicitNull = """
-                {"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5},
+                {"version":1,"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5},
                            "parentId":null,"collapsed":null}],"edges":[]}
                 """;
 

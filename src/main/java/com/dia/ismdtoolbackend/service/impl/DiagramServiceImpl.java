@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -17,6 +18,7 @@ import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -303,7 +305,8 @@ public class DiagramServiceImpl implements DiagramService {
             List<DiagramNodeEntity> nodes,
             Map<String, ConceptType> types,
             Map<String, String> slugs,
-            Map<Long, String> nodeIriByRowId
+            Map<Long, String> nodeIriByRowId,
+            Map<String, EdgePresentation> edgePresentation
     ) {
 
         /** The snapshot node for a concept IRI, or null when the diagram has no such node. */
@@ -313,6 +316,14 @@ public class DiagramServiceImpl implements DiagramService {
                     .findFirst()
                     .orElse(null);
         }
+    }
+
+    /**
+     * The presentation-only state of a persisted edge row, keyed by the projected edge id. Edge existence
+     * and kind stay a projection of {@code live ⊕ overlay}; only what RDF cannot express — which handle each
+     * end attaches to and how the link is routed — is read back from PG.
+     */
+    public record EdgePresentation(String sourceHandle, String targetHandle, List<EdgeWaypoint> segments) {
     }
 
     /** Capture the diagram's PG state; must be called inside the transaction that read/wrote it. */
@@ -326,7 +337,30 @@ public class DiagramServiceImpl implements DiagramService {
             }
         }
         return new DiagramSnapshot(graphName, diagram.getVersion(), mapper.toViewport(diagram), nodes,
-                conceptTypes(graphName), conceptSlugs(graphName), nodeIriByRowId);
+                conceptTypes(graphName), conceptSlugs(graphName), nodeIriByRowId,
+                edgePresentation(diagram));
+    }
+
+    /**
+     * Resolve each persisted edge row to {@code (kind, sourceIri, targetIri)} — the same key
+     * {@link EdgeProjector} derives — so assembly can attach handles without touching a lazy association
+     * after the snapshot detaches. A row whose key no longer projects (an endpoint was repointed) simply
+     * finds no match and is ignored; the next Save full-replaces it.
+     */
+    private Map<String, EdgePresentation> edgePresentation(DiagramEntity diagram) {
+        Map<String, EdgePresentation> byKey = new HashMap<>();
+        for (DiagramEdgeEntity edge : diagram.getEdges()) {
+            if (edge.getSourceNode() == null || edge.getTargetNode() == null || edge.getEdgeKind() == null) {
+                continue;
+            }
+            byKey.put(
+                    EdgeProjector.projectedEdgeId(edge.getEdgeKind(),
+                            edge.getSourceNode().getConceptIri(),
+                            edge.getTargetNode().getConceptIri()),
+                    new EdgePresentation(edge.getSourceHandle(), edge.getTargetHandle(),
+                            edge.getSegments()));
+        }
+        return byKey;
     }
 
     // ---- assembly -------------------------------------------------------------------------------
@@ -339,7 +373,8 @@ public class DiagramServiceImpl implements DiagramService {
             nodes.add(toNode(snapshot, node, live.get(node.getConceptIri())));
         }
 
-        List<DiagramDto.Edge> edges = new EdgeProjector(mapper).project(snapshot.nodes(), live);
+        List<DiagramDto.Edge> edges = new EdgeProjector(mapper, snapshot.edgePresentation())
+                .project(snapshot.nodes(), live);
         int pendingChangeCount = (int) snapshot.nodes().stream()
                 .filter(n -> n.getPendingEdit() != null)
                 .count();

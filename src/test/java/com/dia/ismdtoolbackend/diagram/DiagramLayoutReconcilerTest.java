@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
+import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
@@ -237,9 +238,55 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                         node("https://x/pojem/cls", 100, 0)),
                 List.of(new DiagramLayoutDto.Edge(
                         "e-1", "iri:https://x/pojem/prop", "iri:https://x/pojem/cls",
-                        DiagramEdgeKind.DOMAIN, null, null)));
+                        DiagramEdgeKind.DOMAIN, null, null, null)));
         DiagramEntity saved = save(managed, layout);
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).hasSize(1);
+    }
+
+    /** Waypoints are FE-only geometry, so PG is their sole owner — they must survive the round-trip intact. */
+    @Test
+    void persistsEdgeSegmentsThroughRoundTrip() {
+        DiagramEntity diagram = newDiagram("segments");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/prop", 0, 0),
+                        node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge(
+                        "e-1", "iri:https://x/pojem/prop", "iri:https://x/pojem/cls",
+                        DiagramEdgeKind.DOMAIN, "s-a", "t-b",
+                        List.of(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33)))));
+        DiagramEntity saved = save(managed, layout);
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getSegments())
+                        .containsExactly(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33)));
+    }
+
+    /** An edge saved without waypoints leaves the column null rather than an empty array. */
+    @Test
+    void omittedSegments_persistAsNull() {
+        DiagramEntity diagram = newDiagram("no-segments");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/prop", 0, 0),
+                        node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge(
+                        "e-1", "iri:https://x/pojem/prop", "iri:https://x/pojem/cls",
+                        DiagramEdgeKind.DOMAIN, null, null, List.of())));
+        DiagramEntity saved = save(managed, layout);
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getSegments()).isNull());
     }
 }

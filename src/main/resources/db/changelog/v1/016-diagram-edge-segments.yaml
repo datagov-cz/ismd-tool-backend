@@ -1,0 +1,28 @@
+databaseChangeLog:
+  # Edge waypoints: FE-only routing geometry, carried with the edge's other presentation state.
+  # See docs/DIAGRAM_LAYER.md.
+
+  - changeSet:
+      id: 016-diagram-edges-segments-json
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: segments_json
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: segments_json
+                  type: VARCHAR
+                  remarks: Serialized waypoint list; null when the edge uses default routing.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: segments_json

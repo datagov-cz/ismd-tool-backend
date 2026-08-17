@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.controller.dto.diagram;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
@@ -72,7 +73,12 @@ public record DiagramDto(
     ) {
     }
 
-    /** A projected edge — re-derived on read from the source node's {@code live ⊕ overlay}. */
+    /**
+     * A projected edge: existence and kind are re-derived on read from the source node's
+     * {@code live ⊕ overlay}, while {@code sourceHandle}/{@code targetHandle}/{@code segments} are joined
+     * on from the persisted row — presentation RDF cannot express. All three are null for an edge that has
+     * never been saved, or whose endpoint moved since it was.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Edge(
             String id,
@@ -81,6 +87,7 @@ public record DiagramDto(
             String type,
             String sourceHandle,
             String targetHandle,
+            List<EdgeWaypoint> segments,
             Map<String, String> markerEnd,
             EdgeData data
     ) {

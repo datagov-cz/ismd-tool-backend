@@ -105,11 +105,14 @@ The backend has already joined layout rows to live concept content and applied e
   "edges": [
     {
       // projected from the VZTAH node's (live ⊕ overlay) range — reflects the staged repoint
-      "id": "e-201",
+      // id is deterministic: edge|<edgeKind>|<sourceIri>|<targetIri>
+      "id": "edge|RANGE|https://…/pojem/je-zamestnan-u|https://…/pojem/organizace",
       "source": "iri:https://…/pojem/je-zamestnan-u",
       "target": "iri:https://…/pojem/organizace",
       "type": "relationEdge",
-      "sourceHandle": null, "targetHandle": null,
+      // echoed back from the last Save; null when never saved or when the endpoint was repointed
+      "sourceHandle": "s-right", "targetHandle": "t-left",
+      "segments": [{ "x": 120, "y": 40 }],   // FE-only routing waypoints; omitted when default-routed
       "markerEnd": { "type": "arrowclosed" },
       "data": { "edgeKind": "RANGE", "pending": true }   // pending ⇒ endpoint comes from the overlay
     }
@@ -123,11 +126,15 @@ The backend has already joined layout rows to live concept content and applied e
 
 Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send only what persists. The backend ignores node `data` content here — this call is layout only; structural edits go through the overlay endpoint. Edges are projections; sending the current set persists their handles/positions, but the authoritative endpoint value for a staged repoint is always the node overlay (the backend re-projects on read).
 
+**Edges are a full replace — echo back every edge whose presentation you want kept.** A Save replaces the whole persisted edge set, so an edge omitted from `edges` loses its saved `sourceHandle`/`targetHandle`/`segments`. The edge itself still renders (it is re-projected from RDF), but comes back with those fields null. Repointing an endpoint likewise drops them by design: the projected id changes with the endpoint, and geometry drawn for the old target would not fit the new one.
+
+`segments` is optional — omit it, or send `[]`, for an edge using default routing; both store as "no waypoints". Waypoints are pure presentation: they shape how a link is drawn and carry no meaning for the concepts it connects, so nothing derives them from RDF and nothing validates them against it.
+
 **This call is authoritative for canvas membership.** The `nodes[]` array is the complete set — a node present is kept (or **added** if its IRI is new to the canvas; the response `DiagramDto` hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
 **`version` is required — send back the one you rendered from.** Because membership is a full replace, a save built on a stale view would silently delete nodes another editor added, taking their staged overlays with them. Echo the `version` from the `DiagramDto` this edit started from (the read, or the response of your own last save). If another editor saved in the meantime the call returns **409** and nothing is written; reload the diagram and re-apply. Every successful `PUT …/layout` **and** `PATCH …/nodes/overlay` advances the version, so always use the newest one you have received. Both return it: `PUT …/layout` in the `DiagramDto`, `PATCH …/nodes/overlay` in the returned node's own `version` field — so staging an overlay never forces a re-read just to stay current.
 
-`version` may be `null` **only** for the very first save of a canvas that has no diagram row yet. Once a diagram exists, a null version is a 409 — a client that never read the current state cannot safely full-replace its membership.
+`version` is **always mandatory** — omitting it is a **400** naming the field, on every save including the first. A canvas with no diagram row yet sends `version: 0`. It is declared required in the schema, so a generated client types it non-optional rather than letting it be dropped silently.
 
 ### `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) — the write succeeded, the render data did not
 
