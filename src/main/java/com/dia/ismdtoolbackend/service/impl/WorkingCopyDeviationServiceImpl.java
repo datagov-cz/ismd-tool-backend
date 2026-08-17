@@ -77,27 +77,48 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
      */
     @Override
     public PublishedConceptDeviationModel deviationFor(String conceptIri) {
-        return compareAgainstNkd(conceptIri, self.canonicalLocalConcept(conceptIri), null);
+        return deviationForWithLocal(conceptIri, null);
+    }
+
+    @Override
+    public PublishedConceptDeviationModel deviationForWithLocal(String conceptIri, ConceptDetailModel local) {
+        return compareAgainstNkd(conceptIri,
+                local != null ? local : self.canonicalLocalConcept(conceptIri), null);
     }
 
     @Override
     public Map<String, PublishedConceptDeviationModel> deviationForAll(Model processedModel, List<String> conceptIris) {
+        return deviationForAllInOntology(processedModel, conceptIris, null);
+    }
+
+    @Override
+    public Map<String, PublishedConceptDeviationModel> deviationForAllInOntology(Model processedModel,
+                                                                                  List<String> conceptIris,
+                                                                                  String ontologyIri) {
         Map<String, ConceptDetailModel> locals = self.canonicalLocalConcepts(processedModel, conceptIris);
-        Map<String, Optional<ConceptDetailModel>> prefetched = prefetchNkdSide(conceptIris);
+        Map<String, Optional<ConceptDetailModel>> prefetched = prefetchNkdSide(conceptIris, ontologyIri);
+
         Map<String, PublishedConceptDeviationModel> out = new LinkedHashMap<>();
         for (String conceptIri : conceptIris) {
+            // enrich=false: reference resolution is deferred so all N deviations resolve in ONE
+            // round-trip below, instead of one per concept.
             out.put(conceptIri, compareAgainstNkd(conceptIri, locals.get(conceptIri),
-                    prefetched.get(conceptIri)));
+                    prefetched.get(conceptIri), false));
         }
+
+        deviationEnricher.enrichAll(new ArrayList<>(out.values()));
         return out;
     }
 
     /**
-     * Collapses the NKD side of a bulk check into one round-trip: fetches every not-yet-cached concept
-     * in a single batched CONSTRUCT, seeds the per-IRI {@code nkdPublishedResource} entries (so later
-     * single fetches hit cache) and returns the results for immediate use.
+     * Collapses the NKD side of a bulk check into one round-trip and seeds the per-IRI
+     * {@code nkdPublishedResource} entries so later single fetches hit cache.
+     *
+     * <p>When {@code ontologyIri} is known that round-trip is the ontology CONSTRUCT the deviation
+     * check already needs, and the concepts are sliced out of it; otherwise the batched concept
+     * query runs.
      */
-    private Map<String, Optional<ConceptDetailModel>> prefetchNkdSide(List<String> conceptIris) {
+    private Map<String, Optional<ConceptDetailModel>> prefetchNkdSide(List<String> conceptIris, String ontologyIri) {
         Cache cache = cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);
         List<String> misses = conceptIris.stream()
                 .filter(iri -> cache == null || cache.get("concept:" + iri) == null)
@@ -107,24 +128,59 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
             return Map.of();
         }
         try {
+            Map<String, Optional<NkdSparqlClient.PublishedConcept>> fetched = fetchNkdSide(misses, ontologyIri);
             Map<String, Optional<ConceptDetailModel>> out = new LinkedHashMap<>();
-            nkdSparqlClient.fetchPublishedConceptsBatched(misses)
-                    .forEach((iri, published) -> {
-                        Optional<ConceptDetailModel> detail =
-                                published.map(NkdSparqlClient.PublishedConcept::detail);
-                        if (cache != null) {
-                            // Mirror both keys the per-IRI methods would have written.
-                            cache.put("concept:" + iri, detail);
-                            cache.put("conceptWithScheme:" + iri, published);
-                        }
-                        out.put(iri, detail);
-                    });
+            fetched.forEach((iri, published) -> {
+                Optional<ConceptDetailModel> detail =
+                        published.map(NkdSparqlClient.PublishedConcept::detail);
+                if (cache != null) {
+                    // Mirror both keys the per-IRI methods would have written.
+                    cache.put("concept:" + iri, detail);
+                    cache.put("conceptWithScheme:" + iri, published);
+                }
+                out.put(iri, detail);
+            });
             return out;
         } catch (Exception e) {
             log.warn("Batched NKD prefetch failed for {} concepts; falling back to per-concept fetch: {}",
                     misses.size(), e.getMessage());
             return Map.of();
         }
+    }
+
+    /**
+     * The NKD side for {@code misses}, preferring the shared ontology model over a second round-trip.
+     * A concept the ontology model does not carry (e.g. published under a different scheme) still
+     * falls back to the batched query, so coverage never shrinks.
+     */
+    private Map<String, Optional<NkdSparqlClient.PublishedConcept>> fetchNkdSide(List<String> misses,
+                                                                                 String ontologyIri) {
+        if (ontologyIri == null || ontologyIri.isBlank()) {
+            return nkdSparqlClient.fetchPublishedConceptsBatched(misses);
+        }
+        Optional<Model> ontologyModel = nkdSparqlClient.fetchPublishedOntologyRaw(ontologyIri);
+        if (ontologyModel.isEmpty()) {
+            log.debug("NKD ontology model unavailable for {}; using batched concept fetch", ontologyIri);
+            return nkdSparqlClient.fetchPublishedConceptsBatched(misses);
+        }
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> derived =
+                nkdSparqlClient.derivePublishedConceptsFromOntology(ontologyModel.get(), misses);
+
+        // A concept absent from the scheme model is not proof it is absent from NKD — it may be
+        // published under a different scheme. Ask the batched query about just those.
+        List<String> unresolved = derived.entrySet().stream()
+                .filter(e -> e.getValue().isEmpty())
+                .map(Map.Entry::getKey)
+                .toList();
+        if (!unresolved.isEmpty()) {
+            log.debug("{} of {} concepts absent from NKD ontology model {}; querying those separately",
+                    unresolved.size(), misses.size(), ontologyIri);
+            Map<String, Optional<NkdSparqlClient.PublishedConcept>> out = new LinkedHashMap<>(derived);
+            out.putAll(nkdSparqlClient.fetchPublishedConceptsBatched(unresolved));
+            return out;
+        }
+        return derived;
     }
 
     /**
@@ -135,6 +191,16 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
      */
     private PublishedConceptDeviationModel compareAgainstNkd(String conceptIri, ConceptDetailModel local,
                                                              Optional<ConceptDetailModel> prefetched) {
+        return compareAgainstNkd(conceptIri, local, prefetched, true);
+    }
+
+    /**
+     * {@code enrich=false} leaves reference resolution to the caller, which is what lets the bulk path
+     * resolve every deviation's references in ONE {@code resolveAll} instead of one per concept.
+     */
+    private PublishedConceptDeviationModel compareAgainstNkd(String conceptIri, ConceptDetailModel local,
+                                                             Optional<ConceptDetailModel> prefetched,
+                                                             boolean enrich) {
         if (local == null) {
             return error(DeviationStatus.QUERY_ERROR, "Local concept detail not available", conceptIri);
         }
@@ -150,7 +216,9 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
             // WORKING_COPY: this concept's own IRI is the NKD twin it is compared against.
             PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(
                     local, publishedOpt.get(), SnapshotOrigin.WORKING_COPY, conceptIri);
-            deviationEnricher.enrich(deviation);
+            if (enrich) {
+                deviationEnricher.enrich(deviation);
+            }
             return deviation;
         } catch (SparqlEndpointUnavailableException e) {
             log.error("NKD unavailable while checking working-copy deviation for {}: {}", conceptIri, e.getMessage());
@@ -182,6 +250,27 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
         if (rawModel.isEmpty()) {
             return null;
         }
+        return projectLocalConcept(conceptIri, rawModel);
+    }
+
+    /**
+     * Same projection, same cache entry, but off a graph the caller already fetched — so a request that
+     * has just read this graph does not read it from Fuseki a second time.
+     */
+    @Override
+    @Cacheable(cacheNames = LOCAL_CONCEPT_PROJECTION_CACHE, key = "#conceptIri")
+    public ConceptDetailModel canonicalLocalConcept(String conceptIri, Model rawModel) {
+        if (rawModel == null || rawModel.isEmpty()) {
+            return null;
+        }
+        return projectLocalConcept(conceptIri, rawModel);
+    }
+
+    /**
+     * The transform+extract half of the canonical read, shared by both overloads so the projection is
+     * identical however the graph was obtained.
+     */
+    private ConceptDetailModel projectLocalConcept(String conceptIri, Model rawModel) {
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         return detailExtractor.extractConceptDetail(processedModel, conceptIri);
     }

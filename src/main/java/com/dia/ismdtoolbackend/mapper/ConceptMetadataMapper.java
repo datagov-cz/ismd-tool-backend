@@ -6,7 +6,6 @@ import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
-import com.dia.validation.ValidationReportDto;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -19,11 +18,6 @@ import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring")
 public interface ConceptMetadataMapper {
-
-    @Mapping(target = "userId", source = "user", qualifiedByName = "userToUserId")
-    @Mapping(target = "ontologyMetadata", ignore = true)
-    ConceptMetadataEntity toEntity(ConceptMetadataModel dto);
-
     @Mapping(target = "user", source = "userId", qualifiedByName = "userIdToUser")
     @Mapping(target = "comments", ignore = true)
     @Mapping(target = "ontologySlug", source = "ontologyMetadata.slug")

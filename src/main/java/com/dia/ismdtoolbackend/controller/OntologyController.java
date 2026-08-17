@@ -87,8 +87,10 @@ public class OntologyController {
         // Post-commit, NKD-independent: warm NKD local-copy snapshots for any published-concept links
         // off the request thread. If NKD is down the graph stays cold and first detail-view heals it.
         // Guarded: a saturated executor (TaskRejectedException) must never fail an already-committed upload.
+        // warmGraphNow, not warmGraph: the graph just changed, so the read-path scan throttle must not
+        // suppress this scan.
         try {
-            nkdSnapshotWarmer.warmGraph(savedOntology.getGraphName());
+            nkdSnapshotWarmer.warmGraphNow(savedOntology.getGraphName());
         } catch (Exception e) {
             log.warn("Could not trigger NKD snapshot warming for uploaded graph {}: {}",
                     savedOntology.getGraphName(), e.getMessage());
@@ -296,7 +298,11 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
+        log.info("Ontology catalog record requested for user: {}, ontologyIRI: {}, slug: {}",
+                securityUser.getUsername(),
+                catalogRequestDto.getOntologyMetadata().getGraphName(),
+                slug
+        );
 
         String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
 
