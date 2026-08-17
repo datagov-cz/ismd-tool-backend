@@ -501,6 +501,114 @@ class IsmdSearchProviderTest {
 
     // --- Helpers ---
 
+    // --- Draft visibility under pagination (issue #168) ---
+
+    /**
+     * The regression itself: a draft must not be pushed off the page by published
+     * rows. Previously the merged list was sliced with no ordering, so the draft —
+     * being the newest row, and therefore last in Postgres heap order — fell past
+     * the limit while the total count still counted it.
+     */
+    @Test
+    void search_draftOntology_survivesLimitCutoffAgainstManyPublished() {
+        List<OntologyMetadataEntity> ontologies = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            ontologies.add(createOntology(
+                    "https://example.org/ontology/published-" + i, "test-published-" + i, true));
+        }
+        // Sorted last by the old heap-order behaviour, and beyond limit=5.
+        ontologies.add(createOntology("https://example.org/ontology/draft", "test-draft", false));
+
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(ontologies);
+        when(ontologyMetadataRepository.countSearchByText("test")).thenReturn(21L);
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "test", SearchType.ONTOLOGY, 5, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(5, result.results().size());
+        assertEquals("https://example.org/ontology/draft", result.results().get(0).getIri(),
+                "draft must sort ahead of published rows so the page slice cannot drop it");
+        assertEquals(21, result.totalOntologies());
+    }
+
+    @Test
+    void search_ordersOntologiesBeforeConcepts() {
+        OntologyMetadataEntity ontology =
+                createOntology("https://example.org/ontology/1", "test-ontology", true);
+        ConceptMetadataEntity concept = createConcept(
+                "https://example.org/concept/test", "test-concept", "Test",
+                ConceptType.TRIDA, "https://example.org/ontology/1", true);
+
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(List.of(ontology));
+        when(conceptMetadataRepository.searchByText(eq("test"), eq(false), anyList(), eq(false), isNull()))
+                .thenReturn(List.of(concept));
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "test", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(2, result.results().size());
+        assertEquals(SearchType.ONTOLOGY, result.results().get(0).getType());
+        assertEquals(SearchType.CONCEPT, result.results().get(1).getType());
+    }
+
+    /**
+     * Draft-first outranks ontology-before-concept: a draft concept must precede a
+     * published ontology, confirming the comparator keys are applied in that order.
+     */
+    @Test
+    void search_draftConceptOutranksPublishedOntology() {
+        OntologyMetadataEntity ontology =
+                createOntology("https://example.org/ontology/1", "test-ontology", true);
+        ConceptMetadataEntity draftConcept = createConcept(
+                "https://example.org/concept/draft", "test-draft", "Draft",
+                ConceptType.TRIDA, "https://example.org/ontology/1", false);
+
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(List.of(ontology));
+        when(conceptMetadataRepository.searchByText(eq("test"), eq(false), anyList(), eq(false), isNull()))
+                .thenReturn(List.of(draftConcept));
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "test", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(2, result.results().size());
+        assertEquals("https://example.org/concept/draft", result.results().get(0).getIri());
+        assertEquals(SearchType.ONTOLOGY, result.results().get(1).getType());
+    }
+
+    /**
+     * Pagination must be a clean partition: walking every page yields each row
+     * exactly once, with none repeated or skipped across the page boundary.
+     */
+    @Test
+    void search_pagingAcrossOffsetsNeitherRepeatsNorSkipsRows() {
+        List<OntologyMetadataEntity> ontologies = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            ontologies.add(createOntology(
+                    "https://example.org/ontology/" + i, "test-" + i, i % 2 == 0));
+        }
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(ontologies);
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+
+        List<String> seen = new ArrayList<>();
+        for (int offset = 0; offset < 7; offset += 3) {
+            createProvider().search("test", SearchType.ONTOLOGY, 3, offset,
+                            "cs", null, null, "user1", false, null)
+                    .results().forEach(r -> seen.add(r.getIri()));
+        }
+
+        assertEquals(7, seen.size(), "every row appears exactly once across all pages");
+        assertEquals(7, new HashSet<>(seen).size(), "no row is returned on two different pages");
+    }
+
     private ConceptMetadataEntity createConcept(String iri, String slug, String name,
                                                  ConceptType type, String graphName, boolean published) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();

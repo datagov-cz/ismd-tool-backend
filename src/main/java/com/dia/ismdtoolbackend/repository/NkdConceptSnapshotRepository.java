@@ -9,7 +9,12 @@ import java.util.Optional;
 
 public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSnapshotEntity, Long> {
 
-    /** All snapshots owned by one concept (detail view, concept-delete cleanup). */
+    /**
+     * All snapshots owned by one concept (detail view, concept-delete cleanup). Join-fetches the
+     * owner: {@code LinkSnapshotAssembler} reads {@code owningConcept.conceptIri} after the fetching
+     * transaction has closed.
+     */
+    @EntityGraph(attributePaths = "owningConcept")
     List<NkdConceptSnapshotEntity> findByOwningConceptId(Long owningConceptId);
 
     /** All snapshots owned by any of the given concepts (concept-delete cleanup). */

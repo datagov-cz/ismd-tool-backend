@@ -529,6 +529,9 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
+    // Deliberately NOT @Transactional: PG reads interleave with Fuseki, NKD and RPP calls (10s
+    // timeouts), so a request-wide transaction would pin a pool connection across them. Entities
+    // read after their repository call returns are join-fetched instead.
     public GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {
@@ -546,6 +549,13 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("Ontology model is empty for graph: {}", graphName);
             throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
         }
+
+        // The canonical deviation projection is defined over this graph ALONE, so it is computed here,
+        // before the cross-graph merge below mutates rawModel in place. Doing it in this order saves
+        // both a second Fuseki read of the same graph and a defensive copy of it.
+        OntologyDetailModel.ConceptDetailModel canonicalLocal = Boolean.TRUE.equals(metadataEntity.getIsPublished())
+                ? workingCopyDeviationService.canonicalLocalConcept(conceptIri, rawModel)
+                : null;
 
         // The class-detail read traverses only this concept's own graph, so a
         // property/relationship whose rdfs:domain points here but which lives in a
@@ -573,7 +583,7 @@ public class ConceptServiceImpl implements ConceptService {
         result.setConceptMetadata(metadataModel);
         result.setConceptDetail(conceptDetail);
 
-        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(metadataModel);
+        PublishedConceptDeviationModel conceptDeviation = checkPublishedConcept(metadataModel, canonicalLocal);
         result.setPublishedConceptDeviationModel(conceptDeviation);
 
         surfaceLinkSnapshots(result, metadataEntity);
@@ -975,10 +985,16 @@ public class ConceptServiceImpl implements ConceptService {
         return names.values().iterator().next();
     }
 
-    private PublishedConceptDeviationModel checkPublishedConcept(ConceptMetadataModel conceptMetadata) {
+    /**
+     * @param canonicalLocal the canonical local projection when the caller already computed it off a
+     *                       graph it had in hand; {@code null} makes the deviation service read it
+     */
+    private PublishedConceptDeviationModel checkPublishedConcept(ConceptMetadataModel conceptMetadata,
+                                                                 OntologyDetailModel.ConceptDetailModel canonicalLocal) {
         if (Boolean.FALSE.equals(conceptMetadata.getIsPublished())) {
             return null;
         }
-        return workingCopyDeviationService.deviationFor(conceptMetadata.getConceptIri());
+        return workingCopyDeviationService.deviationForWithLocal(
+                conceptMetadata.getConceptIri(), canonicalLocal);
     }
 }

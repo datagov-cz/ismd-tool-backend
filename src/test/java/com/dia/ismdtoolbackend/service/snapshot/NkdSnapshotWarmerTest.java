@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service.snapshot;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -59,8 +60,10 @@ class NkdSnapshotWarmerTest {
     @BeforeEach
     void setUp() {
         targetByOwner.clear();
+        // Real config: the per-graph scan throttle reads its TTL from here, and a fresh warmer per
+        // test means the first warmGraph call always claims the slot.
         warmer = new NkdSnapshotWarmer(conceptMetadataRepository, jenaTDB2Repository,
-                nkdSparqlClient, ownerWarmer, linkDetector);
+                nkdSparqlClient, ownerWarmer, linkDetector, new NkdConfig());
     }
 
     /** Build a graph model with each owner subClassOf its target. */
@@ -107,6 +110,63 @@ class NkdSnapshotWarmerTest {
         warmer.warmGraph(GRAPH);
 
         verify(ownerWarmer, never()).warmOwner(any(), any(), anyList());
+    }
+
+    @Test
+    void warmGraph_secondCallWithinTtl_doesNotRescanGraph() {
+        // The zero-row case that motivated the throttle: an ontology whose external links are not
+        // published in NKD keeps no snapshot rows, so the detail read re-triggers warming forever.
+        // The scan materializes the whole graph out of TDB2, so it must not run per detail view.
+        ConceptMetadataEntity a = owner(1L, "x", NKD_A);
+        List<ConceptMetadataEntity> owners = List.of(a);
+
+        when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(owners);
+        when(jenaTDB2Repository.graphHasData(GRAPH)).thenReturn(true);
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graphWith(owners));
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of());
+
+        warmer.warmGraph(GRAPH);
+        warmer.warmGraph(GRAPH);
+        warmer.warmGraph(GRAPH);
+
+        // Only the first call did the expensive work.
+        verify(jenaTDB2Repository, times(1)).fetchGraph(GRAPH);
+    }
+
+    @Test
+    void warmGraphNow_bypassesThrottle() {
+        // Upload just changed the graph, so its scan must not be suppressed by a marker a read left.
+        ConceptMetadataEntity a = owner(1L, "x", NKD_A);
+        List<ConceptMetadataEntity> owners = List.of(a);
+
+        when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(owners);
+        when(jenaTDB2Repository.graphHasData(GRAPH)).thenReturn(true);
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graphWith(owners));
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of());
+
+        warmer.warmGraph(GRAPH);
+        warmer.warmGraphNow(GRAPH);
+
+        verify(jenaTDB2Repository, times(2)).fetchGraph(GRAPH);
+    }
+
+    @Test
+    void warmGraph_differentGraphs_eachScannedIndependently() {
+        String otherGraph = "https://example.org/slovnik/jiny";
+        ConceptMetadataEntity a = owner(1L, "x", NKD_A);
+        List<ConceptMetadataEntity> owners = List.of(a);
+
+        when(conceptMetadataRepository.findByGraphName(any())).thenReturn(owners);
+        when(jenaTDB2Repository.graphHasData(any())).thenReturn(true);
+        when(jenaTDB2Repository.fetchGraph(any())).thenReturn(graphWith(owners));
+        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of());
+
+        warmer.warmGraph(GRAPH);
+        warmer.warmGraph(otherGraph);
+
+        // The throttle is per graph — one graph's scan must not suppress another's.
+        verify(jenaTDB2Repository).fetchGraph(GRAPH);
+        verify(jenaTDB2Repository).fetchGraph(otherGraph);
     }
 
     @Test

@@ -351,20 +351,10 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private List<MinimalConceptDto> getNkdConceptsByIri(String ontologyIri) {
-        OntologyDetailModel detail = nkdDetailService.getOntologyDetail(ontologyIri).getOntologyDetail();
-        List<OntologyDetailModel.ConceptDetailModel> concepts = detail.getConcepts();
-        if (concepts == null || concepts.isEmpty()) {
-            return List.of();
-        }
-
-        // NKD concepts have no local slug — the FE deep-links via IRI only.
-        return concepts.stream()
-                .map(c -> MinimalConceptDto.builder()
-                        .iri(c.getIri())
-                        .name(c.getName())
-                        .conceptType(ConceptType.fromRdfTypes(c.getTypes()))
-                        .build())
-                .toList();
+        // One targeted SELECT for the three fields this projection keeps. The full ontology detail
+        // would CONSTRUCT every concept's whole triple set and OFN-transform it, then discard all
+        // but iri/name/conceptType.
+        return nkdDetailService.listOntologyConcepts(ontologyIri);
     }
 
     private void validateOntologyCreateModel(OntologyCreateModel model) {
@@ -531,12 +521,23 @@ public class OntologyServiceImpl implements OntologyService {
         Model batchMetadata = jenaTDB2Repository.fetchMetadataProperties(graphNames);
         Map<String, Model> perGraphModels = partitionModelBySubject(batchMetadata, graphNames);
 
+        // One comment query for the whole page, grouped in memory — a per-entity lookup here would
+        // undo the batched RDF fetch above with 1+N queries on an unfiltered list.
+        List<Long> ontologyIds = entities.stream()
+                .map(OntologyMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByOntologyId = ontologyIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByOntologyMetadataIdIn(ontologyIds).stream()
+                        .collect(java.util.stream.Collectors.groupingBy(c -> c.getOntologyMetadata().getId()));
+
         return entities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
                     Model graphModel = perGraphModels.get(entity.getGraphName());
                     enrichMetadataFromModel(model, entity, graphModel);
-                    List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(entity.getId());
+                    List<CommentEntity> commentEntities =
+                            commentsByOntologyId.getOrDefault(entity.getId(), List.of());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })

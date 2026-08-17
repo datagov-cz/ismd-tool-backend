@@ -21,10 +21,31 @@ public interface WorkingCopyDeviationService {
     PublishedConceptDeviationModel deviationFor(String conceptIri);
 
     /**
+     * {@link #deviationFor} for a caller that already holds the canonical local projection (via
+     * {@link #canonicalLocalConcept(String, Model)}), so the concept's graph is not read from Fuseki a
+     * second time. Pass {@code null} for {@code local} to read it as usual.
+     */
+    PublishedConceptDeviationModel deviationForWithLocal(String conceptIri, ConceptDetailModel local);
+
+    /**
      * Deviations for every concept in {@code conceptIris}, all read off the one already-transformed
      * {@code processedModel} the caller holds.
      */
     Map<String, PublishedConceptDeviationModel> deviationForAll(Model processedModel, List<String> conceptIris);
+
+    /**
+     * {@link #deviationForAll} for concepts that all belong to {@code ontologyIri}'s scheme.
+     *
+     * <p>Saves a whole NKD round-trip: the ontology CONSTRUCT already returns every in-scheme concept,
+     * so the NKD side is derived from that one (cached) model instead of issuing a second batched
+     * concept query. Falls back to the batched query when the ontology model is unavailable.
+     *
+     * @param ontologyIri the scheme every concept in {@code conceptIris} belongs to; {@code null}
+     *                    degrades to {@link #deviationForAll}
+     */
+    Map<String, PublishedConceptDeviationModel> deviationForAllInOntology(Model processedModel,
+                                                                          List<String> conceptIris,
+                                                                          String ontologyIri);
 
     /**
      * Bulk counterpart to {@link #canonicalLocalConcept}: extracts every requested concept from one
@@ -39,4 +60,12 @@ public interface WorkingCopyDeviationService {
      * {@code null} when the concept has no metadata row or its graph is empty.
      */
     ConceptDetailModel canonicalLocalConcept(String conceptIri);
+
+    /**
+     * {@link #canonicalLocalConcept} derived from a graph the caller already holds, sharing the same
+     * cache entry. Exposed on the interface so the self-proxy call honours that cache.
+     *
+     * @param rawModel the concept's own graph, untransformed
+     */
+    ConceptDetailModel canonicalLocalConcept(String conceptIri, Model rawModel);
 }
