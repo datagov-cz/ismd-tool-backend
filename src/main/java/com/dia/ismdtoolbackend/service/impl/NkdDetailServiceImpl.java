@@ -112,9 +112,8 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             return new NkdResourceNotFoundException("Slovník s IRI " + iri + " nebyl v NKD nalezen.");
         });
 
-        // Not closed here: fetchPublishedOntologyRaw is @Cacheable, so this is the shared
-        // cached instance. Closing it would leave the cache entry pointing at a closed
-        // model for the rest of its TTL.
+        // Not closed: fetchPublishedOntologyRaw is @Cacheable, so this is the shared cached
+        // instance — closing it would poison the entry for the rest of its TTL.
         String body;
         if (normalized.equals("ttl")) {
             StringWriter writer = new StringWriter();

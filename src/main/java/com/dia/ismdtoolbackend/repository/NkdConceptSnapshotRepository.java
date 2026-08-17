@@ -11,9 +11,8 @@ public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSn
 
     /**
      * All snapshots owned by one concept (detail view, concept-delete cleanup). Join-fetches the
-     * owner for the same reason as {@link #findByGraphName}: {@code LinkSnapshotAssembler} reads
-     * {@code owningConcept.conceptIri} after the fetching transaction has closed, so a LAZY
-     * association would need the caller to hold one open for the whole request.
+     * owner: {@code LinkSnapshotAssembler} reads {@code owningConcept.conceptIri} after the fetching
+     * transaction has closed.
      */
     @EntityGraph(attributePaths = "owningConcept")
     List<NkdConceptSnapshotEntity> findByOwningConceptId(Long owningConceptId);

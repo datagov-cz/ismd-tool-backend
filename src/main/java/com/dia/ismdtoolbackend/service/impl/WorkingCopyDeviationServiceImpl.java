@@ -112,12 +112,11 @@ public class WorkingCopyDeviationServiceImpl implements WorkingCopyDeviationServ
 
     /**
      * Collapses the NKD side of a bulk check into one round-trip and seeds the per-IRI
-     * {@code nkdPublishedResource} entries (so later single fetches hit cache).
+     * {@code nkdPublishedResource} entries so later single fetches hit cache.
      *
-     * <p>When {@code ontologyIri} is known, that round-trip is the ontology CONSTRUCT the deviation
-     * check already needs: it returns every in-scheme concept, so the concepts are sliced out of it
-     * and the batched concept query is skipped entirely. Otherwise (or if the ontology model is
-     * unavailable) the batched concept query runs as before.
+     * <p>When {@code ontologyIri} is known that round-trip is the ontology CONSTRUCT the deviation
+     * check already needs, and the concepts are sliced out of it; otherwise the batched concept
+     * query runs.
      */
     private Map<String, Optional<ConceptDetailModel>> prefetchNkdSide(List<String> conceptIris, String ontologyIri) {
         Cache cache = cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);

@@ -529,10 +529,9 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     @Override
-    // Deliberately NOT @Transactional: this method interleaves PG reads with Fuseki, NKD and RPP
-    // calls (10s timeouts each), so a request-wide transaction would pin a pool connection across
-    // them — the pinning spring.jpa.open-in-view=false exists to avoid. Each repository call runs
-    // in its own transaction, and every entity this method reads after one closes is join-fetched.
+    // Deliberately NOT @Transactional: PG reads interleave with Fuseki, NKD and RPP calls (10s
+    // timeouts), so a request-wide transaction would pin a pool connection across them. Entities
+    // read after their repository call returns are join-fetched instead.
     public GetConceptDto getConceptDetail(String conceptSlug) {
         Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findBySlug(conceptSlug);
         if (conceptMetadataOpt.isEmpty()) {

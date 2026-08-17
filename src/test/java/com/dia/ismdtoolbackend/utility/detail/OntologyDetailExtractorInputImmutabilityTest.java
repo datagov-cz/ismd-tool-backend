@@ -20,25 +20,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Pins that the OFN transforms leave the caller's model untouched.
  *
- * <p>{@code OFNTypeNormalizer} mutates the model it is handed (it rewrites
- * {@code rdfs:label} to {@code skos:prefLabel} and adds inferred role tags), so
- * {@code applyOFNTransformations} runs it over a copy. Callers routinely pass models they
- * do not own:
+ * <p>{@code OFNTypeNormalizer} mutates the model it is handed, and callers pass models they do not
+ * own: {@code fetchPublishedOntology} passes the {@code @Cacheable} raw NKD model, and
+ * {@code getConceptDetail} extracts from the same {@code rawModel} it hands to the {@code @Cacheable}
+ * {@code canonicalLocalConcept}. Mutating either corrupts a cache entry or makes the response depend
+ * on cache state.
  *
- * <ul>
- *   <li>{@code NkdSparqlClient#fetchPublishedOntology} passes the model returned by the
- *       {@code @Cacheable} {@code fetchPublishedOntologyRaw} — mutating it corrupts the
- *       cache entry for the rest of its TTL, and the NKD download endpoint then serves
- *       RDF that is not what NKD published.</li>
- *   <li>{@code ConceptServiceImpl#getConceptDetail} hands its {@code rawModel} to
- *       {@code canonicalLocalConcept} and then extracts from that same model afterwards.
- *       Because that call is {@code @Cacheable}, mutating the model would make the
- *       response depend on whether the cache was warm.</li>
- * </ul>
- *
- * <p>The fixture stores its label as {@code rdfs:label} and carries only generic types —
- * the shape the normalizer actually acts on. A vocabulary that is already OFN-canonical
- * would make the normalizer a no-op and hide the regression.
+ * <p>The fixture stores its label as {@code rdfs:label} with generic types — the shape the normalizer
+ * acts on. An already-OFN-canonical fixture makes it a no-op and hides the regression.
  */
 @ExtendWith(MockitoExtension.class)
 class OntologyDetailExtractorInputImmutabilityTest {

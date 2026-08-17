@@ -10,18 +10,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Guards the fetch graphs that let {@code ConceptServiceImpl.getConceptDetail} run without a
- * request-wide transaction.
+ * request-wide transaction. It is deliberately not {@code @Transactional}, so a LAZY association
+ * dereferenced after its repository call returns throws {@code LazyInitializationException} — and
+ * {@code surfaceLinkSnapshots} swallows it, dropping snapshots from the response silently.
  *
- * <p>That method interleaves PG reads with Fuseki, NKD and RPP calls (10s timeouts each), so it is
- * deliberately NOT {@code @Transactional} — a transaction spanning it would pin a Hikari connection
- * across every one of those calls, which is exactly the pinning {@code spring.jpa.open-in-view=false}
- * exists to prevent. With no open transaction, any LAZY association dereferenced after its fetching
- * repository call returns throws {@code LazyInitializationException}.
- *
- * <p>Both failures below would be <em>silent</em>: {@code surfaceLinkSnapshots} swallows every
- * exception, so link snapshots would simply vanish from the response. Reflection rather than a
- * query-count test on purpose — it asserts the declaration itself and points straight at the missing
- * annotation.
+ * <p>Reflection rather than a query count: it asserts the declaration itself and needs no database.
  *
  * @see ConceptMetadataFetchGraphTest for the N+1-motivated graphs on the concept repository
  */
@@ -32,10 +25,8 @@ class ConceptDetailFetchGraphTest {
         EntityGraph graph = graphOn(NkdConceptSnapshotRepository.class, "findByOwningConceptId");
 
         assertThat(graph)
-                .as("NkdConceptSnapshotRepository.findByOwningConceptId must declare "
-                        + "@EntityGraph(attributePaths = \"owningConcept\") — LinkSnapshotAssembler reads "
-                        + "owningConcept.conceptIri outside the fetching transaction, and getConceptDetail "
-                        + "swallows the resulting LazyInitializationException, silently dropping snapshots")
+                .as("findByOwningConceptId must join-fetch owningConcept — LinkSnapshotAssembler reads "
+                        + "owningConcept.conceptIri outside the fetching transaction")
                 .isNotNull();
         assertThat(graph.attributePaths()).containsExactly("owningConcept");
     }
@@ -45,9 +36,8 @@ class ConceptDetailFetchGraphTest {
         EntityGraph graph = graphOn(CommentRepository.class, "findByConceptMetadataId");
 
         assertThat(graph)
-                .as("CommentRepository.findByConceptMetadataId must join-fetch both owners — "
-                        + "ConceptMetadataMapper.commentEntityToModel reads ontologyMetadata.graphName "
-                        + "and conceptMetadata.conceptIri outside the fetching transaction")
+                .as("findByConceptMetadataId must join-fetch both owners — commentEntityToModel reads "
+                        + "ontologyMetadata.graphName and conceptMetadata.conceptIri outside the transaction")
                 .isNotNull();
         assertThat(graph.attributePaths())
                 .containsExactlyInAnyOrder("ontologyMetadata", "conceptMetadata");

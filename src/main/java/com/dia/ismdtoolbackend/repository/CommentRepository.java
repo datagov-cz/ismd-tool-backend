@@ -12,8 +12,8 @@ public interface CommentRepository extends JpaRepository<CommentEntity, Long> {
 
     /**
      * Join-fetches both owners: {@code ConceptMetadataMapper.commentEntityToModel} reads
-     * {@code ontologyMetadata.graphName} and {@code conceptMetadata.conceptIri}, and the concept
-     * detail read maps these after the fetching transaction has closed.
+     * {@code ontologyMetadata.graphName} and {@code conceptMetadata.conceptIri} after the fetching
+     * transaction has closed.
      */
     @EntityGraph(attributePaths = {"ontologyMetadata", "conceptMetadata"})
     List<CommentEntity> findByConceptMetadataId(Long conceptMetadataId);

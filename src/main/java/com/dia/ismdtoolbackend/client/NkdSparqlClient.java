@@ -50,10 +50,8 @@ public class NkdSparqlClient {
     private final OntologyDetailExtractor detailExtractor;
 
     /**
-     * Self-reference through the Spring proxy so {@link #fetchPublishedConceptWithScheme}'s
-     * {@code @Cacheable} is honoured when called from {@link #fetchPublishedConcept}. A plain
-     * {@code this.} call would bypass the cache proxy, so the two keys would each pay their own
-     * SPARQL round-trip instead of sharing one.
+     * Self-reference through the Spring proxy so {@code @Cacheable} is honoured on internal calls;
+     * a plain {@code this.} call bypasses the cache proxy.
      */
     private final NkdSparqlClient self;
 
@@ -67,8 +65,7 @@ public class NkdSparqlClient {
                 externalSparqlHttpClient,
                 config.getSparql().getMaxConcurrentRequests());
         this.detailExtractor = detailExtractor;
-        // Falls back to this when constructed outside Spring (tests): no proxy means no cache to
-        // re-enter, so a direct call is the correct behaviour rather than an NPE.
+        // Constructed outside Spring (tests): no proxy means no cache to re-enter, so a direct call.
         this.self = self != null ? self : this;
     }
 
@@ -148,13 +145,11 @@ public class NkdSparqlClient {
      * Scheme-scoped counterpart to {@link #fetchPublishedConceptsBatched}: derives every requested
      * concept from the ontology model the caller already fetched, with no further round-trip.
      *
-     * <p>{@link NKDSPARQLConstructQuery#buildOntologyConstructQuery} returns the scheme's own triples
-     * <em>and</em> every {@code skos:inScheme} member with blank-node expansion, so it is a strict
-     * superset of the batched concept CONSTRUCT for concepts of that scheme. Per-concept output is
-     * produced by the same slice → OFN → extract pipeline, so it matches the batched path field-for-field.
-     *
-     * <p>Only for concepts belonging to {@code ontologyModel}'s scheme. A concept absent from the
-     * model maps to {@link Optional#empty()}, exactly as the batched path reports it.
+     * <p>{@link NKDSPARQLConstructQuery#buildOntologyConstructQuery} returns every
+     * {@code skos:inScheme} member with blank-node expansion, so it is a strict superset of the
+     * batched concept CONSTRUCT for that scheme, and the same slice → OFN → extract pipeline yields
+     * matching output. Only for concepts of {@code ontologyModel}'s scheme; one absent from the model
+     * maps to {@link Optional#empty()}, as the batched path reports it.
      */
     public Map<String, Optional<PublishedConcept>> derivePublishedConceptsFromOntology(
             Model ontologyModel, List<String> conceptIris) {

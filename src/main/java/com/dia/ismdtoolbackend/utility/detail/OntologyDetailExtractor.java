@@ -81,24 +81,16 @@ public class OntologyDetailExtractor {
         return iri -> subjectIris.contains(iri) ? slugByIri.get(iri) : fallback.apply(iri);
     }
 
-    /**
-     * Batch-prefetched variant of {@link #dbSlugResolver()} for the single-concept detail path.
-     * Collects every property/relationship member IRI reachable from {@code conceptIri} in the
-     * model, resolves their slugs in one {@code findByConceptIriIn}, and serves each
-     * {@code apply} from the resulting map.
-     */
+    /** Single-concept variant of {@link #batchSlugResolver(OntModel, Collection)}. */
     private Function<String, String> batchSlugResolver(OntModel ontModel, String conceptIri) {
         return batchSlugResolver(ontModel, List.of(conceptIri));
     }
 
     /**
-     * Batch-prefetched variant of {@link #dbSlugResolver()} for the single-concept detail path.
-     * Collects every property/relationship member IRI reachable from {@code conceptIris} in the
-     * model, resolves their slugs in one {@code findByConceptIriIn}, and serves each
-     * {@code apply} from the resulting map.
-     *
-     * <p>Takes the whole IRI collection at once so the bulk path pays ONE query for all concepts
-     * rather than one per concept.
+     * Batch-prefetched variant of {@link #dbSlugResolver()}. Collects every property/relationship
+     * member IRI reachable from {@code conceptIris}, resolves their slugs in one
+     * {@code findByConceptIriIn}, and serves each {@code apply} from the resulting map — so the bulk
+     * path pays one query for all concepts rather than one each.
      */
     private Function<String, String> batchSlugResolver(OntModel ontModel, Collection<String> conceptIris) {
         Set<String> memberIris = new LinkedHashSet<>();
@@ -151,9 +143,8 @@ public class OntologyDetailExtractor {
 
     private Model applyOFNTransformations(Model rawModel, boolean deriveInScheme) {
         log.debug("Applying OFN transformations (deriveInScheme={})", deriveInScheme);
-        // The normalizers mutate the model they are handed, so they run over a copy:
-        // callers pass models they do not own (a cached NKD model, or a graph the
-        // request extracts from again afterwards) and must get them back unchanged.
+        // The normalizers mutate the model they are handed, and callers pass models they do not
+        // own (a cached NKD model, a graph the request extracts from again), so they run on a copy.
         Model workingModel = ModelFactory.createDefaultModel();
         workingModel.setNsPrefixes(rawModel.getNsPrefixMap());
         workingModel.add(rawModel);
