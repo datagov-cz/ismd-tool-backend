@@ -5,7 +5,19 @@
 > [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md). Architecture & rationale:
 > [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md).
 
-The wire contract for the diagram feature: **thin on write, fat on read.** The backend joins layout rows to live concept content and applies each node's overlay, so the FE receives a payload it can pass almost directly to ReactFlow. This document is the FE integration reference; see [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md) for why the model is shaped this way.
+The wire contract for the diagram feature: **thin on write, fat on read.** The backend joins layout rows to live concept content and applies each concept's overlay, so the FE receives a payload it can pass almost directly to ReactFlow. This document is the FE integration reference; see [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md) for why the model is shaped this way.
+
+**What is a node, an edge, and a row.** The canvas draws each concept type in the shape that matches what it *is*:
+
+| Concept type | Rendered as | Identity on the wire |
+|---|---|---|
+| `TRIDA` | a **node** (`classNode`) | `nodes[].id` = `iri:<full-iri>` |
+| `VZTAH` | an **edge** between its two classes | `edges[].id` = the relationship's own **concept IRI** |
+| `VLASTNOST` | a **row inside** its domain class's node | `nodes[].data.properties[].iri` |
+
+A relationship is one edge, not a node with a link to each endpoint — it connects a `rdfs:domain` class to a `rdfs:range` class, which is exactly what the concept means. A property has only a domain (its range is a literal datatype), so there is no second concept to draw to; it is a row in the class that owns it.
+
+**Incomplete concepts are not on the canvas.** A VZTAH missing its domain or range, and a domainless VLASTNOST, are simply not drawn — there is nothing to attach them to. They are placed by being dragged in from the ontology detail, which is the act that supplies the missing endpoint. This is why the read model never needs a "dangling edge" or "floating property" state.
 
 ## REST surface
 
@@ -15,8 +27,8 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 |---|---|---|
 | `GET /all` | Lightweight list of every diagram (identity + node count), e.g. for a diagram picker. Any authenticated user. | → `List<DiagramSummaryDto>` |
 | `GET /{ontologySlug}/detail` | Load the canonical diagram, layout joined to live concept content with overlays applied. An ontology with no diagram yet reads as an empty canvas — **the read creates nothing**; the row is provisioned by the first write. | → `DiagramDto` (fat, render-ready) |
-| `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edges-as-projections) *and* node overlays. Idempotent full-replace — this call **is** canvas membership: a node present is added (a previously-unseen IRI is hydrated in the response), a node omitted is removed from the canvas. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
-| `PATCH /{ontologySlug}/nodes/overlay` | Stage/update one node's structural edit (end-state fields) for the node named by `nodeId` **in the body**, or **discard** it by sending only `nodeId` (all overlay fields null → revert to live content). Not materialized. | `NodeOverlayDto` → node |
+| `PUT /{ontologySlug}/layout` | **Save the diagram.** Persist layout (positions, viewport, edge waypoints). Idempotent full-replace — this call **is** canvas membership: a node present is added (a previously-unseen IRI is hydrated in the response), a node omitted is removed from the canvas. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
+| `PATCH /{ontologySlug}/nodes/overlay` | Stage/update one concept's structural edit (end-state fields) for the concept named by `conceptIri` **in the body**, or **discard** it by sending only `conceptIri` (all overlay fields null → revert to live content). Works for a class, a relationship, or a property alike — all three are addressed by IRI. Not materialized. | `NodeOverlayDto` → node |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Apply each staged change via the existing concept CRUD → outbox → RDF; multi-call changes all-or-nothing; per-change partial-ok. | → `MaterializeResultDto` + refreshed `DiagramDto` |
 
 **Canvas membership rides the layout save.** There is no dedicated add/remove-node endpoint. Because `PUT …/layout` is an idempotent full-replace, **add** = include the node (a bare `{id, position}` for a concept not yet on the canvas; the `DiagramDto` response hydrates its label/type/slug from live RDF) and **remove-from-canvas** = omit it. The concept is never touched by either — the single RDF delete the diagram causes is implicit, inside op 6, handled by `/materialize`.
@@ -67,9 +79,9 @@ The backend has already joined layout rows to live concept content and applied e
   "version": 7,                   // echo this in the next PUT …/layout (optimistic lock); null = no diagram row yet
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
 
+  // nodes are CLASSES only — a relationship is an edge, a property is a row below
   "nodes": [
     {
-      // a live concept, no pending edits — content from RDF, position from PG
       "id": "iri:https://…/pojem/zamestnanec",
       "type": "classNode",
       "position": { "x": 240, "y": 80 },
@@ -81,40 +93,64 @@ The backend has already joined layout rows to live concept content and applied e
         "slug": "pracovni-pomer-zamestnanec",       // FE deep-links to /detail
         "label": { "cs": "Zaměstnanec", "en": "Employee" },
         "stale": false,                              // true ⇒ referenced concept was deleted
-        "hasPendingEdits": false
+        "hasPendingEdits": false,
+        // the class's VLASTNOSTi, rendered as rows inside the node. Always present (empty, never null)
+        // and ordered by label, so rows do not reshuffle between reads.
+        "properties": [
+          {
+            "iri": "https://…/pojem/datum-narozeni",
+            "slug": "pracovni-pomer-datum-narozeni",
+            "label": { "cs": "datum narození" },
+            "rangeResolved": { /* the datatype — the row's right-hand column */ },
+            "stale": false,
+            "hasPendingEdits": true,
+            "pendingEdit": { "domain": "https://…/pojem/osoba" }   // staged move to another class
+          }
+        ]
       }
     },
     {
-      // a live VZTAH concept WITH a staged structural edit — content is live ⊕ overlay
-      "id": "iri:https://…/pojem/je-zamestnan-u",
-      "type": "relationNode",
-      "position": { "x": 520, "y": 210 },
+      "id": "iri:https://…/pojem/organizace",
+      "type": "classNode",
+      "position": { "x": 720, "y": 80 },
       "data": {
-        "conceptType": "VZTAH",
-        "iri": "https://…/pojem/je-zamestnan-u",
-        "label": { "cs": "je zaměstnán u" },         // label is live-only; NOT editable via the overlay
-        "stale": false,
-        "hasPendingEdits": true,
-        "pendingEdit": {                             // the structural diff, so FE can badge/diff-view it
-          "range": "iri:https://…/pojem/organizace"  // repointed range, not yet in RDF
-        }
+        "conceptType": "TRIDA", "iri": "https://…/pojem/organizace",
+        "label": { "cs": "Organizace" }, "stale": false, "hasPendingEdits": false,
+        "properties": []
       }
     }
   ],
 
   "edges": [
     {
-      // projected from the VZTAH node's (live ⊕ overlay) range — reflects the staged repoint
-      // id is deterministic: edge|<edgeKind>|<sourceIri>|<targetIri>
-      "id": "edge|RANGE|https://…/pojem/je-zamestnan-u|https://…/pojem/organizace",
-      "source": "iri:https://…/pojem/je-zamestnan-u",
-      "target": "iri:https://…/pojem/organizace",
+      // A VZTAH: ONE edge between its two classes, carrying its own concept identity.
+      // id IS the relationship's concept IRI — it is unique per edge and stable across reloads.
+      "id": "https://…/pojem/je-zamestnan-u",
+      "source": "iri:https://…/pojem/zamestnanec",   // its rdfs:domain  (live ⊕ overlay)
+      "target": "iri:https://…/pojem/organizace",    // its rdfs:range   (live ⊕ overlay)
       "type": "relationEdge",
-      // echoed back from the last Save; null when never saved or when the endpoint was repointed
-      "sourceHandle": "s-right", "targetHandle": "t-left",
       "segments": [{ "x": 120, "y": 40 }],   // FE-only routing waypoints; omitted when default-routed
-      "markerEnd": { "type": "arrowclosed" },
-      "data": { "edgeKind": "RANGE", "pending": true }   // pending ⇒ endpoint comes from the overlay
+      "data": {
+        "edgeKind": "VZTAH",
+        "pending": true,                     // an endpoint comes from an unmaterialized overlay
+        "conceptType": "VZTAH",
+        "iri": "https://…/pojem/je-zamestnan-u",
+        "slug": "pracovni-pomer-je-zamestnan-u",
+        "label": { "cs": "je zaměstnán u" }, // label is live-only; NOT editable via the overlay
+        "stale": false,
+        "hasPendingEdits": true,
+        "pendingEdit": { "range": "https://…/pojem/organizace" }   // repointed, not yet in RDF
+      }
+    },
+    {
+      // A bare RDF triple — no concept behind it, so `data` carries no iri/label.
+      // An edge with a non-null data.iri is concept-backed (selectable, stageable, deep-linkable);
+      // one without is a plain hierarchy/equivalence link. That is the FE's discriminator.
+      "id": "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba",
+      "source": "iri:https://…/pojem/zamestnanec",
+      "target": "iri:https://…/pojem/osoba",
+      "type": "hierarchyEdge",
+      "data": { "edgeKind": "SUBCLASS_OF", "pending": false }
     }
   ],
 
@@ -124,11 +160,15 @@ The backend has already joined layout rows to live concept content and applied e
 
 ## Write — Save layout: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
 
-Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send only what persists. The backend ignores node `data` content here — this call is layout only; structural edits go through the overlay endpoint. Edges are projections; sending the current set persists their handles/positions, but the authoritative endpoint value for a staged repoint is always the node overlay (the backend re-projects on read).
+Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send only what persists. The backend ignores node `data` content here — this call is layout only; structural edits go through the overlay endpoint.
 
-**Edges are a full replace — echo back every edge whose presentation you want kept.** A Save replaces the whole persisted edge set, so an edge omitted from `edges` loses its saved `sourceHandle`/`targetHandle`/`segments`. The edge itself still renders (it is re-projected from RDF), but comes back with those fields null. Repointing an endpoint likewise drops them by design: the projected id changes with the endpoint, and geometry drawn for the old target would not fit the new one.
+**An edge persists exactly two things: `id` and `segments`.** Its existence, endpoints and kind are re-derived from `live ⊕ overlay` on every read, so `source`, `target` and `edgeKind` are **not accepted on write** — sending them is ignored. This is deliberate: a stored endpoint could silently contradict the projection it duplicates, which is precisely the drift the diagram layer is built to prevent. To change where a relationship points, stage `{domain, range}` on its overlay; the edge follows.
 
-`segments` is optional — omit it, or send `[]`, for an edge using default routing; both store as "no waypoints". Waypoints are pure presentation: they shape how a link is drawn and carry no meaning for the concepts it connects, so nothing derives them from RDF and nothing validates them against it.
+**Waypoints are a full replace — echo back every edge whose routing you want kept.** A Save replaces the whole persisted waypoint set, so an edge omitted from `edges` reverts to default routing. The edge itself still renders (it is re-projected from RDF). Repointing an endpoint likewise drops the waypoints by design: geometry drawn for the old target would not fit the new one.
+
+**`edges` itself is optional** — `null` and `[]` both mean "nothing hand-routed", which is exactly the state of a freshly auto-laid-out canvas: ReactFlow has positioned every node, and the user has not dragged a waypoint yet. Only `version` and `nodes` are mandatory.
+
+`segments` is optional too — omit it, or send `[]`, for an edge using default routing; both store as "no waypoints", and neither writes a row at all. Waypoints are pure presentation: they shape how a link is drawn and carry no meaning for the concepts it connects, so nothing derives them from RDF and nothing validates them against it.
 
 **This call is authoritative for canvas membership.** The `nodes[]` array is the complete set — a node present is kept (or **added** if its IRI is new to the canvas; the response `DiagramDto` hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
@@ -159,44 +199,45 @@ This is the one status where a `success: false` response still means the write l
 {
   "version": 7,
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
+  // classes only; a relationship or property is never a node
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
       "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false },
     // parentId/collapsed are optional — omitted or null means no parent / not collapsed
-    { "id": "iri:https://…/pojem/je-zamestnan-u",
-      "position": { "x": 520, "y": 210 } }
+    { "id": "iri:https://…/pojem/organizace",
+      "position": { "x": 720, "y": 80 } }
   ],
+  // waypoints only — echo the id you were given on read; endpoints are derived, never sent
   "edges": [
-    { "id": "e-201", "source": "iri:https://…/pojem/je-zamestnan-u",
-      "target": "iri:https://…/pojem/organizace", "edgeKind": "RANGE" },
-    // a class property is a DOMAIN edge from the property node to its class
-    { "id": "e-202", "source": "iri:https://…/pojem/datum-narozeni",
-      "target": "iri:https://…/pojem/zamestnanec", "edgeKind": "DOMAIN" }
+    { "id": "https://…/pojem/je-zamestnan-u",              // a VZTAH: its concept IRI
+      "segments": [{ "x": 120, "y": 40 }] },
+    { "id": "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba",
+      "segments": [] }                                     // [] or omitted = default routing
   ]
 }
 ```
 
-`edgeKind` ∈ `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH`.
+`edgeKind` (read-side only) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
+
+`DOMAIN` and `RANGE` are gone — a relationship is one edge between its two classes, not a node with a link to each. `SUB_PROPERTY` and `SUB_RELATION` (`rdfs:subPropertyOf` between two properties or two relationships) are **not rendered on the canvas**: neither endpoint is a node, so the link has nothing to attach to, and the business semantics are undefined pending a requirement. The relation itself is unaffected — it stays fully supported in the normal concept editor.
 
 ## Write — stage a structural edit: `PATCH /api/diagram/{ontologySlug}/nodes/overlay` · `NodeOverlayDto`
 
-**The target node is named by `nodeId` in the body, not in the path.** A node id is `iri:<full-iri>` and a concept IRI contains slashes, which cannot survive a path segment — percent-encoded, Tomcat rejects `%2F` outright (`400 Invalid URI: [The encoded slash character is not allowed]`); raw, the extra segments match no mapping. `nodeId` is mandatory (`@NotBlank`).
+**The target is named by `conceptIri` in the body, not in the path.** It addresses a *concept*, not a canvas node — a VZTAH renders as an edge and a VLASTNOST as a row inside its class, and both are staged through this same field by their own IRI. The value is the full IRI, optionally `iri:`-prefixed. It travels in the body because a concept IRI contains slashes, which cannot survive a path segment — percent-encoded, Tomcat rejects `%2F` outright (`400 Invalid URI: [The encoded slash character is not allowed]`); raw, the extra segments match no mapping. `conceptIri` is mandatory (`@NotBlank`).
 
 Only the changed structural fields. Persisted to `pending_edit_json`; not sent to RDF until Převzít. The overlay is **structural-only** — there is no `label`/`name` here; label editing is done through the normal concept editor, not the diagram (a label change renames the concept IRI).
 
-**Discard = a body carrying only `nodeId`.** A `PATCH` with `{"nodeId": "iri:…"}` (every overlay field null) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. `nodeId` is addressing, not content, so it never counts toward emptiness. Any payload carrying an overlay field replaces the staged diff. **An explicitly-empty list is *not* a discard — it means "clear this predicate"**: e.g. `{ "nodeId": "iri:…", "broaderConcept": [] }` stages "remove all superclasses" (the flip op-2 A-side dropping its last broader), and materializes as a `subClassOf` clear.
+**Discard = a body carrying only `conceptIri`.** A `PATCH` with `{"conceptIri": "iri:…"}` (every overlay field null) clears the node's overlay, reverting it to live content — there is no separate `DELETE …/overlay`. `conceptIri` is addressing, not content, so it never counts toward emptiness. Any payload carrying an overlay field replaces the staged diff. **An explicitly-empty list is *not* a discard — it means "clear this predicate"**: e.g. `{ "conceptIri": "iri:…", "broaderConcept": [] }` stages "remove all superclasses" (the flip op-2 A-side dropping its last broader), and materializes as a `subClassOf` clear.
 
-Hierarchy is type-specific — send the field matching the node's concept type:
-
-Every body below also carries `"nodeId": "iri:…"` naming the node being staged (omitted here for brevity):
+Every body below also carries `"conceptIri": "iri:…"` naming the concept being staged (omitted here for brevity). **Dragging an edge endpoint is a concept edit** — repointing a relationship's arrow stages `range` on the VZTAH, and dragging a property row into another class stages `domain` on the VLASTNOST:
 
 ```jsonc
 // op 1 (swap direction, VZTAH):        { "domain": "iri:…/A", "range": "iri:…/B" }
 // op 4/5 (property parent / domain):   { "domain": "iri:…/OwningClass" }
 // op 3 (subclass → equivalent, TRIDA): { "broaderConcept": [], "exactMatch": ["iri:…/B"] }
-// op 2 (flip): staged on BOTH nodes —  A: { "broaderConcept": [ …without B ] }
-//                                      B: { "broaderConcept": [ …, "iri:…/A" ] }
-// op 6 (rel → hierarchy, VZTAH node):  { "convertToHierarchy": { "addBroaderOn": "iri:…/A", "broader": "iri:…/B" } }
+// op 2 (flip): staged on BOTH concepts — A: { "broaderConcept": [ …without B ] }
+//                                        B: { "broaderConcept": [ …, "iri:…/A" ] }
+// op 6 (rel → hierarchy, on the VZTAH): { "convertToHierarchy": { "addBroaderOn": "iri:…/A", "broader": "iri:…/B" } }
 ```
 
 Field reference for `DiagramPendingEdit`:
@@ -206,17 +247,17 @@ Field reference for `DiagramPendingEdit`:
 | `domain` | VZTAH, VLASTNOST | `rdfs:domain` (IRI) |
 | `range` | VZTAH | `rdfs:range` (IRI) |
 | `broaderConcept` | TRIDA | `subClassOf` list (IRIs) |
-| `superProperty` | VLASTNOST | `subPropertyOf` list (IRIs) |
-| `superRelation` | VZTAH | `subPropertyOf` list (IRIs) |
 | `exactMatch` | any | `skos:exactMatch` list (IRIs) — op 3's "equivalent" |
 | `convertToHierarchy` | VZTAH | op 6 marker: `{ addBroaderOn, broader }` — add broader on a class, then delete this VZTAH |
 
-**Response — the single staged node, carrying the new `version`.** The PATCH returns just the affected node (not the whole diagram), stamped with the diagram version *after* this write:
+`superProperty` and `superRelation` were **removed** along with the `SUB_PROPERTY`/`SUB_RELATION` edges: the diagram can no longer stage a sub-property/sub-relation change, because it cannot render one for the user to see or undo. Use the normal concept editor.
+
+**Response — the single staged concept, carrying the new `version`.** The PATCH returns just the affected concept's row (not the whole diagram), stamped with the diagram version *after* this write. It is a confirmation payload in the generic node shape — a VZTAH comes back here even though it renders as an edge:
 
 ```jsonc
 {
   "id": "iri:https://…/pojem/je-zamestnan-u",
-  "type": "relationNode",
+  "type": "relationNode",         // the raw row's shape; the canvas still draws this concept as an EDGE
   "position": { "x": 520, "y": 210 },
   "parentId": null,
   "collapsed": false,
@@ -226,7 +267,9 @@ Field reference for `DiagramPendingEdit`:
 }
 ```
 
-`version` appears **only** on this lean stage response, where there is no enclosing `DiagramDto` to carry it. Inside `GET …/detail`'s `nodes[]` it is omitted: the version belongs to the diagram, not to any one node, and repeating it per node would suggest a per-node lock that does not exist. A discard (body with only `nodeId`) is a successful PATCH too, so it advances the version and returns the new one the same way.
+**`data.properties` is always empty here**, even for a class. Building it needs the whole ontology graph, which would undo the narrowed single-concept read this lean response exists to keep cheap — and staging changes one concept's overlay, not any class's property list. Keep the rows from your last `GET …/detail`; re-read only when you staged a property's own `domain`, which is the one case that moves a row between classes.
+
+`version` appears **only** on this lean stage response, where there is no enclosing `DiagramDto` to carry it. Inside `GET …/detail`'s `nodes[]` it is omitted: the version belongs to the diagram, not to any one node, and repeating it per node would suggest a per-node lock that does not exist. A discard (body with only `conceptIri`) is a successful PATCH too, so it advances the version and returns the new one the same way.
 
 ## Materialize — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
 

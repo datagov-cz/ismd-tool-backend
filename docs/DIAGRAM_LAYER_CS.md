@@ -56,7 +56,7 @@ Vytvoření pojmu a odebrání uzlu jsou okamžité/lokální; **strukturální 
 | 6 | Převod vztahu na hierarchii | přidat hierarchický odkaz na cílovou třídu, poté smazat VZTAH | 2 volání — **jedna jednotka, vše nebo nic** |
 | 7 | Odebrání vlastnosti/vztahu *z plátna* | pouze smazání diagramového řádku | žádné (není to RDF změna) |
 
-**Hierarchie je závislá na typu.** „Nadřazený" jsou tři různé predikáty: třída používá `subClassOf` (`broaderConcept`), vlastnost `subPropertyOf` (`superProperty`), vztah `subPropertyOf` (`superRelation`). Overlay nese pole odpovídající typu pojmu uzlu. „Ekvivalent" (op 3) znamená `skos:exactMatch`, nezávislý symetrický predikát — *ne* směrovanou hierarchii a *ne* jediný přepínač „typu hierarchie".
+**Hierarchie je na plátně pouze mezi třídami.** „Nadřazený" mezi třídami je `subClassOf` (`broaderConcept`). Obdoby pro vlastnosti a vztahy (`subPropertyOf`) **nejsou součástí diagramu** — proč, viz níže „Hrany jsou projekce". „Ekvivalent" (op 3) znamená `skos:exactMatch`, nezávislý symetrický predikát — *ne* směrovanou hierarchii a *ne* jediný přepínač „typu hierarchie".
 
 **Jediné smazání v RDF, které diagram může způsobit, je implicitní** — smazání VZTAHu v op 6, a to až poté, co je úspěšně přidána nahrazující hierarchická hrana. Neexistuje samostatná akce „smazat pojem". Op 6 se nabízí jen tehdy, když na `domain`/`range` daného VZTAHu nic nemíří (jinak by jeho smazání tranzitivně kaskádovalo další pojmy); jinak převod vyvolá konflikt.
 
@@ -64,9 +64,17 @@ Vytvoření pojmu a odebrání uzlu jsou okamžité/lokální; **strukturální 
 
 ## Hrany jsou projekce, ne obsah
 
-Vztah (VZTAH) je sám pojmem — uzlem. Jeho `rdfs:domain`/`rdfs:range` jsou pole na tomto uzlu, nasazená v overlayi uzlu. Hrany `DOMAIN`/`RANGE` vedené z uzlu VZTAHu k cílovým třídám jsou *vizuálním vykreslením* těchto polí. Vlastnost třídy (VLASTNOST) je rovněž uzel, spojený se svou vlastnící třídou hranou `DOMAIN` z uzlu vlastnosti k uzlu třídy.
+Každý pojem je vykreslen ve tvaru, který odpovídá tomu, čím *je*. **Třída** (TRIDA) je uzel. **Vztah** (VZTAH) je *hrana* mezi svou třídou v `rdfs:domain` a třídou v `rdfs:range` — jedna hrana nesoucí vlastní identitu pojmu, protože přesně to vztah znamená. **Vlastnost** (VLASTNOST) má jen doménu (jejím oborem hodnot je literálový datový typ, takže není druhý pojem, ke kterému by vedla), a je proto *řádkem uvnitř* třídy, která ji vlastní.
 
-Proto **tažení hrany je úpravou uzlu** (přesměrování konce `RANGE` aktualizuje pole `range` v overlayi uzlu VZTAHu) a **nakreslení nové hrany vztahu je vytvořením pojmu VZTAH** (operace nad uzlem). Hrany nikdy nehromadí vlastní rozpracovaný stav; při čtení se znovu projektují z `živý pojem ⊕ overlay`. Overlay uzlu je jediným zdrojem pravdy pro doménu/obor hodnot/hierarchii.
+Zásadní je, že jde o rozhodnutí o **vykreslení**, nikoli o vlastnictví. Všechny tři zůstávají plnohodnotnými pojmy s vlastním IRI, vlastním řádkem v `diagram_nodes` a vlastním overlayem. Identitou je vždy IRI pojmu, a proto `PATCH …/nodes/overlay` adresuje třídu, vztah i vlastnost naprosto stejně — žádný z nich nemusí být „uzlem", aby šel nasadit.
+
+Proto **tažení konce hrany je úpravou pojmu** (přesměrování šipky aktualizuje overlayové pole `range` VZTAHu; přetažení řádku vlastnosti k jiné třídě aktualizuje `domain` VLASTNOSTI) a **nakreslení nové spojnice vztahu je vytvořením pojmu VZTAH**. Hrany nikdy nehromadí vlastní rozpracovaný stav; při čtení se znovu projektují z `živý pojem ⊕ overlay`. Overlay pojmu je jediným zdrojem pravdy pro doménu/obor hodnot/hierarchii.
+
+**Hrana neukládá nic než své body lomu.** Existence, koncové body i druh se odvozují, takže `diagram_edges` ukládá pouze `(edge_key, segments_json)`. Uložení koncových bodů by duplikovalo projekci a mohlo by jí tiše odporovat — přesměrujete obor hodnot a uložený koncový bod stále jmenuje původní třídu. Přesně tomuto druhu rozcházení má celá tato vrstva bránit, a proto ty sloupce neexistují.
+
+**Nedokončené pojmy žijí mimo plátno.** VZTAH bez koncového bodu nebo VLASTNOST bez domény se prostě nevykreslí — není k čemu je připojit. Nic to nestojí, protože umístění *je* dokončením: takový pojem se na plátno dostane přetažením z detailu slovníku a toto přetažení chybějící koncový bod doplní. Model hran/řádků tedy nikdy nemusí reprezentovat rozestavěný pojem — jediné, co starší model „uzel na pojem" uměl vyjádřit a tento neumí.
+
+**Hierarchie vlastností a vztahů se nevykresluje.** `rdfs:subPropertyOf` mezi dvěma vlastnostmi nebo dvěma vztahy by se muselo kreslit z řádku do řádku nebo ze spojnice do spojnice — ani jeden koncový bod není uzel. Nad rámec mechaniky je otevřenou byznys otázkou, co by tam uživatel měl vidět a dělat, takže diagram to ani nevykresluje, ani nenasazuje; samotný vztah zůstává plně podporován v běžném editoru pojmů. Viz `.planning/diagram-edge-model-REDESIGN.md`.
 
 ## PG entitní model
 
@@ -76,9 +84,9 @@ Tři entity ve dvou + jedné tabulkách, podle vzoru `CommentEntity` (FK na `ont
 
 **`diagram_nodes`** — každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro možnou budoucí rozšiřitelnost na NKD), pozice, `collapsed`, `parent_node_id` a `pending_edit_json` — **nullable**; je-li neprázdné, drží strukturální diff overlaye. `pending_edit_json` **koexistuje** s `concept_iri` (je to diff, ne náhrada). Ochrana `@PrePersist`/`@PreUpdate` a Postgres CHECK vynucují, že `concept_iri` je vždy přítomné.
 
-**`diagram_edges`** — koncové body (`source_node_id`/`target_node_id`, oba s indexem na FK a kaskádovým mazáním), `edge_kind` a nullable kotvy úchytů. Pouze koncové body + druh; **žádný obsah**.
+**`diagram_edges`** — `edge_key` (id projektované hrany, ke které tyto body lomu patří: IRI pojmu VZTAHu, nebo složené `edge|KIND|source|target` u hierarchického odkazu) a `segments_json`, unikátní na `(diagram_id, edge_key)`. **Pouze body lomu** — žádné koncové body, žádný druh, žádný obsah. Řádek, jehož hrana se už neprojektuje, při čtení nenajde shodu a je uklizen dalším Uložit; nikdo nemusí osiřelé řádky dohledávat.
 
-Model obsahu overlaye (`DiagramPendingEdit`) je **pouze strukturální**: `domain`, `range`, hierarchické pole podle typu (`broaderConcept` / `superProperty` / `superRelation`), `exactMatch` a značka `convertToHierarchy` pro op 6.
+Model obsahu overlaye (`DiagramPendingEdit`) je **pouze strukturální**: `domain`, `range`, `broaderConcept` (`subClassOf`, TRIDA), `exactMatch` a značka `convertToHierarchy` pro op 6. Záměrně vynechává **editaci labelu/názvu** — změna názvu přejmenuje IRI pojmu (přemístí všechny jeho trojice), což by osiřelo IRI odkaz diagramového uzlu. Editace labelu zůstává v běžném editoru pojmů, mimo diagram.
 
 ## Sémantika materializace
 

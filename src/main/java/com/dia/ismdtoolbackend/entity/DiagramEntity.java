@@ -110,20 +110,20 @@ public class DiagramEntity {
         this.nodes.add(node);
     }
 
-    /** Attach an edge to this diagram (both sides). Endpoints must already be nodes of this diagram. */
+    /** Attach an edge's waypoint row to this diagram (both sides). */
     public void addEdge(DiagramEdgeEntity edge) {
         edge.setDiagram(this);
         this.edges.add(edge);
     }
 
     /**
-     * Remove a node, every edge incident to it, and null the {@code parentNodeId} of any children grouped
-     * under it — one unit of work.
+     * Remove a node and null the {@code parentNodeId} of any children grouped under it — one unit of work.
+     *
+     * <p>Incident waypoint rows are deliberately left alone: an edge row records only the projected edge id
+     * it carries geometry for, so a row whose edge no longer projects finds no match on read and is dropped
+     * by the next Save, which full-replaces the set.
      */
     public void removeNode(DiagramNodeEntity node) {
-        this.edges.removeIf(e ->
-                e.getSourceNode() != null && e.getSourceNode().equals(node)
-                        || e.getTargetNode() != null && e.getTargetNode().equals(node));
         if (node.getId() != null) {
             for (DiagramNodeEntity child : this.nodes) {
                 if (node.getId().equals(child.getParentNodeId())) {

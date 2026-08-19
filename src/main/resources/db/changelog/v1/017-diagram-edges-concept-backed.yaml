@@ -1,0 +1,265 @@
+databaseChangeLog:
+  # Edges become concept-backed projections: a VZTAH is one edge keyed by its own concept IRI, not a node
+  # with a DOMAIN and a RANGE edge hanging off it. Endpoints are re-derived from rdfs:domain/rdfs:range on
+  # every read, so the persisted row keeps nothing but waypoints. See
+  # .planning/diagram-edge-model-REDESIGN.md and docs/DIAGRAM_LAYER.md.
+
+  # Every surviving row would carry an edge_kind the projector can no longer interpret and endpoints it now
+  # derives, so the old rows are deleted outright rather than converted. Waypoints are the only loss and
+  # they are re-drawable presentation state.
+  - changeSet:
+      id: 017-diagram-edges-truncate
+      author: richard.koubek
+      changes:
+        - delete:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+      # Irreversible by design: the dropped rows/columns held state the new model cannot reconstruct.
+      # An empty rollback is declared so a rollbackCount past 017 fails loudly instead of silently
+      # leaving a half-migrated table.
+      rollback: [ ]
+
+  # Endpoint FKs go: source/target are projections of RDF now, and a stored copy could disagree with them.
+  - changeSet:
+      id: 017-diagram-edges-drop-endpoint-fks
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_node_id
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            constraintName: fk_diagram_edges_source_node
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            constraintName: fk_diagram_edges_target_node
+        - dropIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_source_node_id
+        - dropIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_target_node_id
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_node_id
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: target_node_id
+      # Irreversible by design: the dropped rows/columns held state the new model cannot reconstruct.
+      # An empty rollback is declared so a rollbackCount past 017 fails loudly instead of silently
+      # leaving a half-migrated table.
+      rollback: [ ]
+
+  # Handles were always the endpoints' own IRIs — a duplicate of source/target, and stale the moment an
+  # endpoint is repointed. ReactFlow renders an edge from source/target alone.
+  - changeSet:
+      id: 017-diagram-edges-drop-handles
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_handle
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_handle
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: target_handle
+      # Irreversible by design: the dropped rows/columns held state the new model cannot reconstruct.
+      # An empty rollback is declared so a rollbackCount past 017 fails loudly instead of silently
+      # leaving a half-migrated table.
+      rollback: [ ]
+
+  # edge_kind is derived from the backing concept (VZTAH) or the predicate (SUBCLASS_OF / EXACT_MATCH).
+  - changeSet:
+      id: 017-diagram-edges-drop-edge-kind
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_kind
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_kind
+      # Irreversible by design: the dropped rows/columns held state the new model cannot reconstruct.
+      # An empty rollback is declared so a rollbackCount past 017 fails loudly instead of silently
+      # leaving a half-migrated table.
+      rollback: [ ]
+
+  # The edge's identity: the projected edge id it carries waypoints for — a VZTAH's concept IRI, or the
+  # composite edge|KIND|source|target of a hierarchy/equivalence link.
+  #
+  # TEXT on Postgres, not VARCHAR(n): a hierarchy key concatenates TWO full concept IRIs (each up to 1024),
+  # so it exceeds 2000 chars, and percent-encoded Czech IRIs reach that easily.
+  - changeSet:
+      id: 017-diagram-edges-add-edge-key
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: edge_key
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: edge_key
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                  remarks: Projected edge id this row carries waypoints for.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_key
+
+  # H2 (test-only) maps TEXT to CLOB and cannot index it. The length ceiling is a Postgres-index concern,
+  # and H2 schemas are always fresh test fixtures, so a bounded VARCHAR is sufficient there.
+  - changeSet:
+      id: 017-diagram-edges-add-edge-key-h2
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - dbms:
+                type: postgresql
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: edge_key
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: edge_key
+                  type: VARCHAR(2048)
+                  constraints:
+                    nullable: false
+                  remarks: Projected edge id this row carries waypoints for.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_key
+
+  # One waypoint row per edge per diagram; a second Save must update, never duplicate. Hashed: a btree
+  # index over the raw value would exceed Postgres's ~2704-byte per-row index limit for long IRI pairs.
+  - changeSet:
+      id: 017-diagram-edges-unique-edge-key
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              CREATE UNIQUE INDEX uq_diagram_edges_diagram_edge_key
+                  ON ismd_schema.diagram_edges (diagram_id, md5(edge_key));
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS ismd_schema.uq_diagram_edges_diagram_edge_key;
+
+  # H2 (test-only) cannot index an expression this way; a plain unique constraint is enough there, since
+  # the length problem is Postgres-index-specific and H2 schemas are always fresh.
+  - changeSet:
+      id: 017-diagram-edges-unique-edge-key-h2
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - dbms:
+                type: postgresql
+      changes:
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnNames: diagram_id, edge_key
+            constraintName: uq_diagram_edges_diagram_edge_key
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            constraintName: uq_diagram_edges_diagram_edge_key
+
+  # Overlay fields removed with SUB_PROPERTY/SUB_RELATION. Jackson would ignore the stale keys on read, but
+  # a node whose overlay held ONLY them would still count toward pendingChangeCount — an uncommitted change
+  # the user can neither see nor resolve. Strip them explicitly instead of relying on that tolerance.
+  #
+  # Only the dead keys are removed: an overlay may legitimately carry superProperty ALONGSIDE a domain
+  # change (DiagramChangeApplier applies both in one edit), and blanket-nulling would discard staged work
+  # the user can still materialize.
+  #
+  # Postgres-only: the jsonb surgery has no H2 equivalent, and H2 is only ever a fresh test schema with no
+  # legacy overlays to clean.
+  - changeSet:
+      id: 017-diagram-nodes-strip-removed-overlay-fields
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              UPDATE ismd_schema.diagram_nodes
+                 SET pending_edit_json = (pending_edit_json::jsonb - 'superProperty' - 'superRelation')::text
+               WHERE pending_edit_json IS NOT NULL
+                 AND jsonb_exists_any(pending_edit_json::jsonb,
+                                      array['superProperty', 'superRelation']);
+      # Irreversible by design: the dropped rows/columns held state the new model cannot reconstruct.
+      # An empty rollback is declared so a rollbackCount past 017 fails loudly instead of silently
+      # leaving a half-migrated table.
+      rollback: [ ]
+
+  # An overlay left holding nothing but its stale-base fingerprint is not a pending change; clear it so the
+  # node stops inflating pendingChangeCount.
+  - changeSet:
+      id: 017-diagram-nodes-clear-emptied-overlays
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              UPDATE ismd_schema.diagram_nodes
+                 SET pending_edit_json = NULL
+               WHERE pending_edit_json IS NOT NULL
+                 AND (pending_edit_json::jsonb - 'baseUpdatedAt') = '{}'::jsonb;
+      # Irreversible by design: the dropped rows/columns held state the new model cannot reconstruct.
+      # An empty rollback is declared so a rollbackCount past 017 fails loudly instead of silently
+      # leaving a half-migrated table.
+      rollback: [ ]

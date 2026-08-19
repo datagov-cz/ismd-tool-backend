@@ -56,7 +56,7 @@ Creating a concept and removing a node are immediate/local; **structural edits s
 | 6 | Convert a relationship into a hierarchy | add the hierarchy link on the target class, then delete the VZTAH | 2 calls — **one unit, all-or-nothing** |
 | 7 | Remove a property/relationship *from the canvas* | node-row removal only | none (not an RDF change) |
 
-**Hierarchy is type-specific.** "Broader" is three different predicates: a class uses `subClassOf` (`broaderConcept`), a property uses `subPropertyOf` (`superProperty`), a relationship uses `subPropertyOf` (`superRelation`). The overlay carries the field matching the node's concept type. "Equivalent" (op 3) means `skos:exactMatch`, an independent symmetric predicate — *not* a directed hierarchy and *not* a single "hierarchy type" toggle.
+**Hierarchy on the canvas is class-only.** "Broader" between classes is `subClassOf` (`broaderConcept`). The property and relationship equivalents (`subPropertyOf`) are **not part of the diagram** — see "Edges are projections" below for why. "Equivalent" (op 3) means `skos:exactMatch`, an independent symmetric predicate — *not* a directed hierarchy and *not* a single "hierarchy type" toggle.
 
 **The only RDF delete the diagram can cause is implicit** — op 6's VZTAH deletion, and only after its replacement hierarchy edge is successfully added. There is no free-standing "delete concept" affordance. Op 6 is offered only when nothing points its `domain`/`range` at the VZTAH (else deleting it would transitively cascade other concepts); otherwise the conversion surfaces a conflict.
 
@@ -64,9 +64,17 @@ Creating a concept and removing a node are immediate/local; **structural edits s
 
 ## Edges are projections, not content
 
-A relationship (VZTAH) is itself a concept — a node. Its `rdfs:domain`/`rdfs:range` are fields on that node, staged in that node's overlay. The `DOMAIN`/`RANGE` edges drawn from the VZTAH node to its endpoint classes are the *visual rendering* of those fields. A class property (VLASTNOST) is likewise a node, linked to its owning class by a `DOMAIN` edge from the property node to the class node.
+Every concept is drawn in the shape that matches what it *is*. A **class** (TRIDA) is a node. A **relationship** (VZTAH) is an *edge* between its `rdfs:domain` and `rdfs:range` classes — one edge, carrying its own concept identity, because that is precisely what a relationship means. A **property** (VLASTNOST) has only a domain (its range is a literal datatype, so there is no second concept to connect to), and is therefore a *row inside* the class that owns it.
 
-Consequently **dragging an edge is a node edit** (repointing a `RANGE` endpoint updates the VZTAH node's `range` overlay), and **drawing a new relationship line is creating a VZTAH concept** (a node operation). Edges never accumulate their own pending state; on read they are re-projected from `live ⊕ overlay`. The node overlay is the single source of truth for domain/range/hierarchy.
+Crucially, this is a **rendering** decision, not an ownership one. All three remain first-class concepts with their own IRIs, their own `diagram_nodes` row, and their own overlay. Identity is always the concept IRI, which is why `PATCH …/nodes/overlay` addresses a class, a relationship and a property identically — none of them needs to be a "node" to be staged.
+
+Consequently **dragging an edge endpoint is a concept edit** (repointing an arrow updates the VZTAH's `range` overlay; dragging a property row to another class updates the VLASTNOST's `domain`), and **drawing a new relationship line is creating a VZTAH concept**. Edges never accumulate their own pending state; on read they are re-projected from `live ⊕ overlay`. The concept overlay is the single source of truth for domain/range/hierarchy.
+
+**An edge persists nothing but its waypoints.** Existence, endpoints and kind are all derived, so `diagram_edges` stores only `(edge_key, segments_json)`. Storing endpoints would duplicate a projection and could silently contradict it — repoint a range and a saved endpoint still names the old class. That is the drift class this whole layer is built to prevent, so the columns do not exist.
+
+**Incomplete concepts live off-canvas.** A VZTAH missing an endpoint, or a domainless VLASTNOST, is simply not drawn — there is nothing to attach it to. This costs nothing, because placement *is* completion: such a concept reaches the canvas by being dragged in from the ontology detail, and the drop supplies the missing endpoint. The edge/row model therefore never has to represent a half-built concept, which is the one thing the older node-per-concept model could express and this one cannot.
+
+**Sub-property and sub-relation hierarchy is not rendered.** `rdfs:subPropertyOf` between two properties or two relationships would have to be drawn from a row to a row, or from a line to a line — neither endpoint is a node. Beyond the mechanics, what the user should see or do there is an open business question, so the diagram neither renders nor stages it; the relation stays fully supported in the normal concept editor. See `.planning/diagram-edge-model-REDESIGN.md`.
 
 ## The PG entity model
 
@@ -76,9 +84,9 @@ Three entities in two-plus-one tables, mirroring the `CommentEntity` pattern (FK
 
 **`diagram_nodes`** — every row references a materialized concept: `concept_iri` **NOT NULL**, `backing` (single-valued `ISMD_CONCEPT`, kept for forward-compat), position, `collapsed`, `parent_node_id`, and `pending_edit_json` — **nullable**; non-null holds the structural overlay diff. `pending_edit_json` **coexists with** `concept_iri` (it is a diff, not a substitute). An entity `@PrePersist`/`@PreUpdate` guard and a Postgres CHECK enforce `concept_iri` always present.
 
-**`diagram_edges`** — endpoints (`source_node_id`/`target_node_id`, both FK-indexed and cascade-deleting), `edge_kind`, and nullable handle anchors. Endpoints + kind only; **no content**.
+**`diagram_edges`** — `edge_key` (the projected edge id these waypoints belong to: a VZTAH's concept IRI, or the composite `edge|KIND|source|target` of a hierarchy link) and `segments_json`, unique per `(diagram_id, edge_key)`. **Waypoints only** — no endpoints, no kind, no content. A row whose edge no longer projects finds no match on read and is cleared by the next Save; nothing has to hunt down orphans.
 
-The overlay content model (`DiagramPendingEdit`) is **structural-only**: `domain`, `range`, the type-resolved hierarchy field (`broaderConcept` / `superProperty` / `superRelation`), `exactMatch`, and a `convertToHierarchy` marker for op 6. It deliberately excludes **label/name editing** — a name change renames the concept's IRI (relocating all its triples), which would strand the diagram node's IRI reference. Label editing stays in the normal concept editor, outside the diagram.
+The overlay content model (`DiagramPendingEdit`) is **structural-only**: `domain`, `range`, `broaderConcept` (`subClassOf`, TRIDA), `exactMatch`, and a `convertToHierarchy` marker for op 6. It deliberately excludes **label/name editing** — a name change renames the concept's IRI (relocating all its triples), which would strand the diagram node's IRI reference. Label editing stays in the normal concept editor, outside the diagram.
 
 ## Materialize semantics
 

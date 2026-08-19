@@ -117,26 +117,26 @@ class DiagramControllerTest {
      */
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_nodeIdWithSlashesTravelsInBody() throws Exception {
-        String nodeId = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
-        when(diagramService.stageOverlay(eq("pracovni-pomer"), eq(nodeId), any()))
+    void stageOverlay_conceptIriWithSlashesTravelsInBody() throws Exception {
+        String conceptIri = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
+        when(diagramService.stageOverlay(eq("pracovni-pomer"), eq(conceptIri), any()))
                 .thenReturn(new DiagramDto.Node("n1", "relationNode",
                         new PositionDto(0.0, 0.0), null, false, null));
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"nodeId": "%s",
+                                {"conceptIri": "%s",
                                  "domain": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/parcela",
                                  "range": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova"}
-                                """.formatted(nodeId)))
+                                """.formatted(conceptIri)))
                 .andExpect(status().isOk());
     }
 
-    /** {@code nodeId} is mandatory — addressing, not content. */
+    /** {@code conceptIri} is mandatory — addressing, not content. */
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_rejectsMissingNodeId() throws Exception {
+    void stageOverlay_rejectsMissingConceptIri() throws Exception {
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"domain\": \"https://x/A\"}"))
@@ -149,7 +149,7 @@ class DiagramControllerTest {
     // NOT appear per-node in the fat read (where the version belongs to the enclosing diagram).
 
     private static final String OVERLAY_BODY = """
-            {"nodeId": "iri:https://x/pojem/a", "broaderConcept": ["https://x/pojem/b"]}
+            {"conceptIri": "iri:https://x/pojem/a", "broaderConcept": ["https://x/pojem/b"]}
             """;
 
     /**
@@ -207,23 +207,39 @@ class DiagramControllerTest {
     }
 
     /**
-     * {@code version} and {@code edges} are mandatory, so a generated client declares them and a missing one
+     * {@code version} and {@code nodes} are mandatory, so a generated client declares them and a missing one
      * is a 400 naming the field — not a save that silently succeeds now and 409s as a phantom version
-     * conflict on the next write, nor one that wipes the persisted edge rows.
+     * conflict on the next write, nor one that wipes the canvas.
      */
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_missingRequiredField_returns400() throws Exception {
         String noVersion = "{\"nodes\": [], \"edges\": []}";
-        String noEdges = "{\"version\": 3, \"nodes\": []}";
+        String noNodes = "{\"version\": 3, \"edges\": []}";
 
-        for (String body : List.of(noVersion, noEdges)) {
+        for (String body : List.of(noVersion, noNodes)) {
             mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());
         }
         verify(diagramService, never()).saveLayout(any(), any());
+    }
+
+    /**
+     * {@code edges} is optional: a freshly auto-laid-out canvas has positioned every node but has no
+     * hand-routed edge to report, and must not be forced to send an empty array to save its layout.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void saveLayout_omittedEdges_isAccepted() throws Exception {
+        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), 0));
+
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\": 3, \"nodes\": []}"))
+                .andExpect(status().isOk());
     }
 
     /**
@@ -234,10 +250,10 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void stageOverlay_convertToHierarchyMissingEndpoint_returns400() throws Exception {
         String noBroader = """
-                {"nodeId":"https://x/pojem/rel","convertToHierarchy":{"addBroaderOn":"https://x/pojem/a"}}
+                {"conceptIri":"https://x/pojem/rel","convertToHierarchy":{"addBroaderOn":"https://x/pojem/a"}}
                 """;
         String noTarget = """
-                {"nodeId":"https://x/pojem/rel","convertToHierarchy":{"broader":"https://x/pojem/b"}}
+                {"conceptIri":"https://x/pojem/rel","convertToHierarchy":{"broader":"https://x/pojem/b"}}
                 """;
 
         for (String body : List.of(noBroader, noTarget)) {

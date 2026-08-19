@@ -5,7 +5,19 @@
 > [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md). Architektura a zdůvodnění:
 > [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md).
 
-Kontrakt na drátě pro diagramovou funkci: **tence při zápisu, tučně při čtení.** Backend spojí řádky rozvržení s živým obsahem pojmů a aplikuje overlay každého uzlu, takže FE dostane payload, který lze předat téměř přímo do ReactFlow. Tento dokument je integrační referencí pro FE; proč je model takto tvarován, viz [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md).
+Kontrakt na drátě pro diagramovou funkci: **tence při zápisu, tučně při čtení.** Backend spojí řádky rozvržení s živým obsahem pojmů a aplikuje overlay každého pojmu, takže FE dostane payload, který lze předat téměř přímo do ReactFlow. Tento dokument je integrační referencí pro FE; proč je model takto tvarován, viz [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md).
+
+**Co je uzel, co hrana a co řádek.** Plátno vykresluje každý typ pojmu ve tvaru, který odpovídá tomu, čím *je*:
+
+| Typ pojmu | Vykreslen jako | Identita na drátě |
+|---|---|---|
+| `TRIDA` | **uzel** (`classNode`) | `nodes[].id` = `iri:<úplné-iri>` |
+| `VZTAH` | **hrana** mezi jeho dvěma třídami | `edges[].id` = vlastní **IRI pojmu** daného vztahu |
+| `VLASTNOST` | **řádek uvnitř** uzlu své doménové třídy | `nodes[].data.properties[].iri` |
+
+Vztah je jedna hrana, nikoli uzel se spojnicí ke každému koncovému bodu — spojuje třídu v `rdfs:domain` s třídou v `rdfs:range`, což je přesně to, co daný pojem znamená. Vlastnost má jen doménu (jejím oborem hodnot je literálový datový typ), takže není druhý pojem, ke kterému by se kreslila; je řádkem ve třídě, která ji vlastní.
+
+**Nedokončené pojmy na plátně nejsou.** VZTAH bez domény nebo oboru hodnot a VLASTNOST bez domény se prostě nevykreslí — není k čemu je připojit. Umísťují se přetažením z detailu slovníku, což je právě ta akce, která chybějící koncový bod doplní. Proto čtecí model nikdy nepotřebuje stav „visící hrana" ani „volně plovoucí vlastnost".
 
 ## REST rozhraní
 
@@ -15,8 +27,8 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 |---|---|---|
 | `GET /all` | Odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. Libovolný přihlášený uživatel. | → `List<DiagramSummaryDto>` |
 | `GET /{ontologySlug}/detail` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Slovník, který zatím diagram nemá, se načte jako prázdné plátno — **čtení nic nevytváří**; řádek vznikne až prvním zápisem. | → `DiagramDto` (tučný, připravený k vykreslení) |
-| `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, hrany-jako-projekce) *a* overlaye uzlů. Idempotentní úplná náhrada — toto volání **je** členstvím na plátně: přítomný uzel je přidán (dosud neznámé IRI se v odpovědi hydratuje), vynechaný uzel je z plátna odebrán. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
-| `PATCH /{ontologySlug}/nodes/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho uzlu (cílová pole) pro uzel určený polem `nodeId` **v těle požadavku**, nebo ji **zahodit** odesláním samotného `nodeId` (všechna overlay pole null → návrat k živému obsahu). Nematerializuje se. | `NodeOverlayDto` → uzel |
+| `PUT /{ontologySlug}/layout` | **Uložit diagram.** Uložit rozvržení (pozice, viewport, body lomu hran). Idempotentní úplná náhrada — toto volání **je** členstvím na plátně: přítomný uzel je přidán (dosud neznámé IRI se v odpovědi hydratuje), vynechaný uzel je z plátna odebrán. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
+| `PATCH /{ontologySlug}/nodes/overlay` | Nasadit/aktualizovat strukturální úpravu jednoho pojmu (cílová pole) pro pojem určený polem `conceptIri` **v těle požadavku**, nebo ji **zahodit** odesláním samotného `conceptIri` (všechna overlay pole null → návrat k živému obsahu). Funguje stejně pro třídu, vztah i vlastnost — všechny tři se adresují přes IRI. Nematerializuje se. | `NodeOverlayDto` → uzel |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` + obnovený `DiagramDto` |
 
 **Členství na plátně jede na uložení rozvržení.** Není žádný vyhrazený endpoint pro přidání/odebrání uzlu. Protože `PUT …/layout` je idempotentní úplná náhrada, **přidat** = uzel zahrnout (holé `{id, position}` pro pojem dosud ne na plátně; odpověď `DiagramDto` hydratuje jeho label/typ/slug z živého RDF) a **odebrat z plátna** = vynechat. Pojem není v žádném případě dotčen — jediné smazání v RDF, které diagram způsobí, je implicitní, uvnitř op 6, řešené `/materialize`.
@@ -69,9 +81,9 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
   "version": 7,                   // vraťte v dalším PUT …/layout (optimistický zámek); null = řádek diagramu zatím neexistuje
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
 
+  // uzly jsou POUZE třídy — vztah je hrana, vlastnost je řádek níže
   "nodes": [
     {
-      // živý pojem, žádné rozpracované úpravy — obsah z RDF, pozice z PG
       "id": "iri:https://…/pojem/zamestnanec",
       "type": "classNode",
       "position": { "x": 240, "y": 80 },
@@ -83,40 +95,64 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
         "slug": "pracovni-pomer-zamestnanec",       // FE odkazuje na /detail
         "label": { "cs": "Zaměstnanec", "en": "Employee" },
         "stale": false,                              // true ⇒ odkazovaný pojem byl smazán
-        "hasPendingEdits": false
+        "hasPendingEdits": false,
+        // VLASTNOSTi dané třídy, vykreslené jako řádky uvnitř uzlu. Vždy přítomné (prázdné pole,
+        // nikdy null) a seřazené podle labelu, aby se řádky mezi čteními nepřeskupovaly.
+        "properties": [
+          {
+            "iri": "https://…/pojem/datum-narozeni",
+            "slug": "pracovni-pomer-datum-narozeni",
+            "label": { "cs": "datum narození" },
+            "rangeResolved": { /* datový typ — pravý sloupec řádku */ },
+            "stale": false,
+            "hasPendingEdits": true,
+            "pendingEdit": { "domain": "https://…/pojem/osoba" }   // nasazený přesun k jiné třídě
+          }
+        ]
       }
     },
     {
-      // živý pojem VZTAH s nasazenou strukturální úpravou — obsah je živý ⊕ overlay
-      "id": "iri:https://…/pojem/je-zamestnan-u",
-      "type": "relationNode",
-      "position": { "x": 520, "y": 210 },
+      "id": "iri:https://…/pojem/organizace",
+      "type": "classNode",
+      "position": { "x": 720, "y": 80 },
       "data": {
-        "conceptType": "VZTAH",
-        "iri": "https://…/pojem/je-zamestnan-u",
-        "label": { "cs": "je zaměstnán u" },         // label je pouze živý; NELZE editovat přes overlay
-        "stale": false,
-        "hasPendingEdits": true,
-        "pendingEdit": {                             // strukturální diff, aby FE mohl zobrazit odznak/diff
-          "range": "iri:https://…/pojem/organizace"  // přesměrovaný obor hodnot, dosud ne v RDF
-        }
+        "conceptType": "TRIDA", "iri": "https://…/pojem/organizace",
+        "label": { "cs": "Organizace" }, "stale": false, "hasPendingEdits": false,
+        "properties": []
       }
     }
   ],
 
   "edges": [
     {
-      // projekce z (živý ⊕ overlay) oboru hodnot uzlu VZTAHu — odráží nasazené přesměrování
-      // id je deterministické: edge|<edgeKind>|<sourceIri>|<targetIri>
-      "id": "edge|RANGE|https://…/pojem/je-zamestnan-u|https://…/pojem/organizace",
-      "source": "iri:https://…/pojem/je-zamestnan-u",
-      "target": "iri:https://…/pojem/organizace",
+      // VZTAH: JEDNA hrana mezi jeho dvěma třídami, nesoucí vlastní identitu pojmu.
+      // id JE IRI pojmu daného vztahu — je unikátní na hranu a stabilní napříč načteními.
+      "id": "https://…/pojem/je-zamestnan-u",
+      "source": "iri:https://…/pojem/zamestnanec",   // jeho rdfs:domain  (živý ⊕ overlay)
+      "target": "iri:https://…/pojem/organizace",    // jeho rdfs:range   (živý ⊕ overlay)
       "type": "relationEdge",
-      // vrácené z posledního uložení; null, pokud nikdy neuloženo nebo byl koncový bod přesměrován
-      "sourceHandle": "s-right", "targetHandle": "t-left",
       "segments": [{ "x": 120, "y": 40 }],   // body lomu čistě pro FE; vynechané při výchozím vedení
-      "markerEnd": { "type": "arrowclosed" },
-      "data": { "edgeKind": "RANGE", "pending": true }   // pending ⇒ koncový bod pochází z overlaye
+      "data": {
+        "edgeKind": "VZTAH",
+        "pending": true,                     // koncový bod pochází z nematerializovaného overlaye
+        "conceptType": "VZTAH",
+        "iri": "https://…/pojem/je-zamestnan-u",
+        "slug": "pracovni-pomer-je-zamestnan-u",
+        "label": { "cs": "je zaměstnán u" }, // label je pouze živý; NELZE editovat přes overlay
+        "stale": false,
+        "hasPendingEdits": true,
+        "pendingEdit": { "range": "https://…/pojem/organizace" }   // přesměrováno, dosud ne v RDF
+      }
+    },
+    {
+      // Holá RDF trojice — žádný pojem za ní, takže `data` nenese iri ani label.
+      // Hrana s nenulovým data.iri je podložená pojmem (vybratelná, nasaditelná, prolinkovatelná);
+      // hrana bez něj je prostý hierarchický/ekvivalenční odkaz. To je rozlišovač pro FE.
+      "id": "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba",
+      "source": "iri:https://…/pojem/zamestnanec",
+      "target": "iri:https://…/pojem/osoba",
+      "type": "hierarchyEdge",
+      "data": { "edgeKind": "SUBCLASS_OF", "pending": false }
     }
   ],
 
@@ -126,11 +162,15 @@ Backend již spojil řádky rozvržení s živým obsahem pojmů a aplikoval ove
 
 ## Zápis — Uložit rozvržení: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
 
-Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a pošlete jen to, co se ukládá. Backend zde ignoruje obsah `data` uzlů — toto volání je pouze rozvržení; strukturální úpravy jdou přes overlay endpoint. Hrany jsou projekce; poslání aktuální sady uloží jejich úchyty/pozice, ale směrodatnou hodnotou koncového bodu pro nasazené přesměrování je vždy overlay uzlu (backend při čtení znovu projektuje).
+Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a pošlete jen to, co se ukládá. Backend zde ignoruje obsah `data` uzlů — toto volání je pouze rozvržení; strukturální úpravy jdou přes overlay endpoint.
 
-**Hrany se ukládají úplnou náhradou — pošlete zpět každou hranu, u které chcete zachovat prezentační stav.** Uložení nahradí celou uloženou sadu hran, takže hrana vynechaná z `edges` přijde o uložené `sourceHandle`/`targetHandle`/`segments`. Samotná hrana se stále vykreslí (znovu se projektuje z RDF), ale tato pole se vrátí null. Přesměrování koncového bodu je rovněž záměrně zahodí: projektované id se s koncovým bodem mění a geometrie nakreslená pro původní cíl by novému neodpovídala.
+**Hrana ukládá přesně dvě věci: `id` a `segments`.** Její existence, koncové body i druh se při každém čtení znovu odvozují z `živý ⊕ overlay`, takže `source`, `target` ani `edgeKind` se **při zápisu nepřijímají** — jejich odeslání je ignorováno. Je to záměr: uložený koncový bod by mohl tiše odporovat projekci, kterou duplikuje, a přesně tomuto rozcházení má diagramová vrstva bránit. Chcete-li změnit, kam vztah míří, nasaďte `{domain, range}` v jeho overlayi; hrana se přizpůsobí.
 
-`segments` je volitelné — pro hranu s výchozím vedením je vynechte nebo pošlete `[]`; obojí se uloží jako „bez bodů lomu". Body lomu jsou čistě prezentační: určují, jak se spojnice vykreslí, a nenesou žádný význam pro propojené pojmy, takže se z RDF neodvozují ani se proti němu nevalidují.
+**Body lomu se ukládají úplnou náhradou — pošlete zpět každou hranu, u které chcete zachovat vedení.** Uložení nahradí celou uloženou sadu bodů lomu, takže hrana vynechaná z `edges` se vrátí k výchozímu vedení. Samotná hrana se stále vykreslí (znovu se projektuje z RDF). Přesměrování koncového bodu body lomu rovněž záměrně zahodí: geometrie nakreslená pro původní cíl by novému neodpovídala.
+
+**Samotné `edges` je volitelné** — `null` i `[]` znamenají „nic ručně vedeného", což je přesně stav čerstvě automaticky rozvrženého plátna: ReactFlow rozmístil všechny uzly a uživatel zatím žádný bod lomu netáhl. Povinné jsou pouze `version` a `nodes`.
+
+`segments` je volitelné také — pro hranu s výchozím vedením je vynechte nebo pošlete `[]`; obojí se uloží jako „bez bodů lomu" a ani v jednom případě se řádek vůbec nezapíše. Body lomu jsou čistě prezentační: určují, jak se spojnice vykreslí, a nenesou žádný význam pro propojené pojmy, takže se z RDF neodvozují ani se proti němu nevalidují.
 
 **Toto volání je směrodatné pro členství na plátně.** Pole `nodes[]` je úplná sada — přítomný uzel je zachován (nebo **přidán**, je-li jeho IRI na plátně nové; odpověď `DiagramDto` hydratuje jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen). Přidání uzlu vyžaduje jen `{id, position}`; zbytek backend spojí z živého RDF.
 
@@ -161,35 +201,37 @@ Je to jediný stav, kdy odpověď s `success: false` přesto znamená, že zápi
 {
   "version": 7,
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
+  // pouze třídy; vztah ani vlastnost nikdy nejsou uzlem
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
       "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false },
-    { "id": "iri:https://…/pojem/je-zamestnan-u",
-      "position": { "x": 520, "y": 210 } }
+    // parentId/collapsed jsou volitelné — vynechané nebo null znamená bez rodiče / nesbalené
+    { "id": "iri:https://…/pojem/organizace",
+      "position": { "x": 720, "y": 80 } }
   ],
+  // pouze body lomu — vraťte id, které jste dostali při čtení; koncové body se odvozují, neposílají
   "edges": [
-    { "id": "e-201", "source": "iri:https://…/pojem/je-zamestnan-u",
-      "target": "iri:https://…/pojem/organizace", "edgeKind": "RANGE" },
-    // vlastnost třídy je hrana DOMAIN z uzlu vlastnosti k její třídě
-    { "id": "e-202", "source": "iri:https://…/pojem/datum-narozeni",
-      "target": "iri:https://…/pojem/zamestnanec", "edgeKind": "DOMAIN" }
+    { "id": "https://…/pojem/je-zamestnan-u",              // VZTAH: jeho IRI pojmu
+      "segments": [{ "x": 120, "y": 40 }] },
+    { "id": "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba",
+      "segments": [] }                                     // [] nebo vynechané = výchozí vedení
   ]
 }
 ```
 
-`edgeKind` ∈ `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH`.
+`edgeKind` (pouze na straně čtení) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
+
+`DOMAIN` a `RANGE` jsou pryč — vztah je jedna hrana mezi svými dvěma třídami, ne uzel se spojnicí ke každé z nich. `SUB_PROPERTY` a `SUB_RELATION` (`rdfs:subPropertyOf` mezi dvěma vlastnostmi nebo dvěma vztahy) se **na plátně nevykreslují**: ani jeden koncový bod není uzel, takže odkaz nemá k čemu se připojit, a byznys sémantika je do zadání požadavku nedefinovaná. Samotného vztahu se to netýká — v běžném editoru pojmů zůstává plně podporován.
 
 ## Zápis — nasadit strukturální úpravu: `PATCH /api/diagram/{ontologySlug}/nodes/overlay` · `NodeOverlayDto`
 
-**Cílový uzel se určuje polem `nodeId` v těle požadavku, nikoli v cestě.** Id uzlu má tvar `iri:<plné-iri>` a IRI pojmu obsahuje lomítka, která v segmentu cesty neprojdou — procentuálně zakódovaná je Tomcat odmítne (`400 Invalid URI: [The encoded slash character is not allowed]`), nezakódovaná vytvoří segmenty navíc, které neodpovídají žádnému mapování. `nodeId` je povinné (`@NotBlank`).
+**Cíl se určuje polem `conceptIri` v těle požadavku, nikoli v cestě.** Adresuje *pojem*, nikoli uzel plátna — VZTAH se vykresluje jako hrana a VLASTNOST jako řádek uvnitř své třídy, a oba se nasazují tímto stejným polem podle vlastního IRI. Hodnotou je plné IRI, volitelně s prefixem `iri:`. Cestuje v těle, protože IRI pojmu obsahuje lomítka, která v segmentu cesty neprojdou — procentuálně zakódovaná je Tomcat odmítne (`400 Invalid URI: [The encoded slash character is not allowed]`), nezakódovaná vytvoří segmenty navíc, které neodpovídají žádnému mapování. `conceptIri` je povinné (`@NotBlank`).
 
 Jen změněná strukturální pole. Uloženo do `pending_edit_json`; do RDF neposláno až do Převzít. Overlay je **pouze strukturální** — žádný `label`/`name`; editace labelu se dělá běžným editorem pojmů, ne diagramem (změna labelu přejmenuje IRI pojmu).
 
-**Zahození = tělo obsahující pouze `nodeId`.** `PATCH` s `{"nodeId": "iri:…"}` (všechna overlay pole null) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. `nodeId` je adresace, nikoli obsah, takže se nikdy nezapočítává do prázdnosti. Jakýkoli payload nesoucí overlay pole nahradí nasazený diff. **Explicitně prázdný seznam *není* zahození — znamená „vymaž tento predikát"**: např. `{ "nodeId": "iri:…", "broaderConcept": [] }` nasadí „odeber všechny nadtřídy" (A-strana otočení op 2 zahazující svou poslední nadtřídu) a materializuje se jako vymazání `subClassOf`.
+**Zahození = tělo obsahující pouze `conceptIri`.** `PATCH` s `{"conceptIri": "iri:…"}` (všechna overlay pole null) vymaže overlay uzlu a vrátí jej k živému obsahu — není žádný samostatný `DELETE …/overlay`. `conceptIri` je adresace, nikoli obsah, takže se nikdy nezapočítává do prázdnosti. Jakýkoli payload nesoucí overlay pole nahradí nasazený diff. **Explicitně prázdný seznam *není* zahození — znamená „vymaž tento predikát"**: např. `{ "conceptIri": "iri:…", "broaderConcept": [] }` nasadí „odeber všechny nadtřídy" (A-strana otočení op 2 zahazující svou poslední nadtřídu) a materializuje se jako vymazání `subClassOf`.
 
-Hierarchie je závislá na typu — pošlete pole odpovídající typu pojmu uzlu:
-
-Každé tělo níže nese také `"nodeId": "iri:…"` určující nasazovaný uzel (pro stručnost vynecháno):
+Každé tělo níže nese také `"conceptIri": "iri:…"` určující nasazovaný pojem (pro stručnost vynecháno). **Tažení konce hrany je úpravou pojmu** — přesměrování šipky vztahu nasadí `range` na VZTAHu a přetažení řádku vlastnosti do jiné třídy nasadí `domain` na VLASTNOSTI:
 
 ```jsonc
 // op 1 (přehození směru, VZTAH):          { "domain": "iri:…/A", "range": "iri:…/B" }
@@ -197,7 +239,7 @@ Každé tělo níže nese také `"nodeId": "iri:…"` určující nasazovaný uz
 // op 3 (podtřída → ekvivalent, TRIDA):     { "broaderConcept": [], "exactMatch": ["iri:…/B"] }
 // op 2 (otočení): nasazeno na OBA uzly —   A: { "broaderConcept": [ …bez B ] }
 //                                          B: { "broaderConcept": [ …, "iri:…/A" ] }
-// op 6 (vztah → hierarchie, uzel VZTAHu):  { "convertToHierarchy": { "addBroaderOn": "iri:…/A", "broader": "iri:…/B" } }
+// op 6 (vztah → hierarchie, na VZTAHu):    { "convertToHierarchy": { "addBroaderOn": "iri:…/A", "broader": "iri:…/B" } }
 ```
 
 Referenční pole `DiagramPendingEdit`:
@@ -207,17 +249,17 @@ Referenční pole `DiagramPendingEdit`:
 | `domain` | VZTAH, VLASTNOST | `rdfs:domain` (IRI) |
 | `range` | VZTAH | `rdfs:range` (IRI) |
 | `broaderConcept` | TRIDA | seznam `subClassOf` (IRI) |
-| `superProperty` | VLASTNOST | seznam `subPropertyOf` (IRI) |
-| `superRelation` | VZTAH | seznam `subPropertyOf` (IRI) |
 | `exactMatch` | libovolné | seznam `skos:exactMatch` (IRI) — „ekvivalent" v op 3 |
 | `convertToHierarchy` | VZTAH | značka op 6: `{ addBroaderOn, broader }` — přidat broader na třídu, poté smazat tento VZTAH |
 
-**Odpověď — jediný nasazený uzel, nesoucí novou `version`.** PATCH vrací pouze dotčený uzel (nikoli celý diagram), orazítkovaný verzí diagramu *po* tomto zápisu:
+`superProperty` a `superRelation` byly **odstraněny** spolu s hranami `SUB_PROPERTY`/`SUB_RELATION`: diagram už nemůže nasadit změnu nadřazené vlastnosti/vztahu, protože ji neumí uživateli vykreslit, aby ji viděl nebo vrátil zpět. Použijte běžný editor pojmů.
+
+**Odpověď — jediný nasazený pojem, nesoucí novou `version`.** PATCH vrací pouze řádek dotčeného pojmu (nikoli celý diagram), orazítkovaný verzí diagramu *po* tomto zápisu. Je to potvrzovací payload v obecném tvaru uzlu — VZTAH se zde vrátí, přestože se vykresluje jako hrana:
 
 ```jsonc
 {
   "id": "iri:https://…/pojem/je-zamestnan-u",
-  "type": "relationNode",
+  "type": "relationNode",         // tvar syrového řádku; plátno tento pojem stále kreslí jako HRANU
   "position": { "x": 520, "y": 210 },
   "parentId": null,
   "collapsed": false,
@@ -227,7 +269,9 @@ Referenční pole `DiagramPendingEdit`:
 }
 ```
 
-`version` se objevuje **pouze** v této úsporné odpovědi, kde není nadřazené `DiagramDto`, které by ji neslo. V poli `nodes[]` z `GET …/detail` je vynechána: verze patří diagramu, nikoli jednotlivému uzlu, a její opakování u každého uzlu by naznačovalo zámek na úrovni uzlu, který neexistuje. Zahození overlaye (tělo pouze s `nodeId`) je také úspěšný PATCH, takže rovněž posouvá verzi a vrací ji stejným způsobem.
+**`data.properties` je zde vždy prázdné**, i pro třídu. Jeho sestavení vyžaduje celý graf slovníku, což by zrušilo zúžené čtení jediného pojmu, kvůli jehož levnosti tato úsporná odpověď existuje — a nasazení mění overlay jednoho pojmu, nikoli seznam vlastností nějaké třídy. Ponechte si řádky z posledního `GET …/detail`; znovu načítejte jen tehdy, když jste nasadili vlastní `domain` nějaké vlastnosti, což je jediný případ, kdy se řádek přesouvá mezi třídami.
+
+`version` se objevuje **pouze** v této úsporné odpovědi, kde není nadřazené `DiagramDto`, které by ji neslo. V poli `nodes[]` z `GET …/detail` je vynechána: verze patří diagramu, nikoli jednotlivému uzlu, a její opakování u každého uzlu by naznačovalo zámek na úrovni uzlu, který neexistuje. Zahození overlaye (tělo pouze s `conceptIri`) je také úspěšný PATCH, takže rovněž posouvá verzi a vrací ji stejným způsobem.
 
 ## Materializace — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
 

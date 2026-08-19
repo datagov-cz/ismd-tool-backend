@@ -268,7 +268,7 @@
 
 ### 7. `diagram_edges`
 
-**Purpose**: Diagram-owned edges. In the current model edges are **projections** computed from live concept RDF (⊕ overlay) on read, so this table stays empty in normal operation; it exists for edges a diagram would own outright.
+**Purpose**: Edge **waypoints** — the FE-only routing geometry of a diagram edge, and nothing else. An edge's existence, endpoints and kind are **projections** recomputed from live concept RDF (⊕ overlay) on every read, so they are deliberately not stored: a persisted endpoint would duplicate a projection and could silently contradict it. A row exists only for an edge the user has actually routed by hand.
 
 **Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramEdgeEntity`
 
@@ -276,15 +276,14 @@
 |--------|------|-------------|-------------|
 | `id` | BIGINT | PK, AUTO_INCREMENT | Unique identifier |
 | `diagram_id` | BIGINT | NOT NULL, FK → `diagrams(id)` ON DELETE CASCADE | Owning diagram |
-| `source_node_id` | BIGINT | NOT NULL, FK → `diagram_nodes(id)` ON DELETE CASCADE | Edge source |
-| `target_node_id` | BIGINT | NOT NULL, FK → `diagram_nodes(id)` ON DELETE CASCADE | Edge target |
-| `edge_kind` | VARCHAR(50) | NOT NULL | `DOMAIN` · `RANGE` · `SUBCLASS_OF` · `SUB_PROPERTY` · `SUB_RELATION` · `EXACT_MATCH` |
-| `source_handle` | VARCHAR(255) | | ReactFlow source handle |
-| `target_handle` | VARCHAR(255) | | ReactFlow target handle |
+| `edge_key` | VARCHAR(1024) | NOT NULL, UNIQUE with `diagram_id` | Projected edge id these waypoints belong to: a VZTAH's concept IRI, or `edge\|KIND\|source\|target` for a hierarchy/equivalence link |
+| `segments_json` | TEXT | | Serialized waypoint list; null when the edge uses default routing |
 
 **Indexes**:
 - Primary key on `id`
-- `idx_diagram_edges_diagram_id`, `idx_diagram_edges_source_node_id`, `idx_diagram_edges_target_node_id`
+- `idx_diagram_edges_diagram_id`, `uq_diagram_edges_diagram_edge_key` (unique)
+
+**Orphan rows are harmless by design.** Deleting a node does not cascade to waypoints — there are no endpoint FKs to match on. A row whose edge no longer projects simply finds no match on read and is cleared by the next Save, which full-replaces the set.
 
 **Repository**: `DiagramEdgeRepository`
 

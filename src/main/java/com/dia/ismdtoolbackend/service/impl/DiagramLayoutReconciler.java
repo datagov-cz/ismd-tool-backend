@@ -14,8 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The Save-time full-replace: the incoming layout is authoritative for canvas membership. Splits into two
@@ -58,8 +60,13 @@ public class DiagramLayoutReconciler {
             incoming.put(iri, node);
         }
 
+        // A row carrying a staged overlay survives an omission from nodes[]. Relationships and properties
+        // are never sent as nodes (they render as edges and rows), so reaping on absence alone would delete
+        // the row the overlay lives on — silently discarding the user's staged change and the work item
+        // Převzít would have applied. Discarding an overlay is an explicit PATCH, never a side effect.
         List<DiagramNodeEntity> toRemove = diagram.getNodes().stream()
                 .filter(n -> !incoming.containsKey(n.getConceptIri()))
+                .filter(n -> n.getPendingEdit() == null)
                 .toList();
         toRemove.forEach(diagram::removeNode);
         return incoming;
@@ -127,31 +134,41 @@ public class DiagramLayoutReconciler {
         return parent != null ? parent.getId() : null;
     }
 
-    /** Full-replace the persisted projection rows; read always re-projects. */
+    /**
+     * Full-replace the persisted waypoint rows; read always re-projects the edges themselves. An edge
+     * carrying no waypoints stores nothing — there is nothing to remember about default routing.
+     *
+     * <p>Reconciled <em>in place</em>, never cleared-and-reinserted: with {@code orphanRemoval} Hibernate
+     * emits the INSERT before the DELETE in one flush, so re-saving a still-routed edge would collide with
+     * the {@code (diagram_id, edge_key)} unique constraint — a 500 on the second save of any canvas that
+     * has ever had a waypoint drawn. Matching rows are updated, absent ones removed.
+     */
     private void reconcileEdges(DiagramEntity diagram, DiagramLayoutDto layout) {
-        diagram.getEdges().clear();
-        if (layout.edges() == null) {
-            return;
+        Map<String, DiagramEdgeEntity> existing = new HashMap<>();
+        for (DiagramEdgeEntity e : diagram.getEdges()) {
+            existing.put(e.getEdgeKey(), e);
         }
-        Map<String, DiagramNodeEntity> byIri = new HashMap<>();
-        for (DiagramNodeEntity n : diagram.getNodes()) {
-            byIri.put(n.getConceptIri(), n);
-        }
-        for (DiagramLayoutDto.Edge in : layout.edges()) {
-            DiagramNodeEntity source = byIri.get(mapper.conceptIriFromNodeId(in.source()));
-            DiagramNodeEntity target = byIri.get(mapper.conceptIriFromNodeId(in.target()));
-            if (source == null || target == null) {
-                log.warn("Dropping diagram edge {} with an endpoint not on the canvas", in.id());
-                continue;
+
+        Set<String> incoming = new HashSet<>();
+        if (layout.edges() != null) {
+            for (DiagramLayoutDto.Edge in : layout.edges()) {
+                if (in.segments() == null || in.segments().isEmpty()) {
+                    continue;
+                }
+                if (!incoming.add(in.id())) {
+                    log.warn("Ignoring duplicate waypoints for diagram edge {}", in.id());
+                    continue;
+                }
+                DiagramEdgeEntity edge = existing.get(in.id());
+                if (edge == null) {
+                    edge = new DiagramEdgeEntity();
+                    edge.setEdgeKey(in.id());
+                    diagram.addEdge(edge);
+                }
+                edge.setSegments(in.segments());
             }
-            DiagramEdgeEntity edge = new DiagramEdgeEntity();
-            edge.setSourceNode(source);
-            edge.setTargetNode(target);
-            edge.setEdgeKind(in.edgeKind());
-            edge.setSourceHandle(in.sourceHandle());
-            edge.setTargetHandle(in.targetHandle());
-            edge.setSegments(in.segments());
-            diagram.addEdge(edge);
         }
+
+        diagram.getEdges().removeIf(e -> !incoming.contains(e.getEdgeKey()));
     }
 }

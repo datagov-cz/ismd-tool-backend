@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
-import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -19,8 +18,11 @@ public record DiagramLayoutDto(
         @NotNull Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
-        /* Full-replace: the set sent here becomes the persisted edge set, so an omission is a wipe. */
-        @NotNull @Valid List<Edge> edges
+        /* Optional: null and [] both mean "no hand-routed edges" — the state of a freshly auto-laid-out
+         * canvas, where ReactFlow has positioned everything and the user has not dragged a waypoint yet.
+         * Full-replace of the saved waypoints: an omitted edge still renders (it is re-projected), it just
+         * reverts to default routing. */
+        @Valid List<Edge> edges
 ) {
 
     /**
@@ -40,16 +42,16 @@ public record DiagramLayoutDto(
     }
 
     /**
-     * A projected edge's persisted presentation state. Endpoints are node ids ({@code iri:...}).
-     * {@code segments} is optional — omitted or null means default routing.
+     * A projected edge's persisted waypoints, and nothing else. {@code id} is the projected edge id from
+     * the last read — a VZTAH's concept IRI, or the composite {@code edge|KIND|source|target} of a
+     * hierarchy/equivalence link. {@code segments} is optional; omitted or null means default routing.
+     *
+     * <p>Endpoints and kind are deliberately absent: they are derived from {@code rdfs:domain}/
+     * {@code rdfs:range} ⊕ overlay on every read, so accepting them here would let a client persist a
+     * value that contradicts the projection. Structural changes go through the overlay endpoint.
      */
     public record Edge(
             @NotBlank String id,
-            @NotBlank String source,
-            @NotBlank String target,
-            @NotNull DiagramEdgeKind edgeKind,
-            String sourceHandle,
-            String targetHandle,
             List<EdgeWaypoint> segments
     ) {
     }

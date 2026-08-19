@@ -161,29 +161,52 @@ public class DiagramServiceImpl implements DiagramService {
         return snapshot(diagram, ontology);
     }
 
-    /** Same write-then-read split as {@link #saveLayout}; see that method for why the two are separated. */
+    /**
+     * Same write-then-read split as {@link #saveLayout}; see that method for why the two are separated.
+     *
+     * <p>The lean response carries no {@code properties} rows: computing them needs the whole graph, which
+     * would undo the narrowed single-concept readback this response exists to keep cheap. Staging changes
+     * one concept's overlay, not any class's property list — the FE keeps the rows from its last full read,
+     * and re-reads when it staged a property's own domain.
+     */
     @Override
-    public DiagramDto.Node stageOverlay(String ontologySlug, String nodeId, NodeOverlayDto overlay) {
-        DiagramSnapshot snapshot = self.commitOverlay(ontologySlug, nodeId, overlay);
-        String conceptIri = mapper.conceptIriFromNodeId(nodeId);
+    public DiagramDto.Node stageOverlay(String ontologySlug, String conceptRef, NodeOverlayDto overlay) {
+        DiagramSnapshot snapshot = self.commitOverlay(ontologySlug, conceptRef, overlay);
+        String conceptIri = mapper.conceptIriFromNodeId(conceptRef);
         Map<String, ConceptDetailModel> live = readbackConcepts(snapshot, conceptIri);
-        return toNode(snapshot, snapshot.node(conceptIri), live.get(conceptIri))
+        return toNode(snapshot, snapshot.node(conceptIri), live.get(conceptIri), List.of())
                 .withVersion(snapshot.version());
     }
 
     @Transactional
-    public DiagramSnapshot commitOverlay(String ontologySlug, String nodeId, NodeOverlayDto overlay) {
+    public DiagramSnapshot commitOverlay(String ontologySlug, String conceptRef, NodeOverlayDto overlay) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         DiagramEntity diagram = getOrCreateDiagram(ontology);
 
-        String conceptIri = mapper.conceptIriFromNodeId(nodeId);
+        String conceptIri = mapper.conceptIriFromNodeId(conceptRef);
         DiagramNodeEntity node = diagram.getNodes().stream()
                 .filter(n -> conceptIri.equals(n.getConceptIri()))
                 .findFirst()
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Uzel diagramu s id " + nodeId + " nebyl nalezen."));
+                .orElse(null);
 
         DiagramPendingEdit edit = mapper.toPendingEdit(overlay);
+        if (node == null) {
+            // A relationship renders as an edge and a property as a row, so neither travels in the layout's
+            // nodes[] and neither has a row until something stages one. Discarding a non-existent overlay is
+            // a no-op; staging one provisions the row that carries it — the same row Převzít works from.
+            if (edit == null) {
+                return snapshot(diagram, ontology);
+            }
+            requireOwnGraph(ontology.getGraphName(), conceptIri);
+            node = new DiagramNodeEntity();
+            node.setConceptIri(conceptIri);
+            // The row exists to carry the overlay, not a box: a relationship is drawn as an edge and a
+            // property as a row, so neither has a position. The columns are NOT NULL, so anchor at origin.
+            node.setPosX(0.0);
+            node.setPosY(0.0);
+            diagram.addNode(node);
+        }
+
         if (edit == null) {
             node.setPendingEdit(null);
         } else {
@@ -306,7 +329,7 @@ public class DiagramServiceImpl implements DiagramService {
             Map<String, ConceptType> types,
             Map<String, String> slugs,
             Map<Long, String> nodeIriByRowId,
-            Map<String, EdgePresentation> edgePresentation
+            Map<String, List<EdgeWaypoint>> edgeWaypoints
     ) {
 
         /** The snapshot node for a concept IRI, or null when the diagram has no such node. */
@@ -316,14 +339,6 @@ public class DiagramServiceImpl implements DiagramService {
                     .findFirst()
                     .orElse(null);
         }
-    }
-
-    /**
-     * The presentation-only state of a persisted edge row, keyed by the projected edge id. Edge existence
-     * and kind stay a projection of {@code live ⊕ overlay}; only what RDF cannot express — which handle each
-     * end attaches to and how the link is routed — is read back from PG.
-     */
-    public record EdgePresentation(String sourceHandle, String targetHandle, List<EdgeWaypoint> segments) {
     }
 
     /** Capture the diagram's PG state; must be called inside the transaction that read/wrote it. */
@@ -338,43 +353,43 @@ public class DiagramServiceImpl implements DiagramService {
         }
         return new DiagramSnapshot(graphName, diagram.getVersion(), mapper.toViewport(diagram), nodes,
                 conceptTypes(graphName), conceptSlugs(graphName), nodeIriByRowId,
-                edgePresentation(diagram));
+                edgeWaypoints(diagram));
     }
 
     /**
-     * Resolve each persisted edge row to {@code (kind, sourceIri, targetIri)} — the same key
-     * {@link EdgeProjector} derives — so assembly can attach handles without touching a lazy association
-     * after the snapshot detaches. A row whose key no longer projects (an endpoint was repointed) simply
-     * finds no match and is ignored; the next Save full-replaces it.
+     * Waypoints by projected edge id, read inside the transaction so assembly can attach them without
+     * touching a lazy association after the snapshot detaches. A row whose key no longer projects (an
+     * endpoint was repointed) simply finds no match and is ignored; the next Save full-replaces the set.
      */
-    private Map<String, EdgePresentation> edgePresentation(DiagramEntity diagram) {
-        Map<String, EdgePresentation> byKey = new HashMap<>();
+    private Map<String, List<EdgeWaypoint>> edgeWaypoints(DiagramEntity diagram) {
+        Map<String, List<EdgeWaypoint>> byKey = new HashMap<>();
         for (DiagramEdgeEntity edge : diagram.getEdges()) {
-            if (edge.getSourceNode() == null || edge.getTargetNode() == null || edge.getEdgeKind() == null) {
+            List<EdgeWaypoint> segments = edge.getSegments();
+            if (edge.getEdgeKey() == null || segments == null) {
                 continue;
             }
-            byKey.put(
-                    EdgeProjector.projectedEdgeId(edge.getEdgeKind(),
-                            edge.getSourceNode().getConceptIri(),
-                            edge.getTargetNode().getConceptIri()),
-                    new EdgePresentation(edge.getSourceHandle(), edge.getTargetHandle(),
-                            edge.getSegments()));
+            byKey.put(edge.getEdgeKey(), segments);
         }
         return byKey;
     }
 
     // ---- assembly -------------------------------------------------------------------------------
 
-    /** Join layout rows to live content, apply overlays, project edges. */
+    /** Join layout rows to live content, apply overlays, project edges and property rows. */
     private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot,
                                 Map<String, ConceptDetailModel> live) {
+        EdgeProjector projector = new EdgeProjector(mapper, snapshot.edgeWaypoints());
+        Map<String, List<DiagramDto.PropertyRow>> rows =
+                projector.propertyRows(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
+
         List<DiagramDto.Node> nodes = new ArrayList<>();
         for (DiagramNodeEntity node : snapshot.nodes()) {
-            nodes.add(toNode(snapshot, node, live.get(node.getConceptIri())));
+            nodes.add(toNode(snapshot, node, live.get(node.getConceptIri()),
+                    rows.getOrDefault(node.getConceptIri(), List.of())));
         }
 
-        List<DiagramDto.Edge> edges = new EdgeProjector(mapper, snapshot.edgePresentation())
-                .project(snapshot.nodes(), live);
+        List<DiagramDto.Edge> edges =
+                projector.project(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
         int pendingChangeCount = (int) snapshot.nodes().stream()
                 .filter(n -> n.getPendingEdit() != null)
                 .count();
@@ -385,12 +400,12 @@ public class DiagramServiceImpl implements DiagramService {
 
     /** Build one render-ready node; type/slug come from the snapshot, never a fresh PG read. */
     private DiagramDto.Node toNode(DiagramSnapshot snapshot, DiagramNodeEntity node,
-                                   ConceptDetailModel detail) {
+                                   ConceptDetailModel detail, List<DiagramDto.PropertyRow> properties) {
         String conceptIri = node.getConceptIri();
         ConceptType type = snapshot.types().get(conceptIri);
         String slug = snapshot.slugs().get(conceptIri);
         Map<String, String> label = detail != null ? detail.getName() : null;
-        DiagramDto.NodeData data = mapper.toNodeData(node, type, slug, label, detail);
+        DiagramDto.NodeData data = mapper.toNodeData(node, type, slug, label, detail, properties);
         String parentId = node.getParentNodeId() != null
                 ? parentWireId(snapshot, node.getParentNodeId())
                 : null;

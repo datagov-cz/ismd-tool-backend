@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -73,8 +74,6 @@ public class DiagramMapper {
         edit.setDomain(dto.domain());
         edit.setRange(dto.range());
         edit.setBroaderConcept(dto.broaderConcept());
-        edit.setSuperProperty(dto.superProperty());
-        edit.setSuperRelation(dto.superRelation());
         edit.setExactMatch(dto.exactMatch());
         if (dto.convertToHierarchy() != null) {
             DiagramPendingEdit.ConvertToHierarchy c = new DiagramPendingEdit.ConvertToHierarchy();
@@ -94,7 +93,8 @@ public class DiagramMapper {
                                           ConceptType conceptType,
                                           String slug,
                                           Map<String, String> label,
-                                          ConceptDetailModel detail) {
+                                          ConceptDetailModel detail,
+                                          List<DiagramDto.PropertyRow> properties) {
         DiagramPendingEdit overlay = node.getPendingEdit();
         boolean hasPendingEdits = overlay != null;
         boolean stale = detail == null;
@@ -105,6 +105,7 @@ public class DiagramMapper {
                 label,
                 stale,
                 hasPendingEdits,
-                overlay);
+                overlay,
+                properties != null ? properties : List.of());
     }
 }

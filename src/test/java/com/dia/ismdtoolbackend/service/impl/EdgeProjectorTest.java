@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
@@ -9,19 +10,26 @@ import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit test for edge projection: an edge's existence and kind are re-derived from each node's
- * {@code live ⊕ overlay}, never read from storage, while the persisted handles are joined on by projected
- * edge id. Verifies the overlay overrides the live endpoint (flagged {@code pending}), that an edge to a
- * concept not on the canvas is dropped, that a stale (null-detail) node projects nothing, that an
- * empty-list overlay clears a hierarchy edge, and that handles round-trip but are dropped on a repoint.
+ * Unit test for edge and property-row projection. An edge's existence, kind and endpoints are re-derived
+ * from {@code live ⊕ overlay}, never read from storage; only waypoints are joined on by projected edge id.
+ *
+ * <p>Pins the model: a VZTAH is ONE edge between its two classes carrying its own concept identity, a
+ * VLASTNOST is a row inside its domain class, and a concept missing an endpoint is simply not drawn.
  */
 class EdgeProjectorTest {
+
+    private static final String REL = "https://x/pojem/rel";
+    private static final String A = "https://x/pojem/a";
+    private static final String B = "https://x/pojem/b";
+    private static final String C = "https://x/pojem/c";
+    private static final String PROP = "https://x/pojem/prop";
 
     private final EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of());
 
@@ -31,151 +39,244 @@ class EdgeProjectorTest {
         return n;
     }
 
+    private ConceptDetailModel concept(String iri) {
+        return ConceptDetailModel.builder().iri(iri).build();
+    }
+
+    /** A VZTAH from {@code domain} to {@code range}, plus classes a/b/c, all present in the graph. */
+    private Map<String, ConceptDetailModel> live(String domain, String range) {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(REL, ConceptDetailModel.builder().iri(REL).domain(domain).range(range).build());
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+        return live;
+    }
+
+    private Map<String, ConceptType> types(Map<String, ConceptType> extra) {
+        Map<String, ConceptType> types = new HashMap<>(Map.of(
+                A, ConceptType.TRIDA, B, ConceptType.TRIDA, C, ConceptType.TRIDA));
+        types.putAll(extra);
+        return types;
+    }
+
+    // ---- VZTAH as a single edge -----------------------------------------------------------------
+
     @Test
-    void projectsLiveDomainRange_bothEndpointsOnCanvas() {
-        DiagramNodeEntity vztah = node("https://x/pojem/rel");
-        DiagramNodeEntity a = node("https://x/pojem/a");
-        DiagramNodeEntity b = node("https://x/pojem/b");
+    void vztahProjectsOneEdgeBetweenItsClasses_carryingItsOwnIdentity() {
+        List<DiagramDto.Edge> edges = projector.project(
+                List.of(node(A), node(B)), live(A, B),
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of(REL, "x-rel"));
 
-        ConceptDetailModel relDetail = ConceptDetailModel.builder()
-                .iri("https://x/pojem/rel")
-                .domain("https://x/pojem/a")
-                .range("https://x/pojem/b")
-                .build();
-        Map<String, ConceptDetailModel> live = Map.of(
-                "https://x/pojem/rel", relDetail,
-                "https://x/pojem/a", ConceptDetailModel.builder().iri("https://x/pojem/a").build(),
-                "https://x/pojem/b", ConceptDetailModel.builder().iri("https://x/pojem/b").build());
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.id()).isEqualTo(REL);                  // the concept IRI IS the edge id
+            assertThat(e.source()).isEqualTo("iri:" + A);
+            assertThat(e.target()).isEqualTo("iri:" + B);
+            assertThat(e.data().edgeKind()).isEqualTo(DiagramEdgeKind.VZTAH);
+            assertThat(e.data().iri()).isEqualTo(REL);
+            assertThat(e.data().slug()).isEqualTo("x-rel");
+            assertThat(e.data().pending()).isFalse();
+        });
+    }
 
-        List<DiagramDto.Edge> edges = projector.project(List.of(vztah, a, b), live);
+    /** The relationship itself need not be a canvas node — only its two endpoint classes. */
+    @Test
+    void vztahProjects_evenThoughItIsNotItselfANode() {
+        List<DiagramDto.Edge> edges = projector.project(
+                List.of(node(A), node(B)), live(A, B),
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of());
 
-        assertThat(edges).extracting(e -> e.data().edgeKind())
-                .containsExactlyInAnyOrder(DiagramEdgeKind.DOMAIN, DiagramEdgeKind.RANGE);
-        assertThat(edges).allMatch(e -> !e.data().pending());       // all live, none pending
+        assertThat(edges).hasSize(1);
     }
 
     @Test
     void overlayRangeOverridesLiveAndIsFlaggedPending() {
-        DiagramNodeEntity vztah = node("https://x/pojem/rel");
-        DiagramNodeEntity organizace = node("https://x/pojem/organizace");
-
+        DiagramNodeEntity a = node(A);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
-        overlay.setRange("https://x/pojem/organizace");     // repointed, not yet in RDF
-        vztah.setPendingEdit(overlay);
+        overlay.setRange(C);
+        // the overlay lives on the VZTAH, which is not a node — staged via its own row
+        DiagramNodeEntity relRow = node(REL);
+        relRow.setPendingEdit(overlay);
 
-        ConceptDetailModel relDetail = ConceptDetailModel.builder()
-                .iri("https://x/pojem/rel")
-                .range("https://x/pojem/old-range")          // live range differs from overlay
-                .build();
-        Map<String, ConceptDetailModel> live = Map.of(
-                "https://x/pojem/rel", relDetail,
-                "https://x/pojem/organizace",
-                ConceptDetailModel.builder().iri("https://x/pojem/organizace").build());
+        List<DiagramDto.Edge> edges = projector.project(
+                List.of(a, node(B), node(C), relRow), live(A, B),
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of());
 
-        List<DiagramDto.Edge> edges = projector.project(List.of(vztah, organizace), live);
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.target()).isEqualTo("iri:" + C);      // overlay wins over the live range
+            assertThat(e.data().pending()).isTrue();
+        });
+    }
 
-        DiagramDto.Edge range = edges.stream()
-                .filter(e -> e.data().edgeKind() == DiagramEdgeKind.RANGE).findFirst().orElseThrow();
-        assertThat(range.target()).isEqualTo("iri:https://x/pojem/organizace");   // overlay wins
-        assertThat(range.data().pending()).isTrue();
+    /** Incomplete concepts live off-canvas: no endpoint, no edge. */
+    @Test
+    void vztahMissingAnEndpoint_isNotDrawn() {
+        Map<String, ConceptDetailModel> live = live(A, null);
+
+        assertThat(projector.project(List.of(node(A), node(B)), live,
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of())).isEmpty();
     }
 
     @Test
-    void edgeToConceptNotOnCanvas_isDropped() {
-        DiagramNodeEntity vztah = node("https://x/pojem/rel");
-        // domain target 'a' is NOT added as a node → edge must be suppressed
-        ConceptDetailModel relDetail = ConceptDetailModel.builder()
-                .iri("https://x/pojem/rel")
-                .domain("https://x/pojem/off-canvas")
-                .build();
-        Map<String, ConceptDetailModel> live = Map.of("https://x/pojem/rel", relDetail);
+    void vztahPointingOffCanvas_isNotDrawn() {
+        Map<String, ConceptDetailModel> live = live(A, "https://x/pojem/off-canvas");
 
-        assertThat(projector.project(List.of(vztah), live)).isEmpty();
+        assertThat(projector.project(List.of(node(A), node(B)), live,
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of())).isEmpty();
     }
 
+    // ---- hierarchy / equivalence: bare triples, no backing concept -------------------------------
+
     @Test
-    void staleNode_projectsNoEdges() {
-        DiagramNodeEntity stale = node("https://x/pojem/gone");
-        // no live detail for the node → null-detail branch, nothing projected
-        assertThat(projector.project(List.of(stale), Map.of())).isEmpty();
+    void subclassEdgeCarriesNoConceptPayload() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+
+        List<DiagramDto.Edge> edges = projector.project(
+                List.of(node(A), node(B)), live, types(Map.of()), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.id()).isEqualTo("edge|SUBCLASS_OF|" + A + "|" + B);
+            assertThat(e.data().edgeKind()).isEqualTo(DiagramEdgeKind.SUBCLASS_OF);
+            assertThat(e.data().iri()).isNull();               // the FE's concept-backed discriminator
+            assertThat(e.data().label()).isNull();
+        });
     }
 
     @Test
     void emptyListOverlay_clearsHierarchyEdge() {
-        DiagramNodeEntity cls = node("https://x/pojem/child");
-        DiagramNodeEntity broader = node("https://x/pojem/broader");
-
+        DiagramNodeEntity child = node(A);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
-        overlay.setBroaderConcept(List.of());          // "remove all superclasses"
-        cls.setPendingEdit(overlay);
+        overlay.setBroaderConcept(List.of());                  // "remove all superclasses"
+        child.setPendingEdit(overlay);
 
-        ConceptDetailModel childDetail = ConceptDetailModel.builder()
-                .iri("https://x/pojem/child")
-                .broaderClasses(List.of("https://x/pojem/broader"))   // live still has the broader
-                .build();
-        Map<String, ConceptDetailModel> live = Map.of(
-                "https://x/pojem/child", childDetail,
-                "https://x/pojem/broader", ConceptDetailModel.builder().iri("https://x/pojem/broader").build());
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
 
-        // overlay clears broader → no SUBCLASS_OF edge despite the live broader
-        assertThat(projector.project(List.of(cls, broader), live)).isEmpty();
-    }
-
-    /** A VZTAH whose live range is {@code b}, plus the two endpoint classes, all on canvas. */
-    private Map<String, ConceptDetailModel> relLive(String range) {
-        return Map.of(
-                "https://x/pojem/rel", ConceptDetailModel.builder()
-                        .iri("https://x/pojem/rel")
-                        .range(range)
-                        .build(),
-                "https://x/pojem/b", ConceptDetailModel.builder().iri("https://x/pojem/b").build(),
-                "https://x/pojem/c", ConceptDetailModel.builder().iri("https://x/pojem/c").build());
+        assertThat(projector.project(List.of(child, node(B)), live, types(Map.of()), Map.of()))
+                .isEmpty();
     }
 
     @Test
-    void persistedHandlesAreJoinedOntoTheProjectedEdge() {
-        String id = EdgeProjector.projectedEdgeId(
-                DiagramEdgeKind.RANGE, "https://x/pojem/rel", "https://x/pojem/b");
-        EdgeProjector withHandles = new EdgeProjector(new DiagramMapper(),
-                Map.of(id, new DiagramServiceImpl.EdgePresentation("s-right", "t-left",
-                        List.of(new EdgeWaypoint(40, 80)))));
-
-        List<DiagramDto.Edge> edges = withHandles.project(
-                List.of(node("https://x/pojem/rel"), node("https://x/pojem/b")),
-                relLive("https://x/pojem/b"));
-
-        assertThat(edges).singleElement().satisfies(e -> {
-            assertThat(e.sourceHandle()).isEqualTo("s-right");
-            assertThat(e.targetHandle()).isEqualTo("t-left");
-            assertThat(e.segments()).containsExactly(new EdgeWaypoint(40, 80));
-        });
+    void staleNode_projectsNoEdges() {
+        assertThat(projector.project(List.of(node("https://x/pojem/gone")), Map.of(),
+                types(Map.of()), Map.of())).isEmpty();
     }
 
+    // ---- waypoints ------------------------------------------------------------------------------
+
     @Test
-    void repointedEndpoint_dropsTheSavedHandles() {
-        // handles were saved for rel→b, but the overlay now repoints the range to c
-        String staleId = EdgeProjector.projectedEdgeId(
-                DiagramEdgeKind.RANGE, "https://x/pojem/rel", "https://x/pojem/b");
-        EdgeProjector withHandles = new EdgeProjector(new DiagramMapper(),
-                Map.of(staleId, new DiagramServiceImpl.EdgePresentation("s-right", "t-left",
-                        List.of(new EdgeWaypoint(40, 80)))));
+    void persistedWaypointsAreJoinedOntoTheProjectedEdge() {
+        EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
+                Map.of(REL, List.of(new EdgeWaypoint(40, 80))));
 
-        DiagramNodeEntity rel = node("https://x/pojem/rel");
+        List<DiagramDto.Edge> edges = withGeometry.project(
+                List.of(node(A), node(B)), live(A, B),
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of());
+
+        assertThat(edges).singleElement()
+                .satisfies(e -> assertThat(e.segments()).containsExactly(new EdgeWaypoint(40, 80)));
+    }
+
+    /** Geometry drawn for an endpoint the edge no longer has must not follow it to the new one. */
+    @Test
+    void repointedEndpoint_dropsTheSavedWaypoints() {
+        String staleKey = EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B);
+        EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
+                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))));
+
+        DiagramNodeEntity child = node(A);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
-        overlay.setRange("https://x/pojem/c");
-        rel.setPendingEdit(overlay);
+        overlay.setBroaderConcept(List.of(C));                 // repointed from B to C
+        child.setPendingEdit(overlay);
 
-        List<DiagramDto.Edge> edges = withHandles.project(
-                List.of(rel, node("https://x/pojem/b"), node("https://x/pojem/c")),
-                relLive("https://x/pojem/b"));
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+        live.put(C, concept(C));
 
-        // the edge still projects (to the new endpoint, pending) but carries no stale geometry
+        List<DiagramDto.Edge> edges = withGeometry.project(
+                List.of(child, node(B), node(C)), live, types(Map.of()), Map.of());
+
         assertThat(edges).singleElement().satisfies(e -> {
-            assertThat(e.target()).endsWith("https://x/pojem/c");
+            assertThat(e.target()).isEqualTo("iri:" + C);
             assertThat(e.data().pending()).isTrue();
-            assertThat(e.sourceHandle()).isNull();
-            assertThat(e.targetHandle()).isNull();
             assertThat(e.segments()).isNull();
         });
+    }
+
+    // ---- VLASTNOST as a row inside its class ----------------------------------------------------
+
+    @Test
+    void propertyBecomesARowInsideItsDomainClass_notAnEdge() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A)
+                .name(Map.of("cs", "datum narození")).build());
+        Map<String, ConceptType> types = types(Map.of(PROP, ConceptType.VLASTNOST));
+
+        assertThat(projector.project(List.of(node(A)), live, types, Map.of())).isEmpty();
+
+        Map<String, List<DiagramDto.PropertyRow>> rows =
+                projector.propertyRows(List.of(node(A)), live, types, Map.of(PROP, "x-prop"));
+
+        assertThat(rows.get(A)).singleElement().satisfies(r -> {
+            assertThat(r.iri()).isEqualTo(PROP);
+            assertThat(r.slug()).isEqualTo("x-prop");
+            assertThat(r.label()).containsEntry("cs", "datum narození");
+        });
+    }
+
+    @Test
+    void propertyRowsAreOrderedByLabel() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put("https://x/pojem/p1", ConceptDetailModel.builder().iri("https://x/pojem/p1")
+                .domain(A).name(Map.of("cs", "zebra")).build());
+        live.put("https://x/pojem/p2", ConceptDetailModel.builder().iri("https://x/pojem/p2")
+                .domain(A).name(Map.of("cs", "abeceda")).build());
+        Map<String, ConceptType> types = types(Map.of(
+                "https://x/pojem/p1", ConceptType.VLASTNOST,
+                "https://x/pojem/p2", ConceptType.VLASTNOST));
+
+        Map<String, List<DiagramDto.PropertyRow>> rows =
+                projector.propertyRows(List.of(node(A)), live, types, Map.of());
+
+        assertThat(rows.get(A)).extracting(r -> r.label().get("cs"))
+                .containsExactly("abeceda", "zebra");
+    }
+
+    /** A domainless property has no class to sit in; it is placed by being dragged in from the detail. */
+    @Test
+    void domainlessProperty_hasNoRow() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(PROP, ConceptDetailModel.builder().iri(PROP).build());
+
+        assertThat(projector.propertyRows(List.of(node(A)), live,
+                types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of())).isEmpty();
+    }
+
+    @Test
+    void overlayDomainMovesThePropertyToAnotherClass() {
+        DiagramNodeEntity propRow = node(PROP);
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setDomain(B);
+        propRow.setPendingEdit(overlay);
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+        live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A).build());
+
+        Map<String, List<DiagramDto.PropertyRow>> rows = projector.propertyRows(
+                List.of(node(A), node(B), propRow), live,
+                types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of());
+
+        assertThat(rows).doesNotContainKey(A);
+        assertThat(rows.get(B)).singleElement()
+                .satisfies(r -> assertThat(r.hasPendingEdits()).isTrue());
     }
 }

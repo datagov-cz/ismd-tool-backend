@@ -49,8 +49,8 @@ class DiagramMapperTest {
 
     @Test
     void toPendingEdit_allNullBody_discards() {
-        // nodeId is addressing, not content — a body carrying only nodeId is still a discard.
-        NodeOverlayDto allNull = new NodeOverlayDto("iri:https://x/pojem/n", null, null, null, null, null, null, null);
+        // conceptIri is addressing, not content — a body carrying only nodeId is still a discard.
+        NodeOverlayDto allNull = new NodeOverlayDto("iri:https://x/pojem/n", null, null, null, null, null);
         assertThat(mapper.toPendingEdit(allNull)).isNull();   // discard
         assertThat(mapper.toPendingEdit(null)).isNull();
     }
@@ -59,7 +59,7 @@ class DiagramMapperTest {
     void toPendingEdit_emptyListBody_stagesAsClearPredicate() {
         // op 2 flip A-side: "remove all superclasses" — an explicitly-empty list is NOT a discard.
         NodeOverlayDto clearBroader =
-                new NodeOverlayDto("iri:https://x/pojem/n", null, null, List.of(), null, null, null, null);
+                new NodeOverlayDto("iri:https://x/pojem/n", null, null, List.of(), null, null);
 
         DiagramPendingEdit edit = mapper.toPendingEdit(clearBroader);
 
@@ -74,8 +74,6 @@ class DiagramMapperTest {
                 "https://x/pojem/domain",
                 "https://x/pojem/range",
                 List.of("https://x/pojem/super-c"),
-                List.of("https://x/pojem/super-p"),
-                List.of("https://x/pojem/super-r"),
                 List.of("https://x/pojem/match"),
                 new NodeOverlayDto.ConvertToHierarchy("https://x/pojem/target", "https://x/pojem/broader"));
 
@@ -84,8 +82,6 @@ class DiagramMapperTest {
         assertThat(edit.getDomain()).isEqualTo("https://x/pojem/domain");
         assertThat(edit.getRange()).isEqualTo("https://x/pojem/range");
         assertThat(edit.getBroaderConcept()).containsExactly("https://x/pojem/super-c");
-        assertThat(edit.getSuperProperty()).containsExactly("https://x/pojem/super-p");
-        assertThat(edit.getSuperRelation()).containsExactly("https://x/pojem/super-r");
         assertThat(edit.getExactMatch()).containsExactly("https://x/pojem/match");
         assertThat(edit.getConvertToHierarchy().getAddBroaderOn()).isEqualTo("https://x/pojem/target");
         assertThat(edit.getConvertToHierarchy().getBroader()).isEqualTo("https://x/pojem/broader");
@@ -107,7 +103,7 @@ class DiagramMapperTest {
                 .build();
 
         DiagramDto.NodeData data = mapper.toNodeData(
-                node, ConceptType.VZTAH, "slug-je-zamestnan-u", detail.getName(), detail);
+                node, ConceptType.VZTAH, "slug-je-zamestnan-u", detail.getName(), detail, List.of());
 
         assertThat(data.conceptType()).isEqualTo(ConceptType.VZTAH);
         assertThat(data.iri()).isEqualTo("https://x/pojem/je-zamestnan-u");
@@ -123,10 +119,11 @@ class DiagramMapperTest {
         DiagramNodeEntity node = new DiagramNodeEntity();
         node.setConceptIri("https://x/pojem/deleted");
 
-        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null);
+        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null);
 
         assertThat(data.stale()).isTrue();          // concept deleted underneath the node
         assertThat(data.hasPendingEdits()).isFalse();
         assertThat(data.pendingEdit()).isNull();
+        assertThat(data.properties()).isEmpty();    // always a list on the wire, never null
     }
 }

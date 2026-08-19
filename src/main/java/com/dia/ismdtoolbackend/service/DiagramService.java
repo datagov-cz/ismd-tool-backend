@@ -24,8 +24,11 @@ public interface DiagramService {
     /** Save (PG only, no RDF): full-replace layout + overlays; the node set is canvas membership. */
     DiagramDto saveLayout(String ontologySlug, DiagramLayoutDto layout);
 
-    /** Stage a node's structural overlay; an empty payload discards it. Returns the refreshed node only. */
-    DiagramDto.Node stageOverlay(String ontologySlug, String nodeId, NodeOverlayDto overlay);
+    /**
+     * Stage a concept's structural overlay; an empty payload discards it. Returns the refreshed node only.
+     * {@code conceptRef} is the concept's IRI, optionally {@code iri:}-prefixed.
+     */
+    DiagramDto.Node stageOverlay(String ontologySlug, String conceptRef, NodeOverlayDto overlay);
 
     /** Převzít: apply every staged change via the concept CRUD → outbox → RDF, clearing each on success. */
     MaterializeResultDto materialize(String ontologySlug);

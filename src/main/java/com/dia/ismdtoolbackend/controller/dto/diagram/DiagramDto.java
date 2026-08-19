@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
+import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
@@ -60,7 +61,13 @@ public record DiagramDto(
         }
     }
 
-    /** Merged live-content-plus-overlay payload the FE renders directly. */
+    /**
+     * Merged live-content-plus-overlay payload the FE renders directly.
+     *
+     * <p>{@code properties} are the class's VLASTNOSTi, rendered as rows inside the node rather than as
+     * canvas objects of their own. Always present (empty, never null) and ordered by label so the rows do
+     * not reshuffle between reads.
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record NodeData(
             ConceptType conceptType,
@@ -69,15 +76,37 @@ public record DiagramDto(
             Map<String, String> label,
             boolean stale,
             boolean hasPendingEdits,
+            DiagramPendingEdit pendingEdit,
+            @JsonInclude List<PropertyRow> properties
+    ) {
+    }
+
+    /**
+     * One VLASTNOST, rendered as a row inside its {@code rdfs:domain} class. A property is never a node
+     * and never an edge: its range is a literal datatype, so there is no second concept to connect to.
+     *
+     * <p>A domainless property has no class to sit in and is simply absent from the canvas — it is placed
+     * by being dragged in from the ontology detail, which supplies the domain.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record PropertyRow(
+            String iri,
+            String slug,
+            Map<String, String> label,
+            DataTypeDto rangeResolved,
+            boolean stale,
+            boolean hasPendingEdits,
             DiagramPendingEdit pendingEdit
     ) {
     }
 
     /**
-     * A projected edge: existence and kind are re-derived on read from the source node's
-     * {@code live ⊕ overlay}, while {@code sourceHandle}/{@code targetHandle}/{@code segments} are joined
-     * on from the persisted row — presentation RDF cannot express. All three are null for an edge that has
-     * never been saved, or whose endpoint moved since it was.
+     * A projected edge: existence, kind and endpoints are re-derived on read from {@code live ⊕ overlay},
+     * while {@code segments} is joined on from the persisted row — the one thing RDF cannot express. It is
+     * null for an edge that has never been saved, or whose endpoint moved since it was.
+     *
+     * <p>{@code id} is the backing concept's IRI for a VZTAH, and the deterministic
+     * {@code edge|KIND|source|target} for a hierarchy/equivalence link, which has no concept behind it.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Edge(
@@ -85,15 +114,34 @@ public record DiagramDto(
             String source,
             String target,
             String type,
-            String sourceHandle,
-            String targetHandle,
             List<EdgeWaypoint> segments,
-            Map<String, String> markerEnd,
             EdgeData data
     ) {
     }
 
-    /** Edge metadata; {@code pending} is true when the endpoint comes from an unmaterialized overlay. */
-    public record EdgeData(DiagramEdgeKind edgeKind, boolean pending) {
+    /**
+     * Edge metadata. {@code pending} is true when an endpoint comes from an unmaterialized overlay.
+     *
+     * <p>The concept fields are populated only for a {@code VZTAH}, where the edge <em>is</em> a concept.
+     * {@code SUBCLASS_OF} and {@code EXACT_MATCH} are bare triples and leave them null — an edge with a
+     * non-null {@code iri} is the FE's signal that it can be selected, staged and deep-linked.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record EdgeData(
+            DiagramEdgeKind edgeKind,
+            boolean pending,
+            ConceptType conceptType,
+            String iri,
+            String slug,
+            Map<String, String> label,
+            Boolean stale,
+            Boolean hasPendingEdits,
+            DiagramPendingEdit pendingEdit
+    ) {
+
+        /** A bare triple: hierarchy or equivalence, with no backing concept. */
+        public EdgeData(DiagramEdgeKind edgeKind, boolean pending) {
+            this(edgeKind, pending, null, null, null, null, null, null, null);
+        }
     }
 }

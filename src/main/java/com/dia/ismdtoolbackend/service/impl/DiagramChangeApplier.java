@@ -203,8 +203,7 @@ public class DiagramChangeApplier {
             return DiagramOp.SWAP_DIRECTION;
         }
         if (overlay.getBroaderConcept() != null
-                || overlay.getSuperProperty() != null
-                || overlay.getSuperRelation() != null
+
                 || overlay.getExactMatch() != null) {
             return DiagramOp.CHANGE_HIERARCHY_TYPE;
         }
@@ -227,7 +226,6 @@ public class DiagramChangeApplier {
                 PropertyConceptEditModel m = new PropertyConceptEditModel();
                 m.setConceptType(ConceptType.VLASTNOST.getValue());
                 m.setDomain(overlay.getDomain());
-                m.setSuperProperty(overlay.getSuperProperty());
                 m.setExactMatch(overlay.getExactMatch());
                 yield m;
             }
@@ -236,7 +234,6 @@ public class DiagramChangeApplier {
                 m.setConceptType(ConceptType.VZTAH.getValue());
                 m.setDomain(overlay.getDomain());
                 m.setRange(overlay.getRange());
-                m.setSuperRelation(overlay.getSuperRelation());
                 m.setExactMatch(overlay.getExactMatch());
                 yield m;
             }

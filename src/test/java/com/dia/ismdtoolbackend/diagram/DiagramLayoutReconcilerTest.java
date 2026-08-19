@@ -8,7 +8,6 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
@@ -226,8 +225,9 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 .containsExactly("https://x/no-row/pojem/deleted");
     }
 
+    /** An edge with no waypoints stores no row: there is nothing to remember about default routing. */
     @Test
-    void persistsEdgeProjectionRows() {
+    void edgeWithoutWaypoints_persistsNoRow() {
         DiagramEntity diagram = newDiagram("edges");
         diagramRepository.saveAndFlush(diagram);
         em.clear();
@@ -236,12 +236,10 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
-                List.of(new DiagramLayoutDto.Edge(
-                        "e-1", "iri:https://x/pojem/prop", "iri:https://x/pojem/cls",
-                        DiagramEdgeKind.DOMAIN, null, null, null)));
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", null)));
         DiagramEntity saved = save(managed, layout);
 
-        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).hasSize(1);
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();
     }
 
     /** Waypoints are FE-only geometry, so PG is their sole owner — they must survive the round-trip intact. */
@@ -255,22 +253,23 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
-                List.of(new DiagramLayoutDto.Edge(
-                        "e-1", "iri:https://x/pojem/prop", "iri:https://x/pojem/cls",
-                        DiagramEdgeKind.DOMAIN, "s-a", "t-b",
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
                         List.of(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33)))));
         DiagramEntity saved = save(managed, layout);
         em.clear();
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
                 .singleElement()
-                .satisfies(e -> assertThat(e.getSegments())
-                        .containsExactly(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33)));
+                .satisfies(e -> {
+                    assertThat(e.getEdgeKey()).isEqualTo("https://x/pojem/rel");
+                    assertThat(e.getSegments())
+                            .containsExactly(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33));
+                });
     }
 
-    /** An edge saved without waypoints leaves the column null rather than an empty array. */
+    /** An explicitly-empty waypoint list means default routing — same as omitting it: no row. */
     @Test
-    void omittedSegments_persistAsNull() {
+    void emptySegments_persistNoRow() {
         DiagramEntity diagram = newDiagram("no-segments");
         diagramRepository.saveAndFlush(diagram);
         em.clear();
@@ -279,14 +278,89 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
-                List.of(new DiagramLayoutDto.Edge(
-                        "e-1", "iri:https://x/pojem/prop", "iri:https://x/pojem/cls",
-                        DiagramEdgeKind.DOMAIN, null, null, List.of())));
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", List.of())));
         DiagramEntity saved = save(managed, layout);
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();
+    }
+
+    /**
+     * The ordinary flow: route an edge, save, then save again with the SAME edge still routed. A
+     * clear-and-reinsert would have Hibernate emit the INSERT before the DELETE in one flush and trip the
+     * (diagram_id, edge_key) unique constraint — a 500 on every canvas that has ever had a waypoint.
+     */
+    @Test
+    void resavingTheSameEdgeKey_updatesInPlace() {
+        DiagramEntity diagram = newDiagram("resave");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/cls", 0, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
+                        List.of(new EdgeWaypoint(1, 2))))));
+        em.clear();
+
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(again, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/cls", 10, 10)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
+                        List.of(new EdgeWaypoint(99, 98))))));
         em.clear();
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
                 .singleElement()
-                .satisfies(e -> assertThat(e.getSegments()).isNull());
+                .satisfies(e -> assertThat(e.getSegments()).containsExactly(new EdgeWaypoint(99, 98)));
+    }
+
+    /**
+     * A hierarchy edge's key is {@code edge|KIND|<sourceIri>|<targetIri>} — two full concept IRIs, which
+     * with percent-encoded Czech easily exceeds any fixed VARCHAR. It must persist, and its unique index
+     * must not blow Postgres's per-row btree limit (hence the hashed index).
+     */
+    @Test
+    void longCompositeEdgeKey_persists() {
+        DiagramEntity diagram = newDiagram("long-key");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        String longIri = "https://slovn%C3%ADk.gov.cz/datov%C3%BD/"
+                + "a".repeat(480) + "/pojem/" + "b".repeat(480);
+        String key = "edge|SUBCLASS_OF|" + longIri + "|" + longIri;
+        assertThat(key.length()).isGreaterThan(1024);        // the old VARCHAR(1024) would have rejected it
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/cls", 0, 0)),
+                List.of(new DiagramLayoutDto.Edge(key, List.of(new EdgeWaypoint(1, 2))))));
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getEdgeKey()).isEqualTo(key));
+    }
+
+    /** Waypoints survive a node being removed: the row is keyed by edge id, not by endpoint FKs. */
+    @Test
+    void waypointsAreFullReplacedOnEverySave() {
+        DiagramEntity diagram = newDiagram("replace");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/cls", 0, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
+                        List.of(new EdgeWaypoint(1, 2))))));
+        em.clear();
+
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(again, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/cls", 0, 0)), List.of()));
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();
     }
 }

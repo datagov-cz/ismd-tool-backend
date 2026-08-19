@@ -84,6 +84,8 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     private static final String USER = "user123";
     private static final String CLASS_A = GRAPH + "/pojem/trida-a";
     private static final String CLASS_B = GRAPH + "/pojem/trida-b";
+    /** A relationship: renders as an edge, so it never travels in the layout's nodes[]. */
+    private static final String REL = GRAPH + "/pojem/vztah-a-b";
 
     @Autowired private ConceptMetadataRepository conceptRepo;
     @Autowired private OntologyMetadataRepository ontologyRepo;
@@ -151,7 +153,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
     private NodeOverlayDto broaderOverlay(String nodeIri, String broaderIri) {
         return new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + nodeIri, null, null,
-                List.of(broaderIri), null, null, null, null);
+                List.of(broaderIri), null, null);
     }
 
     /** The version stored in PG right now — the value a fresh GET would report. */
@@ -160,6 +162,52 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     // ---- tests ----------------------------------------------------------------------------------
+
+    /**
+     * A relationship renders as an edge and a property as a row, so neither is ever sent in the layout's
+     * {@code nodes[]} — and neither has a node row until an overlay is staged on it. Staging must therefore
+     * provision the row rather than 404, or ops 1/4/5/6 (every structural edit that targets a relationship
+     * or property) would be impossible through the API.
+     */
+    @Test
+    void stageOverlay_provisionsARowForAConceptThatIsNotACanvasNode() {
+        seedCanvas();                                  // only CLASS_A and CLASS_B are nodes
+        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+
+        DiagramDto.Node staged = diagramService.stageOverlay(
+                SLUG, DiagramMapper.NODE_ID_PREFIX + REL,
+                new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + REL, null, CLASS_B, null, null, null));
+
+        assertThat(staged.data().hasPendingEdits()).isTrue();
+        assertThat(nodeRepo.findByDiagramIdAndConceptIri(
+                diagramRepo.findByOntologyMetadataSlug(SLUG).orElseThrow().getId(), REL))
+                .isPresent();
+    }
+
+    /**
+     * The staged row must survive the next Save. The FE's {@code nodes[]} carries classes only, so reaping
+     * on absence alone would silently delete the overlay — and with it the work item Převzít would apply.
+     * Discarding an overlay is an explicit PATCH, never a side effect of saving the layout.
+     */
+    @Test
+    void savingTheLayout_doesNotReapAConceptCarryingAStagedOverlay() {
+        seedCanvas();
+        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        diagramService.stageOverlay(
+                SLUG, DiagramMapper.NODE_ID_PREFIX + REL,
+                new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + REL, null, CLASS_B, null, null, null));
+
+        // A perfectly ordinary save: classes only, exactly what the new wire contract sends.
+        DiagramDto after = diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+                storedVersion(), null,
+                List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
+                List.of()));
+
+        assertThat(nodeRepo.findByDiagramIdAndConceptIri(
+                diagramRepo.findByOntologyMetadataSlug(SLUG).orElseThrow().getId(), REL))
+                .isPresent();
+        assertThat(after.pendingChangeCount()).isEqualTo(1);   // still stageable for Převzít
+    }
 
     /** The reviewer's finding: the stage response must expose a version at all. */
     @Test
@@ -269,9 +317,9 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         DiagramDto.Node staged = diagramService.stageOverlay(
                 SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
 
-        // A body carrying only nodeId = discard.
+        // A body carrying only conceptIri = discard.
         NodeOverlayDto discard = new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + CLASS_A,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null);
         DiagramDto.Node cleared = diagramService.stageOverlay(
                 SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, discard);
 

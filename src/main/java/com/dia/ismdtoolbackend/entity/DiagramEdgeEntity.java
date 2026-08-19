@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.entity;
 
-import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -15,18 +14,19 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
 /**
- * The persisted <em>presentation</em> state of a diagram edge. An edge's existence and kind are NOT read
- * from here — they are re-projected on every load from {@code live ⊕ overlay} by
- * {@code EdgeProjector}, because the semantics always live on a node (a VZTAH's {@code rdfs:domain} /
+ * The persisted <em>waypoints</em> of a diagram edge, and nothing else. An edge's existence, kind and
+ * endpoints are NOT read from here — they are re-projected on every load from {@code live ⊕ overlay} by
+ * {@code EdgeProjector}, because the semantics always live on a concept (a VZTAH's {@code rdfs:domain} /
  * {@code rdfs:range}, a hierarchy target, an {@code skos:exactMatch}). This row carries only what RDF
- * cannot express: which handle each end attaches to.
+ * cannot express: how the link is routed.
  *
- * <p>A row is matched to its projected edge by {@code (edgeKind, sourceIri, targetIri)}. Repointing an
- * endpoint therefore drops the saved handles — the geometry was drawn for an endpoint the edge no longer
- * has — and the stale row is cleared by the next Save, which full-replaces the edge set.
+ * <p>A row is matched to its projected edge by {@link #edgeKey} — a VZTAH's own concept IRI, or the
+ * composite {@code edge|KIND|source|target} of a hierarchy/equivalence link. Repointing an endpoint
+ * therefore drops the saved waypoints: the geometry was drawn for an endpoint the edge no longer has, and
+ * the stale row is cleared by the next Save, which full-replaces the edge set.
  *
- * <p>Endpoints are {@code diagram_nodes} ids; a node's wire id is its {@code iri:…} reference, so the
- * read-side maps these FK ids to IRIs when assembling the payload.
+ * <p>Endpoints are deliberately absent as columns. They were stored once and could silently disagree with
+ * the projection they duplicated; see {@code .planning/diagram-edge-model-REDESIGN.md}.
  */
 @Slf4j
 @Entity
@@ -44,25 +44,13 @@ public class DiagramEdgeEntity {
     @JoinColumn(name = "diagram_id", nullable = false)
     private DiagramEntity diagram;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "source_node_id", nullable = false)
-    private DiagramNodeEntity sourceNode;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "target_node_id", nullable = false)
-    private DiagramNodeEntity targetNode;
-
-    @Column(name = "edge_kind", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private DiagramEdgeKind edgeKind;
-
-    /** Anchor id on the source node when it exposes multiple handles (e.g. per-property ports); nullable. */
-    @Column(name = "source_handle")
-    private String sourceHandle;
-
-    /** Anchor id on the target node; nullable. */
-    @Column(name = "target_handle")
-    private String targetHandle;
+    /**
+     * The projected edge id these waypoints belong to; unique per diagram. A hierarchy key concatenates two
+     * full concept IRIs, so the Postgres column is TEXT — {@code length} here is JPA metadata for schema
+     * validation (H2 uses a bounded VARCHAR), not a ceiling on what Postgres stores.
+     */
+    @Column(name = "edge_key", nullable = false, length = 2048)
+    private String edgeKey;
 
     /** Serialized {@link EdgeWaypoint} list; null when the edge uses default routing. */
     @Column(name = "segments_json", columnDefinition = "text")

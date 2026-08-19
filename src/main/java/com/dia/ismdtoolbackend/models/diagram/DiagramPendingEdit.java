@@ -21,12 +21,6 @@ public class DiagramPendingEdit {
     /** {@code subClassOf} targets — TRIDA. */
     private List<String> broaderConcept;
 
-    /** {@code subPropertyOf} targets — VLASTNOST. */
-    private List<String> superProperty;
-
-    /** {@code subPropertyOf} targets — VZTAH. */
-    private List<String> superRelation;
-
     /** {@code skos:exactMatch} targets. */
     private List<String> exactMatch;
 
