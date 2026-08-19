@@ -24,18 +24,45 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
     List<OntologyMetadataEntity> searchByText(@Param("query") String query);
 
     /**
-     * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
+     * Variant of {@link #searchByText} that restricts to ontologies carrying local
+     * draft state.
      * <p>
-     * Every authenticated caller sees every unpublished ontology, regardless of
-     * ownership. Anonymous callers are rejected upstream and never reach this method.
+     * An ontology has local draft state when it is itself unpublished, OR when it
+     * holds at least one unpublished concept. The second arm is what makes a working
+     * copy of a published NKD vocabulary reachable: the upload path sets
+     * {@code is_published = true} on any ontology whose own IRI resolves in NKD, so
+     * an {@code o.is_published = false} test alone hides every working copy the user
+     * is actively drafting in.
+     * <p>
+     * Every authenticated caller sees every such ontology, regardless of ownership.
+     * Anonymous callers are rejected upstream and never reach this method.
      */
     @Query(value = """
             SELECT * FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-              AND o.is_published = false
+              AND (o.is_published = false
+                   OR o.is_published IS NULL
+                   OR EXISTS (SELECT 1 FROM ismd_schema.concepts c
+                              WHERE c.graph_name = o.graph_name
+                                AND (c.is_published = false OR c.is_published IS NULL)))
             ORDER BY o.updated_at DESC NULLS LAST, o.id
             """, nativeQuery = true)
     List<OntologyMetadataEntity> searchByTextUnpublished(@Param("query") String query);
+
+    /**
+     * Graph names of every ontology carrying local draft state. Mirrors the
+     * predicate in {@link #searchByTextUnpublished} so the Fuseki-side graph scope
+     * and the PG-side row filter agree on what "unpublished" means.
+     */
+    @Query(value = """
+            SELECT o.graph_name FROM ismd_schema.ontologies o
+            WHERE o.is_published = false
+               OR o.is_published IS NULL
+               OR EXISTS (SELECT 1 FROM ismd_schema.concepts c
+                          WHERE c.graph_name = o.graph_name
+                            AND (c.is_published = false OR c.is_published IS NULL))
+            """, nativeQuery = true)
+    List<String> findGraphNamesWithDraftState();
 
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
@@ -46,11 +73,17 @@ public interface OntologyMetadataRepository extends JpaRepository<OntologyMetada
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.ontologies o
             WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-              AND o.is_published = false
+              AND (o.is_published = false
+                   OR o.is_published IS NULL
+                   OR EXISTS (SELECT 1 FROM ismd_schema.concepts c
+                              WHERE c.graph_name = o.graph_name
+                                AND (c.is_published = false OR c.is_published IS NULL)))
             """, nativeQuery = true)
     long countSearchByTextUnpublished(@Param("query") String query);
 
     Optional<OntologyMetadataEntity> findByGraphName(String graphName);
+
+    List<OntologyMetadataEntity> findAllByGraphNameIn(List<String> graphNames);
 
     List<OntologyMetadataEntity> findAllByUserId(String userId);
 

@@ -609,6 +609,67 @@ class IsmdSearchProviderTest {
         assertEquals(7, new HashSet<>(seen).size(), "no row is returned on two different pages");
     }
 
+    // --- UNPUBLISHED = local draft state (working copies included) ---
+
+    @Test
+    void search_unpublishedOntology_scopesFusekiToGraphsWithDraftState() {
+        // A working copy of a published NKD vocabulary is is_published=true, so the
+        // Fuseki graph scope must come from the draft-state query, not from
+        // findAllByIsPublished(false) — otherwise its labels are unreachable.
+        String workingCopyGraph = "https://slovník.gov.cz/a3791---registr-vysokých-škol";
+
+        when(ontologyMetadataRepository.findGraphNamesWithDraftState())
+                .thenReturn(List.of(workingCopyGraph));
+        when(ontologyMetadataRepository.searchByTextUnpublished("škol"))
+                .thenReturn(List.of());
+        when(jenaTDB2Repository.searchByText(eq("škol"), eq(List.of(workingCopyGraph)), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", workingCopyGraph,
+                        "prefLabel", "A3791 - Registr Vysokých škol",
+                        "prefLabelLang", "cs",
+                        "types", "http://www.w3.org/2004/02/skos/core#ConceptScheme")));
+        when(ontologyMetadataRepository.findAllByGraphNameIn(List.of(workingCopyGraph)))
+                .thenReturn(List.of(createOntology(workingCopyGraph, "a3791---registr-vysokých-škol", true)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "škol", SearchType.ONTOLOGY, 20, 0, "cs", null, null,
+                "user1", false, Boolean.FALSE);
+
+        assertEquals(1, result.results().size(), "Working copy must be reachable under UNPUBLISHED");
+        SearchResultDto dto = result.results().get(0);
+        assertEquals(workingCopyGraph, dto.getIri());
+        assertEquals("A3791 - Registr Vysokých škol", dto.getLabel());
+        verify(ontologyMetadataRepository).findGraphNamesWithDraftState();
+        verify(ontologyMetadataRepository, never()).findAllByIsPublished(false);
+    }
+
+    @Test
+    void search_ontologyFoundByLabelOnly_backfillsPgFields() {
+        // Fuseki-sourced ontology rows carry no id/slug/isPublished; the ontology-only
+        // branch skips the concept backfill, so it needs its own.
+        String graph = "https://example.org/ontology/1";
+
+        when(ontologyMetadataRepository.searchByText("škol")).thenReturn(List.of());
+        stubVisibleGraphs("user1", List.of(createOntology(graph, "unrelated-slug", false)));
+        when(jenaTDB2Repository.searchByText(eq("škol"), anyList(), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", graph,
+                        "prefLabel", "Vysoké školy",
+                        "types", "http://www.w3.org/2002/07/owl#Ontology")));
+        when(ontologyMetadataRepository.findAllByGraphNameIn(List.of(graph)))
+                .thenReturn(List.of(createOntology(graph, "unrelated-slug", false)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "škol", SearchType.ONTOLOGY, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("unrelated-slug", dto.getSlug(), "slug must be backfilled from PG");
+        assertFalse(dto.getIsPublished(), "publish state must be backfilled from PG");
+    }
+
     private ConceptMetadataEntity createConcept(String iri, String slug, String name,
                                                  ConceptType type, String graphName, boolean published) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
