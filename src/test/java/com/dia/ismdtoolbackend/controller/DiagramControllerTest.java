@@ -4,10 +4,12 @@ import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
 import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
+import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,6 +22,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -224,6 +227,45 @@ class DiagramControllerTest {
                     .andExpect(status().isBadRequest());
         }
         verify(diagramService, never()).saveLayout(any(), any());
+    }
+
+    /**
+     * The FE keeps ONE edge model — the fat read shape — and echoes it back on Save. The derived fields
+     * ({@code source}/{@code target}/{@code type}/{@code data}) are ignored rather than rejected, so the
+     * client never has to strip them into a separate write type. They are ignored, never trusted: endpoints
+     * are re-projected from {@code live ⊕ overlay} on read, so a stale or hand-edited endpoint here cannot
+     * contradict the ontology.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void saveLayout_acceptsTheFatReadEdgeShape_ignoringDerivedFields() throws Exception {
+        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), 0));
+
+        String fatEdge = """
+                {"version": 3, "nodes": [],
+                 "edges": [{
+                   "id": "https://x/pojem/rel",
+                   "source": "iri:https://x/pojem/a",
+                   "target": "iri:https://x/pojem/b",
+                   "type": "relationEdge",
+                   "segments": [{"x": 12.5, "y": -4}],
+                   "data": {"edgeKind": "VZTAH", "pending": false,
+                            "iri": "https://x/pojem/rel", "label": {"cs": "vztah"}}
+                 }]}
+                """;
+
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(fatEdge))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<DiagramLayoutDto> captor = ArgumentCaptor.forClass(DiagramLayoutDto.class);
+        verify(diagramService).saveLayout(eq("pracovni-pomer"), captor.capture());
+        assertThat(captor.getValue().edges()).singleElement().satisfies(e -> {
+            assertThat(e.id()).isEqualTo("https://x/pojem/rel");
+            assertThat(e.segments()).containsExactly(new EdgeWaypoint(12.5, -4));
+        });
     }
 
     /**

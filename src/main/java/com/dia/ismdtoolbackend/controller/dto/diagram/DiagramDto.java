@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ public record DiagramDto(
      * Inside {@code DiagramDto.nodes} it is null (and so omitted): the version there belongs to the
      * enclosing diagram, and repeating it per node would imply a per-node lock that does not exist.
      */
+    @Schema(name = "DiagramNode")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Node(
             String id,
@@ -68,6 +70,7 @@ public record DiagramDto(
      * canvas objects of their own. Always present (empty, never null) and ordered by label so the rows do
      * not reshuffle between reads.
      */
+    @Schema(name = "DiagramNodeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record NodeData(
             ConceptType conceptType,
@@ -88,6 +91,7 @@ public record DiagramDto(
      * <p>A domainless property has no class to sit in and is simply absent from the canvas — it is placed
      * by being dragged in from the ontology detail, which supplies the domain.
      */
+    @Schema(name = "DiagramPropertyRow")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record PropertyRow(
             String iri,
@@ -108,6 +112,7 @@ public record DiagramDto(
      * <p>{@code id} is the backing concept's IRI for a VZTAH, and the deterministic
      * {@code edge|KIND|source|target} for a hierarchy/equivalence link, which has no concept behind it.
      */
+    @Schema(name = "DiagramEdge")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Edge(
             String id,
@@ -126,6 +131,7 @@ public record DiagramDto(
      * {@code SUBCLASS_OF} and {@code EXACT_MATCH} are bare triples and leave them null — an edge with a
      * non-null {@code iri} is the FE's signal that it can be selected, staged and deep-linked.
      */
+    @Schema(name = "DiagramEdgeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record EdgeData(
             DiagramEdgeKind edgeKind,

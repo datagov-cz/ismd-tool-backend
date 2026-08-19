@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -29,6 +30,7 @@ public record DiagramLayoutDto(
      * A node's persisted layout. {@code id} is {@code iri:<full-iri>}; a new IRI adds the node.
      * {@code collapsed} is optional on the wire — omitted or null means not collapsed.
      */
+    @Schema(name = "DiagramLayoutNode")
     public record Node(
             @NotBlank String id,
             @NotNull @Valid PositionDto position,
@@ -50,6 +52,7 @@ public record DiagramLayoutDto(
      * {@code rdfs:range} ⊕ overlay on every read, so accepting them here would let a client persist a
      * value that contradicts the projection. Structural changes go through the overlay endpoint.
      */
+    @Schema(name = "DiagramLayoutEdge")
     public record Edge(
             @NotBlank String id,
             List<EdgeWaypoint> segments
