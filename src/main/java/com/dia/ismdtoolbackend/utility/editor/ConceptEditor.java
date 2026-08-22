@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.utility.editor;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -22,8 +23,6 @@ import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 public class ConceptEditor {
 
     private final ConceptIriFactory iriFactory = new ConceptIriFactory();
-
-    private final ConceptEditValidator validator = new ConceptEditValidator();
 
     private final ConceptFieldUpdaters fieldUpdaters = new ConceptFieldUpdaters(iriFactory);
 
@@ -56,10 +55,10 @@ public class ConceptEditor {
         // Pre-flight validation: reject the whole edit (HTTP 400) before any model
         // mutation if any supplied value is invalid. Atomic — nothing is written on
         // rejection. Mirrors the validity checks the field updaters apply.
-        List<ConceptEditValidator.InvalidInput> invalid = validator.validate(editModel);
+        List<ConceptInputValidator.InvalidInput> invalid = ConceptInputValidator.validate(editModel);
         if (!invalid.isEmpty()) {
             String detail = invalid.stream()
-                    .map(ConceptEditValidator.InvalidInput::toString)
+                    .map(ConceptInputValidator.InvalidInput::toString)
                     .collect(Collectors.joining("; "));
             throw new ConceptValidationException("Neplatné hodnoty v úpravě pojmu: " + detail);
         }

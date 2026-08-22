@@ -37,6 +37,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
+import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.utility.UtilityMethods;
@@ -654,6 +655,17 @@ public class ConceptServiceImpl implements ConceptService {
                 ? createModel.getDefinitionModel().getDefinition() : null;
         if (hasAnyValue(definition) && isBlankValue(definition.get("cs"))) {
             throw new ConceptValidationException("Definice pojmu musí obsahovat českou variantu (cs).");
+        }
+
+        // Reject the whole create (HTTP 400) if any supplied value is invalid, rather than
+        // dropping it silently. Runs the same rule set as the edit path, so identical input
+        // fails identically on both verbs.
+        List<ConceptInputValidator.InvalidInput> invalid = ConceptInputValidator.validate(createModel);
+        if (!invalid.isEmpty()) {
+            String detail = invalid.stream()
+                    .map(ConceptInputValidator.InvalidInput::toString)
+                    .collect(Collectors.joining("; "));
+            throw new ConceptValidationException("Neplatné hodnoty při vytváření pojmu: " + detail);
         }
     }
 
