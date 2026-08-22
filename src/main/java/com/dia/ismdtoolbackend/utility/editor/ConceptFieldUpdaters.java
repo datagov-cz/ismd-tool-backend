@@ -739,7 +739,7 @@ class ConceptFieldUpdaters {
         }
 
         // Add the new structure. Both IRIs are present together or not at all —
-        // ConceptEditValidator rejects the one-sided cases before this runs.
+        // ConceptInputValidator rejects the one-sided cases before this runs.
         if (newCodeListIri != null && !newCodeListIri.trim().isEmpty()
                 && newDatasetUrl != null && !newDatasetUrl.trim().isEmpty()) {
             Resource codeListType = model.createResource(
