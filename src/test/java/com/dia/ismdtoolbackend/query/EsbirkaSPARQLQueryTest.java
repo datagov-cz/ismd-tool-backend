@@ -33,15 +33,113 @@ class EsbirkaSPARQLQueryTest {
     }
 
     @Test
-    void lawSearch_withQ_parsesAndAddsFilterAndCitaceOrder() {
+    void lawSearch_withQ_parsesAndAddsFilterAndRankedOrder() {
         String q = EsbirkaSPARQLQuery.buildLawSearchQuery("187/2006", 50);
         assertDoesNotThrow(() -> QueryFactory.create(q));
         assertTrue(q.contains("FILTER(CONTAINS(LCASE(STR(?citace)), LCASE("));
         // Jena escapes the literal — verify the value is present (not as a raw substring exposed to injection).
         assertTrue(q.contains("\"187/2006\""));
-        assertTrue(q.contains("ORDER BY ?citace"));
-        assertFalse(q.contains("ORDER BY DESC(?rok)"));
+        // Relevance rank leads the ordering; citace is only the final tie-break.
+        assertTrue(q.contains("ORDER BY ?rank DESC(?rok) ?citace"),
+                "q-search must rank číslo matches ahead of year-only matches");
         assertTrue(q.contains("LIMIT 50"));
+    }
+
+    @Test
+    void lawSearch_withQ_ranksCisloMatchesAheadOfYearMatches() {
+        // A bare CONTAINS on the citation makes "49" match 49/1997, 490/2001 AND 1/2049
+        // alike. Without a rank the lexical citace order buries the actual law number.
+        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("49", 20);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        // Tier 0: číslo equals the needle. Tier 1: whole citation starts with it.
+        // Tier 2: číslo starts with it. Tier 3: everything else (year-only matches).
+        assertTrue(q.contains("BIND(IF(LCASE(STR(?cislo)) = LCASE("), "tier 0: exact číslo match");
+        assertTrue(q.contains("IF(STRSTARTS(LCASE(STR(?citace)), LCASE("), "tier 1: citation prefix");
+        // A "číslo starts with needle" tier would be unreachable: citace is "<číslo>/<rok> Sb.",
+        // so every číslo-prefix match is already a citation-prefix match.
+        assertFalse(q.contains("STRSTARTS(LCASE(STR(?cislo))"), "dead tier must not be emitted");
+        assertTrue(q.contains("AS ?rank)"));
+        // Ranking must be inside the query — LIMIT applies after ORDER BY, so ranking
+        // client-side would truncate the best matches before ranking them.
+        assertTrue(q.indexOf("AS ?rank)") < q.indexOf("LIMIT"),
+                "rank must be bound inside the WHERE clause, before LIMIT");
+    }
+
+    @Test
+    void lawSearch_emptyQ_hasNoRankBinding() {
+        // Nothing to rank against without a needle; the G11 rok/cislo order stands.
+        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(null, 20);
+        assertFalse(q.contains("?rank"), "empty-q must not bind a relevance rank");
+    }
+
+
+    @Test
+    void lawsByNumbers_matchesOnStrNotValues_forVirtuosoDatatypeQuirk() {
+        // e-Sbírka stores číslo-předpisu as "49"^^xsd:string, and this Virtuoso does not
+        // equate that with the plain literal "49" — a VALUES block matched ZERO rows live.
+        // Binding the typed form does not help: SPARQL 1.1 calls them the same term, so
+        // Jena renders it back to "49". Comparing STR(?cislo) is the working shape.
+        String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49", "490"), 600);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(q.contains("FILTER(STR(?cislo) IN ("), "must compare via STR(), not VALUES");
+        assertFalse(q.contains("VALUES ?cislo"), "a VALUES block silently returns nothing here");
+        assertTrue(q.contains("\"49\""));
+        assertTrue(q.contains("\"490\""));
+        // Group size is unbounded (~120 acts per low číslo), so the act fetch MUST be
+        // row-capped or 50 groups stream ~6000 rows.
+        assertTrue(q.contains("LIMIT 600"), "act fetch must carry a row cap");
+        // Ordered newest-first so the cap keeps recent acts, not an arbitrary slice.
+        assertTrue(q.contains("ORDER BY DESC(?rok)"));
+        // číslo-ordering is deliberately absent: the service re-buckets by číslo, which
+        // would discard it — sorting twice on the expensive side of the wire is waste.
+        assertFalse(q.contains("STRLEN"), "no redundant server-side číslo ordering");
+    }
+
+    @Test
+    void lawNumberGroups_aggregatesAndCapsGroups() {
+        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", 20);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        // COUNT(DISTINCT ?akt), not COUNT(*): COUNT(*) counts solutions, so an act with two
+        // patří-do-sbírky or citace values would inflate its group total.
+        assertTrue(q.contains("COUNT(DISTINCT ?akt)"), "must count acts, not solutions");
+        // Only ?akt/?cislo/?citace are needed; joining ?rok and ?sbirka just to discard them
+        // is pure scan cost.
+        assertFalse(q.contains("rok-předpisu"), "unused join must not be in the aggregate");
+        assertFalse(q.contains("patří-do-sbírky"), "unused join must not be in the aggregate");
+        assertTrue(q.contains("GROUP BY ?cislo"));
+        // Prefix, not substring: "49" must not match 1490.
+        assertTrue(q.contains("STRSTARTS(LCASE(STR(?cislo))"));
+        assertFalse(q.contains("CONTAINS(LCASE(STR(?cislo))"));
+        // The cap applies to groups — LIMIT sits after GROUP BY.
+        assertTrue(q.indexOf("GROUP BY") < q.indexOf("LIMIT"));
+    }
+
+    @Test
+    void lawNumberGroups_blankQOmitsFilter() {
+        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("  ", 20);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertFalse(q.contains("FILTER"));
+    }
+
+
+    @Test
+    void fragmentQueries_onlyPoradiIsRequired_citaceAndParentAreOptional() {
+        // Whole versions exist with NO citace at all: …/1997/49/2025-11-01 has 2508 fragments
+        // and zero citace values (verified live 2026-08-23). Requiring citace returned 0 rows
+        // and the entire law rendered blank. Even where citace mostly exists it is absent on
+        // ~13% of fragments, 288 of which carry real text.
+        for (String q : new String[]{
+                EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI),
+                EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI)}) {
+            assertDoesNotThrow(() -> QueryFactory.create(q));
+            assertTrue(q.contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/citace-ozna\u010Den\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?citace }"),
+                    "citace must be OPTIONAL — a required join blanks entire versions");
+            assertTrue(q.contains("OPTIONAL { ?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/m\u00E1-p\u0159edka> ?parent }"),
+                    "má-předka must be OPTIONAL — assembleTree re-parents by path walk");
+            // pořadí is the one genuinely required predicate: it is the document order key.
+            assertTrue(q.contains("?fragment <https://slovn\u00EDk.gov.cz/datov\u00FD/sb\u00EDrka/pojem/po\u0159ad\u00ED-fragmentu-zn\u011Bn\u00ED-pr\u00E1vn\u00EDho-aktu> ?order ."),
+                    "pořadí stays required");
+        }
     }
 
     @Test

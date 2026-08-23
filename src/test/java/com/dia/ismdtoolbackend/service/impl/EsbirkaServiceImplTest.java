@@ -9,7 +9,6 @@ import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -18,10 +17,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,8 +36,15 @@ class EsbirkaServiceImplTest {
     @Mock
     private EsbirkaSparqlClient client;
 
-    @InjectMocks
     private EsbirkaServiceImpl service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void buildService() {
+        // In production `self` is the Spring proxy that adds @Cacheable; here it is a plain
+        // self-reference, so the one-arg delegation is exercised without the caching layer.
+        service = new EsbirkaServiceImpl(client, null, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "self", service);
+    }
 
     // -------- searchLaws --------
 
@@ -449,6 +458,102 @@ class EsbirkaServiceImplTest {
     @Test
     void getLawContentRejectsBlank() {
         assertThrows(IllegalArgumentException.class, () -> service.getLawContent("  "));
+    }
+
+    // -------- getLawContent: caller-selected znění --------
+
+    @Test
+    void getLawContentRendersSelectedVersionNotLatest() {
+        String olderIri = LAW_IRI + "/2020-01-01";
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true),
+                new LawVersionModel(olderIri, LocalDate.of(2020, 1, 1), null, "t", false)));
+        when(client.fetchVersionContent(olderIri)).thenReturn(List.of(
+                new FragmentModel(olderIri + "/dokument/norma/par_1", olderIri + "/dokument/norma",
+                        "§ 1", "par", "0001", "<p>staré znění</p>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out =
+                service.getLawContent("49/1997", olderIri);
+
+        // The whole header must describe the SELECTED version, not the latest one.
+        assertEquals(olderIri, out.getVersionIri());
+        assertEquals(LocalDate.of(2020, 1, 1), out.getVersionDate());
+        assertEquals("/eli/cz/sb/2006/187/2020-01-01", out.getVersionEliPath());
+        assertFalse(out.isVersionLatest(), "selected an older znění — must not be flagged latest");
+        assertTrue(out.getBodyHtml().contains("<p>staré znění</p>"));
+        // The switcher list still carries every version.
+        assertEquals(2, out.getVersions().size());
+    }
+
+    @Test
+    void getLawContentNullVersionIriFallsBackToLatest() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out =
+                service.getLawContent("49/1997", null);
+        assertEquals(VERSION_IRI, out.getVersionIri());
+        assertTrue(out.isVersionLatest());
+    }
+
+    @Test
+    void getLawContentBlankVersionIriFallsBackToLatest() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        assertEquals(VERSION_IRI, service.getLawContent("49/1997", "   ").getVersionIri());
+    }
+
+    @Test
+    void getLawContentRejectsVersionIriOfAnotherLaw() {
+        // Host-shape validation alone would pass this IRI — only membership in THIS law's
+        // version list can reject it, otherwise another act's text renders under our header.
+        String foreignVersion =
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/262/2026-04-01";
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("49/1997", foreignVersion));
+        assertTrue(ex.getMessage().contains("nepatří k právnímu aktu"), ex.getMessage());
+        // Must fail before spending a ~2 MB content fetch.
+        verify(client, never()).fetchVersionContent(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void getLawContentRejectsNonEsbirkaVersionIri() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("49/1997", "https://example.org/foo"));
+        assertEquals("Neplatný identifikátor znění právního aktu.", ex.getMessage());
+    }
+
+    @Test
+    void getLawContentSingleArgOverloadStillRendersLatest() {
+        // The pre-existing one-arg contract must be unchanged for existing callers.
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        assertEquals(VERSION_IRI, service.getLawContent("49/1997").getVersionIri());
     }
 
     // -------- normalizeLawRef: @Cacheable key generator --------

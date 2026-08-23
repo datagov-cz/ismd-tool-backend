@@ -8,6 +8,8 @@ import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
+import com.dia.ismdtoolbackend.controller.dto.LawSearchGroupDto;
+import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
@@ -209,6 +211,58 @@ class EsbirkaControllerTest {
                 .andExpect(status().isServiceUnavailable());
     }
 
+    // -------- /law/search/grouped --------
+
+    @Test
+    void groupedSearchReturnsGroupsAndAmbiguityFlag() throws Exception {
+        LawDto a = new LawDto(LAW_IRI, "/eli/cz/sb/2006/187", "https://opendata.eselpoint.gov.cz",
+                "49/2026 Sb.", "Zákon č. 49/2026 Sb.", "49", 2026, "sb");
+        LawDto b = new LawDto(LAW_IRI, "/eli/cz/sb/2006/187", "https://opendata.eselpoint.gov.cz",
+                "49/1997 Sb.", "Zákon č. 49/1997 Sb.", "49", 1997, "sb");
+        LawSearchResultDto dto = LawSearchResultDto.builder()
+                .query("49")
+                .ambiguous(true)
+                .totalMatches(2)
+                .truncated(false)
+                .groups(List.of(LawSearchGroupDto.builder()
+                        .cislo("49")
+                        .count(2)
+                        .exactNumberMatch(true)
+                        .laws(List.of(a, b))
+                        .build()))
+                .build();
+        when(esbirkaService.searchLawsGrouped("49", 20)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.query").value("49"))
+                .andExpect(jsonPath("$.data.ambiguous").value(true))
+                .andExpect(jsonPath("$.data.totalMatches").value(2))
+                .andExpect(jsonPath("$.data.truncated").value(false))
+                .andExpect(jsonPath("$.data.groups.length()").value(1))
+                .andExpect(jsonPath("$.data.groups[0].cislo").value("49"))
+                .andExpect(jsonPath("$.data.groups[0].count").value(2))
+                .andExpect(jsonPath("$.data.groups[0].exactNumberMatch").value(true))
+                .andExpect(jsonPath("$.data.groups[0].laws.length()").value(2))
+                .andExpect(jsonPath("$.data.groups[0].laws[0].citace").value("49/2026 Sb."));
+    }
+
+    @Test
+    void groupedSearchRejectsOutOfRangeLimit() throws Exception {
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49").param("limit", "999"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void groupedSearchService503BubblesUp() throws Exception {
+        when(esbirkaService.searchLawsGrouped("49", 20))
+                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka law search failed"));
+
+        mockMvc.perform(get("/api/eli/law/search/grouped").param("q", "49"))
+                .andExpect(status().isServiceUnavailable());
+    }
+
     // -------- /law/content --------
 
     @Test
@@ -232,7 +286,7 @@ class EsbirkaControllerTest {
                 .versions(List.of(v))
                 .fragments(List.of(root))
                 .build();
-        when(esbirkaService.getLawContent("187/2006")).thenReturn(dto);
+        when(esbirkaService.getLawContent("187/2006", null)).thenReturn(dto);
 
         mockMvc.perform(get("/api/eli/law/content").param("law", "187/2006"))
                 .andExpect(status().isOk())
@@ -248,8 +302,44 @@ class EsbirkaControllerTest {
     }
 
     @Test
+    void contentPassesSelectedVersionIriToService() throws Exception {
+        String olderIri = LAW_IRI + "/2020-01-01";
+        LawContentDto dto = LawContentDto.builder()
+                .lawIri(LAW_IRI)
+                .citace("187/2006 Sb.")
+                .versionIri(olderIri)
+                .versionEliPath("/eli/cz/sb/2006/187/2020-01-01")
+                .versionDate(LocalDate.of(2020, 1, 1))
+                .versionLatest(false)
+                .versions(new ArrayList<>())
+                .fragments(new ArrayList<>())
+                .build();
+        when(esbirkaService.getLawContent("187/2006", olderIri)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/eli/law/content")
+                        .param("law", "187/2006")
+                        .param("versionIri", olderIri))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.versionIri").value(olderIri))
+                .andExpect(jsonPath("$.data.versionLatest").value(false));
+    }
+
+    @Test
+    void contentVersionIriOfAnotherLawReturns400() throws Exception {
+        String foreign = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/262/2026-04-01";
+        when(esbirkaService.getLawContent("187/2006", foreign))
+                .thenThrow(new IllegalArgumentException(
+                        "Znění " + foreign + " nepatří k právnímu aktu č. 187/2006."));
+
+        mockMvc.perform(get("/api/eli/law/content")
+                        .param("law", "187/2006")
+                        .param("versionIri", foreign))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void contentPartialInputReturns400() throws Exception {
-        when(esbirkaService.getLawContent("49"))
+        when(esbirkaService.getLawContent("49", null))
                 .thenThrow(new IllegalArgumentException("Referenci zadejte ve tvaru číslo/rok (např. 49/1997)."));
         mockMvc.perform(get("/api/eli/law/content").param("law", "49"))
                 .andExpect(status().isBadRequest())
@@ -258,7 +348,7 @@ class EsbirkaControllerTest {
 
     @Test
     void contentUnknownLawReturns400() throws Exception {
-        when(esbirkaService.getLawContent("999/1997"))
+        when(esbirkaService.getLawContent("999/1997", null))
                 .thenThrow(new IllegalArgumentException("Právní akt č. 999/1997 nebyl nalezen."));
         mockMvc.perform(get("/api/eli/law/content").param("law", "999/1997"))
                 .andExpect(status().isBadRequest())
@@ -273,7 +363,7 @@ class EsbirkaControllerTest {
 
     @Test
     void contentService503BubblesUp() throws Exception {
-        when(esbirkaService.getLawContent("187/2006"))
+        when(esbirkaService.getLawContent("187/2006", null))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka version content fetch failed"));
 
         mockMvc.perform(get("/api/eli/law/content").param("law", "187/2006"))

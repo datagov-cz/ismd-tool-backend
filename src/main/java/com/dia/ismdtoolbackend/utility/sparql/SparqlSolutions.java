@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.sparql;
 
 import org.apache.jena.query.QuerySolution;
+import org.apache.jena.rdf.model.Literal;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -47,14 +48,31 @@ public final class SparqlSolutions {
         }
     }
 
+    /**
+     * Read a boolean projection, tolerating stores that render it as a number.
+     *
+     * <p>Virtuoso returns a projected comparison such as {@code ((?a = ?b) AS ?flag)} as
+     * {@code "1"^^xsd:integer}, not {@code "true"^^xsd:boolean}. {@code getBoolean()} throws
+     * on that, and the exception was swallowed as {@code false} — so e-Sbírka's
+     * {@code isLatest} was false for every version, silently. Falls back to a numeric read
+     * (non-zero = true), then to parsing the lexical form.
+     */
     public static boolean literalBool(QuerySolution sol, String var) {
         if (!sol.contains(var) || !sol.get(var).isLiteral()) {
             return false;
         }
+        Literal lit = sol.getLiteral(var);
         try {
-            return sol.getLiteral(var).getBoolean();
-        } catch (Exception e) {
-            return false;
+            return lit.getBoolean();
+        } catch (Exception ignored) {
+            // not an xsd:boolean — fall through
         }
+        try {
+            return lit.getInt() != 0;
+        } catch (Exception ignored) {
+            // not numeric either — fall through
+        }
+        String lexical = lit.getLexicalForm().trim();
+        return "true".equalsIgnoreCase(lexical) || "1".equals(lexical);
     }
 }

@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
+import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
@@ -56,6 +57,33 @@ public class EsbirkaController {
     }
 
     @Operation(
+            summary = "Vyhledávání právních aktů seskupené podle čísla předpisu",
+            description = "Stejné vyhledávání jako /law/search, ale výsledky jsou seskupené podle " +
+                    "čísla předpisu. České předpisy se číslují každý rok od jedničky, takže dotaz " +
+                    "\"49\" odpovídá desítkám nesouvisejících zákonů (49/1997, 49/2020, 49/2026 …) — " +
+                    "plochý seznam je zaplní jedním číslem a hledaný zákon vypadne. " +
+                    "Příznak \"ambiguous\" značí, že si uživatel musí ještě vybrat (typicky ročník); " +
+                    "\"truncated\" značí, že existují další shody mimo odpověď. " +
+                    "Parametr limit omezuje počet skupin, nikoli řádků."
+    )
+    @GetMapping("/law/search/grouped")
+    public ResponseEntity<ApiResponseDto<LawSearchResultDto>> searchLawsGrouped(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer limit) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        try {
+            int resolved = resolveLimit(limit);
+            log.info("e-Sbírka grouped law search, q: {}, limit: {}", q, resolved);
+            LawSearchResultDto result = esbirkaService.searchLawsGrouped(q, resolved);
+            return ResponseEntity.ok(ApiResponseDto.success(result,
+                    "Vyhledávání právních aktů úspěšně provedeno."));
+        } finally {
+            MDC.remove(LOG_REQUEST_ID);
+        }
+    }
+
+    @Operation(
             summary = "Seznam znění daného právního aktu",
             description = "Vrací všechna znění zadaného právního aktu, řazeno od nejnovějšího; " +
                     "pole \"latest\" označuje aktuálně poslední znění."
@@ -100,20 +128,23 @@ public class EsbirkaController {
     @Operation(
             summary = "Celé znění právního aktu podle reference číslo/rok",
             description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\"), vyhledá daný " +
-                    "právní akt přesnou shodou, vybere jeho poslední znění a vrátí celé jeho znění: " +
-                    "hlavičku (IRI aktu, citace, znění, datum účinnosti), seznam všech znění (pro přepínač) " +
+                    "právní akt přesnou shodou a vrátí celé jeho znění: hlavičku (IRI aktu, citace, " +
+                    "znění, datum účinnosti, příznak posledního znění), seznam všech znění (pro přepínač) " +
                     "a strom fragmentů, kde každý uzel nese své HTML \"obsah\" tělo pro interaktivní " +
-                    "procházení a výběr sekcí. Pro částečný vstup (např. \"49\") použijte /law/search. " +
-                    "Výsledek je cachován (znění je neměnné)."
+                    "procházení a výběr sekcí. Bez parametru \"versionIri\" se vrací poslední znění; " +
+                    "s ním se vrací zvolené znění (IRI musí patřit k danému aktu, jinak 400). " +
+                    "Pro částečný vstup (např. \"49\") použijte /law/search. " +
+                    "Výsledek je cachován pro každé znění zvlášť (znění je neměnné)."
     )
     @GetMapping("/law/content")
     public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(
-            @RequestParam String law) {
+            @RequestParam String law,
+            @RequestParam(required = false) String versionIri) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         try {
-            log.info("e-Sbírka law content, law: {}", law);
-            LawContentDto result = esbirkaService.getLawContent(law);
+            log.info("e-Sbírka law content, law: {}, versionIri: {}", law, versionIri);
+            LawContentDto result = esbirkaService.getLawContent(law, versionIri);
             return ResponseEntity.ok(ApiResponseDto.success(result,
                     "Celé znění právního aktu úspěšně načteno."));
         } finally {

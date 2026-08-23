@@ -4,6 +4,8 @@ import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
+import com.dia.ismdtoolbackend.controller.dto.LawSearchGroupDto;
+import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
@@ -11,6 +13,7 @@ import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
@@ -18,25 +21,36 @@ import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class EsbirkaServiceImpl implements EsbirkaService {
 
     static final int MAX_FRAGMENT_DEPTH = 10;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
+
+    /**
+     * Row cap on the grouped search's act fetch. Group size is unbounded (~120 acts per low
+     * číslo), so the group cap alone does not bound the response — 50 groups would stream
+     * ~6 000 rows. Per-group display is capped in turn by {@link #MAX_LAWS_PER_GROUP}; the
+     * true dataset-wide total still reaches the FE via {@code LawSearchGroupDto.count}.
+     */
+    static final int GROUPED_ROW_LIMIT = 600;
+
+    /** Acts shown per group. The rest are reachable by narrowing the query (or by year). */
+    static final int MAX_LAWS_PER_GROUP = 60;
 
     /**
      * Marker for the structural document containers of a version. Direct children of any
@@ -49,8 +63,31 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
 
+    /**
+     * Self-reference through the Spring proxy so the two-arg {@link #getLawContent}'s
+     * {@code @Cacheable} is honoured when the one-arg overload delegates to it. A direct
+     * {@code this.getLawContent(ref, null)} call bypasses the proxy entirely, so the
+     * latest-version path would re-run the whole ~2 MB fetch on every request.
+     */
+    private final EsbirkaService self;
+
+    public EsbirkaServiceImpl(EsbirkaSparqlClient client,
+                              EsbirkaFragmentResolutionCache resolutionCache,
+                              @Lazy EsbirkaService self) {
+        this.client = client;
+        this.resolutionCache = resolutionCache;
+        this.self = self;
+    }
+
+    // Keys join the raw values rather than Objects.hash(q, limit): that hash is
+    // 31*(31 + q.hashCode()) + limit, so a needle differing by one code point collides with a
+    // limit differing by up to 49 — e.g. hash("1", 32) == hash("2", 1). Measured across
+    // q="1".."999" x limit=1..50 that is 34% of pairs, each silently serving another
+    // search's results for the full 60-minute TTL. '\u0000' cannot occur in a URL query value,
+    // so it is an unambiguous separator.
     @Override
-    @Cacheable(cacheNames = "esbirkaLawSearch", key = "T(java.util.Objects).hash(#q, #limit)")
+    @Cacheable(cacheNames = "esbirkaLawSearch",
+            key = "'flat:' + (#q == null ? '' : #q) + '\u0000' + #limit")
     public List<LawDto> searchLaws(String q, int limit) {
         List<LawModel> rows = client.searchLaws(q, limit);
         List<LawDto> out = new ArrayList<>(rows.size());
@@ -59,6 +96,119 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
         return out;
     }
+
+    /**
+     * Grouped law search, in two SPARQL steps: aggregate the matching předpis numbers
+     * (capped at {@code limit} <em>groups</em>), then fetch the acts for exactly those
+     * numbers.
+     *
+     * <p>A single row-capped query cannot do this. "49" matches 2 217 acts on the citation
+     * (only 120 numbered 49 — the rest matched a year), and even číslo-scoped, "1"
+     * prefix-matches 12 037 acts. Any row cap truncates mid-group and re-creates the bug
+     * grouping exists to fix. Aggregating first bounds the work by the answer's size, and
+     * gives true per-group counts rather than counts-of-what-fit.
+     */
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawSearch",
+            key = "'grouped:' + (#q == null ? '' : #q) + '\u0000' + #limit")
+    public LawSearchResultDto searchLawsGrouped(String q, int limit) {
+        String needle = q == null ? null : q.trim();
+
+        List<LawNumberGroupModel> numberGroups = client.searchLawNumberGroups(needle, limit);
+        if (numberGroups.isEmpty()) {
+            return LawSearchResultDto.builder()
+                    .query(blankToNull(needle))
+                    .ambiguous(false)
+                    .totalMatches(0)
+                    .truncated(false)
+                    .groups(List.of())
+                    .build();
+        }
+
+        List<String> cisla = new ArrayList<>(numberGroups.size());
+        int totalMatches = 0;
+        for (LawNumberGroupModel g : numberGroups) {
+            cisla.add(g.cislo());
+            totalMatches += g.pocet();
+        }
+
+        Map<String, List<LawDto>> byCislo = new HashMap<>();
+        for (LawModel m : client.fetchLawsByNumbers(cisla, GROUPED_ROW_LIMIT)) {
+            byCislo.computeIfAbsent(m.getCislo() == null ? "" : m.getCislo(),
+                    k -> new ArrayList<>()).add(toLawDto(m));
+        }
+
+        List<LawSearchGroupDto> groups = new ArrayList<>(numberGroups.size());
+        for (LawNumberGroupModel g : numberGroups) {
+            List<LawDto> laws = byCislo.get(g.cislo());
+            if (laws == null) {
+                laws = new ArrayList<>();
+            } else {
+                // Sorted here rather than in SPARQL: the rows are re-bucketed by číslo above,
+                // which discards any server-side číslo ordering anyway.
+                laws.sort(NEWEST_ROK_FIRST);
+                if (laws.size() > MAX_LAWS_PER_GROUP) {
+                    laws = new ArrayList<>(laws.subList(0, MAX_LAWS_PER_GROUP));
+                }
+            }
+            groups.add(LawSearchGroupDto.builder()
+                    .cislo(g.cislo())
+                    // Count is the dataset-wide total from step 1's aggregate — deliberately
+                    // NOT laws.size(), which is only what was fetched and displayed.
+                    .count(g.pocet())
+                    .exactNumberMatch(needle != null && needle.equalsIgnoreCase(g.cislo()))
+                    .laws(laws)
+                    .build());
+        }
+        groups.sort(BEST_GROUP_FIRST);
+
+        // The group cap is the only truncation left: more numbers match than we returned.
+        boolean truncated = numberGroups.size() >= limit;
+
+        return LawSearchResultDto.builder()
+                .query(blankToNull(needle))
+                .ambiguous(isAmbiguous(groups))
+                .totalMatches(totalMatches)
+                .truncated(truncated)
+                .groups(groups)
+                .build();
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    /**
+     * Ambiguous = the user still has a choice to make: more than one group, or a single
+     * group holding several acts (one number, many years). A single act is unambiguous,
+     * and so is no match at all — there is nothing to disambiguate.
+     */
+    private static boolean isAmbiguous(List<LawSearchGroupDto> groups) {
+        if (groups.isEmpty()) {
+            return false;
+        }
+        return groups.size() > 1 || groups.get(0).getCount() > 1;
+    }
+
+    /** Newest rok first within a group; null roky sink to the bottom. */
+    private static final Comparator<LawDto> NEWEST_ROK_FIRST =
+            Comparator.comparing(LawDto::getRok,
+                            Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(LawDto::getCitace, Comparator.nullsLast(Comparator.naturalOrder()));
+
+    /**
+     * Exact-number group first, then shortest číslo, then číslo ascending.
+     *
+     * <p>Shortest-first mirrors typing: "49" means 49 before 490 before 4900. Group size is
+     * deliberately NOT a criterion — counts run 100+ for every low číslo, so ordering by
+     * count would float whichever number happens to be most legislated to the top instead of
+     * the one the user typed.
+     */
+    private static final Comparator<LawSearchGroupDto> BEST_GROUP_FIRST =
+            Comparator.comparing(LawSearchGroupDto::isExactNumberMatch, Comparator.reverseOrder())
+                    .thenComparing(g -> g.getCislo() == null ? 0 : g.getCislo().length())
+                    .thenComparing(LawSearchGroupDto::getCislo,
+                            Comparator.nullsLast(Comparator.naturalOrder()));
 
     @Override
     @Cacheable(cacheNames = "esbirkaLawVersions", key = "#lawIri")
@@ -97,49 +247,92 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      * and the full version list (for an FE switcher) alongside the fragment tree, whose
      * nodes each carry their rendered HTML body for in-document browsing.
      *
-     * <p>Cached by the normalized {@code number/year} key — both the resolution and the
-     * (~2 MB) content payload are expensive, and a published version's text is immutable.
+     * <p>Delegates through {@link #self} rather than calling the overload directly — a
+     * {@code this.} call would not pass through the Spring proxy, leaving the two-arg
+     * method's {@code @Cacheable} inert for every latest-version request.
      */
     @Override
-    @Cacheable(cacheNames = "esbirkaLawContent", key = "#root.target.normalizeLawRef(#lawRef)")
     public LawContentDto getLawContent(String lawRef) {
+        return self.getLawContent(lawRef, null);
+    }
+
+    /**
+     * Whole-version content for a caller-chosen znění; null/blank {@code versionIri}
+     * renders the latest version (má-poslední-znění).
+     *
+     * <p>A supplied IRI is accepted only when it appears in the resolved law's own version
+     * list — host-shape validation alone would let a well-formed IRI from an unrelated act
+     * through and render its text under this law's header.
+     *
+     * <p>Cached by normalized {@code number/year} <em>plus</em> the selected version — the
+     * key MUST carry the version or every znění of a law would collide on one entry and
+     * serve another version's body. Both the resolution and the (~2 MB) payload are
+     * expensive, and a published version's text is immutable.
+     */
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawContent",
+            key = "#root.target.normalizeLawRef(#lawRef) + '@' + (#versionIri == null ? '' : #versionIri)")
+    public LawContentDto getLawContent(String lawRef, String versionIri) {
         NumberYear ny = parseNumberYear(lawRef);
 
         LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
 
-        List<LawVersionModel> versions = client.fetchVersions(law.getIri());
-        LawVersionModel latest = pickLatest(versions);
-        if (latest == null) {
-            throw new IllegalArgumentException(
-                    "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
-        }
+        // Through the proxy so the esbirkaLawVersions cache is used: a user stepping through
+        // N znění of one law takes N content-cache misses, and a direct client.fetchVersions
+        // would re-issue the identical version-list query on every one of them.
+        List<LawVersionDto> versionDtos = self.getVersions(law.getIri());
+        LawVersionDto selected = selectVersion(versionDtos, versionIri, ny);
 
-        String versionIri = latest.getIri();
-        List<FragmentModel> rows = client.fetchVersionContent(versionIri);
+        String selectedIri = selected.getIri();
+        List<FragmentModel> rows = client.fetchVersionContent(selectedIri);
         if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
             log.warn("Version content for {} has {} rows (over {} threshold).",
-                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+                    selectedIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
         }
 
-        List<LawVersionDto> versionDtos = new ArrayList<>(versions.size());
-        for (LawVersionModel v : versions) {
-            versionDtos.add(toVersionDto(v));
-        }
-
-        List<FragmentDto> fragments = assembleTree(rows, versionIri);
+        List<FragmentDto> fragments = assembleTree(rows, selectedIri);
 
         return LawContentDto.builder()
                 .lawIri(law.getIri())
                 .citace(law.getCitace())
-                .versionIri(versionIri)
-                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(versionIri))
-                .versionDate(latest.getUcinnostOd())
+                .versionIri(selectedIri)
+                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(selectedIri))
+                .versionDate(selected.getUcinnostOd())
+                .versionLatest(selected.isLatest())
                 .versions(versionDtos)
                 .fragments(fragments)
                 .bodyHtml(renderBodyHtml(fragments))
                 .build();
+    }
+
+    /**
+     * Pick the znění to render: the caller's {@code versionIri} when supplied, else the
+     * latest. The requested IRI must be a member of {@code versions} — validating only its
+     * host/shape would let an IRI from a different act render under this law's header.
+     */
+    private static LawVersionDto selectVersion(List<LawVersionDto> versions,
+                                               String versionIri,
+                                               NumberYear ny) {
+        if (versionIri == null || versionIri.isBlank()) {
+            LawVersionDto latest = pickLatest(versions);
+            if (latest == null) {
+                throw new IllegalArgumentException(
+                        "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
+            }
+            return latest;
+        }
+        if (!SparqlIriValidator.isEsbirkaEliIri(versionIri)) {
+            throw new IllegalArgumentException("Neplatný identifikátor znění právního aktu.");
+        }
+        for (LawVersionDto v : versions) {
+            if (versionIri.equals(v.getIri())) {
+                return v;
+            }
+        }
+        throw new IllegalArgumentException("Znění " + versionIri
+                + " nepatří k právnímu aktu č. " + ny.number() + "/" + ny.year() + ".");
     }
 
     /**
@@ -186,11 +379,11 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      * Falls back to the first row (fetchVersions orders newest-first by účinnost-znění-od)
      * when no row is flagged — defensive against upstream data without the flag.
      */
-    private static LawVersionModel pickLatest(List<LawVersionModel> versions) {
+    private static LawVersionDto pickLatest(List<LawVersionDto> versions) {
         if (versions.isEmpty()) {
             return null;
         }
-        for (LawVersionModel v : versions) {
+        for (LawVersionDto v : versions) {
             if (v.isLatest()) {
                 return v;
             }

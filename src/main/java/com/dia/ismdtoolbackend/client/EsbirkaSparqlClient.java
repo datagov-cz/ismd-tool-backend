@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
@@ -54,6 +55,30 @@ public class EsbirkaSparqlClient {
     public List<LawModel> searchLaws(String q, int limit) {
         return executeSelect("law search",
                 EsbirkaSPARQLQuery.buildLawSearchQuery(q, limit),
+                this::mapLawRows);
+    }
+
+    /**
+     * Distinct předpis numbers matching the needle, with a dataset-wide act count each,
+     * capped at {@code limit} groups (not rows).
+     */
+    public List<LawNumberGroupModel> searchLawNumberGroups(String q, int limit) {
+        return executeSelect("law number groups",
+                EsbirkaSPARQLQuery.buildLawNumberGroupsQuery(q, limit),
+                this::mapNumberGroupRows);
+    }
+
+    /**
+     * Acts carrying one of the given čísla, newest rok first, capped at {@code rowLimit} rows.
+     * The cap is required: group size is unbounded (~120 acts per low číslo), so 50 groups
+     * would otherwise stream ~6 000 rows. Empty input short-circuits without a round-trip.
+     */
+    public List<LawModel> fetchLawsByNumbers(List<String> cisla, int rowLimit) {
+        if (cisla == null || cisla.isEmpty()) {
+            return List.of();
+        }
+        return executeSelect("laws by numbers",
+                EsbirkaSPARQLQuery.buildLawsByNumbersQuery(cisla, rowLimit),
                 this::mapLawRows);
     }
 
@@ -131,6 +156,20 @@ public class EsbirkaSparqlClient {
                 continue;
             }
             out.add(new LawModel(iri, citace, cislo, rok, sbirka));
+        }
+        return out;
+    }
+
+    private List<LawNumberGroupModel> mapNumberGroupRows(ResultSet rs) {
+        List<LawNumberGroupModel> out = new ArrayList<>();
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String cislo = SparqlSolutions.literalString(sol, "cislo");
+            Integer pocet = SparqlSolutions.literalInt(sol, "pocet");
+            if (cislo == null) {
+                continue;
+            }
+            out.add(new LawNumberGroupModel(cislo, pocet == null ? 0 : pocet));
         }
         return out;
     }
