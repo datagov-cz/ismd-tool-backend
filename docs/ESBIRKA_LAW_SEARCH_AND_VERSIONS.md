@@ -62,7 +62,7 @@ označení-fragmentu-…  (fragment)  …/{version}/dokument/norma/cast_5/…/pi
 | Fragment | `má-předka` | canonical parent edge (no IRI parsing needed) |
 | Fragment | `pořadí-fragmentu-…` | hex string, lex-sortable → document order |
 | Fragment | `hierarchie-fragmentu-…` | `/2/5/5/4/` ordinal path; first segment = container ordinal |
-| Fragment | `citace-označení-fragmentu-…` | pre-formatted `"§ 122 odst. 4 písm. g)"` |
+| Fragment | `citace-označení-fragmentu-…` | ⚠️ **dropped upstream — 0 triples dataset-wide as of 2026-08-24.** Was a pre-formatted `"§ 122 odst. 4 písm. g)"`. Every join on it must stay `OPTIONAL`; the citation is now derived from IRI path segments (`EsbirkaCzechCitationFormatter.buildFragmentCitationFromSegments`). |
 | Fragment | `obsahuje-fragment` / `text-fragmentu` | HTML body |
 
 ### Scale (measured live 2026-08-23)
@@ -447,14 +447,21 @@ Depth is capped at `MAX_FRAGMENT_DEPTH = 10`; >5 000 rows logs a warning.
 ## 10. Known Traps
 
 1. **`citace` and `má-předka` MUST be OPTIONAL on fragment queries — FIXED.** Only `pořadí`
-   may be required. This was not a 13 % loss but a total outage for some laws: version
+   may be required. This was not a 13 % loss but a total outage: version
    `…/1997/49/2025-11-01` has **2 508 fragments and zero `citace` values**, so the required
    join returned 0 rows and *the entire law rendered blank* (`fragments: []`, empty
-   `bodyHtml`). Verified live 2026-08-23; after the fix the same law returns 2 507 fragments
-   / 2 497 text-bearing / 1.1 MB in ~1 s. Where `citace` mostly exists it is still missing on
-   ~13 % of fragments (296/2198 on 187/2006), 288 of which carry real text. A null `?parent`
-   is safe — `assembleTree`'s path-walk re-parenting surfaces it as a root rather than
-   dropping it.
+   `bodyHtml`) at **HTTP 200** — it fails silently as "no data", never as an error.
+   Verified live 2026-08-23; after the fix the same law returns 2 507 fragments
+   / 2 497 text-bearing / 1.1 MB in ~1 s. A null `?parent` is safe — `assembleTree`'s
+   path-walk re-parenting surfaces it as a root rather than dropping it.
+
+   **Update 2026-08-24:** this is no longer version-specific — `citace-označení-fragmentu-…`
+   now has **0 triples dataset-wide** (confirmed on 187/2006 too: 0 citace, 2 190/2 198
+   bodies intact). The predicate is simply gone; the fragment citation is derived from IRI
+   path segments instead. `buildResolveFragmentQuery` still required it and was silently
+   returning nothing for *every* fragment-level `/resolve` — fixed on `dev` in #182.
+   The general rule: **a required join to upstream data you don't control is a silent
+   outage waiting to happen.** Assert optionality in tests, not just predicate presence.
 2. **`0000-00-00` is not a "no content" marker.** All 117 601 versions carry text-bearing
    fragments, including all 45 958 `0000-00-00` placeholders. Hiding them is a UX choice, not
    a content filter.
