@@ -121,8 +121,11 @@ public final class HttpSparqlExecutor {
         }
     }
 
+    private static final String ACCEPT_ENCODING = "gzip, deflate";
+
     private QueryExecutionHTTPBuilder service() {
-        QueryExecutionHTTPBuilder builder = QueryExecutionHTTPBuilder.service(endpointUrl);
+        QueryExecutionHTTPBuilder builder = QueryExecutionHTTPBuilder.service(endpointUrl)
+                .httpHeader("Accept-Encoding", ACCEPT_ENCODING);
         return httpClient != null ? builder.httpClient(httpClient) : builder;
     }
 
