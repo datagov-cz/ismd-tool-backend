@@ -166,7 +166,7 @@ class SearchServiceImplTest {
     }
 
     @Test
-    void search_bothSourcesReturnSameIri_deduplicates() {
+    void search_bothSourcesReturnSameIri_keepsBothAsDistinctResources() {
         SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
         String sharedIri = "https://example.org/concept/shared";
 
@@ -191,8 +191,77 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 20, 0, "cs", null, null, user);
 
+        // An ISMD working copy shares its NKD original's IRI verbatim; the two are
+        // distinct resources, so both survive the merge and are told apart by source.
+        assertEquals(2, response.getReturnedCount());
+        assertEquals(List.of("From NKD", "From ISMD"),
+                response.getResults().stream().map(SearchResultDto::getLabel).toList());
+        assertEquals(List.of(SearchSource.NKD, SearchSource.ISMD),
+                response.getResults().stream().map(SearchResultDto::getSource).toList());
+    }
+
+    @Test
+    void search_sameSourceRepeatsIri_deduplicatesWithinSource() {
+        SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
+        String repeatedIri = "https://example.org/concept/repeated";
+
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn(new SearchProvider.SearchProviderResult(
+                        List.of(SearchResultDto.builder()
+                                        .iri(repeatedIri)
+                                        .label("First")
+                                        .source(SearchSource.NKD)
+                                        .build(),
+                                SearchResultDto.builder()
+                                        .iri(repeatedIri)
+                                        .label("Duplicate")
+                                        .source(SearchSource.NKD)
+                                        .build()),
+                        2));
+
+        SearchResponseDto response = searchService.search(
+                "osoba", null, SearchSource.NKD, 20, 0, "cs", null, null, user);
+
         assertEquals(1, response.getReturnedCount());
-        assertEquals("From NKD", response.getResults().get(0).getLabel());
+        assertEquals("First", response.getResults().get(0).getLabel());
+    }
+
+    @Test
+    void search_ontologyWorkingCopySharesNkdIri_bothReturned() {
+        SecurityUser user = new SecurityUser("user1", "User One", List.of("ROLE_USER"));
+        String sharedIri = "https://slovník.gov.cz/a3791---registr-vysokých-škol";
+
+        when(nkdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn(new SearchProvider.SearchProviderResult(
+                        List.of(SearchResultDto.builder()
+                                .iri(sharedIri)
+                                .label("A3791 - Registr Vysokých škol")
+                                .type(SearchType.ONTOLOGY)
+                                .source(SearchSource.NKD)
+                                .build()),
+                        1, 1, 0));
+
+        when(ismdSearchProvider.search(anyString(), any(), anyInt(), anyInt(), anyString(), any(), any(), any(), anyBoolean(), any()))
+                .thenReturn(new SearchProvider.SearchProviderResult(
+                        List.of(SearchResultDto.builder()
+                                .iri(sharedIri)
+                                .label("A3791 - Registr Vysokých škol")
+                                .type(SearchType.ONTOLOGY)
+                                .source(SearchSource.ISMD)
+                                .isPublished(false)
+                                .build()),
+                        1, 1, 0));
+
+        SearchResponseDto response = searchService.search(
+                "škol", SearchType.ONTOLOGY, null, 20, 0, "cs", null, null, user);
+
+        // The local copy must not be swallowed by the NKD original it was cloned from.
+        assertEquals(2, response.getReturnedCount());
+        assertEquals(2, response.getTotalOntologies());
+        assertTrue(response.getResults().stream()
+                .anyMatch(r -> r.getSource() == SearchSource.ISMD));
+        assertTrue(response.getResults().stream()
+                .anyMatch(r -> r.getSource() == SearchSource.NKD));
     }
 
     @Test

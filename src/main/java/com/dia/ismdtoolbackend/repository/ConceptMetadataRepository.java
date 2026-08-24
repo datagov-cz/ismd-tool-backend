@@ -51,19 +51,28 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                                               @Param("conceptType") String conceptType);
 
     /**
-     * Variant of {@link #searchByText} that restricts to {@code is_published = false}.
+     * Variant of {@link #searchByText} backing {@code source=UNPUBLISHED}
+     * ("rozpracovaný") — every local ISMD concept, with no publish-state restriction.
      * <p>
-     * Every authenticated caller sees every unpublished concept, regardless of
-     * ownership. Anonymous callers are rejected upstream and never reach this method.
+     * "Rozpracovaný" means local, not draft-flagged. NKD is the published world and
+     * ISMD is the workbench, so anything held locally is material the user is working
+     * on. {@code is_published = true} on a concept means only that its own IRI
+     * resolves in NKD — the working-copy marker — so filtering on it hid entire
+     * uploaded vocabularies: a working copy is fully {@code true} until someone edits
+     * a concept, which severs that one concept to {@code false}. Draft state is
+     * surfaced through ordering (drafts first) rather than by excluding rows.
+     * <p>
+     * The row set therefore matches {@link #searchByText}; the two stay separate
+     * because they answer different response slots and only this one is reachable by
+     * the {@code UNPUBLISHED} source. Anonymous callers are rejected upstream.
      */
     @Query(value = """
             SELECT * FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
-              AND c.is_published = false
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
-            ORDER BY c.updated_at DESC NULLS LAST, c.id
+            ORDER BY c.is_published NULLS FIRST, c.updated_at DESC NULLS LAST, c.id
             """, nativeQuery = true)
     List<ConceptMetadataEntity> searchByTextUnpublished(@Param("query") String query,
                                                          @Param("hasGraphFilter") boolean hasGraphFilter,
@@ -84,11 +93,14 @@ public interface ConceptMetadataRepository extends JpaRepository<ConceptMetadata
                            @Param("hasTypeFilter") boolean hasTypeFilter,
                            @Param("conceptType") String conceptType);
 
+    /**
+     * Count companion to {@link #searchByTextUnpublished}. Carries the identical
+     * predicate so the reported total and the returned rows agree.
+     */
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.concepts c
             WHERE (ismd_schema.unaccent(c.concept_name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                    OR ismd_schema.unaccent(c.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
-              AND c.is_published = false
               AND (:hasGraphFilter = false OR c.graph_name IN (:graphNames))
               AND (:hasTypeFilter = false OR c.concept_type = :conceptType)
             """, nativeQuery = true)

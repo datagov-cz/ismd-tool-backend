@@ -119,8 +119,10 @@ public class IsmdSearchProvider implements SearchProvider {
             allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
                     ontologyIris, relationTypes, fusekiDegraded, limit, type));
         } else {
-            allResults.addAll(searchOntologyLabelsViaFuseki(query, userId, isAdmin,
-                    publishedFilter, ontologyIris, fusekiDegraded, limit));
+            List<SearchResultDto> fusekiOntologies = searchOntologyLabelsViaFuseki(
+                    query, userId, isAdmin, publishedFilter, ontologyIris, fusekiDegraded, limit);
+            backfillPgFieldsForOntologyRows(fusekiOntologies);
+            allResults.addAll(fusekiOntologies);
         }
 
         // Dedup by IRI
@@ -197,6 +199,53 @@ public class IsmdSearchProvider implements SearchProvider {
         for (SearchResultDto dto : paged) {
             if (dto.getType() == SearchType.ONTOLOGY && dto.getIri() != null) {
                 dto.setConceptCount(counts.getOrDefault(dto.getIri(), 0));
+            }
+        }
+    }
+
+    /**
+     * Backfills PG-sourced fields on ontology rows that came from the Fuseki label
+     * search. Those rows are built purely from RDF, so they carry no {@code id},
+     * {@code slug} or {@code isPublished} — the ontology-only branch never runs the
+     * concept-side backfill. Without this an ontology found by label (rather than by
+     * slug) reaches the FE with a null id and an unknown publish state, and sorts
+     * with the drafts regardless of what it actually is.
+     * <p>
+     * Visibility is safe: every IRI here already came from a graph the caller may
+     * see. Failure is non-fatal — rows keep their null fields and search succeeds.
+     */
+    private void backfillPgFieldsForOntologyRows(List<SearchResultDto> rows) {
+        List<String> graphNames = rows.stream()
+                .filter(r -> r.getType() == SearchType.ONTOLOGY && r.getId() == null)
+                .map(SearchResultDto::getIri)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (graphNames.isEmpty()) return;
+
+        Map<String, OntologyMetadataEntity> byGraph;
+        try {
+            byGraph = new HashMap<>();
+            for (OntologyMetadataEntity e : ontologyMetadataRepository.findAllByGraphNameIn(graphNames)) {
+                if (e.getGraphName() != null) byGraph.put(e.getGraphName(), e);
+            }
+        } catch (RuntimeException e) {
+            log.warn("PG ontology backfill for {} Fuseki rows failed, leaving fields null: {}",
+                    graphNames.size(), e.getMessage());
+            return;
+        }
+        if (byGraph.isEmpty()) return;
+
+        for (SearchResultDto dto : rows) {
+            if (dto.getType() != SearchType.ONTOLOGY || dto.getIri() == null) continue;
+            OntologyMetadataEntity e = byGraph.get(dto.getIri());
+            if (e == null) continue;
+
+            if (dto.getId() == null) dto.setId(e.getId());
+            if (dto.getSlug() == null) dto.setSlug(e.getSlug());
+            if (dto.getIsPublished() == null) dto.setIsPublished(e.getIsPublished());
+            if (dto.getLastModified() == null && e.getUpdatedAt() != null) {
+                dto.setLastModified(e.getUpdatedAt().toString());
             }
         }
     }
@@ -726,21 +775,24 @@ public class IsmdSearchProvider implements SearchProvider {
     }
 
     /**
-     * Graph names visible to the caller when the search is restricted to
-     * {@code is_published = false}. Every authenticated caller sees every
-     * unpublished graph regardless of ownership; the {@code userId}/{@code isAdmin}
-     * short-circuit only mirrors the defense-in-depth guard that keeps an
-     * anonymous, non-admin caller from seeing any unpublished rows (they are
-     * already rejected upstream at {@code SearchServiceImpl.resolveSource}). Used
-     * to scope Fuseki text queries so every hit is transitively inside an
-     * unpublished ontology.
+     * Graph names visible to the caller on the {@code UNPUBLISHED} ("rozpracovaný")
+     * pass — every local ontology, matching the PG row filter so the Fuseki label
+     * search and the PG slug search agree on scope. "Rozpracovaný" means local rather
+     * than draft-flagged: an uploaded working copy is {@code is_published = true}
+     * throughout until a concept is edited, so a publish-state test here would hide
+     * whole vocabularies from the filter.
+     * <p>
+     * Every authenticated caller sees every such graph regardless of ownership; the
+     * {@code userId}/{@code isAdmin} short-circuit only mirrors the defense-in-depth
+     * guard that keeps an anonymous, non-admin caller from seeing any unpublished
+     * rows (they are already rejected upstream at
+     * {@code SearchServiceImpl.resolveSource}).
      */
     private List<String> getUnpublishedVisibleGraphNames(String userId, boolean isAdmin) {
         if (!isAdmin && userId == null) {
             return List.of();
         }
-        return ontologyMetadataRepository.findAllByIsPublished(false).stream()
-                .map(OntologyMetadataEntity::getGraphName)
+        return ontologyMetadataRepository.findAllGraphNames().stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();

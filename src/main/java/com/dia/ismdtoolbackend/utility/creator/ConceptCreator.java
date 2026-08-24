@@ -771,6 +771,11 @@ public class ConceptCreator {
         }
     }
 
+    /**
+     * Writes the veřejný/neveřejný-údaj classification. Malformed provisions are rejected
+     * upstream by {@code ConceptInputValidator}, so {@code validProvisions} mirrors the
+     * non-blank input; the filtering here is a defensive backstop for non-service callers.
+     */
     private void addDataClassification(Resource resource, Boolean isPublic, List<String> privacyProvisions) {
         boolean hasNonEmptyProvisions = privacyProvisions != null &&
                 privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());

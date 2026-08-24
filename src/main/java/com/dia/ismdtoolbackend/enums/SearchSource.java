@@ -9,10 +9,13 @@ public enum SearchSource {
     NKD("NKD"),
     ISMD("ISMD"),
     /**
-     * Local ISMD results restricted to {@code is_published = false}. Behaves like ISMD
-     * in every other respect but drops any concept/ontology that is already published.
-     * Visibility: an admin sees all unpublished resources; a regular user sees only
-     * their own. Anonymous requests are rejected at the service layer.
+     * "Rozpracovaný" — everything held locally in ISMD, with no publish-state
+     * restriction. NKD is the published world and ISMD is the workbench, so a local
+     * row is by definition material the user is working on. {@code is_published = true}
+     * marks an IRI that resolves in NKD, not a resource that is finished: an uploaded
+     * working copy is fully published-flagged until a concept is edited, so filtering
+     * on the flag hid whole vocabularies. Drafts sort first. Anonymous requests are
+     * rejected at the service layer.
      */
     UNPUBLISHED("UNPUBLISHED"),
     ALL("ALL");
