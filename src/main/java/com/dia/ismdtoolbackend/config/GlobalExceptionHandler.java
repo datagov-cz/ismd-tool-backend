@@ -208,6 +208,19 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * Distinct from {@link com.dia.exceptions.ValidationException} above: that one is the validator
+     * library's and signals bad input, this one is the tool's own and wraps a failure to store or
+     * read a validation report. Both names are written out in full — the wildcard import of the
+     * tool's exception package makes it otherwise unclear which class either handler binds to.
+     */
+    @ExceptionHandler(com.dia.ismdtoolbackend.exception.ValidationException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(
+            com.dia.ismdtoolbackend.exception.ValidationException e) {
+        log.error("Validation report operation failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
     @ExceptionHandler(OntologyUploadException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadException(OntologyUploadException e) {
         log.error("Ontology upload failed: {}", e.getMessage(), e);

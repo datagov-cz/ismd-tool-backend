@@ -641,6 +641,18 @@ public class OntologyServiceImpl implements OntologyService {
         return ontologyMetadataMapper.toDto(ontologyMetadataRepository.findById(ontologyId).orElseThrow());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public OntologyMetadataModel getOntologyMetadataBySlug(String ontologySlug) {
+        return ontologyMetadataRepository.findBySlug(ontologySlug)
+                .map(ontologyMetadataMapper::toDto)
+                .orElseThrow(() -> {
+                    log.error("ontologySlug {} not found", ontologySlug);
+                    return new OntologyNotFoundException(
+                            "Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
+                });
+    }
+
     private String extractNameFromGraphName(String graphName) {
         if (graphName == null || graphName.isEmpty()) {
             return graphName;
