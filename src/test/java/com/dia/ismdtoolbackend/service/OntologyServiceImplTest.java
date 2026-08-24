@@ -962,18 +962,74 @@ class OntologyServiceImplTest {
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
 
         assertEquals(3, out.size());
-        // o/1 has skos:prefLabel "Slovník 1" in the batch model.
-        assertEquals("Slovník 1", m1.getName());
-        // o/2 has skos:prefLabel "Slovník 2" + dcterms:description "Popis 2".
-        assertEquals("Slovník 2", m2.getName());
-        assertEquals("Popis 2", m2.getPopis());
-        // Null-graph entity falls back to UtilityMethods-derived name (not asserting exact
-        // fallback value — what matters is enrichMetadataFromModel was called and returned
-        // without throwing).
+        // o/1 has one untagged skos:prefLabel — keys under DEFAULT_LANG.
+        assertEquals(Map.of("cs", "Slovník 1"), m1.getName());
+        // o/2 has cs+en variants of both prefLabel and description — every one is returned.
+        assertEquals(Map.of("cs", "Slovník 2", "en", "Vocabulary 2"), m2.getName());
+        assertEquals(Map.of("cs", "Popis 2", "en", "Description 2"), m2.getPopis());
+        // Null-graph entity has no IRI to derive a fallback name from, so the map stays empty
+        // rather than carrying a null-valued DEFAULT_LANG entry.
         assertNotNull(mNoGraph);
+        assertTrue(mNoGraph.getName().isEmpty());
         // One query for the whole page, and never the per-row variant (guards the N+1 regression).
         verify(commentRepository).findByOntologyMetadataIdIn(List.of(1L, 2L, 3L));
         verify(commentRepository, never()).findByOntologyMetadataId(anyLong());
+    }
+
+    @Test
+    void getAll_multipleLabelsInSameLanguage_keepsFirstAndDoesNotCollapseOthers() {
+        OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
+        e1.setGraphName("http://example.org/o/1");
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1));
+
+        // Two cs labels plus an en label: the old single-statement read returned whichever
+        // prefLabel Jena handed back first and dropped every other variant.
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Slovník", "cs"));
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Slovník duplicitní", "cs"));
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Vocabulary", "en"));
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1"))).thenReturn(m);
+
+        OntologyMetadataModel m1 = new OntologyMetadataModel();
+        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+
+        ontologyService.getAll(null, null);
+
+        assertEquals(2, m1.getName().size());
+        assertEquals("Vocabulary", m1.getName().get("en"));
+        assertTrue(m1.getName().get("cs").startsWith("Slovník"));
+    }
+
+    @Test
+    void getAll_noPrefLabel_fallsBackToGraphDerivedNameUnderDefaultLang() {
+        OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
+        e1.setGraphName("http://example.org/muj-slovnik");
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1));
+
+        // Non-empty model that carries no label for this ontology at all.
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource("http://example.org/other"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Jiný"));
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/muj-slovnik"))).thenReturn(m);
+
+        OntologyMetadataModel m1 = new OntologyMetadataModel();
+        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+
+        ontologyService.getAll(null, null);
+
+        assertEquals(Map.of("cs", "Muj slovnik"), m1.getName());
+        assertNull(m1.getPopis());
     }
 
     @Test
@@ -1021,13 +1077,12 @@ class OntologyServiceImplTest {
 
         OntologyMetadataModel m1 = new OntologyMetadataModel();
         when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));
 
         assertEquals(1, out.size());
-        assertEquals("Slovník 1", m1.getName());
+        assertEquals(Map.of("cs", "Slovník 1"), m1.getName());
     }
 
     @Test
@@ -1055,6 +1110,10 @@ class OntologyServiceImplTest {
      * submodels. Triples for o/1: only skos:prefLabel. For o/2: skos:prefLabel + dcterms:description.
      * Lets enrichMetadataFromModel exercise both the prefLabel branch and the description branch.
      */
+    /**
+     * o/1 carries an untagged prefLabel (keys under DEFAULT_LANG); o/2 carries cs+en variants of
+     * both prefLabel and description, so the list read is asserted to keep every language.
+     */
     private Model buildBatchMetadataModel() {
         Model m = ModelFactory.createDefaultModel();
         m.add(m.createResource("http://example.org/o/1"),
@@ -1062,10 +1121,16 @@ class OntologyServiceImplTest {
                 m.createLiteral("Slovník 1"));
         m.add(m.createResource("http://example.org/o/2"),
                 m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
-                m.createLiteral("Slovník 2"));
+                m.createLiteral("Slovník 2", "cs"));
+        m.add(m.createResource("http://example.org/o/2"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Vocabulary 2", "en"));
         m.add(m.createResource("http://example.org/o/2"),
                 m.createProperty("http://purl.org/dc/terms/description"),
-                m.createLiteral("Popis 2"));
+                m.createLiteral("Popis 2", "cs"));
+        m.add(m.createResource("http://example.org/o/2"),
+                m.createProperty("http://purl.org/dc/terms/description"),
+                m.createLiteral("Description 2", "en"));
         return m;
     }
 }

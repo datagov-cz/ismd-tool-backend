@@ -49,6 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -804,14 +805,14 @@ public class OntologyServiceImpl implements OntologyService {
         } catch (Exception e) {
             log.warn("Failed to enrich metadata from RDF for graph {}: {}", graphName, e.getMessage());
             if ((model.getName() == null || model.getName().isEmpty())) {
-                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                model.setName(fallbackNameFromGraphName(graphName));
             }
         }
     }
 
     private void enrichMetadataFromModel(OntologyMetadataModel model, OntologyMetadataEntity entity, Model rdfModel) {
         String graphName = entity.getGraphName();
-        String fallbackName = extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName));
+        Map<String, String> fallbackName = fallbackNameFromGraphName(graphName);
 
         try {
             if (rdfModel == null || rdfModel.isEmpty()) {
@@ -827,36 +828,18 @@ public class OntologyServiceImpl implements OntologyService {
                 return;
             }
 
-            Statement prefLabelStmt = ontologyResource.getProperty(SKOS.prefLabel);
-            if (prefLabelStmt != null) {
-                RDFNode prefLabelNode = prefLabelStmt.getObject();
-                if (prefLabelNode.isLiteral()) {
-                    Literal prefLabelLiteral = prefLabelNode.asLiteral();
-                    String prefLabel = prefLabelLiteral.getString();
-                    if (prefLabel != null && !prefLabel.isEmpty()) {
-                        model.setName(prefLabel);
-                        log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
-                    } else {
-                        model.setName(fallbackName);
-                    }
-                } else {
-                    model.setName(fallbackName);
-                }
-            } else {
+            Map<String, String> names = extractMultilingualValue(ontologyResource, SKOS.prefLabel);
+            if (names.isEmpty()) {
                 model.setName(fallbackName);
+            } else {
+                model.setName(names);
+                log.debug("Enriched name from skos:prefLabel with {} language variant(s)", names.size());
             }
 
-            Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
-            if (descriptionStmt != null) {
-                RDFNode descriptionNode = descriptionStmt.getObject();
-                if (descriptionNode.isLiteral()) {
-                    Literal descriptionLiteral = descriptionNode.asLiteral();
-                    String description = descriptionLiteral.getString();
-                    if (description != null && !description.isEmpty()) {
-                        model.setPopis(description);
-                        log.debug("Enriched popis from dcterms:description: {}", description);
-                    }
-                }
+            Map<String, String> descriptions = extractMultilingualValue(ontologyResource, DCTerms.description);
+            if (!descriptions.isEmpty()) {
+                model.setPopis(descriptions);
+                log.debug("Enriched popis from dcterms:description with {} language variant(s)", descriptions.size());
             }
         } catch (Exception e) {
             log.warn("Failed to enrich metadata from model for graph {}: {}", graphName, e.getMessage());
@@ -864,6 +847,31 @@ public class OntologyServiceImpl implements OntologyService {
                 model.setName(fallbackName);
             }
         }
+    }
+
+    private Map<String, String> fallbackNameFromGraphName(String graphName) {
+        String derived = extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName));
+        return derived == null || derived.isEmpty() ? Map.of() : Map.of(DEFAULT_LANG, derived);
+    }
+
+    private Map<String, String> extractMultilingualValue(Resource resource, Property property) {
+        Map<String, String> valuesByLang = new LinkedHashMap<>();
+        StmtIterator iter = resource.listProperties(property);
+        while (iter.hasNext()) {
+            Statement stmt = iter.next();
+            RDFNode object = stmt.getObject();
+            if (!object.isLiteral()) {
+                continue;
+            }
+            Literal literal = object.asLiteral();
+            String value = literal.getString();
+            if (value == null || value.trim().isEmpty()) {
+                continue;
+            }
+            String lang = literal.getLanguage();
+            valuesByLang.putIfAbsent((lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG, value);
+        }
+        return valuesByLang;
     }
 
     private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {
