@@ -775,12 +775,12 @@ public class IsmdSearchProvider implements SearchProvider {
     }
 
     /**
-     * Graph names visible to the caller when the search is restricted to local
-     * draft state. An ontology qualifies when it is itself unpublished OR holds at
-     * least one unpublished concept — the same predicate the PG row filter uses, so
-     * the Fuseki label search and the PG slug search agree on scope. Filtering on
-     * the ontology's own {@code is_published} alone would exclude every working copy
-     * of a published NKD vocabulary, since the upload path marks those published.
+     * Graph names visible to the caller on the {@code UNPUBLISHED} ("rozpracovaný")
+     * pass — every local ontology, matching the PG row filter so the Fuseki label
+     * search and the PG slug search agree on scope. "Rozpracovaný" means local rather
+     * than draft-flagged: an uploaded working copy is {@code is_published = true}
+     * throughout until a concept is edited, so a publish-state test here would hide
+     * whole vocabularies from the filter.
      * <p>
      * Every authenticated caller sees every such graph regardless of ownership; the
      * {@code userId}/{@code isAdmin} short-circuit only mirrors the defense-in-depth
@@ -792,7 +792,7 @@ public class IsmdSearchProvider implements SearchProvider {
         if (!isAdmin && userId == null) {
             return List.of();
         }
-        return ontologyMetadataRepository.findGraphNamesWithDraftState().stream()
+        return ontologyMetadataRepository.findAllGraphNames().stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();

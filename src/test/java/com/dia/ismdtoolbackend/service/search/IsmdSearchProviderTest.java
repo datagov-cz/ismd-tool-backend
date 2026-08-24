@@ -609,16 +609,16 @@ class IsmdSearchProviderTest {
         assertEquals(7, new HashSet<>(seen).size(), "no row is returned on two different pages");
     }
 
-    // --- UNPUBLISHED = local draft state (working copies included) ---
+    // --- UNPUBLISHED = everything local (working copies included) ---
 
     @Test
-    void search_unpublishedOntology_scopesFusekiToGraphsWithDraftState() {
-        // A working copy of a published NKD vocabulary is is_published=true, so the
-        // Fuseki graph scope must come from the draft-state query, not from
-        // findAllByIsPublished(false) — otherwise its labels are unreachable.
+    void search_unpublishedOntology_scopesFusekiToAllLocalGraphs() {
+        // A working copy of a published NKD vocabulary is is_published=true — and stays
+        // that way until a concept is edited — so the Fuseki graph scope must cover every
+        // local graph, not findAllByIsPublished(false); otherwise its labels are unreachable.
         String workingCopyGraph = "https://slovník.gov.cz/a3791---registr-vysokých-škol";
 
-        when(ontologyMetadataRepository.findGraphNamesWithDraftState())
+        when(ontologyMetadataRepository.findAllGraphNames())
                 .thenReturn(List.of(workingCopyGraph));
         when(ontologyMetadataRepository.searchByTextUnpublished("škol"))
                 .thenReturn(List.of());
@@ -640,7 +640,7 @@ class IsmdSearchProviderTest {
         SearchResultDto dto = result.results().get(0);
         assertEquals(workingCopyGraph, dto.getIri());
         assertEquals("A3791 - Registr Vysokých škol", dto.getLabel());
-        verify(ontologyMetadataRepository).findGraphNamesWithDraftState();
+        verify(ontologyMetadataRepository).findAllGraphNames();
         verify(ontologyMetadataRepository, never()).findAllByIsPublished(false);
     }
 
