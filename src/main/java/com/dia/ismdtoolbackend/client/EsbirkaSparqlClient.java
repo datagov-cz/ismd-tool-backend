@@ -200,8 +200,8 @@ public class EsbirkaSparqlClient {
             String parent = SparqlSolutions.resourceUri(sol, "parent");
             String citation = SparqlSolutions.literalString(sol, "citace");
             String order = SparqlSolutions.literalString(sol, "order");
-            if (iri == null || parent == null) {
-                log.warn("Fragment row missing iri/parent; iri={}", iri);
+            if (iri == null) {
+                log.warn("Fragment row missing iri; skipping.");
                 continue;
             }
             String kind = parseKindFromIri(iri);
@@ -223,8 +223,8 @@ public class EsbirkaSparqlClient {
             String citation = SparqlSolutions.literalString(sol, "citace");
             String order = SparqlSolutions.literalString(sol, "order");
             String bodyHtml = SparqlSolutions.literalString(sol, "obsah");
-            if (iri == null || parent == null) {
-                log.warn("Fragment content row missing iri/parent; iri={}", iri);
+            if (iri == null) {
+                log.warn("Fragment content row missing iri; skipping.");
                 continue;
             }
             String kind = parseKindFromIri(iri);

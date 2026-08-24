@@ -22,4 +22,5 @@ public interface OntologyService {
     List<OntologyMetadataModel> getBySlugs(List<String> slugs);
     String getTtlContentFromOntology(OntologyMetadataModel ontologyMetadataModel);
     OntologyMetadataModel getOntologyMetadata(Long ontologyId);
+    OntologyMetadataModel getOntologyMetadataBySlug(String ontologySlug);
 }

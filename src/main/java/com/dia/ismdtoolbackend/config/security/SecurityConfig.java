@@ -138,6 +138,7 @@ public class SecurityConfig {
                         "/actuator/info",
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
+                        "/api/ontology/*/validation-report",
                         "/api/ontology/concepts",
                         "/api/ontology/list",
                         "/api/concept/list",

@@ -3,6 +3,8 @@ package com.dia.ismdtoolbackend.query;
 import org.apache.jena.query.QueryFactory;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -233,6 +235,69 @@ class EsbirkaSPARQLQueryTest {
         String afterOptional = q.substring(q.toUpperCase().indexOf("OPTIONAL"));
         assertTrue(afterOptional.contains("obsahuje-fragment"),
                 "the obsahuje-fragment/text-fragmentu chain must be wrapped in OPTIONAL");
+    }
+
+    /**
+     * Regression: upstream dropped citace-označení-fragmentu-znění-právního-aktu (0 triples
+     * dataset-wide, 2026-08-24). While required, the join returned zero rows and every law
+     * rendered blank with HTTP 200. Only pořadí may be required.
+     */
+    @Test
+    void fragmentQueries_requireOnlyPoradi() {
+        for (String q : List.of(
+                EsbirkaSPARQLQuery.buildVersionContentQuery(VERSION_IRI),
+                EsbirkaSPARQLQuery.buildFragmentTreeQuery(VERSION_IRI))) {
+            assertDoesNotThrow(() -> QueryFactory.create(q));
+            for (String fragile : List.of(
+                    "citace-označení-fragmentu-znění-právního-aktu",
+                    "má-předka",
+                    "obsahuje-fragment")) {
+                if (!q.contains(fragile)) {
+                    continue; // not projected by this query (the lean tree query has no obsah)
+                }
+                assertTrue(inOptionalBlock(q, fragile),
+                        fragile + " MUST sit inside an OPTIONAL block: a required join that "
+                                + "upstream stops populating returns zero rows and the law "
+                                + "renders blank. Query:\n" + q);
+            }
+        }
+    }
+
+    @Test
+    void resolveFragmentQuery_citaceIsOptional() {
+        String fragmentIri = VERSION_IRI + "/dokument/norma/cast_1/par_2/pism_d";
+        String q = EsbirkaSPARQLQuery.buildResolveFragmentQuery(fragmentIri, VERSION_IRI, LAW_IRI);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(inOptionalBlock(q, "citace-označení-fragmentu-znění-právního-aktu"),
+                "citace MUST be OPTIONAL; upstream no longer publishes it and a required "
+                        + "join silently kills every fragment resolution. Query:\n" + q);
+    }
+
+    /**
+     * True when every occurrence of {@code needle} sits inside an {@code OPTIONAL { ... }}
+     * block, determined by brace-depth relative to the enclosing WHERE.
+     */
+    private static boolean inOptionalBlock(String query, String needle) {
+        int from = 0;
+        while (true) {
+            int at = query.indexOf(needle, from);
+            if (at < 0) {
+                return from > 0; // all occurrences checked; false if needle absent entirely
+            }
+            String before = query.substring(0, at);
+            int lastOptional = before.toUpperCase().lastIndexOf("OPTIONAL");
+            if (lastOptional < 0) {
+                return false;
+            }
+            // The needle is inside that OPTIONAL only if its block has not yet closed.
+            String between = before.substring(lastOptional);
+            long opens = between.chars().filter(c -> c == '{').count();
+            long closes = between.chars().filter(c -> c == '}').count();
+            if (opens <= closes) {
+                return false;
+            }
+            from = at + needle.length();
+        }
     }
 
     @Test
