@@ -270,6 +270,10 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         String firstOrphanParent = null;
         for (FragmentModel m : rows) {
             FragmentDto self = nodes.get(m.getIri());
+            if (m.getParentIri() == null) {
+                roots.add(self);
+                continue;
+            }
             String anchor = resolveAnchor(m.getParentIri(), nodes, dokumentPrefix);
             if (anchor == null) {
                 // Unresolvable parent: surface as a root so the fragment's text is never
@@ -388,10 +392,29 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         dto.setIri(m.getIri());
         dto.setEliPath(SparqlIriValidator.extractEsbirkaEliPath(m.getIri()));
         dto.setKind(m.getKind());
-        dto.setCitation(m.getCitation());
+        dto.setCitation(citationOrSegmentFallback(m));
         dto.setOrder(m.getOrder());
         dto.setBodyHtml(m.getBodyHtml());
         return dto;
+    }
+
+    /**
+     * Fragment citation, falling back to one derived from the IRI path segments when upstream
+     * carries no citace-označení-fragmentu-znění-právního-aktu. Returns null rather than an empty string
+     * when neither source yields a label.
+     */
+    private static String citationOrSegmentFallback(FragmentModel m) {
+        String citation = m.getCitation();
+        if (citation != null && !citation.isBlank()) {
+            return citation;
+        }
+        ParsedEli parsed = EsbirkaEliParser.parse(m.getIri());
+        if (!parsed.isFragment()) {
+            return null;
+        }
+        String derived = EsbirkaCzechCitationFormatter
+                .buildFragmentCitationFromSegments(parsed.fragmentSegments());
+        return derived.isBlank() ? null : derived;
     }
 
     @Override
