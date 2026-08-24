@@ -670,6 +670,73 @@ class IsmdSearchProviderTest {
         assertFalse(dto.getIsPublished(), "publish state must be backfilled from PG");
     }
 
+    @Test
+    void search_unfiltered_multiWordQueryMatchesLabelNotSlug_backfillsSlug() {
+        // TEST-env repro: ontology named "TEST slovnik" has slug "test-slovnik".
+        // Query "qa test" matches the RDF label but the slug ILIKE '%qa test%'
+        // misses (the slug has no space), so PG returns nothing and only the
+        // Fuseki row survives — with no slug for the FE to build a link from.
+        String graph = "https://slovník.gov.cz/test-slovnik";
+
+        when(ontologyMetadataRepository.searchByText("qa test")).thenReturn(List.of());
+        when(conceptMetadataRepository.searchByText(eq("qa test"), anyBoolean(), anyList(), anyBoolean(), isNull()))
+                .thenReturn(List.of());
+        stubVisibleGraphs("user1", List.of(createOntology(graph, "test-slovnik", false)));
+        when(jenaTDB2Repository.searchByText(eq("qa test"), anyList(), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", graph,
+                        "prefLabel", "TEST slovnik",
+                        "prefLabelLang", "cs",
+                        "types", "http://www.w3.org/2004/02/skos/core#ConceptScheme")));
+        lenient().when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+        lenient().when(ontologyMetadataRepository.findAllByGraphNameIn(anyList()))
+                .thenReturn(List.of(createOntology(graph, "test-slovnik", false)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "qa test", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("TEST slovnik", dto.getLabel());
+        assertEquals("test-slovnik", dto.getSlug(),
+                "slug must be present or the FE links to /dictionary/null");
+    }
+
+    @Test
+    void search_unfiltered_ontologyFoundByLabelOnly_backfillsPgFields() {
+        // Same shape as the type=ONTOLOGY case, but with no type filter — the path
+        // the FE uses for a plain search box. The ontology row still arrives from
+        // Fuseki with no slug, and the concept-side backfill can't rescue it
+        // (it looks the IRI up in concept_metadata, where an ontology has no row).
+        String graph = "https://example.org/ontology/1";
+
+        when(ontologyMetadataRepository.searchByText("škol")).thenReturn(List.of());
+        when(conceptMetadataRepository.searchByText(eq("škol"), anyBoolean(), anyList(), anyBoolean(), isNull()))
+                .thenReturn(List.of());
+        stubVisibleGraphs("user1", List.of(createOntology(graph, "unrelated-slug", false)));
+        when(jenaTDB2Repository.searchByText(eq("škol"), anyList(), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", graph,
+                        "prefLabel", "Vysoké školy",
+                        "types", "http://www.w3.org/2002/07/owl#Ontology")));
+        lenient().when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+        lenient().when(ontologyMetadataRepository.findAllByGraphNameIn(anyList()))
+                .thenReturn(List.of(createOntology(graph, "unrelated-slug", false)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "škol", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals(SearchType.ONTOLOGY, dto.getType());
+        assertEquals("unrelated-slug", dto.getSlug(),
+                "slug must be backfilled on the unfiltered path too");
+    }
+
     private ConceptMetadataEntity createConcept(String iri, String slug, String name,
                                                  ConceptType type, String graphName, boolean published) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();
