@@ -112,6 +112,12 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 |----------|---------|-------------|
 | `HIKARI_MAX_POOL_SIZE` | `20` | Max Hikari pool size (dev/production). The outbox after-commit nudge briefly holds ~2 connections per writer, so size with headroom. |
 
+## ISMD AI
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ISMD_AI_MAX_JOB_IDS` | `100` | Maximum number of `jobIds` accepted in one suggestion-jobs request. |
+
 ## Security Best Practices
 
 1. ⚠️ **NEVER commit environment variable values to git**

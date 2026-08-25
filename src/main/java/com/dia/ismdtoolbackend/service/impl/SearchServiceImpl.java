@@ -93,11 +93,18 @@ public class SearchServiceImpl implements SearchService {
             sourceStatuses.put(ismdReportedAs, ismdResult.status());
         }
 
-        // Dedup by IRI — first occurrence wins (NKD results first when both searched)
-        LinkedHashMap<String, SearchResultDto> deduped = new LinkedHashMap<>();
+        // Dedup by (source, IRI) — first occurrence wins within a source.
+        //
+        // The key is deliberately NOT the IRI alone: an ISMD working copy of a
+        // published NKD ontology carries the NKD IRI verbatim, so an IRI-only key
+        // collapsed the two into one row and — because NKD is merged first — dropped
+        // the local copy entirely. They are distinct resources (different editable
+        // state, different concept counts) and both belong in the result set; the
+        // `source` field on each row is what tells them apart.
+        LinkedHashMap<SourceIriKey, SearchResultDto> deduped = new LinkedHashMap<>();
         for (SearchResultDto result : allResults) {
             if (result.getIri() != null) {
-                deduped.putIfAbsent(result.getIri(), result);
+                deduped.putIfAbsent(new SourceIriKey(result.getSource(), result.getIri()), result);
             }
         }
         List<SearchResultDto> dedupedResults = new ArrayList<>(deduped.values());
@@ -214,5 +221,13 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private record SourceSearchResult(List<SearchResultDto> results, SourceStatusDto status) {
+    }
+
+    /**
+     * Cross-source dedup key. A row is a duplicate only when another row from the
+     * same source carries the same IRI — the same IRI under a different source is
+     * a distinct resource (an ISMD working copy vs. its published NKD original).
+     */
+    private record SourceIriKey(SearchSource source, String iri) {
     }
 }

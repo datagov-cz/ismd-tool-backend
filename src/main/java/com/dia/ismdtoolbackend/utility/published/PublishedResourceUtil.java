@@ -19,14 +19,9 @@ import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Component
 @RequiredArgsConstructor
@@ -38,12 +33,15 @@ public class PublishedResourceUtil {
     private final OntologyDeviationComparator ontologyDeviationComparator;
     private final WorkingCopyDeviationService workingCopyDeviationService;
 
-    @Value("${nkd.deviation.parallelism:8}")
-    private int deviationParallelism;
-
     private static final String POJEM_GENERIC = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
-    public PublishedOntologyDeviationModel checkOntologyDeviation(Model processedModel, OntologyMetadataModel ontologyMetadata) {
+    /**
+     * @param localOntology the caller's already-extracted detail for this graph — the local side of the
+     *                      comparison. Extraction walks every concept and resolves each member's slug, so
+     *                      re-deriving it here would duplicate that whole pass.
+     */
+    public PublishedOntologyDeviationModel checkOntologyDeviation(OntologyDetailModel localOntology,
+                                                                  OntologyMetadataModel ontologyMetadata) {
         if (Boolean.FALSE.equals(ontologyMetadata.getIsPublished())) {
             log.debug("Ontology {} is not published, skipping deviation check", ontologyMetadata.getGraphName());
             return null;
@@ -53,8 +51,6 @@ public class PublishedResourceUtil {
         log.info("Checking ontology deviation for: {}", ontologyIri);
 
         try {
-            OntologyDetailModel localOntology = detailExtractor.extractOntologyDetail(processedModel);
-
             if (localOntology == null) {
                 log.error("Local ontology detail not found for IRI: {}", ontologyIri);
                 return createErrorOntologyDeviation(
@@ -99,40 +95,38 @@ public class PublishedResourceUtil {
             return new HashMap<>();
         }
 
-        // Per-concept deviation checks each fire a CONSTRUCT to NKD; sequential
-        // execution turned the detail endpoint into N×roundtrip latency. Fan out
-        // across a small pool to bound NKD load while collapsing wall time.
-        int parallelism = Math.max(1, Math.min(deviationParallelism, publishedConcepts.size()));
-        log.info("Checking deviations for {} published concepts (parallelism={})",
-                publishedConcepts.size(), parallelism);
+        List<String> conceptIris = publishedConcepts.stream()
+                .map(ConceptMetadataEntity::getConceptIri)
+                .toList();
+        log.info("Checking deviations for {} published concepts", conceptIris.size());
 
-        Map<String, PublishedConceptDeviationModel> deviations = new ConcurrentHashMap<>();
-        ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+        // Single source of truth: the same computation concept detail uses, so the two surfaces can
+        // never disagree. The bulk entry point reads every local projection off the processedModel this
+        // request already transformed — the per-IRI path would re-fetch and re-transform the whole
+        // ontology graph once per concept, since a concept's graphName IS the ontology graph.
+        // The concepts all belong to one graph, so the NKD side can be sliced out of that scheme's
+        // ontology CONSTRUCT — which the ontology deviation check fetches anyway — instead of paying
+        // a second batched concept round-trip.
+        String ontologyIri = publishedConcepts.stream()
+                .map(ConceptMetadataEntity::getGraphName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count() == 1
+                ? publishedConcepts.get(0).getGraphName()
+                : null;
+
+        Map<String, PublishedConceptDeviationModel> deviations = new HashMap<>();
         try {
-            List<CompletableFuture<Void>> futures = publishedConcepts.stream()
-                    .map(conceptEntity -> CompletableFuture.runAsync(() -> {
-                        String conceptIri = conceptEntity.getConceptIri();
-                        try {
-                            // Single source of truth: the same cached computation concept detail uses, so
-                            // the two surfaces can never disagree.
-                            PublishedConceptDeviationModel deviation =
-                                    workingCopyDeviationService.deviationFor(conceptIri);
-                            if (deviation != null) {
-                                deviations.put(conceptIri, deviation);
-                            }
-                        } catch (Exception e) {
-                            log.error("Error checking concept deviation for {}: {}", conceptIri, e.getMessage(), e);
-                            deviations.put(conceptIri, createErrorConceptDeviation(
-                                    "Error checking concept: " + e.getMessage(),
-                                    conceptIri
-                            ));
-                        }
-                    }, executor))
-                    .toList();
-
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        } finally {
-            executor.shutdown();
+            deviations.putAll(workingCopyDeviationService.deviationForAllInOntology(
+                    processedModel, conceptIris, ontologyIri));
+        } catch (Exception e) {
+            // Bulk local extraction failed as a unit; degrade to a per-concept error rather than
+            // failing the whole detail response.
+            log.error("Bulk deviation check failed for {} concepts: {}", conceptIris.size(), e.getMessage(), e);
+            for (String conceptIri : conceptIris) {
+                deviations.put(conceptIri, createErrorConceptDeviation(
+                        "Error checking concept: " + e.getMessage(), conceptIri));
+            }
         }
 
         log.info("Completed deviation checks for {} concepts", deviations.size());

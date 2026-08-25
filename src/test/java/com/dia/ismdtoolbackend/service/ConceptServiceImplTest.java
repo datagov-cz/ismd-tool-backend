@@ -267,6 +267,59 @@ class ConceptServiceImplTest {
     }
 
     @Test
+    void createConcept_InvalidLegalSource_rejectedAs400() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        createModel.setDefiningLegalSource(List.of("http://example.org/not-eli"));
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+
+        assertTrue(ex.getMessage().contains("definingLegalSource"));
+        assertTrue(ex.getMessage().contains("http://example.org/not-eli"));
+        // Atomic: nothing is created or persisted when validation rejects the input.
+        verify(conceptCreator, never()).createSingleConcept(any());
+        verify(jenaTDB2Repository, never()).saveConcept(any(), anyString());
+        verify(conceptMetadataRepository, never()).save(any());
+    }
+
+    @Test
+    void createConcept_InvalidPrivacyProvision_rejectedAs400() {
+        ClassConceptModel createModel = (ClassConceptModel) createValidConceptCreateModel();
+        createModel.setIsPublic(false);
+        createModel.setPrivacyProvisions(List.of("http://example.org/not-eli"));
+
+        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+
+        assertTrue(ex.getMessage().contains("privacyProvisions"));
+        // Previously this silently produced a concept with neither the neveřejný-údaj
+        // type nor any provisions.
+        verify(conceptCreator, never()).createSingleConcept(any());
+    }
+
+    @Test
+    void createConcept_ValidEliPassesValidation() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        createModel.setDefiningLegalSource(List.of(
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187"));
+        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
+
+        OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
+        ontologyMetadata.setId(1L);
+        ontologyMetadata.setGraphName(TEST_GRAPH_NAME);
+
+        when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
+        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
+        when(jenaTDB2Repository.saveConcept(testResource, TEST_GRAPH_NAME)).thenReturn(TEST_CONCEPT_IRI);
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
+
+        assertNotNull(conceptService.createConcept(createModel, TEST_USER_ID));
+        verify(conceptCreator).createSingleConcept(createModel);
+    }
+
+    @Test
     void createConcept_CreatorFails() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
 
@@ -1253,13 +1306,23 @@ class ConceptServiceImplTest {
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
                 .status(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION)
                 .build();
-        when(workingCopyDeviationService.deviationFor(TEST_CONCEPT_IRI)).thenReturn(deviationResult);
+        OntologyDetailModel.ConceptDetailModel canonicalLocal =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
+        when(workingCopyDeviationService.canonicalLocalConcept(eq(TEST_CONCEPT_IRI), any(Model.class)))
+                .thenReturn(canonicalLocal);
+        when(workingCopyDeviationService.deviationForWithLocal(TEST_CONCEPT_IRI, canonicalLocal))
+                .thenReturn(deviationResult);
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
         assertNotNull(result);
         assertEquals(deviationResult, result.getPublishedConceptDeviationModel());
-        verify(workingCopyDeviationService).deviationFor(TEST_CONCEPT_IRI);
+        // The canonical projection is computed off the graph this request already fetched and handed
+        // to the deviation service, so it never re-reads the graph.
+        verify(workingCopyDeviationService).canonicalLocalConcept(eq(TEST_CONCEPT_IRI), any(Model.class));
+        verify(workingCopyDeviationService).deviationForWithLocal(TEST_CONCEPT_IRI, canonicalLocal);
+        verify(workingCopyDeviationService, never()).deviationFor(any());
+        verify(jenaTDB2Repository, times(1)).fetchGraph(TEST_GRAPH_NAME);
     }
 
     @Test

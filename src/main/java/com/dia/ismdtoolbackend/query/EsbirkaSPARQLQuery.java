@@ -114,6 +114,11 @@ public class EsbirkaSPARQLQuery {
      * All fragments of a given version with parent edge and lex-sortable order key.
      * Top-level fragments have parent = <versionIri>/dokument/norma.
      * versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
+     *
+     * <p>Only pořadí may be required. citace is OPTIONAL: upstream dropped
+     * citace-označení-fragmentu-znění-právního-aktu (0 triples dataset-wide as of 2026-08-24),
+     * and a required join returns zero rows — the whole law renders empty. Callers derive the
+     * citation from IRI path segments when it is absent.
      */
     public static String buildFragmentTreeQuery(String versionIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
@@ -123,9 +128,9 @@ public class EsbirkaSPARQLQuery {
                 SELECT ?fragment ?parent ?citace ?order
                 WHERE {
                   ?inputZneni <%1$smá-fragment-znění> ?fragment .
-                  ?fragment <%1$smá-předka> ?parent ;
-                            <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace ;
-                            <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
+                  ?fragment <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
+                  OPTIONAL { ?fragment <%1$smá-předka> ?parent }
+                  OPTIONAL { ?fragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace }
                 }
                 ORDER BY ?order
                 """.formatted(NS));
@@ -139,10 +144,17 @@ public class EsbirkaSPARQLQuery {
      * round-trip. Used to deliver the full law text to the FE for in-document browsing
      * without per-fragment {@code /resolve} calls.
      *
-     * <p>The obsah join ({@code obsahuje-fragment/text-fragmentu}) MUST stay OPTIONAL:
-     * structural fragments (Část/Hlava/Díl/Oddíl) carry no text body, and a non-optional
-     * join silently drops them — breaking the navigable tree. (Verified: ~13% of fragments
-     * have no body for sampled versions.)
+     * <p>Only {@code pořadí} may be required. Every other join is OPTIONAL, because a
+     * required join that upstream stops populating returns zero rows and the law renders
+     * blank (HTTP 200, {@code fragments: []}) rather than erroring:
+     * <ul>
+     *   <li>{@code obsah} — structural fragments (Část/Hlava/Díl/Oddíl) carry no text body
+     *       (~13% of fragments for sampled versions).</li>
+     *   <li>{@code citace} — upstream dropped citace-označení-fragmentu-znění-právního-aktu
+     *       entirely (0 triples dataset-wide as of 2026-08-24); the citation is derived from
+     *       IRI path segments when absent.</li>
+     *   <li>{@code parent} — document roots ({@code /dokument/prefix}) have no má-předka.</li>
+     * </ul>
      *
      * <p>versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the
      * controller boundary.
@@ -155,9 +167,9 @@ public class EsbirkaSPARQLQuery {
                 SELECT ?fragment ?parent ?citace ?order ?obsah
                 WHERE {
                   ?inputZneni <%1$smá-fragment-znění> ?fragment .
-                  ?fragment <%1$smá-předka> ?parent ;
-                            <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace ;
-                            <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
+                  ?fragment <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
+                  OPTIONAL { ?fragment <%1$smá-předka> ?parent }
+                  OPTIONAL { ?fragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace }
                   OPTIONAL { ?fragment <%1$sobsahuje-fragment>/<%1$stext-fragmentu> ?obsah }
                 }
                 ORDER BY ?order
@@ -176,21 +188,13 @@ public class EsbirkaSPARQLQuery {
      * {@link com.dia.ismdtoolbackend.utility.security.SparqlIriValidator#isEsbirkaEliIri(String)}.
      */
     public static String buildResolveFragmentQuery(String fragmentIri, String versionIri, String lawIri) {
-        // Note: we cannot bind inputZneni via PSS because we also need to compare it
-        // structurally inside the SELECT projection (BIND). Instead, the version IRI
-        // is inlined as a VALUES row, leaving ?zneni as a real variable usable in
-        // (?zneni = ?posledniZneni) AS ?isLatest.
-        //
-        // ?obsah is OPTIONAL because structural fragments (Část/Hlava/...) carry
-        // no text body — their resolution should still return citation and
-        // version metadata.
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.setCommandText("""
                 SELECT ?citace ?ucinnostDo ?obsah ((?zneni = ?posledniZneni) AS ?isLatest)
                 WHERE {
                   VALUES ?zneni { ?inputZneni }
-                  ?inputFragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace .
                   ?inputAkt <%1$smá-poslední-znění> ?posledniZneni .
+                  OPTIONAL { ?inputFragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace }
                   OPTIONAL { ?zneni <%1$súčinnost-znění-do> ?ucinnostDo }
                   OPTIONAL { ?inputFragment <%1$sobsahuje-fragment>/<%1$stext-fragmentu> ?obsah }
                 }

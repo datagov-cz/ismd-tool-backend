@@ -659,6 +659,92 @@ class OntologyControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    // ========== Get Validation Report Tests ==========
+
+    @Test
+    void testGetValidationReport_Success() throws Exception {
+        String slug = "test-ontology";
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
+        java.time.Instant timestamp = java.time.Instant.parse("2026-08-24T10:15:30Z");
+        com.dia.validation.ValidationResult result = new com.dia.validation.ValidationResult(
+                com.dia.validation.ValidationSeverity.ERROR,
+                "Chybí název pojmu",
+                "rule-name-required",
+                "http://example.org/test-ontology/pojem/1",
+                "http://www.w3.org/2004/02/skos/core#prefLabel",
+                null);
+
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
+        when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
+                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data.results.length()").value(1))
+                .andExpect(jsonPath("$.data.results[0].severity").value("ERROR"))
+                .andExpect(jsonPath("$.data.results[0].message").value("Chybí název pojmu"))
+                .andExpect(jsonPath("$.data.ontologyIri").value("http://example.org/test-ontology"))
+                .andExpect(jsonPath("$.data.timestamp").exists());
+    }
+
+    /** Never validated is a state, not an error — an empty report, not a 404. */
+    @Test
+    void testGetValidationReport_NeverValidatedReturnsEmptyReport() throws Exception {
+        String slug = "test-ontology";
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
+        when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
+                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.results.length()").value(0))
+                .andExpect(jsonPath("$.data.ontologyIri").value("http://example.org/test-ontology"))
+                .andExpect(jsonPath("$.data.timestamp").doesNotExist());
+    }
+
+    /** The report is keyed off the ontology, so an unknown slug 404s before the report lookup. */
+    @Test
+    void testGetValidationReport_OntologyNotFound() throws Exception {
+        String slug = "non-existent-ontology";
+
+        when(ontologyService.getOntologyMetadataBySlug(slug))
+                .thenThrow(new OntologyNotFoundException("Ontology not found"));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isNotFound());
+
+        verify(validationService, never()).getValidationReportOrEmpty(any());
+    }
+
+    /**
+     * The tool's own ValidationException has its own handler — it must surface its message, not
+     * fall through to the generic catch-all's masked "Nastala neočekávaná chyba."
+     */
+    @Test
+    void testGetValidationReport_ReportLookupFailureIsHandled() throws Exception {
+        String slug = "test-ontology";
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
+        when(validationService.getValidationReportOrEmpty(metadataModel))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.ValidationException(
+                        "Během načítání zprávy z kontroly došlo k chybě", new RuntimeException("DB down")));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("Během načítání zprávy z kontroly došlo k chybě"));
+    }
+
     // ========== Get Ontology List Tests ==========
 
     @Test

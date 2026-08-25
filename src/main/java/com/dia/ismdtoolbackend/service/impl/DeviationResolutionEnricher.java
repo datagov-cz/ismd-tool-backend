@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -40,29 +41,93 @@ public class DeviationResolutionEnricher {
         if (deviation == null) {
             return;
         }
-
-        // Concept IRIs: the source twin + domain + concept-typed range, both diff sides. One batch resolve.
         Set<String> conceptIris = new LinkedHashSet<>();
-        if (deviation.getSource() != null) {
-            addIri(conceptIris, deviation.getSource().getIri());
-        }
-        addBothSides(conceptIris, deviation.getDomain());
+        collectInto(deviation, conceptIris);
+        applyResolved(deviation, conceptIris.isEmpty()
+                ? Map.of()
+                : resolutionEngine.resolveAll(new ArrayList<>(conceptIris)));
+        applyRppResolved(deviation);
+    }
 
-        // Range: datatype values resolve to DataTypeDto; anything else is a concept IRI → resolve as a concept.
-        Map<String, DataTypeDto> rangeResolved = new LinkedHashMap<>();
-        collectRange(deviation.getRange(), conceptIris, rangeResolved);
-        if (!rangeResolved.isEmpty()) {
-            deviation.setRangeResolved(rangeResolved);
+    /**
+     * Bulk variant: resolves the concept references of EVERY deviation in one
+     * {@link ReferencedConceptResolutionEngine#resolveAll} call, then enriches each from the shared
+     * result.
+     */
+    public void enrichAll(List<PublishedConceptDeviationModel> deviations) {
+        if (deviations == null || deviations.isEmpty()) {
+            return;
         }
-
-        if (!conceptIris.isEmpty()) {
-            Map<String, ResolvedConceptDto> resolved = resolutionEngine.resolveAll(new ArrayList<>(conceptIris));
-            if (!resolved.isEmpty()) {
-                deviation.setReferencedConceptsResolved(resolved);
+        // One pass to collect, one resolve, one pass to apply. resolveAll dedups and caches
+        // internally, so the union is cheaper than the sum of the parts even when IRIs repeat.
+        Set<String> allIris = new LinkedHashSet<>();
+        for (PublishedConceptDeviationModel deviation : deviations) {
+            if (deviation != null) {
+                collectInto(deviation, allIris);
             }
         }
 
-        // RPP agenda / ais, both diff sides.
+        Map<String, ResolvedConceptDto> resolved = allIris.isEmpty()
+                ? Map.of()
+                : resolutionEngine.resolveAll(new ArrayList<>(allIris));
+
+        for (PublishedConceptDeviationModel deviation : deviations) {
+            if (deviation != null) {
+                applyResolved(deviation, resolved);
+                applyRppResolved(deviation);
+            }
+        }
+    }
+
+    /**
+     * Collects this deviation's concept IRIs into {@code sink} — the source twin, {@code definiční-obor}
+     * and concept-typed {@code obor-hodnot}, both diff sides — and attaches any datatype ranges, which
+     * resolve locally with no round-trip.
+     */
+    private void collectInto(PublishedConceptDeviationModel deviation, Set<String> sink) {
+        if (deviation.getSource() != null) {
+            addIri(sink, deviation.getSource().getIri());
+        }
+        addBothSides(sink, deviation.getDomain());
+
+        // Range: datatype values resolve to DataTypeDto; anything else is a concept IRI → resolve as a concept.
+        Map<String, DataTypeDto> rangeResolved = new LinkedHashMap<>();
+        collectRange(deviation.getRange(), sink, rangeResolved);
+        if (!rangeResolved.isEmpty()) {
+            deviation.setRangeResolved(rangeResolved);
+        }
+    }
+
+    /**
+     * Attaches the subset of {@code resolved} this deviation actually references, so a deviation never
+     * carries another's resolutions when the map is shared across a bulk run.
+     */
+    private void applyResolved(PublishedConceptDeviationModel deviation,
+                               Map<String, ResolvedConceptDto> resolved) {
+        if (resolved.isEmpty()) {
+            return;
+        }
+        Set<String> own = new LinkedHashSet<>();
+        if (deviation.getSource() != null) {
+            addIri(own, deviation.getSource().getIri());
+        }
+        addBothSides(own, deviation.getDomain());
+        collectRange(deviation.getRange(), own, new LinkedHashMap<>());
+
+        Map<String, ResolvedConceptDto> mine = new LinkedHashMap<>();
+        for (String iri : own) {
+            ResolvedConceptDto dto = resolved.get(iri);
+            if (dto != null) {
+                mine.put(iri, dto);
+            }
+        }
+        if (!mine.isEmpty()) {
+            deviation.setReferencedConceptsResolved(mine);
+        }
+    }
+
+    /** RPP agenda / ais, both diff sides. Served from the in-memory snapshot — no round-trip. */
+    private void applyRppResolved(PublishedConceptDeviationModel deviation) {
         Map<String, RppAgenda> agendaResolved = new LinkedHashMap<>();
         forEachSide(deviation.getAgenda(), iri ->
                 rppSnapshotHolder.findAgendaByIri(iri).ifPresent(a -> agendaResolved.put(iri, a)));

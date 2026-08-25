@@ -49,8 +49,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.apache.jena.rdf.model.ModelFactory;
@@ -180,7 +182,53 @@ public class OntologyServiceImpl implements OntologyService {
 
     @Override
     @Transactional(readOnly = true)
+    public OntologyDetailModel getOntologyDetail(String ontologySlug) {
+        return loadOntologyDetail(ontologySlug).detailModel();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public GetOntologyDto getOntologyDetailModel(String ontologySlug) {
+        LoadedOntologyDetail loadedDetail = loadOntologyDetail(ontologySlug);
+        OntologyMetadataEntity metadataEntity = loadedDetail.metadataEntity();
+        Model rawModel = loadedDetail.rawModel();
+        Model processedModel = loadedDetail.processedModel();
+        OntologyDetailModel detailModel = loadedDetail.detailModel();
+
+        OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
+
+        enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
+
+        List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(metadataEntity.getId());
+        metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+
+        String graphName = metadataEntity.getGraphName();
+        List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
+        List<com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel> conceptModels =
+                conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList();
+        metadataModel.setConcepts(conceptModels);
+
+        GetOntologyDto result = new GetOntologyDto();
+        // Single source of truth: conceptCount on both projections of the
+        // ontology comes from the same authoritative PG list we just loaded.
+        int conceptCount = conceptMetadataEntities.size();
+        metadataModel.setConceptCount(conceptCount);
+        detailModel.setConceptCount(conceptCount);
+        result.setOntologyMetadata(metadataModel);
+        result.setOntologyDetail(detailModel);
+
+        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(detailModel, metadataModel);
+        result.setPublishedOntologyDeviationModel(ontologyDeviations);
+
+        Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);
+        result.setPublishedConceptDeviations(conceptDeviations);
+
+        surfaceLinkSnapshots(result, graphName);
+
+        return result;
+    }
+
+    private LoadedOntologyDetail loadOntologyDetail(String ontologySlug) {
         Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findBySlug(ontologySlug);
         if (ontologyMetadataOpt.isEmpty()) {
             log.error("ontologySlug {} not found", ontologySlug);
@@ -202,36 +250,55 @@ public class OntologyServiceImpl implements OntologyService {
         // it three times across detail extraction and deviation checks.
         Model processedModel = detailExtractor.applyOFNTransformations(rawModel);
         OntologyDetailModel detailModel = detailExtractor.extractOntologyDetail(processedModel);
-        OntologyMetadataModel metadataModel = ontologyMetadataMapper.toDto(metadataEntity);
+        applyForeignMemberCounts(detailModel, graphName);
+        return new LoadedOntologyDetail(metadataEntity, rawModel, processedModel, detailModel);
+    }
 
-        enrichMetadataFromModel(metadataModel, metadataEntity, rawModel);
+    /**
+     * Annotates each concept with how many properties/relationships point at it from other
+     * vocabularies. The detail's own member lists are scoped to this graph, so without the
+     * counts an ontology detail silently shows fewer members than the same concept's detail
+     * page (which merges cross-graph members in).
+     *
+     * <p>One batched query for the whole ontology — a per-concept call would reintroduce the
+     * N+1 fan-out the read-path work removed. Never lets counting break ontology detail.
+     */
+    private void applyForeignMemberCounts(OntologyDetailModel detailModel, String graphName) {
+        List<OntologyDetailModel.ConceptDetailModel> concepts = detailModel.getConcepts();
+        if (concepts == null || concepts.isEmpty()) {
+            return;
+        }
 
-        List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(metadataEntity.getId());
-        metadataModel.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
+        try {
+            List<String> conceptIris = concepts.stream()
+                    .map(OntologyDetailModel.ConceptDetailModel::getIri)
+                    .filter(Objects::nonNull)
+                    .toList();
 
-        List<ConceptMetadataEntity> conceptMetadataEntities = conceptMetadataRepository.findByGraphName(graphName);
-        List<com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel> conceptModels =
-                conceptMetadataEntities.stream().map(conceptMetadataMapper::toDto).toList();
-        metadataModel.setConcepts(conceptModels);
+            Map<String, JenaTDB2Repository.ForeignMemberCount> counts =
+                    jenaTDB2Repository.countExternalDomainMembers(graphName, conceptIris);
+            if (counts.isEmpty()) {
+                return;
+            }
 
-        GetOntologyDto result = new GetOntologyDto();
-        // Single source of truth: conceptCount on both projections of the
-        // ontology comes from the same authoritative PG list we just loaded.
-        int conceptCount = conceptMetadataEntities.size();
-        metadataModel.setConceptCount(conceptCount);
-        detailModel.setConceptCount(conceptCount);
-        result.setOntologyMetadata(metadataModel);
-        result.setOntologyDetail(detailModel);
+            for (OntologyDetailModel.ConceptDetailModel concept : concepts) {
+                JenaTDB2Repository.ForeignMemberCount count = counts.get(concept.getIri());
+                if (count != null) {
+                    concept.setForeignPropertyCount(count.properties());
+                    concept.setForeignRelationshipCount(count.relationships());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to count cross-graph members for graph {}: {}", graphName, e.getMessage());
+        }
+    }
 
-        PublishedOntologyDeviationModel ontologyDeviations = deviationChecker.checkOntologyDeviation(processedModel, metadataModel);
-        result.setPublishedOntologyDeviationModel(ontologyDeviations);
-
-        Map<String, PublishedConceptDeviationModel> conceptDeviations = deviationChecker.checkConceptsDeviation(processedModel, conceptMetadataEntities);
-        result.setPublishedConceptDeviations(conceptDeviations);
-
-        surfaceLinkSnapshots(result, graphName);
-
-        return result;
+    private record LoadedOntologyDetail(
+            OntologyMetadataEntity metadataEntity,
+            Model rawModel,
+            Model processedModel,
+            OntologyDetailModel detailModel
+    ) {
     }
 
     /**
@@ -325,20 +392,10 @@ public class OntologyServiceImpl implements OntologyService {
     }
 
     private List<MinimalConceptDto> getNkdConceptsByIri(String ontologyIri) {
-        OntologyDetailModel detail = nkdDetailService.getOntologyDetail(ontologyIri).getOntologyDetail();
-        List<OntologyDetailModel.ConceptDetailModel> concepts = detail.getConcepts();
-        if (concepts == null || concepts.isEmpty()) {
-            return List.of();
-        }
-
-        // NKD concepts have no local slug — the FE deep-links via IRI only.
-        return concepts.stream()
-                .map(c -> MinimalConceptDto.builder()
-                        .iri(c.getIri())
-                        .name(c.getName())
-                        .conceptType(ConceptType.fromRdfTypes(c.getTypes()))
-                        .build())
-                .toList();
+        // One targeted SELECT for the three fields this projection keeps. The full ontology detail
+        // would CONSTRUCT every concept's whole triple set and OFN-transform it, then discard all
+        // but iri/name/conceptType.
+        return nkdDetailService.listOntologyConcepts(ontologyIri);
     }
 
     private void validateOntologyCreateModel(OntologyCreateModel model) {
@@ -505,12 +562,23 @@ public class OntologyServiceImpl implements OntologyService {
         Model batchMetadata = jenaTDB2Repository.fetchMetadataProperties(graphNames);
         Map<String, Model> perGraphModels = partitionModelBySubject(batchMetadata, graphNames);
 
+        // One comment query for the whole page, grouped in memory — a per-entity lookup here would
+        // undo the batched RDF fetch above with 1+N queries on an unfiltered list.
+        List<Long> ontologyIds = entities.stream()
+                .map(OntologyMetadataEntity::getId)
+                .toList();
+        Map<Long, List<CommentEntity>> commentsByOntologyId = ontologyIds.isEmpty()
+                ? Map.of()
+                : commentRepository.findByOntologyMetadataIdIn(ontologyIds).stream()
+                        .collect(java.util.stream.Collectors.groupingBy(c -> c.getOntologyMetadata().getId()));
+
         return entities.stream()
                 .map(entity -> {
                     OntologyMetadataModel model = ontologyMetadataMapper.toDto(entity);
                     Model graphModel = perGraphModels.get(entity.getGraphName());
                     enrichMetadataFromModel(model, entity, graphModel);
-                    List<CommentEntity> commentEntities = commentRepository.findByOntologyMetadataId(entity.getId());
+                    List<CommentEntity> commentEntities =
+                            commentsByOntologyId.getOrDefault(entity.getId(), List.of());
                     model.setComments(ontologyMetadataMapper.commentEntitiesToModels(commentEntities));
                     return model;
                 })
@@ -571,6 +639,18 @@ public class OntologyServiceImpl implements OntologyService {
     @Transactional(readOnly = true)
     public OntologyMetadataModel getOntologyMetadata(Long ontologyId) {
         return ontologyMetadataMapper.toDto(ontologyMetadataRepository.findById(ontologyId).orElseThrow());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OntologyMetadataModel getOntologyMetadataBySlug(String ontologySlug) {
+        return ontologyMetadataRepository.findBySlug(ontologySlug)
+                .map(ontologyMetadataMapper::toDto)
+                .orElseThrow(() -> {
+                    log.error("ontologySlug {} not found", ontologySlug);
+                    return new OntologyNotFoundException(
+                            "Metadata slovníku s názvem " + ontologySlug + " nebyla nalezena.");
+                });
     }
 
     private String extractNameFromGraphName(String graphName) {
@@ -737,14 +817,14 @@ public class OntologyServiceImpl implements OntologyService {
         } catch (Exception e) {
             log.warn("Failed to enrich metadata from RDF for graph {}: {}", graphName, e.getMessage());
             if ((model.getName() == null || model.getName().isEmpty())) {
-                model.setName(extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName)));
+                model.setName(fallbackNameFromGraphName(graphName));
             }
         }
     }
 
     private void enrichMetadataFromModel(OntologyMetadataModel model, OntologyMetadataEntity entity, Model rdfModel) {
         String graphName = entity.getGraphName();
-        String fallbackName = extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName));
+        Map<String, String> fallbackName = fallbackNameFromGraphName(graphName);
 
         try {
             if (rdfModel == null || rdfModel.isEmpty()) {
@@ -760,36 +840,18 @@ public class OntologyServiceImpl implements OntologyService {
                 return;
             }
 
-            Statement prefLabelStmt = ontologyResource.getProperty(SKOS.prefLabel);
-            if (prefLabelStmt != null) {
-                RDFNode prefLabelNode = prefLabelStmt.getObject();
-                if (prefLabelNode.isLiteral()) {
-                    Literal prefLabelLiteral = prefLabelNode.asLiteral();
-                    String prefLabel = prefLabelLiteral.getString();
-                    if (prefLabel != null && !prefLabel.isEmpty()) {
-                        model.setName(prefLabel);
-                        log.debug("Enriched name from skos:prefLabel: {}", prefLabel);
-                    } else {
-                        model.setName(fallbackName);
-                    }
-                } else {
-                    model.setName(fallbackName);
-                }
-            } else {
+            Map<String, String> names = extractMultilingualValue(ontologyResource, SKOS.prefLabel);
+            if (names.isEmpty()) {
                 model.setName(fallbackName);
+            } else {
+                model.setName(names);
+                log.debug("Enriched name from skos:prefLabel with {} language variant(s)", names.size());
             }
 
-            Statement descriptionStmt = ontologyResource.getProperty(DCTerms.description);
-            if (descriptionStmt != null) {
-                RDFNode descriptionNode = descriptionStmt.getObject();
-                if (descriptionNode.isLiteral()) {
-                    Literal descriptionLiteral = descriptionNode.asLiteral();
-                    String description = descriptionLiteral.getString();
-                    if (description != null && !description.isEmpty()) {
-                        model.setPopis(description);
-                        log.debug("Enriched popis from dcterms:description: {}", description);
-                    }
-                }
+            Map<String, String> descriptions = extractMultilingualValue(ontologyResource, DCTerms.description);
+            if (!descriptions.isEmpty()) {
+                model.setPopis(descriptions);
+                log.debug("Enriched popis from dcterms:description with {} language variant(s)", descriptions.size());
             }
         } catch (Exception e) {
             log.warn("Failed to enrich metadata from model for graph {}: {}", graphName, e.getMessage());
@@ -797,6 +859,31 @@ public class OntologyServiceImpl implements OntologyService {
                 model.setName(fallbackName);
             }
         }
+    }
+
+    private Map<String, String> fallbackNameFromGraphName(String graphName) {
+        String derived = extractNameFromGraphName(UtilityMethods.extractNameFromIRI(graphName));
+        return derived == null || derived.isEmpty() ? Map.of() : Map.of(DEFAULT_LANG, derived);
+    }
+
+    private Map<String, String> extractMultilingualValue(Resource resource, Property property) {
+        Map<String, String> valuesByLang = new LinkedHashMap<>();
+        StmtIterator iter = resource.listProperties(property);
+        while (iter.hasNext()) {
+            Statement stmt = iter.next();
+            RDFNode object = stmt.getObject();
+            if (!object.isLiteral()) {
+                continue;
+            }
+            Literal literal = object.asLiteral();
+            String value = literal.getString();
+            if (value == null || value.trim().isEmpty()) {
+                continue;
+            }
+            String lang = literal.getLanguage();
+            valuesByLang.putIfAbsent((lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG, value);
+        }
+        return valuesByLang;
     }
 
     private String getNameForUriGeneration(com.dia.ismdtoolbackend.models.NameModel nameModel) {

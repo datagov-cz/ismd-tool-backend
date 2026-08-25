@@ -87,8 +87,10 @@ public class OntologyController {
         // Post-commit, NKD-independent: warm NKD local-copy snapshots for any published-concept links
         // off the request thread. If NKD is down the graph stays cold and first detail-view heals it.
         // Guarded: a saturated executor (TaskRejectedException) must never fail an already-committed upload.
+        // warmGraphNow, not warmGraph: the graph just changed, so the read-path scan throttle must not
+        // suppress this scan.
         try {
-            nkdSnapshotWarmer.warmGraph(savedOntology.getGraphName());
+            nkdSnapshotWarmer.warmGraphNow(savedOntology.getGraphName());
         } catch (Exception e) {
             log.warn("Could not trigger NKD snapshot warming for uploaded graph {}: {}",
                     savedOntology.getGraphName(), e.getMessage());
@@ -215,6 +217,21 @@ public class OntologyController {
     }
 
     @Operation(
+            summary = "Zpráva z poslední kontroly slovníku",
+            description = "Vrací výsledky poslední uložené kontroly slovníku. Zpráva se ukládá při nahrání slovníku a při ručním spuštění kontroly; nevzniká automaticky při úpravě pojmů. "
+                    + "Slovník, který dosud nebyl zkontrolován, vrací prázdný seznam výsledků. Veřejný endpoint."
+    )
+    @GetMapping("/{slug}/validation-report")
+    public ResponseEntity<ApiResponseDto<ValidationReportDto>> getValidationReport(@PathVariable String slug) {
+        log.info("Ontology validation report requested, slug: {}", slug);
+
+        OntologyMetadataModel ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
+        ValidationReportDto report = validationService.getValidationReportOrEmpty(ontologyMetadata);
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(report, "Zpráva z kontroly slovníku byla úspěšně načtena."));
+    }
+
+    @Operation(
             summary = "Minimalistický seznam pojmů slovníku podle IRI",
             description = "Vrací minimalistický seznam pojmů slovníku (iri, slug, název) podle IRI slovníku. " +
                     "Parametr source určuje zdroj: ISMD (lokální úložiště – položky obsahují slug pro navigaci) " +
@@ -296,7 +313,11 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
+        log.info("Ontology catalog record requested for user: {}, ontologyIRI: {}, slug: {}",
+                securityUser.getUsername(),
+                catalogRequestDto.getOntologyMetadata().getGraphName(),
+                slug
+        );
 
         String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
 
