@@ -13,12 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link SparqlSolutions#literalBool} must tolerate a numeric rendering of a boolean.
- *
- * <p>Virtuoso returns a projected comparison — {@code ((?a = ?b) AS ?flag)} — as
- * {@code "1"^^xsd:integer}, not {@code "true"^^xsd:boolean}. Reading it with
- * {@code Literal.getBoolean()} alone throws and was swallowed as false, which made
- * e-Sbírka's {@code isLatest} false for every version.
+ * {@link SparqlSolutions#literalBool} must tolerate a numeric rendering of a boolean —
+ * Virtuoso returns a projected {@code ((?a = ?b) AS ?flag)} as {@code "1"^^xsd:integer},
+ * on which {@code Literal.getBoolean()} alone throws.
  */
 class SparqlSolutionsBoolTest {
 

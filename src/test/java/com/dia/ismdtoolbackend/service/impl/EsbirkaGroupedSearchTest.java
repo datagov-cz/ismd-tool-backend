@@ -21,11 +21,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
- * Grouped law search — the fix for the "bare number is unusable" UX problem.
- *
- * <p>Czech acts renumber from 1 every year, so "49" matches ~80 unrelated laws (49/1997,
- * 49/2020, 49/2026 …) that are NOT versions of one another. A flat list ordered by rok desc
- * fills its whole window with recent years and pushes the wanted law off the page.
+ * Grouped law search. Czech acts renumber from 1 every year, so "49" matches dozens of
+ * unrelated laws that are NOT versions of one another, and a flat list ordered by rok desc
+ * pushes the wanted law off the page.
  */
 @ExtendWith(MockitoExtension.class)
 class EsbirkaGroupedSearchTest {

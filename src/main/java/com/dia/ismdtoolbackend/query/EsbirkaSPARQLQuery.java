@@ -32,35 +32,10 @@ public class EsbirkaSPARQLQuery {
 
     /**
      * Search laws by citation substring (server-side CONTAINS on citace-právního-aktu).
-     * citace is ASCII-only so plain LCASE works. When q is blank, omit the FILTER.
+     * Blank q omits the FILTER and orders rok desc, číslo asc.
      *
-     * <p>Default order (blank q): rok desc, cislo asc (G11).
-     *
-     * <p>With q, results are ranked by <em>where</em> the needle matched, because a bare
-     * {@code CONTAINS} on the whole citation makes "49" match "49/1997", "490/2001" and
-     * "1/2049" alike — and a lexical {@code ORDER BY ?citace} then buries the exact číslo
-     * match under year- and prefix-matches. Rank tiers:
-     * <ol start="0">
-     *   <li>číslo equals the needle ("49" → 49/1997, 49/2026) — newest year first</li>
-     *   <li>citace starts with the needle ("49/1997" → the exact act, ahead of 149/1997;
-     *       also "49" → 490/2001, since a citation always begins with its číslo)</li>
-     *   <li>anything else — the needle matched only the year or mid-číslo ("1/2049")</li>
-     * </ol>
-     * Tier 1 exists because a needle carrying the year ("49/1997") never equals or prefixes
-     * ?cislo — which holds "49" alone — so without it the exact law sorts <em>behind</em>
-     * 149/1997, 249/1997 and 349/1997, all of which also contain "49/1997". A separate
-     * "číslo starts with the needle" tier would be dead code: the citation is
-     * {@code <číslo>/<rok> Sb.}, so a číslo-prefix match is always a citation-prefix match.
-     *
-     * <p><strong>Ranking only helps when few acts share the číslo.</strong> Czech acts
-     * renumber yearly, so "49" has ~120 tier-0 matches and a limit of 20 is filled by tier 0
-     * alone — 49/2026 … 49/2007, with 49/1997 still off the page. Ranking fixes the
-     * <em>fully-qualified</em> query ("49/1997" lands first); for a bare number the real fix
-     * is {@code /api/eli/law/search/grouped}, which surfaces the ambiguity instead of hiding
-     * it behind a truncated list.
-     *
-     * <p>Ranking MUST happen inside the query: {@code LIMIT} is applied after {@code ORDER BY},
-     * so ranking client-side would truncate the best matches before they are ever ranked.
+     * <p>With q, rows are ranked by where the needle matched: 0 = číslo equals it,
+     * 1 = citace starts with it, 2 = anything else; then rok desc, citace.
      */
     public static String buildLawSearchQuery(String q, int limit) {
         boolean hasFilter = q != null && !q.isBlank();
@@ -94,29 +69,16 @@ public class EsbirkaSPARQLQuery {
     }
 
     /**
-     * Step 1 of the grouped search: the distinct předpis numbers matching the needle, with
-     * a true act count each, capped at {@code limit} <em>groups</em>.
+     * Step 1 of the grouped search: distinct předpis numbers prefix-matching the needle, each
+     * with its dataset-wide act count, capped at {@code limit} <em>groups</em>.
      *
-     * <p>Row-capping cannot work here. {@link #buildLawSearchQuery}'s {@code CONTAINS} on the
-     * whole citation makes "49" match 2 217 acts of which only 120 are numbered 49 (the rest
-     * matched a year — "1/2049"), and even číslo-scoped, a short needle is unbounded: "1"
-     * prefix-matches 12 037 acts across 1, 10-19, 100-199, 1000+. Any row cap would truncate
-     * mid-group and reproduce the very bug grouping fixes. Aggregating server-side caps the
-     * <em>groups</em> instead, so cost tracks the answer, not the noise (0.35 s worst case).
-     *
-     * <p>Prefix, not substring: nobody searching "49" means "1490". {@code STRSTARTS} is both
-     * the correct semantic and the cheaper one.
-     *
-     * <p>Ordered by číslo length then číslo, so the shortest (most exact) numbers come first —
-     * "49" before "490" before "4900".
+     * <p>Ordered by číslo length then číslo, so the shortest (most exact) numbers come first.
      */
     public static String buildLawNumberGroupsQuery(String q, int limit) {
         boolean hasFilter = q != null && !q.isBlank();
         StringBuilder sb = new StringBuilder();
-        // Only ?akt and ?cislo are needed: the other predicates were joined purely to be
-        // discarded, and with COUNT(*) (solutions, not subjects) an act carrying two
-        // patří-do-sbírky or citace values would be counted twice in its group total.
-        // COUNT(DISTINCT ?akt) counts acts.
+        // COUNT(DISTINCT ?akt), not COUNT(*): an act with several patří-do-sbírky or citace
+        // values yields several solutions.
         sb.append("SELECT ?cislo (COUNT(DISTINCT ?akt) AS ?pocet) WHERE {\n");
         sb.append("  ?akt a <").append(NS).append("právní-akt> ;\n");
         sb.append("       <").append(NS).append("citace-právního-aktu> ?citace ;\n");
@@ -138,29 +100,14 @@ public class EsbirkaSPARQLQuery {
     }
 
     /**
-     * Step 2 of the grouped search: every act whose číslo is one of {@code cisla}, newest
-     * rok first.
+     * Step 2 of the grouped search: every act whose číslo is one of {@code cisla}, newest rok
+     * first, capped at {@code rowLimit} rows. Group size is unbounded, so the cap keeps the
+     * newest acts of each; the dataset-wide totals come from step 1's aggregate.
      *
-     * <p>Scoped to the numbers step 1 already chose. Note this bounds the result by
-     * <em>group count × group size</em>, and group size is itself unbounded — every low číslo
-     * carries ~120 acts, so 50 groups is ~6 000 rows. Hence the explicit {@code rowLimit}:
-     * without it a broad needle streams thousands of rows across the wire, each mapped to a
-     * DTO and serialised into one response. Per-group truncation is representable without
-     * lying because {@code LawSearchGroupDto.count} carries the dataset-wide total from
-     * step 1's aggregate, independent of how many acts are fetched for display.
-     *
-     * <p>{@code ORDER BY DESC(?rok)} is kept so the cap keeps the <em>newest</em> acts rather
-     * than an arbitrary slice; the číslo-ordering terms are deliberately absent, since the
-     * service re-buckets rows by číslo and re-sorts each bucket, which would discard them.
-     *
-     * <p><strong>Matched via {@code FILTER(STR(?cislo) IN (…))}, deliberately not a
-     * {@code VALUES} block.</strong> e-Sbírka stores {@code číslo-předpisu} as an explicitly
-     * typed {@code "49"^^xsd:string}, and this Virtuoso does not equate that with the plain
-     * literal {@code "49"} — a {@code VALUES} of plain literals matches <em>zero</em> rows.
-     * Binding the typed form does not help either: SPARQL 1.1 defines the two as the same
-     * term, so Jena renders {@code "49"^^xsd:string} back down to {@code "49"} and the
-     * mismatch returns. Comparing {@code STR(?cislo)} sidesteps the datatype entirely
-     * (~0.2 s), and is the same workaround {@link #buildLawByNumberYearQuery} already uses.
+     * <p>Matched via {@code FILTER(STR(?cislo) IN (…))}, not {@code VALUES}: číslo-předpisu is
+     * a typed {@code "49"^^xsd:string} that Virtuoso will not equate with a plain literal, so a
+     * {@code VALUES} block matches zero rows. Same workaround as
+     * {@link #buildLawByNumberYearQuery}.
      */
     public static String buildLawsByNumbersQuery(List<String> cisla, int rowLimit) {
         StringBuilder needles = new StringBuilder();
@@ -242,13 +189,9 @@ public class EsbirkaSPARQLQuery {
      * Top-level fragments have parent = <versionIri>/dokument/norma.
      * versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
      *
-     * <p><strong>Only {@code pořadí} may be required.</strong> Upstream dropped
-     * {@code citace-označení-fragmentu-znění-právního-aktu} entirely (0 triples dataset-wide as
-     * of 2026-08-24) — while required, the join returned 0 rows and the whole law rendered
-     * blank: version {@code …/1997/49/2025-11-01} has 2 508 fragments and zero citace values.
-     * Callers derive the citation from IRI path segments when it is absent. {@code má-předka}
-     * is OPTIONAL too (document roots have none); {@code assembleTree}'s path-walk re-parenting
-     * makes a null {@code ?parent} safe.
+     * <p>Only {@code pořadí} may be required — a required join upstream stops populating
+     * returns zero rows and renders the law blank. {@code citace} is absent dataset-wide and
+     * callers derive it from IRI path segments; document roots carry no {@code má-předka}.
      */
     public static String buildFragmentTreeQuery(String versionIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
@@ -269,24 +212,14 @@ public class EsbirkaSPARQLQuery {
     }
 
     /**
-     * Whole-version content query: every fragment of a version with its parent edge,
-     * citation, lex-sortable order key, AND its rendered HTML body (obsah) in a single
-     * round-trip. Used to deliver the full law text to the FE for in-document browsing
-     * without per-fragment {@code /resolve} calls.
+     * Whole-version content: every fragment of a version with its parent edge, citation,
+     * lex-sortable order key and rendered HTML body (obsah) in one round-trip, for delivering
+     * the full law text without per-fragment {@code /resolve} calls.
      *
-     * <p>Only {@code pořadí} may be required. Every other join is OPTIONAL, because a
-     * required join that upstream stops populating returns zero rows and the law renders
-     * blank (HTTP 200, {@code fragments: []}) rather than erroring:
-     * <ul>
-     *   <li>{@code obsah} — structural fragments (Část/Hlava/Díl/Oddíl) carry no text body
-     *       (~13% of fragments for sampled versions; on 187/2006, 296/2198 lack it and 288
-     *       of those still carry real text).</li>
-     *   <li>{@code citace} — upstream dropped citace-označení-fragmentu-znění-právního-aktu
-     *       entirely (0 triples dataset-wide as of 2026-08-24); version
-     *       {@code …/1997/49/2025-11-01} has 2 508 fragments and zero citace values. The
-     *       citation is derived from IRI path segments when absent.</li>
-     *   <li>{@code parent} — document roots ({@code /dokument/prefix}) have no má-předka.</li>
-     * </ul>
+     * <p>Only {@code pořadí} may be required — a required join upstream stops populating
+     * returns zero rows and renders the law blank. {@code obsah} is absent on structural
+     * fragments, {@code citace} dataset-wide (derived from IRI path segments instead), and
+     * {@code parent} on document roots.
      *
      * <p>versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the
      * controller boundary.

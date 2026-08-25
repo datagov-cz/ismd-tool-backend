@@ -40,8 +40,8 @@ class EsbirkaServiceImplTest {
 
     @org.junit.jupiter.api.BeforeEach
     void buildService() {
-        // In production `self` is the Spring proxy that adds @Cacheable; here it is a plain
-        // self-reference, so the one-arg delegation is exercised without the caching layer.
+        // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
+        // the one-arg delegation without the caching layer.
         service = new EsbirkaServiceImpl(client, null, null);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "self", service);
     }
@@ -515,8 +515,8 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentRejectsVersionIriOfAnotherLaw() {
-        // Host-shape validation alone would pass this IRI — only membership in THIS law's
-        // version list can reject it, otherwise another act's text renders under our header.
+        // Host-shape validation alone passes this IRI; only membership in THIS law's version
+        // list can reject it.
         String foreignVersion =
                 "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/262/2026-04-01";
         when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(

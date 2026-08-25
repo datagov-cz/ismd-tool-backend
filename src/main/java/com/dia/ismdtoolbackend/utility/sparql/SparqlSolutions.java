@@ -49,13 +49,9 @@ public final class SparqlSolutions {
     }
 
     /**
-     * Read a boolean projection, tolerating stores that render it as a number.
-     *
-     * <p>Virtuoso returns a projected comparison such as {@code ((?a = ?b) AS ?flag)} as
-     * {@code "1"^^xsd:integer}, not {@code "true"^^xsd:boolean}. {@code getBoolean()} throws
-     * on that, and the exception was swallowed as {@code false} — so e-Sbírka's
-     * {@code isLatest} was false for every version, silently. Falls back to a numeric read
-     * (non-zero = true), then to parsing the lexical form.
+     * Read a boolean projection, tolerating stores that render it as a number — Virtuoso
+     * returns {@code ((?a = ?b) AS ?flag)} as {@code "1"^^xsd:integer}. Tries xsd:boolean,
+     * then a numeric read (non-zero = true), then the lexical form.
      */
     public static boolean literalBool(QuerySolution sol, String var) {
         if (!sol.contains(var) || !sol.get(var).isLiteral()) {

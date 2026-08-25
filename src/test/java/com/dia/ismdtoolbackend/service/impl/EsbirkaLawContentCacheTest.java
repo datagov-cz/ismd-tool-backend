@@ -27,12 +27,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Cache behaviour of {@code getLawContent}'s version-aware key.
- *
- * <p>The {@code @Cacheable} SpEL key is only evaluated through the Spring proxy, so a plain
- * Mockito unit test cannot catch a key collision — these tests run the real cache manager.
- * The collision case matters: entries are ~2 MB whole-version payloads, and a version-blind
- * key would serve one znění's text under another znění's header.
+ * Cache behaviour of {@code getLawContent}'s version-aware key. The {@code @Cacheable} SpEL
+ * key is evaluated only through the Spring proxy, so these tests run the real cache manager —
+ * a plain Mockito unit test cannot catch a key collision between two znění of one law.
  */
 @SpringBootTest(classes = {
         CacheConfig.class,

@@ -19,11 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Executes {@link EsbirkaSPARQLQuery#buildLawSearchQuery} against an in-memory dataset to
- * assert the <em>actual result order</em>, not just the query text.
- *
- * <p>Guards the relevance ranking: {@code CONTAINS} on the whole citation makes "49" match
- * "49/1997", "490/2001" and "1/2049" alike, so without a rank the exact law number is buried
- * behind year-only matches. Fixture mirrors real e-Sbírka rows (verified live 2026-08-23).
+ * assert the actual result order, not just the query text. Guards the relevance ranking:
+ * {@code CONTAINS} on the whole citation matches "49" in "49/1997", "490/2001" and "1/2049"
+ * alike, so without a rank the exact law number is buried behind year-only matches.
  */
 class EsbirkaLawSearchRankingTest {
 

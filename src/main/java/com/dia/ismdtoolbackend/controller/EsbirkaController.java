@@ -59,9 +59,7 @@ public class EsbirkaController {
     @Operation(
             summary = "Vyhledávání právních aktů seskupené podle čísla předpisu",
             description = "Stejné vyhledávání jako /law/search, ale výsledky jsou seskupené podle " +
-                    "čísla předpisu. České předpisy se číslují každý rok od jedničky, takže dotaz " +
-                    "\"49\" odpovídá desítkám nesouvisejících zákonů (49/1997, 49/2020, 49/2026 …) — " +
-                    "plochý seznam je zaplní jedním číslem a hledaný zákon vypadne. " +
+                    "čísla předpisu (dotaz \"49\" odpovídá desítkám nesouvisejících zákonů). " +
                     "Příznak \"ambiguous\" značí, že si uživatel musí ještě vybrat (typicky ročník); " +
                     "\"truncated\" značí, že existují další shody mimo odpověď. " +
                     "Parametr limit omezuje počet skupin, nikoli řádků."
@@ -127,14 +125,11 @@ public class EsbirkaController {
 
     @Operation(
             summary = "Celé znění právního aktu podle reference číslo/rok",
-            description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\"), vyhledá daný " +
-                    "právní akt přesnou shodou a vrátí celé jeho znění: hlavičku (IRI aktu, citace, " +
-                    "znění, datum účinnosti, příznak posledního znění), seznam všech znění (pro přepínač) " +
-                    "a strom fragmentů, kde každý uzel nese své HTML \"obsah\" tělo pro interaktivní " +
-                    "procházení a výběr sekcí. Bez parametru \"versionIri\" se vrací poslední znění; " +
-                    "s ním se vrací zvolené znění (IRI musí patřit k danému aktu, jinak 400). " +
-                    "Pro částečný vstup (např. \"49\") použijte /law/search. " +
-                    "Výsledek je cachován pro každé znění zvlášť (znění je neměnné)."
+            description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\") a vrací celé " +
+                    "znění daného aktu: hlavičku, seznam všech znění (pro přepínač) a strom fragmentů, " +
+                    "kde každý uzel nese své HTML tělo. Bez parametru \"versionIri\" se vrací poslední " +
+                    "znění; s ním zvolené znění (IRI musí patřit k danému aktu, jinak 400). " +
+                    "Pro částečný vstup (např. \"49\") použijte /law/search."
     )
     @GetMapping("/law/content")
     public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(

@@ -16,16 +16,6 @@ Three problems shaped the current design:
 3. **A bare number is inherently ambiguous.** Czech acts renumber from 1 every year, so `49`
    identifies ~120 unrelated acts. A flat list ordered newest-first filled its entire window
    with recent years and pushed the wanted law off the page.
-
-### The modelling fact that drives everything
-
-**`49/2026 Sb.` is NOT a version of `49/1997 Sb.`** They are separate `právní-akt` instances
-that merely share a number. Verified live: `<…/eli/cz/sb/2026/49> má-znění ?z` returns exactly
-one row. There is **no parent link** between same-numbered acts, and none is needed.
-
-This matters because the flat result list *looked* like a broken version hierarchy. It was
-not — it was an ambiguity problem wearing a modelling problem's clothes.
-
 ---
 
 ## 2. Data Model (e-Sbírka SPARQL)
@@ -64,18 +54,6 @@ označení-fragmentu-…  (fragment)  …/{version}/dokument/norma/cast_5/…/pi
 | Fragment | `hierarchie-fragmentu-…` | `/2/5/5/4/` ordinal path; first segment = container ordinal |
 | Fragment | `citace-označení-fragmentu-…` | ⚠️ **dropped upstream — 0 triples dataset-wide as of 2026-08-24.** Was a pre-formatted `"§ 122 odst. 4 písm. g)"`. Every join on it must stay `OPTIONAL`; the citation is now derived from IRI path segments (`EsbirkaCzechCitationFormatter.buildFragmentCitationFromSegments`). |
 | Fragment | `obsahuje-fragment` / `text-fragmentu` | HTML body |
-
-### Scale (measured live 2026-08-23)
-
-| Metric | Value |
-|---|---|
-| `právní-akt` instances | 92 347 (≈45 935 with a citation) |
-| Versions dataset-wide | 117 601 |
-| Acts numbered `49` | **120** |
-| `q=49` matching on citation `CONTAINS` | **2 217** (only 120 are *numbered* 49) |
-| `q=1` prefix-matching on číslo | **12 037** |
-| Fragments in a typical version | ~2 200 (187/2006) |
-
 ---
 
 ## 3. API Surface
@@ -95,8 +73,6 @@ All are on the **public** security chain (`SecurityConfig.publicSecurityFilterCh
 `SecurityConfig` uses an explicit allowlist with `anyRequest().denyAll()`, and the matchers are
 **exact paths** — `/api/eli/law/search` does not cover `/api/eli/law/search/grouped`, so each
 new endpoint must be listed individually or it 403s before `@PreAuthorize` runs.
-
-
 ---
 
 ## 4. Input Contracts — what each endpoint accepts (READ THIS FIRST, FE)
@@ -222,10 +198,6 @@ shares the `esbirkaLawVersions` cache. This matters for the switcher: because th
 key is version-aware, a user stepping through N znění of one law takes N content-cache misses,
 and a direct client call would re-issue the identical version-list query on every one of them.
 
-**Version-aware cache key.** `esbirkaLawContent` previously keyed on `number/year` alone.
-Adding a version parameter without changing the key would make every znění of a law collide on
-one ~2 MB entry — request the 2020 version, receive 2025's text under a 2020 header.
-
 ```java
 key = "#root.target.normalizeLawRef(#lawRef) + '@' + (#versionIri == null ? '' : #versionIri)"
 ```
@@ -237,23 +209,6 @@ key = "#root.target.normalizeLawRef(#lawRef) + '@' + (#versionIri == null ? '' :
 `versionIri`, `versionEliPath`, `versionDate` and `versionLatest` always describe the znění
 actually in `fragments` — never the latest, unless the latest is what was rendered.
 `versionLatest` lets the FE mark a historical view without cross-referencing the list.
-
-### `@Cacheable` self-invocation
-
-`getLawContent(lawRef)` delegates to the two-arg overload **through a `@Lazy` self-proxy**:
-
-```java
-private final EsbirkaService self;          // injected @Lazy
-public LawContentDto getLawContent(String lawRef) {
-    return self.getLawContent(lawRef, null);   // NOT this.getLawContent(...)
-}
-```
-
-A direct `this.` call does not pass through the Spring proxy, so the two-arg method's
-`@Cacheable` would be inert and every latest-version request would re-run the whole fetch.
-Same pattern as `WorkingCopyDeviationServiceImpl`. Guarded by
-`EsbirkaLawContentCacheTest.oneArgOverloadIsAlsoCached`.
-
 ---
 
 ## 6. Flow B — Flat Search Ranking

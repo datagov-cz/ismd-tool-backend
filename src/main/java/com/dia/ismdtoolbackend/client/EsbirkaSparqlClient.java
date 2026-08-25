@@ -70,8 +70,7 @@ public class EsbirkaSparqlClient {
 
     /**
      * Acts carrying one of the given čísla, newest rok first, capped at {@code rowLimit} rows.
-     * The cap is required: group size is unbounded (~120 acts per low číslo), so 50 groups
-     * would otherwise stream ~6 000 rows. Empty input short-circuits without a round-trip.
+     * Empty input short-circuits without a round-trip.
      */
     public List<LawModel> fetchLawsByNumbers(List<String> cisla, int rowLimit) {
         if (cisla == null || cisla.isEmpty()) {

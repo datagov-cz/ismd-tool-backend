@@ -10,15 +10,11 @@ import java.util.List;
 
 /**
  * Full content of one znění of a law resolved from a number/year reference (e.g. "49/1997") —
- * the latest znění by default, or the one the caller selected.
- *
- * <p>Carries the resolved law/version header so the FE can label the document
- * ("Zákon č. 49/1997 Sb., znění od 1. 11. 2025") and offer a version switcher
- * ({@link #versions}) without a second call, plus the rendered fragment tree
- * ({@link #fragments}) with per-node HTML bodies for in-document browsing.
+ * the latest znění by default, or the one the caller selected. Carries the law/version header,
+ * the full version list and the rendered fragment tree in one response.
  *
  * <p>The header fields ({@link #versionIri}, {@link #versionEliPath}, {@link #versionDate},
- * {@link #versionLatest}) always describe the znění actually rendered in {@link #fragments}.
+ * {@link #versionLatest}) always describe the znění rendered in {@link #fragments}.
  */
 @Data
 @Builder
@@ -41,11 +37,7 @@ public class LawContentDto {
     /** Effective-from date of the rendered version. */
     private LocalDate versionDate;
 
-    /**
-     * Whether the rendered version is the law's current znění (má-poslední-znění).
-     * False when the caller selected an older version, so the FE can mark the view
-     * as historical.
-     */
+    /** Whether the rendered version is the law's current znění (má-poslední-znění). */
     private boolean versionLatest;
 
     /** All versions of this law, newest first; for an FE version switcher. */
@@ -55,10 +47,9 @@ public class LawContentDto {
     private List<FragmentDto> fragments;
 
     /**
-     * The whole version assembled into one coherent HTML body server-side: a document-ordered,
-     * nested tree of {@code <section data-eli=… data-kind=…>} wrappers, each containing its
-     * fragment's HTML body (when any) followed by its children. Lets the FE render the full law
-     * directly; {@link #fragments} remains available for tree-based navigation.
+     * The whole version as one HTML body: a document-ordered, nested tree of
+     * {@code <section data-eli=… data-kind=…>} wrappers, each holding its fragment's HTML body
+     * followed by its children. {@link #fragments} carries the same content for navigation.
      */
     private String bodyHtml;
 }

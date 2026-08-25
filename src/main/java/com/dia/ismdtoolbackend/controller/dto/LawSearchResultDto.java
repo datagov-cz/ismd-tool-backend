@@ -8,12 +8,8 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Grouped law-search result: matches bucketed by předpis number instead of returned flat.
- *
- * <p>A bare number is ambiguous — Czech acts renumber yearly, so "49" matches ~80 unrelated
- * laws and a flat list truncated to the page limit silently drops the one the user wanted.
- * This shape reports the ambiguity ({@link #ambiguous}, {@link #totalMatches}) so the FE can
- * ask for a year rather than guessing.
+ * Grouped law-search result: matches bucketed by předpis number instead of returned flat,
+ * with an explicit ambiguity signal so the FE can ask for a year rather than guessing.
  */
 @Data
 @Builder
@@ -25,35 +21,26 @@ public class LawSearchResultDto {
     private String query;
 
     /**
-     * True when the query does not identify a single act — a bare number matching several
-     * years, so the user must still choose. False once the query pins one act (e.g.
-     * "49/1997"), or when nothing matched.
-     *
-     * <p>The FE's cue to prompt for a year instead of auto-selecting the first row.
+     * True when the query does not identify a single act, so the user must still choose.
+     * False once the query pins one act (e.g. "49/1997"), or when nothing matched.
      */
     private boolean ambiguous;
 
     /**
      * Total acts across the returned groups, summed from their dataset-wide counts. Usually
-     * exceeds the number of {@code LawDto}s actually returned, since each group's list is
-     * capped for display.
+     * exceeds the number of {@code LawDto}s returned, since each group's list is capped.
      */
     private int totalMatches;
 
     /**
-     * True when the <em>group</em> cap was filled, so further předpis numbers match than are
-     * listed here. The FE should show "refine your search" rather than imply the list is
-     * complete. Note this can be a benign false positive when exactly {@code limit} groups
-     * exist and no more.
+     * True when the group cap was filled, so further předpis numbers match than are listed
+     * here. Can be a benign false positive when exactly {@code limit} groups exist.
      */
     private boolean truncated;
 
     /**
-     * Matches grouped by číslo, best group first: the exact-number group leads, then shortest
-     * číslo, then číslo ascending — mirroring how people type ("49" → "490" → "4900").
-     * Group size is deliberately NOT a criterion: counts run 100+ for every low číslo, so
-     * ordering by size would float whichever number is most legislated rather than the one
-     * the user typed. Within a group, acts are ordered newest rok first.
+     * Matches grouped by číslo, best group first: exact-number group, then shortest číslo,
+     * then číslo ascending. Within a group, acts are ordered newest rok first.
      */
     private List<LawSearchGroupDto> groups;
 }

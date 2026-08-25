@@ -41,34 +41,19 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     static final int MAX_FRAGMENT_DEPTH = 10;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
 
-    /**
-     * Row cap on the grouped search's act fetch. Group size is unbounded (~120 acts per low
-     * číslo), so the group cap alone does not bound the response — 50 groups would stream
-     * ~6 000 rows. Per-group display is capped in turn by {@link #MAX_LAWS_PER_GROUP}; the
-     * true dataset-wide total still reaches the FE via {@code LawSearchGroupDto.count}.
-     */
+    /** Row cap on the grouped search's act fetch; group size itself is unbounded. */
     static final int GROUPED_ROW_LIMIT = 600;
 
     /** Acts shown per group. The rest are reachable by narrowing the query (or by year). */
     static final int MAX_LAWS_PER_GROUP = 60;
 
-    /**
-     * Marker for the structural document containers of a version. Direct children of any
-     * {@code <versionIri>/dokument/<container>} (norma / poznamkypodcarou / prilohy / …) are
-     * tree roots. Used by {@link #assembleTree} to detect roots structurally rather than
-     * against a hardcoded container list.
-     */
+    /** Infix of a version's structural document containers, {@code <versionIri>/dokument/<container>}. */
     private static final String DOKUMENT_INFIX = "/dokument/";
 
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
 
-    /**
-     * Self-reference through the Spring proxy so the two-arg {@link #getLawContent}'s
-     * {@code @Cacheable} is honoured when the one-arg overload delegates to it. A direct
-     * {@code this.getLawContent(ref, null)} call bypasses the proxy entirely, so the
-     * latest-version path would re-run the whole ~2 MB fetch on every request.
-     */
+    /** Self-reference through the Spring proxy, so internal calls still hit {@code @Cacheable}. */
     private final EsbirkaService self;
 
     public EsbirkaServiceImpl(EsbirkaSparqlClient client,
@@ -79,11 +64,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         this.self = self;
     }
 
-    // Keys join the raw values rather than Objects.hash(q, limit): that hash is
-    // 31*(31 + q.hashCode()) + limit, so a needle differing by one code point collides with a
-    // limit differing by up to 49 — e.g. hash("1", 32) == hash("2", 1). Measured across
-    // q="1".."999" x limit=1..50 that is 34% of pairs, each silently serving another
-    // search's results for the full 60-minute TTL. '\u0000' cannot occur in a URL query value,
+    // Keys join the raw values rather than Objects.hash(q, limit), which collides across
+    // needle/limit pairs and would serve another search's results. '\u0000' cannot occur in a URL query value,
     // so it is an unambiguous separator.
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch",
@@ -100,13 +82,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     /**
      * Grouped law search, in two SPARQL steps: aggregate the matching předpis numbers
      * (capped at {@code limit} <em>groups</em>), then fetch the acts for exactly those
-     * numbers.
-     *
-     * <p>A single row-capped query cannot do this. "49" matches 2 217 acts on the citation
-     * (only 120 numbered 49 — the rest matched a year), and even číslo-scoped, "1"
-     * prefix-matches 12 037 acts. Any row cap truncates mid-group and re-creates the bug
-     * grouping exists to fix. Aggregating first bounds the work by the answer's size, and
-     * gives true per-group counts rather than counts-of-what-fit.
+     * numbers. The aggregate also yields the true per-group counts.
      */
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch",
@@ -144,8 +120,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             if (laws == null) {
                 laws = new ArrayList<>();
             } else {
-                // Sorted here rather than in SPARQL: the rows are re-bucketed by číslo above,
-                // which discards any server-side číslo ordering anyway.
+                // Sorted here, not in SPARQL: re-bucketing by číslo above discards any
+                // server-side ordering.
                 laws.sort(NEWEST_ROK_FIRST);
                 if (laws.size() > MAX_LAWS_PER_GROUP) {
                     laws = new ArrayList<>(laws.subList(0, MAX_LAWS_PER_GROUP));
@@ -153,8 +129,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             }
             groups.add(LawSearchGroupDto.builder()
                     .cislo(g.cislo())
-                    // Count is the dataset-wide total from step 1's aggregate — deliberately
-                    // NOT laws.size(), which is only what was fetched and displayed.
+                    // Dataset-wide total from step 1's aggregate, not laws.size().
                     .count(g.pocet())
                     .exactNumberMatch(needle != null && needle.equalsIgnoreCase(g.cislo()))
                     .laws(laws)
@@ -162,7 +137,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
         groups.sort(BEST_GROUP_FIRST);
 
-        // The group cap is the only truncation left: more numbers match than we returned.
         boolean truncated = numberGroups.size() >= limit;
 
         return LawSearchResultDto.builder()
@@ -179,9 +153,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Ambiguous = the user still has a choice to make: more than one group, or a single
-     * group holding several acts (one number, many years). A single act is unambiguous,
-     * and so is no match at all — there is nothing to disambiguate.
+     * Ambiguous = the user still has a choice to make: more than one group, or a single group
+     * holding several acts. A single act, or no match, is unambiguous.
      */
     private static boolean isAmbiguous(List<LawSearchGroupDto> groups) {
         if (groups.isEmpty()) {
@@ -197,12 +170,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .thenComparing(LawDto::getCitace, Comparator.nullsLast(Comparator.naturalOrder()));
 
     /**
-     * Exact-number group first, then shortest číslo, then číslo ascending.
-     *
-     * <p>Shortest-first mirrors typing: "49" means 49 before 490 before 4900. Group size is
-     * deliberately NOT a criterion — counts run 100+ for every low číslo, so ordering by
-     * count would float whichever number happens to be most legislated to the top instead of
-     * the one the user typed.
+     * Exact-number group first, then shortest číslo, then číslo ascending — mirroring how
+     * people type ("49" before "490" before "4900"). Group size is not a criterion.
      */
     private static final Comparator<LawSearchGroupDto> BEST_GROUP_FIRST =
             Comparator.comparing(LawSearchGroupDto::isExactNumberMatch, Comparator.reverseOrder())
@@ -238,18 +207,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered
-     * content of its latest version.
-     *
-     * <p>Resolution chain: parse number/year → exact law lookup (NOT a citation
-     * substring match) → latest version (má-poslední-znění) → whole-version content
-     * query. The returned {@link LawContentDto} carries the resolved law/version header
-     * and the full version list (for an FE switcher) alongside the fragment tree, whose
-     * nodes each carry their rendered HTML body for in-document browsing.
-     *
-     * <p>Delegates through {@link #self} rather than calling the overload directly — a
-     * {@code this.} call would not pass through the Spring proxy, leaving the two-arg
-     * method's {@code @Cacheable} inert for every latest-version request.
+     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered content of
+     * its latest version: parse the ref → exact law lookup → latest znění → content query.
+     * Delegates through {@link #self} so the overload's {@code @Cacheable} applies.
      */
     @Override
     public LawContentDto getLawContent(String lawRef) {
@@ -257,17 +217,12 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Whole-version content for a caller-chosen znění; null/blank {@code versionIri}
-     * renders the latest version (má-poslední-znění).
+     * Whole-version content for a caller-chosen znění; null/blank {@code versionIri} renders
+     * the latest version (má-poslední-znění). A supplied IRI is accepted only when it appears
+     * in the resolved law's own version list.
      *
-     * <p>A supplied IRI is accepted only when it appears in the resolved law's own version
-     * list — host-shape validation alone would let a well-formed IRI from an unrelated act
-     * through and render its text under this law's header.
-     *
-     * <p>Cached by normalized {@code number/year} <em>plus</em> the selected version — the
-     * key MUST carry the version or every znění of a law would collide on one entry and
-     * serve another version's body. Both the resolution and the (~2 MB) payload are
-     * expensive, and a published version's text is immutable.
+     * <p>Cached by normalized {@code number/year} plus the selected version, so each znění
+     * gets its own entry.
      */
     @Override
     @Cacheable(cacheNames = "esbirkaLawContent",
@@ -279,9 +234,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
 
-        // Through the proxy so the esbirkaLawVersions cache is used: a user stepping through
-        // N znění of one law takes N content-cache misses, and a direct client.fetchVersions
-        // would re-issue the identical version-list query on every one of them.
+        // Through the proxy so the esbirkaLawVersions cache is used across the N content-cache
+        // misses of a user stepping through one law's znění.
         List<LawVersionDto> versionDtos = self.getVersions(law.getIri());
         LawVersionDto selected = selectVersion(versionDtos, versionIri, ny);
 
@@ -309,8 +263,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     /**
      * Pick the znění to render: the caller's {@code versionIri} when supplied, else the
-     * latest. The requested IRI must be a member of {@code versions} — validating only its
-     * host/shape would let an IRI from a different act render under this law's header.
+     * latest. The requested IRI must be a member of {@code versions}.
      */
     private static LawVersionDto selectVersion(List<LawVersionDto> versions,
                                                String versionIri,
@@ -336,14 +289,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Assemble the whole-version HTML body server-side from the fragment tree.
-     *
-     * <p>Each fragment is wrapped in a {@code <section>} carrying its ELI path, full IRI and kind
-     * as data attributes ({@code data-eli} path + {@code data-iri} full IRI — FE hooks for
-     * deep-linking / navigation / styling); the fragment's own {@code bodyHtml}
-     * (null for structural fragments) precedes its children, so the output is a nested,
-     * document-ordered tree. Order is the tree's order — the server-side {@code ORDER BY ?order}
-     * preserved by {@link #assembleTree}.
+     * Assemble the whole-version HTML body from the fragment tree: each fragment becomes a
+     * {@code <section>} carrying its ELI path, IRI and kind as data attributes, with its own
+     * {@code bodyHtml} (null for structural fragments) ahead of its children.
      */
     private static String renderBodyHtml(List<FragmentDto> roots) {
         StringBuilder sb = new StringBuilder();
@@ -375,9 +323,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Latest version = the one flagged via má-poslední-znění (LawVersionModel.latest).
-     * Falls back to the first row (fetchVersions orders newest-first by účinnost-znění-od)
-     * when no row is flagged — defensive against upstream data without the flag.
+     * Latest version = the one flagged via má-poslední-znění, falling back to the first row
+     * (fetchVersions orders newest-first by účinnost-znění-od) when no row is flagged.
      */
     private static LawVersionDto pickLatest(List<LawVersionDto> versions) {
         if (versions.isEmpty()) {
@@ -392,9 +339,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Parse a "number/year" reference into its parts. Tolerates surrounding whitespace
-     * and a trailing " Sb." Rejects anything that isn't exactly number/year — partial
-     * input (e.g. "49") is the FE's cue to use /law/search instead.
+     * Parse a "number/year" reference into its parts, tolerating surrounding whitespace and a
+     * trailing " Sb.". Partial input (e.g. "49") is rejected; callers use /law/search for that.
      */
     static NumberYear parseNumberYear(String lawRef) {
         if (lawRef == null || lawRef.isBlank()) {
@@ -429,10 +375,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     /**
      * Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a
-     * cache entry. <strong>Not dead code</strong> — invoked reflectively by the {@code @Cacheable}
-     * SpEL key on {@link #getLawContent} ({@code #root.target.normalizeLawRef(#lawRef)}); must
-     * stay {@code public} for SpEL {@code #root.target} to resolve it. Covered by
-     * {@code EsbirkaServiceImplTest.normalizeLawRefCollapsesEquivalentRefsToOneKey}.
+     * cache entry. Called reflectively by the {@code @Cacheable} SpEL key on
+     * {@link #getLawContent}, so it must stay {@code public} despite having no Java caller.
      */
     public String normalizeLawRef(String lawRef) {
         NumberYear ny = parseNumberYear(lawRef);
@@ -442,10 +386,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     record NumberYear(String number, int year) {}
 
     /**
-     * Tree assembly. A fragment is a <em>root</em> when its parent is a structural document
-     * container — {@code <versionIri>/dokument/<container>} for any container (norma = the
-     * body, poznamkypodcarou = footnotes, prilohy = annexes, …); roots are detected
-     * structurally. Multi-root is supported.
+     * Tree assembly. A fragment is a root when its parent is a structural document container
+     * ({@code <versionIri>/dokument/<container>}); multiple roots are supported.
      */
     List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
         if (rows.isEmpty()) {
@@ -469,8 +411,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             }
             String anchor = resolveAnchor(m.getParentIri(), nodes, dokumentPrefix);
             if (anchor == null) {
-                // Unresolvable parent: surface as a root so the fragment's text is never
-                // lost, but count it for the warn-log so the data anomaly stays visible.
+                // Unresolvable parent: surface as a root so no text is lost, and count it
+                // for the warn-log.
                 roots.add(self);
                 orphanCount++;
                 if (firstOrphanParent == null) {
@@ -498,15 +440,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     private static final String ROOT_ANCHOR = "ROOT";
 
     /**
-     * Resolve where a fragment with the given parent IRI should attach.
-     * <ul>
-     *   <li>The IRI of an existing node → attach as that node's child.</li>
-     *   <li>{@link #ROOT_ANCHOR} → the fragment is a tree root (parent is, or walks up to,
-     *       a {@code <versionIri>/dokument/<container>} segment).</li>
-     *   <li>{@code null} → unresolvable; caller surfaces it as a root (no text lost) and warns.</li>
-     * </ul>
-     * Walks the parent IRI up by path segments (stripping a trailing slash first), stopping
-     * at the first existing node or {@code dokument/<container>} segment.
+     * Resolve where a fragment with the given parent IRI should attach, walking the IRI up by
+     * path segments: the IRI of an existing node (attach as its child), {@link #ROOT_ANCHOR}
+     * (a {@code dokument/<container>} segment, so a tree root), or {@code null} (unresolvable).
      */
     private static String resolveAnchor(String parentIri, Map<String, FragmentDto> nodes, String dokumentPrefix) {
         if (parentIri == null) {
@@ -592,9 +528,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Fragment citation, falling back to one derived from the IRI path segments when upstream
-     * carries no citace-označení-fragmentu-znění-právního-aktu. Returns null rather than an empty string
-     * when neither source yields a label.
+     * Fragment citation, derived from the IRI path segments when upstream carries no
+     * citace-označení-fragmentu-znění-právního-aktu. Null when neither source yields a label.
      */
     private static String citationOrSegmentFallback(FragmentModel m) {
         String citation = m.getCitation();
