@@ -109,6 +109,21 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         return conceptRepository.saveAndFlush(c);
     }
 
+    /**
+     * The concept's {@code updatedAt} as Postgres holds it, read after an {@code em.clear()}.
+     *
+     * <p>Always compare fingerprints against this, never against the in-memory entity auditing just
+     * stamped: {@code updated_at} is a {@code TIMESTAMP} (microseconds), while the fingerprint reaches the
+     * assertion through {@code pending_edit_json} (ISO-8601 text, nanoseconds intact). Reading the
+     * pre-truncation value would compare nanoseconds against microseconds and pass only when the clock
+     * happens to land on a whole microsecond.
+     */
+    private LocalDateTime persistedUpdatedAt(String conceptIri) {
+        LocalDateTime updatedAt = conceptRepository.findByConceptIri(conceptIri).orElseThrow().getUpdatedAt();
+        em.clear();
+        return updatedAt;
+    }
+
     /** An FE-shaped Save that carries no canvas nodes, only the staged overlay. */
     private DiagramLayoutDto overlayOnly(String conceptIri, String range) {
         return new DiagramLayoutDto(null, null, List.of(), List.of(),
@@ -526,30 +541,30 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramEntity diagram = newDiagram("fingerprint-keep");
         diagramRepository.saveAndFlush(diagram);
         ConceptMetadataEntity concept = seedConcept(diagram, "https://x/fingerprint-keep/pojem/vztah");
-        LocalDateTime staged = concept.getUpdatedAt();
+        String iri = concept.getConceptIri();
         em.clear();
+        LocalDateTime staged = persistedUpdatedAt(iri);
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(managed, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        save(managed, overlayOnly(iri, "https://x/pojem/a"));
         em.clear();
 
         // A concurrent edit of the concept itself, after the overlay was staged.
-        ConceptMetadataEntity touched = conceptRepository.findByConceptIri(concept.getConceptIri()).orElseThrow();
+        ConceptMetadataEntity touched = conceptRepository.findByConceptIri(iri).orElseThrow();
         touched.setConceptName("Renamed underneath the diagram");
         conceptRepository.saveAndFlush(touched);
         em.clear();
-        assertThat(conceptRepository.findByConceptIri(concept.getConceptIri()).orElseThrow().getUpdatedAt())
+        assertThat(persistedUpdatedAt(iri))
                 .as("the concurrent edit must actually move updatedAt, or this test proves nothing")
                 .isAfter(staged);
-        em.clear();
 
         // The FE's next autosave re-sends the same staged overlay — it must not re-stamp.
         DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(again, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        save(again, overlayOnly(iri, "https://x/pojem/a"));
         em.clear();
 
         DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
-                diagram.getId(), concept.getConceptIri()).orElseThrow();
+                diagram.getId(), iri).orElseThrow();
         assertThat(row.getPendingEdit().getBaseUpdatedAt())
                 .as("re-sending a staged overlay must not refresh the stale-base fingerprint")
                 .isEqualTo(staged);
@@ -565,36 +580,37 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramEntity diagram = newDiagram("fingerprint-fresh");
         diagramRepository.saveAndFlush(diagram);
         ConceptMetadataEntity concept = seedConcept(diagram, "https://x/fingerprint-fresh/pojem/vztah");
-        LocalDateTime staged = concept.getUpdatedAt();
+        String iri = concept.getConceptIri();
         em.clear();
+        LocalDateTime staged = persistedUpdatedAt(iri);
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(managed, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        save(managed, overlayOnly(iri, "https://x/pojem/a"));
         em.clear();
 
-        ConceptMetadataEntity touched = conceptRepository.findByConceptIri(concept.getConceptIri()).orElseThrow();
+        ConceptMetadataEntity touched = conceptRepository.findByConceptIri(iri).orElseThrow();
         touched.setConceptName("Renamed underneath the diagram");
         conceptRepository.saveAndFlush(touched);
-        LocalDateTime afterEdit = touched.getUpdatedAt();
         em.clear();
+        LocalDateTime afterEdit = persistedUpdatedAt(iri);
 
         // Discard: an entry carrying conceptIri and nothing else.
         DiagramEntity discarding = diagramRepository.findById(diagram.getId()).orElseThrow();
         save(discarding, new DiagramLayoutDto(null, null, List.of(), List.of(),
-                List.of(new DiagramLayoutDto.Overlay("iri:" + concept.getConceptIri(),
+                List.of(new DiagramLayoutDto.Overlay("iri:" + iri,
                         null, null, null, null, null))));
         em.clear();
-        assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), concept.getConceptIri())
+        assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), iri)
                 .orElseThrow().getPendingEdit())
                 .as("the discard must actually clear the overlay").isNull();
         em.clear();
 
         DiagramEntity restaging = diagramRepository.findById(diagram.getId()).orElseThrow();
-        save(restaging, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        save(restaging, overlayOnly(iri, "https://x/pojem/a"));
         em.clear();
 
         DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
-                diagram.getId(), concept.getConceptIri()).orElseThrow();
+                diagram.getId(), iri).orElseThrow();
         assertThat(row.getPendingEdit().getBaseUpdatedAt())
                 .as("staging onto a cleared row re-reads the concept's current updatedAt")
                 .isEqualTo(afterEdit)
