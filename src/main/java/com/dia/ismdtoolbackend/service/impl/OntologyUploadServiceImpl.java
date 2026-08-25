@@ -461,6 +461,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         Resource pojemResource = model.createResource(POJEM_GENERIC);
         ResIterator conceptIterator = model.listResourcesWithProperty(RDF.type, pojemResource);
         List<ConceptMetadataEntity> conceptEntities = new ArrayList<>();
+        List<String> rejected = new ArrayList<>();
 
         while (conceptIterator.hasNext()) {
             Resource conceptResource = conceptIterator.next();
@@ -470,10 +471,16 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             }
 
             String conceptIri = conceptResource.getURI();
+
+            RoleResolution role = resolveRole(conceptResource);
+            if (role.conceptType() == null) {
+                rejected.add("Concept with IRI (" + conceptIri + ") rejected, " + role.reason());
+                continue;
+            }
+            ConceptType conceptType = role.conceptType();
+
             String conceptName = UtilityMethods.extractNameFromIRI(conceptIri);
             String slug = generateConceptSlug(graphName, conceptName);
-
-            ConceptType conceptType = determineConceptType(conceptResource);
 
             ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
             conceptEntity.setSlug(slug);
@@ -498,6 +505,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 conceptMetadataEntity.setIsPublished(true);
                 log.info("IsPublished set for concept {}", conceptMetadataEntity.getConceptIri());
             }
+        }
+
+        if (!rejected.isEmpty()) {
+            log.warn("{} concept(s) were rejected from ontology {}:{}{}",
+                    rejected.size(), graphName,
+                    System.lineSeparator(),
+                    String.join(System.lineSeparator(), rejected));
         }
 
         if (!conceptEntities.isEmpty()) {
@@ -546,17 +560,89 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         return false;
     }
 
+    /**
+     * Resolves a concept's role via {@link ConceptType#fromRdfTypes}, the shared mapping that
+     * accepts both the OFN role IRIs ISMD writes and the OWL types imported data carries.
+     * {@link OFNTypeNormalizer#normalize} has already stamped the role tags by the time this runs,
+     * so an OFN concept with no matching OWL type still resolves.
+     *
+     * <p>Returns {@code null} when no single role can be read — either nothing recognizable is
+     * present ({@code KONCEPT}, the base type every concept carries, which is terminal and not
+     * role-narrowing), or the data claims two roles at once. Contradictory data is broken input,
+     * not something to repair by picking a winner. The caller drops such a concept.
+     */
     private ConceptType determineConceptType(Resource conceptResource) {
-        if (conceptResource.hasProperty(RDF.type, OWL2.DatatypeProperty)) {
-            return ConceptType.VLASTNOST;
+        return resolveRole(conceptResource).conceptType();
+    }
+
+    /**
+     * The outcome of reading a concept's role: the resolved type, or {@code null} with the reason
+     * it could not be resolved. {@code reason} is null exactly when {@code conceptType} is not.
+     */
+    private record RoleResolution(ConceptType conceptType, String reason) {
+        static RoleResolution of(ConceptType type) {
+            return new RoleResolution(type, null);
         }
-        if (conceptResource.hasProperty(RDF.type, OWL2.ObjectProperty)) {
-            return ConceptType.VZTAH;
+
+        static RoleResolution rejected(String reason) {
+            return new RoleResolution(null, reason);
         }
-        if (conceptResource.hasProperty(RDF.type, SKOS.Concept) || conceptResource.hasProperty(RDF.type, OWL2.Class)) {
-            return ConceptType.TRIDA;
+    }
+
+    /**
+     * Resolves a concept's role via {@link ConceptType#fromRdfTypes}, the shared mapping that
+     * accepts both the OFN role IRIs ISMD writes and the OWL types imported data carries.
+     * {@link OFNTypeNormalizer#normalize} has already stamped the role tags by the time this runs,
+     * so an OFN concept with no matching OWL type still resolves.
+     *
+     * <p>Rejects when no single role can be read — either nothing recognizable is present
+     * ({@code KONCEPT}, the base type every concept carries, which is terminal and not
+     * role-narrowing), or the data claims two roles at once. Contradictory data is broken input,
+     * not something to repair by picking a winner.
+     */
+    private RoleResolution resolveRole(Resource conceptResource) {
+        List<String> types = conceptResource.listProperties(RDF.type)
+                .toList().stream()
+                .map(Statement::getObject)
+                .filter(RDFNode::isURIResource)
+                .map(o -> o.asResource().getURI())
+                .toList();
+
+        Set<ConceptType> declared = declaredRoles(conceptResource, types);
+        if (declared.size() > 1) {
+            String conflicting = declared.stream().map(ConceptType::name).sorted()
+                    .collect(java.util.stream.Collectors.joining(" + "));
+            return RoleResolution.rejected("conflicting types: " + conflicting);
         }
-        return null;
+
+        ConceptType resolved = ConceptType.fromRdfTypes(types);
+        return resolved == ConceptType.KONCEPT
+                ? RoleResolution.rejected("no recognized type")
+                : RoleResolution.of(resolved);
+    }
+
+    /**
+     * The distinct roles a concept declares, across both the OFN role tags and their OWL
+     * equivalents. A well-formed concept declares exactly one; more means the vocabulary claims
+     * the concept is, say, both a vlastnost and a vztah.
+     */
+    private Set<ConceptType> declaredRoles(Resource conceptResource, List<String> types) {
+        Model model = conceptResource.getModel();
+        Set<ConceptType> roles = EnumSet.noneOf(ConceptType.class);
+
+        if (types.contains(OWL2.Class.getURI())
+                || conceptResource.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE + TRIDA))) {
+            roles.add(ConceptType.TRIDA);
+        }
+        if (types.contains(OWL2.DatatypeProperty.getURI())
+                || conceptResource.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE + VLASTNOST))) {
+            roles.add(ConceptType.VLASTNOST);
+        }
+        if (types.contains(OWL2.ObjectProperty.getURI())
+                || conceptResource.hasProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH))) {
+            roles.add(ConceptType.VZTAH);
+        }
+        return roles;
     }
 
     private String generateConceptSlug(String graphName, String conceptName) {
