@@ -4,7 +4,6 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
@@ -17,7 +16,6 @@ import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
-import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
@@ -39,9 +37,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The diagram layer's core service: fat read (layout ⋈ live content, overlays applied, edges projected),
- * the Save-time layout + membership reconcile, and overlay staging. Pure PG — never writes RDF. Materialize
- * is delegated to {@link DiagramMaterializeService}. See {@code docs/DIAGRAM_LAYER.md}.
+ * The diagram layer's core service: fat read (layout ⋈ live content, overlays applied, edges projected) and
+ * the Save-time layout + membership + overlay reconcile, which is the layer's only write. Pure PG — never
+ * writes RDF. Materialize is delegated to {@link DiagramMaterializeService}. See
+ * {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Service
@@ -161,81 +160,10 @@ public class DiagramServiceImpl implements DiagramService {
         return snapshot(diagram, ontology);
     }
 
-    /**
-     * Same write-then-read split as {@link #saveLayout}; see that method for why the two are separated.
-     *
-     * <p>The lean response carries no {@code properties} rows: computing them needs the whole graph, which
-     * would undo the narrowed single-concept readback this response exists to keep cheap. Staging changes
-     * one concept's overlay, not any class's property list — the FE keeps the rows from its last full read,
-     * and re-reads when it staged a property's own domain.
-     */
-    @Override
-    public DiagramDto.Node stageOverlay(String ontologySlug, String conceptRef, NodeOverlayDto overlay) {
-        DiagramSnapshot snapshot = self.commitOverlay(ontologySlug, conceptRef, overlay);
-        String conceptIri = mapper.conceptIriFromNodeId(conceptRef);
-        Map<String, ConceptDetailModel> live = readbackConcepts(snapshot, conceptIri);
-        return toNode(snapshot, snapshot.node(conceptIri), live.get(conceptIri), List.of())
-                .withVersion(snapshot.version());
-    }
-
-    @Transactional
-    public DiagramSnapshot commitOverlay(String ontologySlug, String conceptRef, NodeOverlayDto overlay) {
-        OntologyMetadataEntity ontology = requireOntology(ontologySlug);
-        DiagramEntity diagram = getOrCreateDiagram(ontology);
-
-        String conceptIri = mapper.conceptIriFromNodeId(conceptRef);
-        DiagramNodeEntity node = diagram.getNodes().stream()
-                .filter(n -> conceptIri.equals(n.getConceptIri()))
-                .findFirst()
-                .orElse(null);
-
-        DiagramPendingEdit edit = mapper.toPendingEdit(overlay);
-        if (node == null) {
-            // A relationship renders as an edge and a property as a row, so neither travels in the layout's
-            // nodes[] and neither has a row until something stages one. Discarding a non-existent overlay is
-            // a no-op; staging one provisions the row that carries it — the same row Převzít works from.
-            if (edit == null) {
-                return snapshot(diagram, ontology);
-            }
-            requireOwnGraph(ontology.getGraphName(), conceptIri);
-            node = new DiagramNodeEntity();
-            node.setConceptIri(conceptIri);
-            // The row exists to carry the overlay, not a box: a relationship is drawn as an edge and a
-            // property as a row, so neither has a position. The columns are NOT NULL, so anchor at origin.
-            node.setPosX(0.0);
-            node.setPosY(0.0);
-            diagram.addNode(node);
-        }
-
-        if (edit == null) {
-            node.setPendingEdit(null);
-        } else {
-            requireOwnGraph(ontology.getGraphName(), edit);
-            edit.setBaseUpdatedAt(baseUpdatedAt(node.getConceptIri()));
-            node.setPendingEdit(edit);
-        }
-        diagram.touch();
-        // saveAndFlush (not save): the snapshot copies @Version for the response, so it must be the
-        // post-increment value — the transaction commits before anything reads it back.
-        diagramRepository.saveAndFlush(diagram);
-
-        return snapshot(diagram, ontology);
-    }
-
     /** Fetch live content for an ALREADY-COMMITTED write; a Fuseki failure here is a readback, not a rollback. */
     private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot) {
         try {
             return liveConcepts(snapshot.graphName());
-        } catch (RuntimeException e) {
-            throw new DiagramReadbackFailedException(snapshot.version(), e);
-        }
-    }
-
-    /** As {@link #readbackConcepts}, narrowed to the one concept the lean stage response renders. */
-    private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot, String conceptIri) {
-        try {
-            ConceptDetailModel detail = liveConcept(snapshot.graphName(), conceptIri);
-            return detail == null ? Map.of() : Map.of(conceptIri, detail);
         } catch (RuntimeException e) {
             throw new DiagramReadbackFailedException(snapshot.version(), e);
         }
@@ -270,38 +198,6 @@ public class DiagramServiceImpl implements DiagramService {
     public static class DiagramVersionConflictException extends RuntimeException {
         public DiagramVersionConflictException(String message) {
             super(message);
-        }
-    }
-
-    /**
-     * Op 6's {@code addBroaderOn} / {@code broader} name concepts that need never be on the canvas, so they
-     * are the one overlay input that can reach {@code editConcept}/{@code deleteConcept} on its own. Reject a
-     * foreign target at stage time rather than letting it sit staged until Převzít. The applier re-asserts
-     * this — an overlay staged before this check existed is still refused there.
-     */
-    private void requireOwnGraph(String diagramGraphName, DiagramPendingEdit edit) {
-        DiagramPendingEdit.ConvertToHierarchy marker = edit.getConvertToHierarchy();
-        if (marker == null) {
-            return;
-        }
-        requireOwnGraph(diagramGraphName, marker.getAddBroaderOn());
-        requireOwnGraph(diagramGraphName, marker.getBroader());
-    }
-
-    private void requireOwnGraph(String diagramGraphName, String conceptIri) {
-        if (conceptIri == null) {
-            return;
-        }
-        // An unknown IRI is left to materialize, which reports it as a per-change VALIDATION failure;
-        // only a concept that exists in ANOTHER ontology's graph is a cross-tenant reach.
-        String graphName = conceptMetadataRepository.findByConceptIri(conceptIri)
-                .map(ConceptMetadataEntity::getGraphName)
-                .orElse(null);
-        if (graphName != null && !java.util.Objects.equals(diagramGraphName, graphName)) {
-            log.warn("Rejected overlay referencing concept {} (graph {}) on a diagram for graph {}",
-                    conceptIri, graphName, diagramGraphName);
-            throw new com.dia.ismdtoolbackend.exception.ConceptValidationException(
-                    "Pojem " + conceptIri + " nepatří do slovníku tohoto diagramu.");
         }
     }
 
@@ -477,16 +373,6 @@ public class DiagramServiceImpl implements DiagramService {
             }
         }
         return byIri;
-    }
-
-    /** Live detail for a single concept, or null when the graph is empty / the concept is gone (stale). */
-    private ConceptDetailModel liveConcept(String graphName, String conceptIri) {
-        Model raw = jenaTDB2Repository.fetchGraph(graphName);
-        if (raw == null || raw.isEmpty()) {
-            return null;
-        }
-        Model processed = detailExtractor.applyOFNTransformations(raw);
-        return detailExtractor.extractConceptDetail(processed, conceptIri);
     }
 
     private Map<String, ConceptType> conceptTypes(String graphName) {

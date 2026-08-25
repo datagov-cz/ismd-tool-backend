@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -76,13 +77,27 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramNodeEntity seedNode(DiagramEntity diagram, String iri, double x, double y) {
+        return seedNode(diagram, iri, x, y, null);
+    }
+
+    /** As above, with a staged overlay on the row — the state the reap carve-out protects. */
+    private DiagramNodeEntity seedNode(DiagramEntity diagram, String iri, double x, double y,
+                                       DiagramPendingEdit pendingEdit) {
         DiagramNodeEntity n = new DiagramNodeEntity();
         n.setBacking(DiagramNodeBacking.ISMD_CONCEPT);
         n.setConceptIri(iri);
         n.setPosX(x);
         n.setPosY(y);
+        n.setPendingEdit(pendingEdit);
         diagram.addNode(n);
         return n;
+    }
+
+    /** A minimal structural overlay — a VZTAH repointed at {@code range}. */
+    private DiagramPendingEdit overlay(String range) {
+        DiagramPendingEdit edit = new DiagramPendingEdit();
+        edit.setRange(range);
+        return edit;
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
@@ -121,7 +136,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                         node("https://x/pojem/keep", 5, 5),        // matching → updated in place
                         node("https://x/pojem/new", 20, 20)),       // new IRI → inserted
                 // note: 'drop' omitted → removed from canvas
-                List.of());
+                List.of(), null);
         save(managed, layout);
 
         List<String> iris = nodeRepository.findByDiagramId(diagram.getId()).stream()
@@ -131,6 +146,137 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramNodeEntity keep = nodeRepository.findByDiagramIdAndConceptIri(
                 diagram.getId(), "https://x/pojem/keep").orElseThrow();
         assertThat(keep.getPosX()).isEqualTo(5.0);                 // position updated in place
+    }
+
+    /**
+     * The reap carve-out ({@code DiagramLayoutReconciler:67-70}). A relationship renders as an edge and a
+     * property as a row, so neither ever travels in {@code nodes[]} — their rows exist only to carry a
+     * staged overlay. Reaping on absence alone would delete that row on the very next Save, silently
+     * discarding the user's staged change and the work item Převzít would have applied.
+     *
+     * <p>Guards {@code .filter(n -> n.getPendingEdit() == null)}: without it, this test fails.
+     */
+    @Test
+    void nodeCarryingOverlay_survivesOmissionFromNodes() {
+        DiagramEntity diagram = newDiagram("overlay-survives");
+        seedNode(diagram, "https://x/pojem/trida", 0, 0);
+        seedNode(diagram, "https://x/pojem/vztah", 0, 0,
+                overlay("https://x/pojem/target"));                 // staged, never sent as a node
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        // A Save carrying only the class — exactly what the FE sends, since a VZTAH is not a canvas node.
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/trida", 5, 5)), List.of(), null));
+
+        List<DiagramNodeEntity> rows = nodeRepository.findByDiagramId(diagram.getId());
+        assertThat(rows).extracting(DiagramNodeEntity::getConceptIri)
+                .as("the overlay-carrying row must survive omission from nodes[]")
+                .containsExactlyInAnyOrder("https://x/pojem/trida", "https://x/pojem/vztah");
+
+        DiagramNodeEntity vztah = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/vztah").orElseThrow();
+        assertThat(vztah.getPendingEdit()).isNotNull();
+        assertThat(vztah.getPendingEdit().getRange())
+                .as("the staged edit itself survives, not just the row")
+                .isEqualTo("https://x/pojem/target");
+    }
+
+    /**
+     * The carve-out is narrow: it spares only rows that actually carry an overlay. A row whose overlay was
+     * discarded is an ordinary canvas node again and reaps on omission like any other — otherwise every
+     * concept ever staged would be undeletable from the canvas.
+     */
+    @Test
+    void nodeWithoutOverlay_isStillReapedOnOmission() {
+        DiagramEntity diagram = newDiagram("overlay-cleared");
+        seedNode(diagram, "https://x/pojem/keep", 0, 0);
+        seedNode(diagram, "https://x/pojem/discarded", 1, 1, null);  // overlay already discarded
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/keep", 0, 0)), List.of(), null));
+
+        assertThat(nodeRepository.findByDiagramId(diagram.getId()))
+                .extracting(DiagramNodeEntity::getConceptIri)
+                .containsExactly("https://x/pojem/keep");
+    }
+
+    /**
+     * The carve-out spares the row, not the layout: a class that IS sent in {@code nodes[]} while carrying
+     * an overlay is still updated in place, and keeps its staged edit. Pins that sparing a row never means
+     * skipping it.
+     */
+    @Test
+    void nodeCarryingOverlay_isStillUpdatedWhenSent() {
+        DiagramEntity diagram = newDiagram("overlay-updated");
+        seedNode(diagram, "https://x/pojem/trida", 0, 0,
+                overlay("https://x/pojem/target"));
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/trida", 42, 43)), List.of(), null));
+
+        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/trida").orElseThrow();
+        assertThat(row.getPosX()).isEqualTo(42.0);                  // layout applied
+        assertThat(row.getPosY()).isEqualTo(43.0);
+        assertThat(row.getPendingEdit()).isNotNull();               // overlay untouched
+        assertThat(row.getPendingEdit().getRange()).isEqualTo("https://x/pojem/target");
+    }
+
+    /**
+     * The origin anchor belongs to row CREATION only. A class carrying a staged edit is sent in
+     * {@code nodes[]} and in {@code overlays[]} on the same Save — the normal case for op 2 — and its real
+     * position must win. Anchoring unconditionally, or applying overlays before nodes, silently moves every
+     * such class to the top-left corner on every Save.
+     */
+    @Test
+    void overlayOnAConceptAlsoInNodes_keepsItsRealPosition() {
+        DiagramEntity diagram = newDiagram("anchor-order");
+        seedNode(diagram, "https://x/pojem/trida", 250, 175);
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/trida", 250, 175)),
+                List.of(),
+                List.of(new DiagramLayoutDto.Overlay("iri:https://x/pojem/trida",
+                        null, null, List.of("https://x/pojem/super"), null, null))));
+
+        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/trida").orElseThrow();
+        assertThat(row.getPosX()).as("the class keeps its canvas position, not the origin anchor")
+                .isEqualTo(250.0);
+        assertThat(row.getPosY()).isEqualTo(175.0);
+        assertThat(row.getPendingEdit()).isNotNull();
+    }
+
+    /** A brand-new overlay-only row has no box of its own, so it anchors at the origin. */
+    @Test
+    void overlayOnAConceptNotInNodes_provisionsAtOrigin() {
+        DiagramEntity diagram = newDiagram("anchor-new");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(),
+                List.of(),
+                List.of(new DiagramLayoutDto.Overlay("iri:https://x/pojem/vztah",
+                        null, "https://x/pojem/b", null, null, null))));
+
+        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/vztah").orElseThrow();
+        assertThat(row.getPosX()).isEqualTo(0.0);
+        assertThat(row.getPosY()).isEqualTo(0.0);
+        assertThat(row.getPendingEdit()).isNotNull();
     }
 
     @Test
@@ -146,7 +292,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/parent", 0, 0),
                         node("https://x/pojem/child", 1, 1, "https://x/pojem/parent")),
-                List.of()));
+                List.of(), null));
 
         DiagramNodeEntity child = nodeRepository.findByDiagramIdAndConceptIri(
                 diagram.getId(), "https://x/pojem/child").orElseThrow();
@@ -156,7 +302,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramEntity managed2 = diagramRepository.findById(diagram.getId()).orElseThrow();
         save(managed2, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/child", 1, 1)),      // parent omitted
-                List.of()));
+                List.of(), null));
 
         List<DiagramNodeEntity> remaining = nodeRepository.findByDiagramId(diagram.getId());
         assertThat(remaining).extracting(DiagramNodeEntity::getConceptIri)
@@ -194,7 +340,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         conceptRepository.saveAndFlush(foreign);
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        DiagramLayoutDto layout = new DiagramLayoutDto(null, null, List.of(node(foreignIri, 0, 0)), List.of());
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null, List.of(node(foreignIri, 0, 0)), List.of(), null);
 
         assertThatThrownBy(() -> reconciler.reconcileNodes(managed, layout))
                 .isInstanceOf(ConceptValidationException.class)
@@ -218,7 +364,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
         save(managed, new DiagramLayoutDto(null, null,
-                List.of(node("https://x/no-row/pojem/deleted", 0, 0)), List.of()));
+                List.of(node("https://x/no-row/pojem/deleted", 0, 0)), List.of(), null));
 
         assertThat(nodeRepository.findByDiagramId(diagram.getId()))
                 .extracting(DiagramNodeEntity::getConceptIri)
@@ -236,7 +382,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
-                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", null)));
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", null)), null);
         DiagramEntity saved = save(managed, layout);
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();
@@ -254,7 +400,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
                 List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
-                        List.of(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33)))));
+                        List.of(new EdgeWaypoint(12.5, -4), new EdgeWaypoint(60, 33)))), null);
         DiagramEntity saved = save(managed, layout);
         em.clear();
 
@@ -278,7 +424,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/prop", 0, 0),
                         node("https://x/pojem/cls", 100, 0)),
-                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", List.of())));
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", List.of())), null);
         DiagramEntity saved = save(managed, layout);
         em.clear();
 
@@ -300,14 +446,14 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/cls", 0, 0)),
                 List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
-                        List.of(new EdgeWaypoint(1, 2))))));
+                        List.of(new EdgeWaypoint(1, 2)))), null));
         em.clear();
 
         DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
         DiagramEntity saved = save(again, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/cls", 10, 10)),
                 List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
-                        List.of(new EdgeWaypoint(99, 98))))));
+                        List.of(new EdgeWaypoint(99, 98)))), null));
         em.clear();
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
@@ -334,7 +480,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
         DiagramEntity saved = save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/cls", 0, 0)),
-                List.of(new DiagramLayoutDto.Edge(key, List.of(new EdgeWaypoint(1, 2))))));
+                List.of(new DiagramLayoutDto.Edge(key, List.of(new EdgeWaypoint(1, 2)))), null));
         em.clear();
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
@@ -353,12 +499,12 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/cls", 0, 0)),
                 List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
-                        List.of(new EdgeWaypoint(1, 2))))));
+                        List.of(new EdgeWaypoint(1, 2)))), null));
         em.clear();
 
         DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
         DiagramEntity saved = save(again, new DiagramLayoutDto(null, null,
-                List.of(node("https://x/pojem/cls", 0, 0)), List.of()));
+                List.of(node("https://x/pojem/cls", 0, 0)), List.of(), null));
         em.clear();
 
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();

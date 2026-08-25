@@ -111,7 +111,7 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         List<DiagramLayoutDto.Node> nodes = java.util.Arrays.stream(iris)
                 .map(iri -> new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(0.0, 0.0), null, false))
                 .toList();
-        return new DiagramLayoutDto(version, null, nodes, List.of());
+        return new DiagramLayoutDto(version, null, nodes, List.of(), null);
     }
 
     private List<String> persistedIris() {

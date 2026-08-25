@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.mapper;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
@@ -65,8 +65,8 @@ public class DiagramMapper {
         return new PositionDto(node.getPosX(), node.getPosY());
     }
 
-    /** Convert the wire overlay body to the persisted overlay model (no stale-base fingerprint yet). */
-    public DiagramPendingEdit toPendingEdit(NodeOverlayDto dto) {
+    /** Convert the wire overlay entry to the persisted overlay model (no stale-base fingerprint yet). */
+    public DiagramPendingEdit toPendingEdit(DiagramLayoutDto.Overlay dto) {
         if (dto == null || dto.isEmpty()) {
             return null;
         }

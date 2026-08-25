@@ -6,7 +6,6 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -64,6 +63,8 @@ public class DiagramController {
             summary = "Uložení rozvržení diagramu",
             description = "Uloží rozvržení diagramu a překryvy pouze do databáze (bez zápisu do RDF). Sada uzlů je "
                     + "autoritativní pro členství na plátně — chybějící uzel je z plátna odebrán, nový je načten z živého RDF. "
+                    + "Pole `overlays` je naopak přírůstkové: pojem, který v něm chybí, si svůj překryv ponechá; "
+                    + "položka pouze s `conceptIri` překryv zahodí. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
     @PutMapping("/{ontologySlug}/layout")
@@ -77,26 +78,6 @@ public class DiagramController {
 
         DiagramDto diagram = diagramService.saveLayout(ontologySlug, layout);
         return ResponseEntity.ok().body(ApiResponseDto.success(diagram, "Rozvržení diagramu bylo úspěšně uloženo."));
-    }
-
-    @Operation(
-            summary = "Uložení překryvu pojmu",
-            description = "Uloží překryv (pending edit) jednoho pojmu do databáze. Cílový pojem je určen polem "
-                    + "`conceptIri` v těle požadavku. Tělo bez jakéhokoli pole překryvu (pouze `conceptIri`) "
-                    + "překryv zahodí. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
-    )
-    @PatchMapping("/{ontologySlug}/nodes/overlay")
-    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
-    public ResponseEntity<ApiResponseDto<DiagramDto.Node>> stageOverlay(
-            @PathVariable String ontologySlug,
-            @Valid @RequestBody NodeOverlayDto overlay,
-            @AuthenticationPrincipal SecurityUser securityUser
-    ) {
-        log.info("Diagram overlay stage requested, ontologySlug: {}, conceptIri: {}, userId: {}",
-                ontologySlug, overlay.conceptIri(), securityUser.getUserId());
-
-        DiagramDto.Node node = diagramService.stageOverlay(ontologySlug, overlay.conceptIri(), overlay);
-        return ResponseEntity.ok().body(ApiResponseDto.success(node, "Překryv pojmu byl úspěšně uložen."));
     }
 
     @Operation(

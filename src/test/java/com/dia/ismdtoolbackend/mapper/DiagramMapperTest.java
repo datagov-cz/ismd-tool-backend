@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.mapper;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
@@ -50,7 +50,7 @@ class DiagramMapperTest {
     @Test
     void toPendingEdit_allNullBody_discards() {
         // conceptIri is addressing, not content — a body carrying only nodeId is still a discard.
-        NodeOverlayDto allNull = new NodeOverlayDto("iri:https://x/pojem/n", null, null, null, null, null);
+        DiagramLayoutDto.Overlay allNull = new DiagramLayoutDto.Overlay("iri:https://x/pojem/n", null, null, null, null, null);
         assertThat(mapper.toPendingEdit(allNull)).isNull();   // discard
         assertThat(mapper.toPendingEdit(null)).isNull();
     }
@@ -58,8 +58,8 @@ class DiagramMapperTest {
     @Test
     void toPendingEdit_emptyListBody_stagesAsClearPredicate() {
         // op 2 flip A-side: "remove all superclasses" — an explicitly-empty list is NOT a discard.
-        NodeOverlayDto clearBroader =
-                new NodeOverlayDto("iri:https://x/pojem/n", null, null, List.of(), null, null);
+        DiagramLayoutDto.Overlay clearBroader =
+                new DiagramLayoutDto.Overlay("iri:https://x/pojem/n", null, null, List.of(), null, null);
 
         DiagramPendingEdit edit = mapper.toPendingEdit(clearBroader);
 
@@ -69,13 +69,13 @@ class DiagramMapperTest {
 
     @Test
     void toPendingEdit_copiesAllFieldsIncludingConvertMarker() {
-        NodeOverlayDto dto = new NodeOverlayDto(
+        DiagramLayoutDto.Overlay dto = new DiagramLayoutDto.Overlay(
                 "iri:https://x/pojem/n",
                 "https://x/pojem/domain",
                 "https://x/pojem/range",
                 List.of("https://x/pojem/super-c"),
                 List.of("https://x/pojem/match"),
-                new NodeOverlayDto.ConvertToHierarchy("https://x/pojem/target", "https://x/pojem/broader"));
+                new DiagramLayoutDto.Overlay.ConvertToHierarchy("https://x/pojem/target", "https://x/pojem/broader"));
 
         DiagramPendingEdit edit = mapper.toPendingEdit(dto);
 

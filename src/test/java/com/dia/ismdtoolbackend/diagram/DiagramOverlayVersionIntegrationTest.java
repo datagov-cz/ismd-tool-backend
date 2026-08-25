@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.diagram;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
@@ -60,9 +59,13 @@ import static org.mockito.Mockito.when;
 /**
  * The optimistic-lock version as the FE actually consumes it, against real Postgres so {@code @Version}
  * increments for real. Pins the contract sentence in {@code docs/DIAGRAM_LAYER_API.md}: "Every successful
- * PUT …/layout AND PATCH …/nodes/overlay advances the version, so always use the newest one you have
- * received" — which requires the overlay response to actually CARRY that version, and to carry the
- * post-increment value.
+ * PUT …/layout advances the version, so always use the newest one you have received" — which requires the
+ * save response to carry the post-increment value.
+ *
+ * <p>Also pins the overlay semantics that ride that single write: {@code overlays[]} is ADDITIVE. An entry
+ * stages or updates one concept's overlay, an entry carrying only {@code conceptIri} discards it, and a
+ * concept absent from the array keeps whatever is staged — so a null or empty array is a no-op, not a
+ * full replace.
  *
  * <p>Real PG is the point: {@code @Version} is assigned by the Hibernate flush, so a mocked repository (or
  * H2 with a stubbed save) would return whatever the stub holds and pass even when the service forgets to
@@ -143,7 +146,8 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 null,
                 null,
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
-                List.of());
+                List.of(),
+                null);
         return diagramService.saveLayout(SLUG, layout).version();
     }
 
@@ -151,9 +155,26 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false);
     }
 
-    private NodeOverlayDto broaderOverlay(String nodeIri, String broaderIri) {
-        return new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + nodeIri, null, null,
+    private DiagramLayoutDto.Overlay broaderOverlay(String nodeIri, String broaderIri) {
+        return new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + nodeIri, null, null,
                 List.of(broaderIri), null, null);
+    }
+
+    /** Save the current canvas (both classes) carrying the given overlays. */
+    private DiagramDto saveWithOverlays(DiagramLayoutDto.Overlay... overlays) {
+        return diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+                storedVersion(), null,
+                List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
+                List.of(),
+                List.of(overlays)));
+    }
+
+    /** The node for a concept inside a returned diagram, or null when it is not on the canvas. */
+    private DiagramDto.Node nodeOf(DiagramDto diagram, String conceptIri) {
+        return diagram.nodes().stream()
+                .filter(n -> (DiagramMapper.NODE_ID_PREFIX + conceptIri).equals(n.id()))
+                .findFirst()
+                .orElse(null);
     }
 
     /** The version stored in PG right now — the value a fresh GET would report. */
@@ -170,37 +191,38 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
      * or property) would be impossible through the API.
      */
     @Test
-    void stageOverlay_provisionsARowForAConceptThatIsNotACanvasNode() {
+    void overlayOnSave_provisionsARowForAConceptThatIsNotACanvasNode() {
         seedCanvas();                                  // only CLASS_A and CLASS_B are nodes
         seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
 
-        DiagramDto.Node staged = diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + REL,
-                new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + REL, null, CLASS_B, null, null, null));
+        DiagramDto saved = saveWithOverlays(
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                        null, CLASS_B, null, null, null));
 
-        assertThat(staged.data().hasPendingEdits()).isTrue();
+        assertThat(saved.pendingChangeCount()).isEqualTo(1);
         assertThat(nodeRepo.findByDiagramIdAndConceptIri(
                 diagramRepo.findByOntologyMetadataSlug(SLUG).orElseThrow().getId(), REL))
+                .as("a VZTAH never travels in nodes[], so the overlay must provision its row")
                 .isPresent();
     }
 
     /**
      * The staged row must survive the next Save. The FE's {@code nodes[]} carries classes only, so reaping
      * on absence alone would silently delete the overlay — and with it the work item Převzít would apply.
-     * Discarding an overlay is an explicit PATCH, never a side effect of saving the layout.
+     * Discarding an overlay is an explicit entry, never a side effect of saving the layout.
      */
     @Test
     void savingTheLayout_doesNotReapAConceptCarryingAStagedOverlay() {
         seedCanvas();
         seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
-        diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + REL,
-                new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + REL, null, CLASS_B, null, null, null));
+        saveWithOverlays(new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                null, CLASS_B, null, null, null));
 
         // A perfectly ordinary save: classes only, exactly what the new wire contract sends.
         DiagramDto after = diagramService.saveLayout(SLUG, new DiagramLayoutDto(
                 storedVersion(), null,
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
+                List.of(),
                 List.of()));
 
         assertThat(nodeRepo.findByDiagramIdAndConceptIri(
@@ -209,123 +231,153 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(after.pendingChangeCount()).isEqualTo(1);   // still stageable for Převzít
     }
 
-    /** The reviewer's finding: the stage response must expose a version at all. */
+    /**
+     * The case-D guard, and the one the FE actually exercises: it builds the Save body from its own canvas
+     * state, so {@code overlays} is simply absent. That must be a no-op on staged work, NOT a full replace —
+     * otherwise every autosave silently destroys every pending edit.
+     */
     @Test
-    void stageOverlay_responseCarriesVersion() {
+    void omittingOverlaysEntirely_leavesStagedWorkUntouched() {
         seedCanvas();
+        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        saveWithOverlays(
+                broaderOverlay(CLASS_A, CLASS_B),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                        null, CLASS_B, null, null, null));
+        assertThat(diagramService.getDiagram(SLUG).pendingChangeCount()).isEqualTo(2);
 
-        DiagramDto.Node staged = diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
+        // null overlays — the FE's ReactFlow-built autosave body.
+        DiagramDto afterNull = diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+                storedVersion(), null,
+                List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
+                List.of(),
+                null));
+        assertThat(afterNull.pendingChangeCount())
+                .as("overlays:null must not discard anything").isEqualTo(2);
 
-        assertThat(staged.version())
-                .as("PATCH …/nodes/overlay must return the diagram version the FE has to echo")
-                .isNotNull();
-    }
-
-    /** "Every successful PATCH …/nodes/overlay advances the version" — and returns the ADVANCED one. */
-    @Test
-    void stageOverlay_advancesVersionAndReturnsPostIncrementValue() {
-        Long afterSave = seedCanvas();
-
-        DiagramDto.Node staged = diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
-
-        assertThat(staged.version()).as("version advances on a successful stage").isGreaterThan(afterSave);
-        // The returned value is the POST-increment one, not the version the service read at entry: a plain
-        // save() (no flush) would hand back `afterSave` here.
-        assertThat(staged.version()).as("returned version matches what is now stored").isEqualTo(storedVersion());
+        // and the explicitly-empty array means the same thing.
+        DiagramDto afterEmpty = saveWithOverlays();
+        assertThat(afterEmpty.pendingChangeCount())
+                .as("overlays:[] must not discard anything").isEqualTo(2);
     }
 
     /**
-     * The round-trip that matters to the FE: echo the version from the overlay response into the next layout
-     * save and it must be accepted. This is the assertion a missing flush breaks — a pre-increment version
-     * is exactly one behind and 409s.
+     * Additive, not replace: sending an overlay for A must not disturb the one already staged on the REL.
+     * Under a full-replace reading this test fails — the REL's overlay would be reaped for being absent.
      */
     @Test
-    void versionFromStageResponse_isAcceptedByTheNextLayoutSave() {
+    void savingOneOverlay_leavesTheOthersStaged() {
+        seedCanvas();
+        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        saveWithOverlays(new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                null, CLASS_B, null, null, null));
+
+        DiagramDto after = saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
+
+        assertThat(after.pendingChangeCount())
+                .as("the REL's overlay survives a save that only mentions CLASS_A").isEqualTo(2);
+        assertThat(nodeOf(after, CLASS_A).data().hasPendingEdits()).isTrue();
+    }
+
+    /** Discard is explicit: an entry carrying only conceptIri clears that one overlay, and only that one. */
+    @Test
+    void anAllNullEntry_discardsThatOverlayOnly() {
+        seedCanvas();
+        seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
+        saveWithOverlays(
+                broaderOverlay(CLASS_A, CLASS_B),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                        null, CLASS_B, null, null, null));
+
+        DiagramDto after = saveWithOverlays(new DiagramLayoutDto.Overlay(
+                DiagramMapper.NODE_ID_PREFIX + CLASS_A, null, null, null, null, null));
+
+        assertThat(nodeOf(after, CLASS_A).data().hasPendingEdits())
+                .as("the all-null entry discarded CLASS_A's overlay").isFalse();
+        assertThat(after.pendingChangeCount())
+                .as("the REL's overlay is untouched").isEqualTo(1);
+    }
+
+    /** A save carrying overlays advances the version and returns the POST-increment value to echo. */
+    @Test
+    void saveWithOverlay_advancesVersionAndReturnsPostIncrementValue() {
+        Long afterSeed = seedCanvas();
+
+        DiagramDto saved = saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
+
+        assertThat(saved.version()).as("version advances on a successful save").isGreaterThan(afterSeed);
+        // The returned value is the POST-increment one, not the version the service read at entry: a plain
+        // save() (no flush) would hand back `afterSeed` here.
+        assertThat(saved.version()).as("returned version matches what is now stored").isEqualTo(storedVersion());
+    }
+
+    /**
+     * The round-trip that matters to the FE: echo the version from a save response into the next save and it
+     * must be accepted. This is the assertion a missing flush breaks — a pre-increment version is exactly one
+     * behind and 409s.
+     */
+    @Test
+    void versionFromSaveResponse_isAcceptedByTheNextLayoutSave() {
         seedCanvas();
 
-        DiagramDto.Node staged = diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
+        DiagramDto staged = saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
         DiagramLayoutDto next = new DiagramLayoutDto(
                 staged.version(),                       // echo it, exactly as the contract instructs
                 null,
                 List.of(node(CLASS_A, 50, 50), node(CLASS_B, 100, 0)),
-                List.of());
+                List.of(),
+                null);
 
         DiagramDto saved = diagramService.saveLayout(SLUG, next);
 
         assertThat(saved.version()).isGreaterThan(staged.version());
         // And the overlay survived the layout save (membership replace kept the node).
-        assertThat(saved.nodes())
-                .filteredOn(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_A).equals(n.id()))
-                .singleElement()
-                .satisfies(n -> assertThat(n.data().hasPendingEdits()).isTrue());
+        assertThat(nodeOf(saved, CLASS_A).data().hasPendingEdits()).isTrue();
     }
 
     /**
-     * The negative half: the version from BEFORE the stage is now stale. Without this, a test could pass by
-     * the lock simply never rejecting anything.
+     * The negative half: the version from BEFORE the overlay save is now stale. Without this, a test could
+     * pass by the lock simply never rejecting anything.
      */
     @Test
-    void versionFromBeforeTheStage_isRejectedByTheNextLayoutSave() {
+    void versionFromBeforeTheOverlaySave_isRejectedByTheNextLayoutSave() {
         Long beforeStage = seedCanvas();
 
-        diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
+        saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
         DiagramLayoutDto stale = new DiagramLayoutDto(
                 beforeStage,                            // the version the client held before staging
                 null,
                 List.of(node(CLASS_A, 50, 50)),
-                List.of());
+                List.of(),
+                null);
 
         assertThatThrownBy(() -> diagramService.saveLayout(SLUG, stale))
-                .as("a version predating the overlay stage is stale → 409")
+                .as("a version predating the overlay save is stale → 409")
                 .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
     }
 
     /**
      * The version must be correct at the moment the DTO is BUILT, not merely by the time the caller reads it.
      * The other tests call the service from outside a transaction, so the commit-time flush lands before they
-     * observe anything — they cannot tell an in-method flush from a commit-time one. Running the stage inside
+     * observe anything — they cannot tell an in-method flush from a commit-time one. Running the save inside
      * a caller-owned transaction keeps it open past the return, so the stamped value is the one the service
      * actually had when it built the response.
-     *
-     * <p>Note this does NOT fail if the service downgrades to a plain {@code save}: the {@code liveConcept}
-     * read that follows auto-flushes the persistence context, assigning {@code @Version} before the stamp.
-     * The explicit {@code saveAndFlush} is what keeps that independent of a later query's side effect; this
-     * test pins the observable guarantee (the stamp is post-increment), not the mechanism that provides it.
      */
     @Test
-    void stageOverlay_versionIsPostIncrementAtTheMomentTheResponseIsBuilt() {
-        Long afterSave = seedCanvas();
+    void saveVersionIsPostIncrementAtTheMomentTheResponseIsBuilt() {
+        Long afterSeed = seedCanvas();
 
-        Long stamped = txTemplate.execute(tx -> diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B)).version());
+        Long stamped = txTemplate.execute(tx -> diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+                afterSeed, null,
+                List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
+                List.of(),
+                List.of(broaderOverlay(CLASS_A, CLASS_B)))).version());
 
         assertThat(stamped)
                 .as("the response is stamped with the advanced version before the transaction commits")
-                .isEqualTo(afterSave + 1);
-    }
-
-    /** Discarding an overlay is also a successful PATCH, so it advances the version too. */
-    @Test
-    void discardOverlay_alsoAdvancesAndReturnsVersion() {
-        seedCanvas();
-        DiagramDto.Node staged = diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
-
-        // A body carrying only conceptIri = discard.
-        NodeOverlayDto discard = new NodeOverlayDto(DiagramMapper.NODE_ID_PREFIX + CLASS_A,
-                null, null, null, null, null);
-        DiagramDto.Node cleared = diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, discard);
-
-        assertThat(cleared.version()).isGreaterThan(staged.version());
-        assertThat(cleared.version()).isEqualTo(storedVersion());
-        assertThat(cleared.data().hasPendingEdits()).isFalse();
+                .isEqualTo(afterSeed + 1);
     }
 
     /**
@@ -335,8 +387,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void fatRead_leavesPerNodeVersionNull() {
         seedCanvas();
-        diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
+        saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
         DiagramDto diagram = diagramService.getDiagram(SLUG);
 
@@ -359,7 +410,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                                 new PositionDto(0.0, 0.0), null, true),
                         new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + CLASS_B,
                                 new PositionDto(100.0, 0.0), null, false)),
-                List.of());
+                List.of(), null);
 
         DiagramDto saved = diagramService.saveLayout(SLUG, layout);
 
@@ -397,7 +448,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         when(tdb2.fetchGraph(GRAPH)).thenThrow(new JenaTDB2Exception("Fuseki je nedostupná."));
 
         DiagramLayoutDto move = new DiagramLayoutDto(
-                before, null, List.of(node(CLASS_A, 999, 999), node(CLASS_B, 100, 0)), List.of());
+                before, null, List.of(node(CLASS_A, 999, 999), node(CLASS_B, 100, 0)), List.of(), null);
 
         assertThatThrownBy(() -> diagramService.saveLayout(SLUG, move))
                 .isInstanceOf(DiagramReadbackFailedException.class)
@@ -416,12 +467,11 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
     /** Same guarantee on the overlay path: the staged edit survives a failed content read. */
     @Test
-    void stageOverlay_whenFusekiFailsOnReadback_keepsTheOverlay() {
+    void saveWithOverlay_whenFusekiFailsOnReadback_keepsTheOverlay() {
         Long before = seedCanvas();
         when(tdb2.fetchGraph(GRAPH)).thenThrow(new JenaTDB2Exception("Fuseki je nedostupná."));
 
-        assertThatThrownBy(() -> diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B)))
+        assertThatThrownBy(() -> saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B)))
                 .isInstanceOf(DiagramReadbackFailedException.class)
                 .satisfies(e -> assertThat(((DiagramReadbackFailedException) e).getVersion())
                         .isEqualTo(before + 1));
@@ -444,7 +494,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         clearInvocations(tdb2);
 
         DiagramLayoutDto stale = new DiagramLayoutDto(
-                current - 1, null, List.of(node(CLASS_A, 0, 0)), List.of());
+                current - 1, null, List.of(node(CLASS_A, 0, 0)), List.of(), null);
 
         assertThatThrownBy(() -> diagramService.saveLayout(SLUG, stale))
                 .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
@@ -466,8 +516,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
             return ModelFactory.createDefaultModel();
         });
 
-        diagramService.stageOverlay(
-                SLUG, DiagramMapper.NODE_ID_PREFIX + CLASS_A, broaderOverlay(CLASS_A, CLASS_B));
+        saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
         assertThat(txActiveDuringFetch)
                 .as("the graph fetch must not run inside the PG transaction").isFalse();

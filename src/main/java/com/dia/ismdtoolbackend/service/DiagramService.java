@@ -4,7 +4,6 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
-import com.dia.ismdtoolbackend.controller.dto.diagram.NodeOverlayDto;
 
 import java.util.List;
 
@@ -21,14 +20,13 @@ public interface DiagramService {
     /** Fat read: layout joined to live concept content with each node's overlay applied, edges projected. */
     DiagramDto getDiagram(String ontologySlug);
 
-    /** Save (PG only, no RDF): full-replace layout + overlays; the node set is canvas membership. */
-    DiagramDto saveLayout(String ontologySlug, DiagramLayoutDto layout);
-
     /**
-     * Stage a concept's structural overlay; an empty payload discards it. Returns the refreshed node only.
-     * {@code conceptRef} is the concept's IRI, optionally {@code iri:}-prefixed.
+     * Save (PG only, no RDF) — the diagram's only write. Layout is a full replace: the node set is canvas
+     * membership, and the edge set is the persisted waypoints. Overlays are additive over what is already
+     * staged: a concept absent from {@code overlays} keeps its overlay, and an entry carrying only
+     * {@code conceptIri} discards that one.
      */
-    DiagramDto.Node stageOverlay(String ontologySlug, String conceptRef, NodeOverlayDto overlay);
+    DiagramDto saveLayout(String ontologySlug, DiagramLayoutDto layout);
 
     /** Převzít: apply every staged change via the concept CRUD → outbox → RDF, clearing each on success. */
     MaterializeResultDto materialize(String ontologySlug);

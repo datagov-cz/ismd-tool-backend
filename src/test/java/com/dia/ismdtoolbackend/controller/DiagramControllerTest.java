@@ -114,84 +114,62 @@ class DiagramControllerTest {
     }
 
     /**
-     * The node id travels in the BODY, not the path — a real {@code iri:https://…/pojem/…} contains slashes
-     * that no path segment can carry (Tomcat rejects {@code %2F}). Uses a full slash-bearing IRI on purpose:
-     * a slash-free placeholder would pass regardless and prove nothing.
+     * A concept IRI travels in the overlay entry's BODY, never a path segment — a real
+     * {@code iri:https://…/pojem/…} contains slashes that no path segment can carry (Tomcat rejects
+     * {@code %2F}). Uses a full slash-bearing IRI on purpose: a slash-free placeholder would pass
+     * regardless and prove nothing.
      */
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_conceptIriWithSlashesTravelsInBody() throws Exception {
+    void saveLayout_overlayConceptIriWithSlashesTravelsInBody() throws Exception {
         String conceptIri = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
-        when(diagramService.stageOverlay(eq("pracovni-pomer"), eq(conceptIri), any()))
-                .thenReturn(new DiagramDto.Node("n1", "relationNode",
-                        new PositionDto(0.0, 0.0), null, false, null));
+        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), 1));
 
-        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"conceptIri": "%s",
-                                 "domain": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/parcela",
-                                 "range": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova"}
+                                {"version": 1, "nodes": [], "overlays": [
+                                  {"conceptIri": "%s",
+                                   "domain": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/parcela",
+                                   "range": "https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova"}]}
                                 """.formatted(conceptIri)))
                 .andExpect(status().isOk());
+
+        ArgumentCaptor<DiagramLayoutDto> captor = ArgumentCaptor.forClass(DiagramLayoutDto.class);
+        verify(diagramService).saveLayout(eq("pracovni-pomer"), captor.capture());
+        assertThat(captor.getValue().overlays()).singleElement()
+                .satisfies(o -> assertThat(o.conceptIri()).isEqualTo(conceptIri));
     }
 
-    /** {@code conceptIri} is mandatory — addressing, not content. */
+    /** {@code conceptIri} is mandatory on an overlay entry — addressing, not content. */
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_rejectsMissingConceptIri() throws Exception {
-        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+    void saveLayout_overlayRejectsMissingConceptIri() throws Exception {
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"domain\": \"https://x/A\"}"))
+                        .content("{\"version\": 1, \"nodes\": [], \"overlays\": [{\"domain\": \"https://x/A\"}]}"))
                 .andExpect(status().isBadRequest());
+        verify(diagramService, never()).saveLayout(any(), any());
     }
 
-    // ---- version on the wire --------------------------------------------------------------------
-    // DiagramOverlayVersionIntegrationTest pins the version the SERVICE computes; these pin that it
-    // survives serialization — that the FE can actually read it off the PATCH response, and that it does
-    // NOT appear per-node in the fat read (where the version belongs to the enclosing diagram).
-
-    private static final String OVERLAY_BODY = """
-            {"conceptIri": "iri:https://x/pojem/a", "broaderConcept": ["https://x/pojem/b"]}
-            """;
-
-    /**
-     * The reviewer's finding, at the wire level: the stage response must expose the advanced version so the
-     * client can echo it into its next {@code PUT …/layout} without re-reading the whole diagram.
-     */
+    /** Omitting overlays entirely is the FE's ordinary autosave shape, and must bind without a 400. */
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_responseSerializesVersion() throws Exception {
-        when(diagramService.stageOverlay(eq("pracovni-pomer"), any(), any()))
-                .thenReturn(new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
-                        new PositionDto(10.0, 20.0), null, false, null, 8L));
+    void saveLayout_omittedOverlays_isAccepted() throws Exception {
+        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), 0));
 
-        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(OVERLAY_BODY))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.version").value(8))
-                .andExpect(jsonPath("$.data.id").value("iri:https://x/pojem/a"));
-    }
+                        .content("{\"version\": 1, \"nodes\": []}"))
+                .andExpect(status().isOk());
 
-    /**
-     * The readback contract on the wire: the write committed, so the client must be told to RELOAD, not
-     * retry. 502 + a stable code + the post-write version is what makes that actionable — a blind retry
-     * would send the stale version and earn a spurious 409.
-     */
-    @Test
-    @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_readbackFailure_returns502WithCodeAndVersion() throws Exception {
-        when(diagramService.stageOverlay(eq("pracovni-pomer"), any(), any()))
-                .thenThrow(new DiagramReadbackFailedException(9L, new RuntimeException("fuseki down")));
-
-        mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(OVERLAY_BODY))
-                .andExpect(status().isBadGateway())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.errorCode").value("DIAGRAM_SAVED_READBACK_FAILED"))
-                .andExpect(jsonPath("$.data.version").value(9));
+        ArgumentCaptor<DiagramLayoutDto> captor = ArgumentCaptor.forClass(DiagramLayoutDto.class);
+        verify(diagramService).saveLayout(eq("pracovni-pomer"), captor.capture());
+        assertThat(captor.getValue().overlays())
+                .as("an omitted overlays array reaches the service as null, meaning 'do not touch'")
+                .isNull();
     }
 
     /** Same contract on the layout save. */
@@ -290,21 +268,23 @@ class DiagramControllerTest {
      */
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void stageOverlay_convertToHierarchyMissingEndpoint_returns400() throws Exception {
+    void saveLayout_convertToHierarchyMissingEndpoint_returns400() throws Exception {
         String noBroader = """
-                {"conceptIri":"https://x/pojem/rel","convertToHierarchy":{"addBroaderOn":"https://x/pojem/a"}}
+                {"version":1,"nodes":[],"overlays":[
+                  {"conceptIri":"https://x/pojem/rel","convertToHierarchy":{"addBroaderOn":"https://x/pojem/a"}}]}
                 """;
         String noTarget = """
-                {"conceptIri":"https://x/pojem/rel","convertToHierarchy":{"broader":"https://x/pojem/b"}}
+                {"version":1,"nodes":[],"overlays":[
+                  {"conceptIri":"https://x/pojem/rel","convertToHierarchy":{"broader":"https://x/pojem/b"}}]}
                 """;
 
         for (String body : List.of(noBroader, noTarget)) {
-            mockMvc.perform(patch("/api/diagram/pracovni-pomer/nodes/overlay")
+            mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());
         }
-        verify(diagramService, never()).stageOverlay(any(), any(), any());
+        verify(diagramService, never()).saveLayout(any(), any());
     }
 
     /**
