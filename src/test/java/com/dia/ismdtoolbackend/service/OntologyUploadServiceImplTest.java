@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.validation.ValidationReport;
@@ -307,11 +308,13 @@ class OntologyUploadServiceImplTest {
         String alienConcept = "https://slovník.gov.cz/128-2000/pojem/obec";
         String pojem = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
+        // owl:Class on both: a bare slovníky:pojem declares no recognizable role and would be
+        // dropped by the concept-type guard before the ownership check under test is reached.
         String ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " <%s> a owl:Ontology ."
-                        + " <%s> a <%s> ."
-                        + " <%s> a <%s> .",
+                        + " <%s> a <%s>, owl:Class ."
+                        + " <%s> a <%s>, owl:Class .",
                 ontologyIRI, ownedConcept, pojem, alienConcept, pojem);
 
         when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
@@ -359,12 +362,17 @@ class OntologyUploadServiceImplTest {
             "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
     /** Two owned concepts, both missing skos:inScheme. */
+    /**
+     * Both concepts carry {@code owl:Class} alongside {@code slovníky:pojem}: a bare pojem
+     * declares no role ISMD can act on and is dropped by the concept-type guard, which would
+     * mask what these tests actually cover (the inScheme decision flow and ownership).
+     */
     private byte[] twoMissingInSchemeTtl() {
         return String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " <%s> a owl:Ontology ."
-                        + " <%s> a <%s> ."
-                        + " <%s> a <%s> .",
+                        + " <%s> a <%s>, owl:Class ."
+                        + " <%s> a <%s>, owl:Class .",
                 DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, DECISION_C2, DECISION_POJEM
         ).getBytes();
     }
@@ -515,6 +523,242 @@ class OntologyUploadServiceImplTest {
                 "Excluded concept C2 is referenced by C1 and must be KEPT as inert context");
         assertFalse(edgeFromC1ToC2[0],
                 "C1's body (incl. its edge to C2) is gone because C1 itself was pruned");
+    }
+
+    // --- Concept-type guard -------------------------------------------------
+    //
+    // determineConceptType must be total: every persisted row carries a real type, and a
+    // concept whose type cannot be resolved is dropped rather than saved as a null-typed
+    // row (which downstream consumers read as "absent" — a VZTAH imported that way once
+    // vanished from the diagram projector).
+
+    /** An OFN concept carrying the role tag but no matching OWL type — the null-type case. */
+    private byte[] ofnRoleTaggedTtl(String roleTag) {
+        return String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%s> a owl:Ontology ."
+                        + " <%s> a <%s>, <%s> ; skos:inScheme <%s> .",
+                DECISION_ONTOLOGY, DECISION_C1, DECISION_POJEM, roleTag, DECISION_ONTOLOGY
+        ).getBytes();
+    }
+
+    private List<ConceptMetadataEntity> capturedSavedConcepts() {
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ConceptMetadataEntity>> captor = ArgumentCaptor.forClass(List.class);
+        verify(conceptMetadataRepository).saveAll(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    void testUploadFromFile_ofnRoleTagVztah_resolvesToVztahWithoutOwlType() throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(
+                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId);
+
+        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
+        assertEquals(1, saved.size(), "The role-tagged concept must be owned");
+        assertEquals(ConceptType.VZTAH, saved.get(0).getConceptType(),
+                "An OFN vztah role tag must resolve even with no owl:ObjectProperty");
+    }
+
+    @Test
+    void testUploadFromFile_ofnRoleTagVlastnost_resolvesToVlastnostWithoutOwlType() throws Exception {
+        String userId = "user123";
+        when(multipartFile.getBytes()).thenReturn(
+                ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost"));
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId);
+
+        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
+        assertEquals(1, saved.size(), "The role-tagged concept must be owned");
+        assertEquals(ConceptType.VLASTNOST, saved.get(0).getConceptType(),
+                "An OFN vlastnost role tag must resolve even with no owl:DatatypeProperty");
+    }
+
+    @Test
+    void testUploadFromFile_bothObjectAndDatatypeProperty_isRejectedNotCoerced() throws Exception {
+        String userId = "user123";
+        // Contradictory input: the vocabulary claims the concept is both a vlastnost and a
+        // vztah. Broken data — dropped rather than repaired by picking a winner. The
+        // well-typed C2 in the same file must still import.
+        String ttl = String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%s> a owl:Ontology ."
+                        + " <%s> a <%s>, owl:ObjectProperty, owl:DatatypeProperty ;"
+                        + " skos:inScheme <%s> ."
+                        + " <%s> a <%s>, owl:Class ; skos:inScheme <%s> .",
+                DECISION_ONTOLOGY,
+                DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
+                DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
+        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId);
+
+        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
+        assertTrue(saved.stream().noneMatch(c -> DECISION_C1.equals(c.getConceptIri())),
+                "A concept typed both ObjectProperty and DatatypeProperty declares two roles — "
+                        + "it must be dropped, not silently coerced to one of them");
+        assertTrue(saved.stream().anyMatch(c -> DECISION_C2.equals(c.getConceptIri())),
+                "The well-formed concept in the same upload must still be imported");
+    }
+
+    @Test
+    void resolveRole_reasonsNameTheActualDefect() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+
+        org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
+        bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        Object noType = ReflectionTestUtils.invokeMethod(ontologyUploadService, "resolveRole", bare);
+        assertEquals("no recognized type", ReflectionTestUtils.invokeGetterMethod(noType, "reason"),
+                "A concept declaring no role must say so plainly");
+
+        org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C2);
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.DatatypeProperty);
+        Object conflict = ReflectionTestUtils.invokeMethod(ontologyUploadService, "resolveRole", both);
+        assertEquals("conflicting types: VLASTNOST + VZTAH",
+                ReflectionTestUtils.invokeGetterMethod(conflict, "reason"),
+                "A contradiction must name both roles it declared, so the file's author can fix it");
+    }
+
+    /**
+     * The contradiction must be caught in the OFN role-tag form too, not just the OWL one —
+     * otherwise the guard is sidestepped by whichever vocabulary the file happens to use.
+     */
+    @Test
+    void determineConceptType_bothOfnRoleTags_isRejected() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C1);
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
+                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost"));
+        both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
+                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
+
+        ConceptType resolved = ReflectionTestUtils.invokeMethod(
+                ontologyUploadService, "determineConceptType", both);
+
+        assertNull(resolved, "A concept carrying both the vlastnost and vztah OFN role tags "
+                + "declares two roles and must be dropped");
+    }
+
+    /**
+     * The OFN role tag and its OWL equivalent describe the SAME role — that is agreement,
+     * not a contradiction, and must not trip the multi-role guard.
+     */
+    @Test
+    void determineConceptType_ofnTagAndMatchingOwlType_isNotAContradiction() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource rel = model.createResource(DECISION_C1);
+        rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
+                "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
+        rel.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
+
+        ConceptType resolved = ReflectionTestUtils.invokeMethod(
+                ontologyUploadService, "determineConceptType", rel);
+
+        assertEquals(ConceptType.VZTAH, resolved,
+                "slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
+                        + "after OFNTypeNormalizer runs, and it must resolve normally");
+    }
+
+    @Test
+    void testUploadFromFile_unrecognizedType_conceptDroppedNotPersistedAsNull() throws Exception {
+        String userId = "user123";
+        // A concept already carrying skos:inScheme (so the decision gate leaves it alone) but no
+        // class/property/relationship signal. It reaches extraction untyped only because
+        // OFNTypeNormalizer.ensureConceptsHaveSkosType stamps skos:Concept on slovníky:pojem
+        // resources — this one is NOT a slovníky:pojem, so nothing types it.
+        String ttl = String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
+                        + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
+                        + " <%s> a owl:Ontology ."
+                        + " <%s> a <%s> ; skos:inScheme <%s> ."
+                        + " <%s> a <%s>, owl:Class ; skos:inScheme <%s> .",
+                DECISION_ONTOLOGY,
+                DECISION_C1, DECISION_POJEM, DECISION_ONTOLOGY,
+                DECISION_C2, DECISION_POJEM, DECISION_ONTOLOGY);
+        when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+        when(multipartFile.isEmpty()).thenReturn(false);
+        stubPersistenceForDecisionFlow(userId);
+
+        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+
+        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
+        assertTrue(saved.stream().noneMatch(c -> c.getConceptType() == null),
+                "No concept may be persisted with a null concept_type");
+        assertTrue(saved.stream().anyMatch(c -> DECISION_C2.equals(c.getConceptIri())),
+                "The well-typed concept in the same upload must still be imported (warn-and-drop, "
+                        + "not reject-the-whole-upload)");
+    }
+
+    /**
+     * The guard's own unit: extraction must never emit a null-typed row even when the
+     * normalizer has not typed the resource. Drives determineConceptType directly because
+     * the upload normalizer stamps {@code skos:Concept} on every {@code slovníky:pojem},
+     * which masks the untyped case in a full-pipeline test.
+     */
+    @Test
+    void determineConceptType_noRecognizableType_returnsNullSoCallerDrops() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
+        bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+
+        ConceptType resolved = ReflectionTestUtils.invokeMethod(
+                ontologyUploadService, "determineConceptType", bare);
+
+        assertNull(resolved, "A concept with no class/property/relationship signal must resolve to "
+                + "null so extractAndSaveConceptMetadata drops it instead of saving a null type");
+    }
+
+    /**
+     * skos:Concept is the base marker (OFN koncept), not a role. OFNTypeNormalizer stamps it on
+     * every slovníky:pojem, so treating it as TRIDA would silently type every otherwise-untyped
+     * concept as a class — and make the untyped guard unreachable.
+     */
+    @Test
+    void determineConceptType_skosConceptAlone_isNotATrida() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource base = model.createResource(DECISION_C1);
+        base.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        base.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
+
+        ConceptType resolved = ReflectionTestUtils.invokeMethod(
+                ontologyUploadService, "determineConceptType", base);
+
+        assertNull(resolved, "skos:Concept is the base type every concept carries — it must not "
+                + "claim the TRIDA role on its own");
+    }
+
+    @Test
+    void determineConceptType_owlClass_isTrida() {
+        OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
+        org.apache.jena.rdf.model.Resource cls = model.createResource(DECISION_C2);
+        cls.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
+        cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
+        cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.Class);
+
+        ConceptType resolved = ReflectionTestUtils.invokeMethod(
+                ontologyUploadService, "determineConceptType", cls);
+
+        assertEquals(ConceptType.TRIDA, resolved,
+                "owl:Class is the real class signal and must still resolve to TRIDA");
     }
 
     @Test
