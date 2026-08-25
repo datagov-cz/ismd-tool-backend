@@ -180,6 +180,28 @@ class OntologyServiceImplTest {
         verify(ontologyMetadataRepository).deleteById(TEST_ONTOLOGY_ID);
     }
 
+    // ========== getOntologyMetadataBySlug Tests ==========
+
+    @Test
+    void getOntologyMetadataBySlug_Success() {
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
+
+        OntologyMetadataModel result = ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG);
+
+        assertSame(expectedDto, result);
+    }
+
+    @Test
+    void getOntologyMetadataBySlug_NotFound() {
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());
+
+        assertThrows(OntologyNotFoundException.class,
+                () -> ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG));
+    }
+
     // ========== createOntology Tests ==========
 
     @Test
