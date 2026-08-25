@@ -319,9 +319,9 @@ class DiagramControllerTest {
     }
 
     /**
-     * {@code @JsonInclude(NON_NULL)} is what keeps the field off the in-diagram form. A node built without a
-     * version must omit the key entirely rather than emit {@code "version": null}, which a client could read
-     * as "this node has no version" instead of "version lives on the diagram".
+     * The version belongs to the diagram, never to a node. {@code DiagramDto.Node} carries no version field
+     * at all, so this pins that none leaks onto the wire — a {@code "version"} key on a node would read as a
+     * per-node lock that does not exist.
      */
     @Test
     @WithMockSecurityUser(userId = "user123")

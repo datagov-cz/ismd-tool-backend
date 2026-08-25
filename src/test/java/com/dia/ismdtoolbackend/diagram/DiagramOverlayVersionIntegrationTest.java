@@ -385,7 +385,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
      * wire by {@code @JsonInclude(NON_NULL)}) so no client mistakes it for a per-node lock.
      */
     @Test
-    void fatRead_leavesPerNodeVersionNull() {
+    void fatRead_carriesTheVersionOnTheDiagram() {
         seedCanvas();
         saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
@@ -393,8 +393,6 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(diagram.version()).as("the diagram itself carries the version").isNotNull();
         assertThat(diagram.nodes()).isNotEmpty();
-        assertThat(diagram.nodes()).allSatisfy(n ->
-                assertThat(n.version()).as("nodes inside the fat read carry no version").isNull());
     }
 
     /**
