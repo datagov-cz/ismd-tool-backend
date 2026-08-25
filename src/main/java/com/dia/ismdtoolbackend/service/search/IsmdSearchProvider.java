@@ -119,10 +119,8 @@ public class IsmdSearchProvider implements SearchProvider {
             allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
                     ontologyIris, relationTypes, fusekiDegraded, limit, type));
         } else {
-            List<SearchResultDto> fusekiOntologies = searchOntologyLabelsViaFuseki(
-                    query, userId, isAdmin, publishedFilter, ontologyIris, fusekiDegraded, limit);
-            backfillPgFieldsForOntologyRows(fusekiOntologies);
-            allResults.addAll(fusekiOntologies);
+            allResults.addAll(searchOntologyLabelsViaFuseki(
+                    query, userId, isAdmin, publishedFilter, ontologyIris, fusekiDegraded, limit));
         }
 
         // Dedup by IRI
@@ -135,6 +133,15 @@ public class IsmdSearchProvider implements SearchProvider {
                 });
             }
         }
+
+        // Backfill ontology rows AFTER dedup, so it covers every branch that can
+        // produce one. A Fuseki row carries no slug, and PG's ontology search
+        // matches on slug alone — so an ontology whose label matches but whose slug
+        // does not ("qa test" against slug "test-slovnik") reaches here PG-less on
+        // BOTH paths. The concept-side backfill cannot rescue it: it resolves IRIs
+        // against concept_metadata, where an ontology has no row. Running after the
+        // merge also means a row already carrying a PG slug is left alone.
+        backfillPgFieldsForOntologyRows(new ArrayList<>(deduped.values()));
 
         // Type filter: apply AFTER dedup so Fuseki-classified ontologies merge with
         // PG ontology hits (and PG concepts merge with Fuseki concepts) before we
@@ -206,13 +213,20 @@ public class IsmdSearchProvider implements SearchProvider {
     /**
      * Backfills PG-sourced fields on ontology rows that came from the Fuseki label
      * search. Those rows are built purely from RDF, so they carry no {@code id},
-     * {@code slug} or {@code isPublished} — the ontology-only branch never runs the
-     * concept-side backfill. Without this an ontology found by label (rather than by
-     * slug) reaches the FE with a null id and an unknown publish state, and sorts
-     * with the drafts regardless of what it actually is.
+     * {@code slug} or {@code isPublished}. Without this an ontology found by label
+     * (rather than by slug) reaches the FE with a null slug — which the FE turns
+     * into a {@code /dictionary/null} link — plus a null id and an unknown publish
+     * state, so it sorts with the drafts regardless of what it actually is.
      * <p>
-     * Visibility is safe: every IRI here already came from a graph the caller may
-     * see. Failure is non-fatal — rows keep their null fields and search succeeds.
+     * Runs on the deduped set, so it covers every branch that can emit an ontology
+     * row: the ONTOLOGY-only Fuseki path and the unfiltered path, where the
+     * concept-side backfill cannot help (it resolves IRIs against
+     * {@code concept_metadata}, which holds no row for an ontology).
+     * <p>
+     * Rows that already carry a PG id are skipped — they merged with a PG hit and
+     * have their fields. Visibility is safe: every IRI here already came from a
+     * graph the caller may see. Failure is non-fatal — rows keep their null fields
+     * and search succeeds.
      */
     private void backfillPgFieldsForOntologyRows(List<SearchResultDto> rows) {
         List<String> graphNames = rows.stream()
