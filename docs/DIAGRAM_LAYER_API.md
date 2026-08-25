@@ -186,7 +186,7 @@ One call carries everything: layout **and** the structural overlays. Strip React
 | Field | Omitted / `null` | `[]` |
 |---|---|---|
 | `version` | **400** — always required | — |
-| `nodes` | **400** — always required | canvas emptied |
+| `nodes` | **400** — always required | canvas emptied (rows carrying an overlay survive — see Nodes) |
 | `edges` | all waypoints revert to default routing | same |
 | **`overlays`** | **staged edits untouched** | **staged edits untouched** |
 
@@ -290,13 +290,13 @@ Reload the diagram and re-apply.
 
 ### Validation errors (400)
 
-The message names the exact field path. Every 400 is **atomic** — nothing is written and the staged set is unchanged.
+`message` is the fixed prefix `Neplatná data v požadavku: ` followed by the field path — match on the path, never on the whole string. Several failing fields join with `; `. Every 400 is **atomic** — nothing is written and the staged set is unchanged.
 
-| Body | Message |
+| Body | `message` |
 |---|---|
-| overlay entry with no `conceptIri` | `overlays[0].conceptIri: must not be blank` |
-| `convertToHierarchy` missing `broader` | `overlays[0].convertToHierarchy.broader: must not be blank` |
-| `convertToHierarchy` missing `addBroaderOn` | `overlays[0].convertToHierarchy.addBroaderOn: must not be blank` |
+| overlay entry with no `conceptIri` | `Neplatná data v požadavku: overlays[0].conceptIri: must not be blank` |
+| `convertToHierarchy` missing `broader` | `Neplatná data v požadavku: overlays[0].convertToHierarchy.broader: must not be blank` |
+| `convertToHierarchy` missing `addBroaderOn` | `Neplatná data v požadavku: overlays[0].convertToHierarchy.addBroaderOn: must not be blank` |
 
 A concept IRI from another ontology — in a node id, an overlay `conceptIri`, or either `convertToHierarchy` endpoint — is also a 400:
 

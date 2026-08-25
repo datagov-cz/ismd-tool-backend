@@ -558,10 +558,10 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         }
 
         /**
-         * Built with the PROXIED self so {@code commitLayout}/{@code commitOverlay} actually run in a
-         * transaction — these tests use {@code NOT_SUPPORTED}, so there is no ambient one to fall back on.
-         * The 8-arg test constructor ({@code self == this}) would leave each {@code saveAndFlush}
-         * autocommitting on its own and the layout reconcile would violate the node unique constraint.
+         * Built with the PROXIED self so {@code commitLayout} actually runs in a transaction — these tests
+         * use {@code NOT_SUPPORTED}, so there is no ambient one to fall back on. Passing {@code this} as
+         * {@code self} would leave each {@code saveAndFlush} autocommitting on its own and the layout
+         * reconcile would violate the node unique constraint.
          */
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,

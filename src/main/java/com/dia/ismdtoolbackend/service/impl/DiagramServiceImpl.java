@@ -390,10 +390,4 @@ public class DiagramServiceImpl implements DiagramService {
         }
         return slugs;
     }
-
-    private java.time.LocalDateTime baseUpdatedAt(String conceptIri) {
-        return conceptMetadataRepository.findByConceptIri(conceptIri)
-                .map(ConceptMetadataEntity::getUpdatedAt)
-                .orElse(null);
-    }
 }

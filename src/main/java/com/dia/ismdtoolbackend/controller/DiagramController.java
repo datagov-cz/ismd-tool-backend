@@ -45,7 +45,7 @@ public class DiagramController {
     @Operation(
             summary = "Načtení diagramu slovníku",
             description = "Vrací render-ready diagram slovníku — rozvržení spojené s živým obsahem pojmů, s aplikovanými "
-                    + "překryvy (pending edits) a projektovanými hranami. Vyžaduje oprávnění přihlášeného uživatele."
+                    + "overlayi (pending edits) a projektovanými hranami. Vyžaduje oprávnění přihlášeného uživatele."
     )
     @GetMapping("/{ontologySlug}/detail")
     @PreAuthorize("@ontologySecurityService.canViewResource()")
@@ -61,10 +61,10 @@ public class DiagramController {
 
     @Operation(
             summary = "Uložení rozvržení diagramu",
-            description = "Uloží rozvržení diagramu a překryvy pouze do databáze (bez zápisu do RDF). Sada uzlů je "
+            description = "Uloží rozvržení diagramu a overlaye pouze do databáze (bez zápisu do RDF). Sada uzlů je "
                     + "autoritativní pro členství na plátně — chybějící uzel je z plátna odebrán, nový je načten z živého RDF. "
-                    + "Pole `overlays` je naopak přírůstkové: pojem, který v něm chybí, si svůj překryv ponechá; "
-                    + "položka pouze s `conceptIri` překryv zahodí. "
+                    + "Pole `overlays` je naopak přírůstkové: pojem, který v něm chybí, si svůj overlay ponechá; "
+                    + "položka pouze s `conceptIri` overlay zahodí. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
     @PutMapping("/{ontologySlug}/layout")
@@ -83,7 +83,7 @@ public class DiagramController {
     @Operation(
             summary = "Převzetí (materializace) změn diagramu",
             description = "Aplikuje všechny čekající (pending) změny přes existující CRUD pojmů → outbox → RDF a po úspěchu vyčistí "
-                    + "jednotlivé překryvy. Vrací výsledek po jednotlivých změnách (materializované, neúspěšné, zastaralé). "
+                    + "jednotlivé overlaye. Vrací výsledek po jednotlivých změnách (materializované, neúspěšné, zastaralé). "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
     @PostMapping("/{ontologySlug}/materialize")

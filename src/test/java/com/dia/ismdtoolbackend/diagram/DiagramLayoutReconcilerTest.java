@@ -30,6 +30,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,6 +92,28 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         n.setPendingEdit(pendingEdit);
         diagram.addNode(n);
         return n;
+    }
+
+    /**
+     * A concept row in the diagram's own graph, so {@code baseUpdatedAt} has an {@code updatedAt} to read.
+     * Auditing populates the timestamp on save.
+     */
+    private ConceptMetadataEntity seedConcept(DiagramEntity diagram, String iri) {
+        ConceptMetadataEntity c = new ConceptMetadataEntity();
+        c.setConceptIri(iri);
+        c.setGraphName(diagram.getOntologyMetadata().getGraphName());
+        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1) + "-" + diagram.getId());
+        c.setConceptName("Seed");
+        c.setUserId("u1");
+        c.setOntologyMetadata(diagram.getOntologyMetadata());
+        return conceptRepository.saveAndFlush(c);
+    }
+
+    /** An FE-shaped Save that carries no canvas nodes, only the staged overlay. */
+    private DiagramLayoutDto overlayOnly(String conceptIri, String range) {
+        return new DiagramLayoutDto(null, null, List.of(), List.of(),
+                List.of(new DiagramLayoutDto.Overlay("iri:" + conceptIri,
+                        null, range, null, null, null)));
     }
 
     /** A minimal structural overlay — a VZTAH repointed at {@code range}. */
@@ -486,6 +509,96 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
                 .singleElement()
                 .satisfies(e -> assertThat(e.getEdgeKey()).isEqualTo(key));
+    }
+
+    /**
+     * The stale-base fingerprint is stamped when the overlay comes into existence on the row, and never
+     * again while it lives there ({@code prior == null ? baseUpdatedAt(iri) : prior.getBaseUpdatedAt()}).
+     * The FE re-sends its whole staged set on an ordinary autosave, so re-stamping on every entry would
+     * quietly absorb a concurrent concept edit — the overlay would keep materializing against a base the
+     * user never saw, which is exactly what STALE_BASE exists to report.
+     *
+     * <p>Guards the {@code prior == null} condition: hard-coding it true (always re-stamp) disables the
+     * STALE_BASE guard without failing any other test in the suite.
+     */
+    @Test
+    void restagingAnExistingOverlay_keepsTheOriginalFingerprint() {
+        DiagramEntity diagram = newDiagram("fingerprint-keep");
+        diagramRepository.saveAndFlush(diagram);
+        ConceptMetadataEntity concept = seedConcept(diagram, "https://x/fingerprint-keep/pojem/vztah");
+        LocalDateTime staged = concept.getUpdatedAt();
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        em.clear();
+
+        // A concurrent edit of the concept itself, after the overlay was staged.
+        ConceptMetadataEntity touched = conceptRepository.findByConceptIri(concept.getConceptIri()).orElseThrow();
+        touched.setConceptName("Renamed underneath the diagram");
+        conceptRepository.saveAndFlush(touched);
+        em.clear();
+        assertThat(conceptRepository.findByConceptIri(concept.getConceptIri()).orElseThrow().getUpdatedAt())
+                .as("the concurrent edit must actually move updatedAt, or this test proves nothing")
+                .isAfter(staged);
+        em.clear();
+
+        // The FE's next autosave re-sends the same staged overlay — it must not re-stamp.
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(again, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        em.clear();
+
+        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), concept.getConceptIri()).orElseThrow();
+        assertThat(row.getPendingEdit().getBaseUpdatedAt())
+                .as("re-sending a staged overlay must not refresh the stale-base fingerprint")
+                .isEqualTo(staged);
+    }
+
+    /**
+     * The complement, so the test above cannot pass by the fingerprint simply never being written: a
+     * discard clears the row's overlay, so the next entry is a fresh stamp and picks up the concept's
+     * current {@code updatedAt}. This is the documented STALE_BASE recovery — discard, then re-stage.
+     */
+    @Test
+    void stagingAfterADiscard_stampsAFreshFingerprint() {
+        DiagramEntity diagram = newDiagram("fingerprint-fresh");
+        diagramRepository.saveAndFlush(diagram);
+        ConceptMetadataEntity concept = seedConcept(diagram, "https://x/fingerprint-fresh/pojem/vztah");
+        LocalDateTime staged = concept.getUpdatedAt();
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        em.clear();
+
+        ConceptMetadataEntity touched = conceptRepository.findByConceptIri(concept.getConceptIri()).orElseThrow();
+        touched.setConceptName("Renamed underneath the diagram");
+        conceptRepository.saveAndFlush(touched);
+        LocalDateTime afterEdit = touched.getUpdatedAt();
+        em.clear();
+
+        // Discard: an entry carrying conceptIri and nothing else.
+        DiagramEntity discarding = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(discarding, new DiagramLayoutDto(null, null, List.of(), List.of(),
+                List.of(new DiagramLayoutDto.Overlay("iri:" + concept.getConceptIri(),
+                        null, null, null, null, null))));
+        em.clear();
+        assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), concept.getConceptIri())
+                .orElseThrow().getPendingEdit())
+                .as("the discard must actually clear the overlay").isNull();
+        em.clear();
+
+        DiagramEntity restaging = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(restaging, overlayOnly(concept.getConceptIri(), "https://x/pojem/a"));
+        em.clear();
+
+        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), concept.getConceptIri()).orElseThrow();
+        assertThat(row.getPendingEdit().getBaseUpdatedAt())
+                .as("staging onto a cleared row re-reads the concept's current updatedAt")
+                .isEqualTo(afterEdit)
+                .isNotEqualTo(staged);
     }
 
     /** Waypoints survive a node being removed: the row is keyed by edge id, not by endpoint FKs. */

@@ -32,7 +32,7 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 | `PUT /{ontologySlug}/layout` | **Uložit diagram — jediný zápisový endpoint.** Uloží rozvržení (pozice, viewport, body lomu hran) *a* nasazené strukturální overlays. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
 | `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` |
 
-**Jediný zápisový endpoint.** Rozvržení i strukturální nasazování cestují ve stejném volání. `PATCH …/nodes/overlay` neexistuje — byl odstraněn a cesta nyní vrací 403 jako každá nenamapovaná trasa. Plátno drží celý svůj stav na klientu a při každém Uložit už stejně posílá kompletní rozvržení, takže samostatné kolečko na každou úpravu nic nepřinášelo a vytvářelo druhý zdroj čítače verze.
+**Jediný zápisový endpoint.** Rozvržení i strukturální nasazování cestují ve stejném volání. `PATCH …/nodes/overlay` neexistuje — byl odstraněn. Plátno drží celý svůj stav na klientu a při každém Uložit už stejně posílá kompletní rozvržení, takže samostatné kolečko na každou úpravu nic nepřinášelo a vytvářelo druhý zdroj čítače verze.
 
 **Členství na plátně jede na uložení rozvržení.** Neexistuje samostatný endpoint pro přidání/odebrání uzlu. Protože `nodes[]` je idempotentní úplná náhrada, **přidat** = uzel zahrnout (holé `{id, position}` u pojmu, který zatím na plátně není; odpověď `DiagramDto` doplní jeho label/typ/slug z živého RDF) a **odebrat z plátna** = vynechat ho. Pojem se ani jedním nedotkne — jediné RDF smazání, které diagram způsobí, je implicitní, uvnitř op 6, řešené přes `/materialize`.
 
@@ -186,7 +186,7 @@ Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte 
 | Pole | Vynecháno / `null` | `[]` |
 |---|---|---|
 | `version` | **400** — vždy povinné | — |
-| `nodes` | **400** — vždy povinné | plátno vyprázdněno |
+| `nodes` | **400** — vždy povinné | plátno vyprázdněno (řádky nesoucí overlay přežijí — viz Uzly) |
 | `edges` | všechny body lomu se vrátí k výchozímu vedení | totéž |
 | **`overlays`** | **nasazené úpravy nedotčeny** | **nasazené úpravy nedotčeny** |
 
@@ -290,13 +290,13 @@ Načtěte diagram znovu a aplikujte změny znovu.
 
 ### Validační chyby (400)
 
-Zpráva jmenuje přesnou cestu k poli. Každá 400 je **atomická** — nic se nezapíše a nasazená množina zůstává beze změny.
+`message` je pevná předpona `Neplatná data v požadavku: ` následovaná cestou k poli — porovnávejte cestu, nikdy celý řetězec. Více chybných polí se spojí pomocí `; `. Každá 400 je **atomická** — nic se nezapíše a nasazená množina zůstává beze změny.
 
-| Tělo | Zpráva |
+| Tělo | `message` |
 |---|---|
-| položka overlaye bez `conceptIri` | `overlays[0].conceptIri: must not be blank` |
-| `convertToHierarchy` bez `broader` | `overlays[0].convertToHierarchy.broader: must not be blank` |
-| `convertToHierarchy` bez `addBroaderOn` | `overlays[0].convertToHierarchy.addBroaderOn: must not be blank` |
+| položka overlaye bez `conceptIri` | `Neplatná data v požadavku: overlays[0].conceptIri: must not be blank` |
+| `convertToHierarchy` bez `broader` | `Neplatná data v požadavku: overlays[0].convertToHierarchy.broader: must not be blank` |
+| `convertToHierarchy` bez `addBroaderOn` | `Neplatná data v požadavku: overlays[0].convertToHierarchy.addBroaderOn: must not be blank` |
 
 IRI pojmu z jiného slovníku — v id uzlu, v `conceptIri` overlaye nebo v kterémkoli konci `convertToHierarchy` — je rovněž 400:
 
