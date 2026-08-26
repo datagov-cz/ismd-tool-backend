@@ -44,11 +44,14 @@ public record DiagramLayoutDto(
             @NotBlank String id,
             @NotNull @Valid PositionDto position,
             String parentId,
-            Boolean collapsed
+            Boolean collapsed,
+            /* The VLASTNOST rows this class cell renders — authoritative full-replace, like `position`.*/
+            List<String> properties
     ) {
 
         public Node {
             collapsed = collapsed != null && collapsed;
+            properties = properties != null ? List.copyOf(properties) : List.of();
         }
     }
 

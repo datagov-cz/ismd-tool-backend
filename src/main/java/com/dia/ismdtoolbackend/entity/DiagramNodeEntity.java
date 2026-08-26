@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.entity;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -12,6 +13,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
 
 /**
  * One node on a diagram canvas — always references a materialized ISMD concept ({@link #conceptIri}), and
@@ -60,6 +63,10 @@ public class DiagramNodeEntity {
     @Column(name = "pending_edit_json", columnDefinition = "text")
     private String pendingEditJson;
 
+    /** Serialized IRI list: the VLASTNOST rows this class cell renders. */
+    @Column(name = "visible_properties_json", columnDefinition = "text")
+    private String visiblePropertiesJson;
+
     @PrePersist
     @PreUpdate
     private void validateNodeInvariant() {
@@ -101,6 +108,36 @@ public class DiagramNodeEntity {
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize pending edit for diagram node id=" + id, e);
+        }
+    }
+
+    /**
+     * The property IRIs this class cell renders; empty on absent/malformed JSON (logged). Empty is a
+     * meaningful value — an uncurated class shows no rows — so this never falls back to "all".
+     */
+    public List<String> getVisibleProperties() {
+        if (visiblePropertiesJson == null || visiblePropertiesJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(visiblePropertiesJson, new TypeReference<List<String>>() {});
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize visible-properties JSON for diagram node id={}", id, e);
+            return List.of();
+        }
+    }
+
+    /** Store the rendered property IRIs; null or empty clears the column. */
+    public void setVisibleProperties(List<String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            this.visiblePropertiesJson = null;
+            return;
+        }
+        try {
+            this.visiblePropertiesJson = objectMapper.writeValueAsString(properties);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(
+                    "Failed to serialize visible properties for diagram node id=" + id, e);
         }
     }
 }

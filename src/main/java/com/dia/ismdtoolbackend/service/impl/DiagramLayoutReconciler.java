@@ -92,8 +92,9 @@ public class DiagramLayoutReconciler {
      * echo back what it was never shown. Treating omission as discard would destroy staged work on every
      * save a client builds from its own canvas state.
      *
-     * <p>Returns the concept IRIs the payload addressed, so the caller can keep a row it just provisioned
-     * out of the reap even when the entry discarded the overlay.
+     * <p>Returns the concept IRIs left carrying an overlay, so the caller can keep those rows out of the
+     * reap. A discard entry is excluded: it addresses a concept but leaves the row bare, and a bare row
+     * omitted from {@code nodes[]} is exactly what the reap is for.
      */
     private Set<String> applyOverlays(DiagramEntity diagram, DiagramLayoutDto layout,
                                       Map<String, DiagramNodeEntity> existing, String diagramGraphName) {
@@ -133,6 +134,10 @@ public class DiagramLayoutReconciler {
 
             if (edit == null) {
                 node.setPendingEdit(null);
+                // The row now carries nothing, so it has no claim on the reap carve-out. Leaving the IRI in
+                // `targets` would pin a row the payload also omitted from nodes[] — the concept stays off
+                // the canvas but its row survives, and the read emits it as a node anchored at the origin.
+                targets.remove(iri);
                 continue;
             }
             requireSameGraph(diagramGraphName, edit);
@@ -219,6 +224,10 @@ public class DiagramLayoutReconciler {
         node.setPosX(pos.x());
         node.setPosY(pos.y());
         node.setCollapsed(in.collapsed());
+        node.setVisibleProperties(in.properties().stream()
+                .map(mapper::conceptIriFromNodeId)
+                .distinct()
+                .toList());
     }
 
     private void resolveParents(DiagramLayoutDto layout, Map<String, DiagramNodeEntity> incoming) {

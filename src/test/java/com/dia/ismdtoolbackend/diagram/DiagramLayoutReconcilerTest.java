@@ -139,12 +139,12 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
-        return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y), null, false);
+        return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y), null, false, List.of());
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y, String parentIri) {
         return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y),
-                parentIri != null ? "iri:" + parentIri : null, false);
+                parentIri != null ? "iri:" + parentIri : null, false, List.of());
     }
 
     /** Run the two-step reconcile the way the service does: reconcile → flush → finalize → save. */
@@ -600,8 +600,11 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 List.of(new DiagramLayoutDto.Overlay("iri:" + iri,
                         null, null, null, null, null))));
         em.clear();
+        // The discard clears the overlay, and with the concept also absent from nodes[] the bare row is
+        // reaped — a discarded overlay has no claim on the reap carve-out. Either way the overlay is gone,
+        // which is what the re-stage below needs.
         assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), iri)
-                .orElseThrow().getPendingEdit())
+                .map(DiagramNodeEntity::getPendingEdit).orElse(null))
                 .as("the discard must actually clear the overlay").isNull();
         em.clear();
 

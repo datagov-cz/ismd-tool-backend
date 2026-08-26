@@ -93,6 +93,18 @@ class EdgeProjector {
         return onCanvas;
     }
 
+    /** The property IRIs each class node has been curated to render, by class IRI. */
+    private Map<String, Set<String>> curatedProperties(List<DiagramNodeEntity> nodes) {
+        Map<String, Set<String>> curated = new HashMap<>();
+        for (DiagramNodeEntity n : nodes) {
+            List<String> visible = n.getVisibleProperties();
+            if (!visible.isEmpty()) {
+                curated.put(n.getConceptIri(), new HashSet<>(visible));
+            }
+        }
+        return curated;
+    }
+
     /** Staged overlays by concept IRI, for concepts that are canvas nodes and those that are not. */
     private Map<String, DiagramPendingEdit> overlays(List<DiagramNodeEntity> nodes) {
         Map<String, DiagramPendingEdit> overlays = new HashMap<>();
@@ -131,7 +143,7 @@ class EdgeProjector {
         String domain = domainPending ? overlay.getDomain() : detail.getDomain();
         String range = rangePending ? overlay.getRange() : detail.getRange();
 
-        if (!drawable(domain, onCanvas) || !drawable(range, onCanvas)) {
+        if (drawable(domain, onCanvas) || drawable(range, onCanvas)) {
             return;
         }
         edges.add(new DiagramDto.Edge(
@@ -161,6 +173,9 @@ class EdgeProjector {
      * unstable for exactly the concepts a user is least able to identify. Only properties whose domain is a
      * class on the canvas appear; a domainless property has no row to live in and is placed by being
      * dragged in from the ontology detail.
+     *
+     * <p>Membership is CURATED, not derived: a property renders only when its domain class lists it in
+     * {@code visibleProperties}.
      */
     Map<String, List<DiagramDto.PropertyRow>> propertyRows(List<DiagramNodeEntity> nodes,
                                                            Map<String, ConceptDetailModel> live,
@@ -168,6 +183,7 @@ class EdgeProjector {
                                                            Map<String, String> slugs) {
         Set<String> onCanvas = onCanvas(nodes, types);
         Map<String, DiagramPendingEdit> overlays = overlays(nodes);
+        Map<String, Set<String>> curated = curatedProperties(nodes);
 
         Map<String, List<DiagramDto.PropertyRow>> byClass = new HashMap<>();
         for (Map.Entry<String, ConceptDetailModel> entry : live.entrySet()) {
@@ -180,7 +196,10 @@ class EdgeProjector {
             String domain = overlay != null && overlay.getDomain() != null
                     ? overlay.getDomain()
                     : detail.getDomain();
-            if (!drawable(domain, onCanvas)) {
+            if (drawable(domain, onCanvas)) {
+                continue;
+            }
+            if (!curated.getOrDefault(domain, Set.of()).contains(iri)) {
                 continue;
             }
             byClass.computeIfAbsent(domain, k -> new ArrayList<>())
@@ -232,7 +251,7 @@ class EdgeProjector {
             return;
         }
         for (String target : targets) {
-            if (!drawable(target, onCanvas)) {
+            if (drawable(target, onCanvas)) {
                 continue;
             }
             String id = projectedEdgeId(kind, source, target);
@@ -247,7 +266,7 @@ class EdgeProjector {
     }
 
     private boolean drawable(String iri, Set<String> onCanvas) {
-        return iri != null && !iri.isBlank() && onCanvas.contains(iri);
+        return iri == null || iri.isBlank() || !onCanvas.contains(iri);
     }
 
     /**

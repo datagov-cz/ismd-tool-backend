@@ -39,6 +39,16 @@ class EdgeProjectorTest {
         return n;
     }
 
+    /**
+     * A class node that renders the given property rows. Rows are curated — the canvas is a subset of the
+     * ontology — so a class renders a property only once the user has placed it here.
+     */
+    private DiagramNodeEntity nodeWith(String iri, String... visibleProperties) {
+        DiagramNodeEntity n = node(iri);
+        n.setVisibleProperties(List.of(visibleProperties));
+        return n;
+    }
+
     private ConceptDetailModel concept(String iri) {
         return ConceptDetailModel.builder().iri(iri).build();
     }
@@ -220,7 +230,7 @@ class EdgeProjectorTest {
         assertThat(projector.project(List.of(node(A)), live, types, Map.of())).isEmpty();
 
         Map<String, List<DiagramDto.PropertyRow>> rows =
-                projector.propertyRows(List.of(node(A)), live, types, Map.of(PROP, "x-prop"));
+                projector.propertyRows(List.of(nodeWith(A, PROP)), live, types, Map.of(PROP, "x-prop"));
 
         assertThat(rows.get(A)).singleElement().satisfies(r -> {
             assertThat(r.iri()).isEqualTo(PROP);
@@ -241,8 +251,8 @@ class EdgeProjectorTest {
                 "https://x/pojem/p1", ConceptType.VLASTNOST,
                 "https://x/pojem/p2", ConceptType.VLASTNOST));
 
-        Map<String, List<DiagramDto.PropertyRow>> rows =
-                projector.propertyRows(List.of(node(A)), live, types, Map.of());
+        Map<String, List<DiagramDto.PropertyRow>> rows = projector.propertyRows(
+                List.of(nodeWith(A, "https://x/pojem/p1", "https://x/pojem/p2")), live, types, Map.of());
 
         assertThat(rows.get(A)).extracting(r -> r.label().get("cs"))
                 .containsExactly("abeceda", "zebra");
@@ -272,7 +282,7 @@ class EdgeProjectorTest {
         live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A).build());
 
         Map<String, List<DiagramDto.PropertyRow>> rows = projector.propertyRows(
-                List.of(node(A), node(B), propRow), live,
+                List.of(nodeWith(A, PROP), nodeWith(B, PROP), propRow), live,
                 types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of());
 
         assertThat(rows).doesNotContainKey(A);
