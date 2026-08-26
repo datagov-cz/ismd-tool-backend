@@ -60,6 +60,9 @@ class OntologyServiceImplTest {
     private OntologyMetadataRepository ontologyMetadataRepository;
 
     @Mock
+    private com.dia.ismdtoolbackend.service.impl.MetadataTouchService metadataTouchService;
+
+    @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
 
     @Mock
