@@ -5,9 +5,11 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
+import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +51,31 @@ public class EsbirkaController {
             log.info("e-Sbírka law search, q: {}, limit: {}", q, resolved);
             List<LawDto> results = esbirkaService.searchLaws(q, resolved);
             return ResponseEntity.ok(ApiResponseDto.success(results,
+                    "Vyhledávání právních aktů úspěšně provedeno."));
+        } finally {
+            MDC.remove(LOG_REQUEST_ID);
+        }
+    }
+
+    @Operation(
+            summary = "Vyhledávání právních aktů seskupené podle čísla předpisu",
+            description = "Stejné vyhledávání jako /law/search, ale výsledky jsou seskupené podle " +
+                    "čísla předpisu (dotaz \"49\" odpovídá desítkám nesouvisejících zákonů). " +
+                    "Příznak \"ambiguous\" značí, že si uživatel musí ještě vybrat (typicky ročník); " +
+                    "\"truncated\" značí, že existují další shody mimo odpověď. " +
+                    "Parametr limit omezuje počet skupin, nikoli řádků."
+    )
+    @GetMapping("/law/search/grouped")
+    public ResponseEntity<ApiResponseDto<LawSearchResultDto>> searchLawsGrouped(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer limit) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(LOG_REQUEST_ID, requestId);
+        try {
+            int resolved = resolveLimit(limit);
+            log.info("e-Sbírka grouped law search, q: {}, limit: {}", q, resolved);
+            LawSearchResultDto result = esbirkaService.searchLawsGrouped(q, resolved);
+            return ResponseEntity.ok(ApiResponseDto.success(result,
                     "Vyhledávání právních aktů úspěšně provedeno."));
         } finally {
             MDC.remove(LOG_REQUEST_ID);
@@ -99,21 +126,21 @@ public class EsbirkaController {
 
     @Operation(
             summary = "Celé znění právního aktu podle reference číslo/rok",
-            description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\"), vyhledá daný " +
-                    "právní akt přesnou shodou, vybere jeho poslední znění a vrátí celé jeho znění: " +
-                    "hlavičku (IRI aktu, citace, znění, datum účinnosti), seznam všech znění (pro přepínač) " +
-                    "a strom fragmentů, kde každý uzel nese své HTML \"obsah\" tělo pro interaktivní " +
-                    "procházení a výběr sekcí. Pro částečný vstup (např. \"49\") použijte /law/search. " +
-                    "Výsledek je cachován (znění je neměnné)."
+            description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\") a vrací celé " +
+                    "znění daného aktu: hlavičku, seznam všech znění (pro přepínač) a strom fragmentů, " +
+                    "kde každý uzel nese své HTML tělo. Bez parametru \"versionIri\" se vrací poslední " +
+                    "znění; s ním zvolené znění (IRI musí patřit k danému aktu, jinak 400). " +
+                    "Pro částečný vstup (např. \"49\") použijte /law/search."
     )
     @GetMapping("/law/content")
     public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(
-            @RequestParam String law) {
+            @RequestParam String law,
+            @RequestParam(required = false) String versionIri) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(LOG_REQUEST_ID, requestId);
         try {
-            log.info("e-Sbírka law content, law: {}", law);
-            LawContentDto result = esbirkaService.getLawContent(law);
+            log.info("e-Sbírka law content, law: {}, versionIri: {}", law, versionIri);
+            LawContentDto result = esbirkaService.getLawContent(law, versionIri);
             return ResponseEntity.ok(ApiResponseDto.success(result,
                     "Celé znění právního aktu úspěšně načteno."));
         } finally {
@@ -153,8 +180,15 @@ public class EsbirkaController {
         return limit;
     }
 
+    /**
+     * Reject anything that is not an e-Sbírka ELI IRI, accepting the legacy hosts
+     * ({@code opendata.eselpoint.cz}, bare {@code eselpoint.cz}) that {@code /resolve} and the
+     * concept write paths accept. The service canonicalizes again before querying, so this is a
+     * fail-fast on shape only — it deliberately does not rewrite the value it was given.
+     */
     private static void requireEsbirkaIri(String iri, String message) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(iri)) {
+        String canonical = iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
             throw new IllegalArgumentException(message);
         }
     }

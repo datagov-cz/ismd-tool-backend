@@ -2,9 +2,10 @@ package com.dia.ismdtoolbackend.query;
 
 import org.apache.jena.query.ParameterizedSparqlString;
 
+import java.util.List;
+
 public class EsbirkaSPARQLQuery {
 
-    // Predicates verified 2026-04-30 against https://opendata.eselpoint.gov.cz/sparql:
     //   Law      type:        datový/sbírka/pojem/právní-akt
     //   Law      citation:    datový/sbírka/pojem/citace-právního-aktu        ("187/2006 Sb.")
     //   Law      number:      datový/sbírka/pojem/číslo-předpisu              (xsd:string)
@@ -18,11 +19,10 @@ public class EsbirkaSPARQLQuery {
     //   Version  versionType: datový/sbírka/pojem/má-typ-znění-právního-aktu
     //   Version  fragment:    datový/sbírka/pojem/má-fragment-znění
     //   Fragment type:        datový/sbírka/pojem/označení-fragmentu-znění-právního-aktu
-    //   Fragment citation:    datový/sbírka/pojem/citace-označení-fragmentu-znění-právního-aktu
     //   Fragment parent:      datový/sbírka/pojem/má-předka
     //   Fragment order:       datový/sbírka/pojem/pořadí-fragmentu-znění-právního-aktu  (hex string, lex-sortable)
     //
-    // Fragment kinds (verified 2026-05-04 against sample version 187/2006/2026-04-01):
+    //   Fragment kinds (verified 2026-05-04 against sample version 187/2006/2026-04-01):
     //   par, odst, pism, bod, ppc, dil, hlava, oddil, cast, frag,
     //   plus structural parents: dokument/{norma,prefix,postfix,poznamkypodcarou}.
 
@@ -30,8 +30,10 @@ public class EsbirkaSPARQLQuery {
 
     /**
      * Search laws by citation substring (server-side CONTAINS on citace-právního-aktu).
-     * citace is ASCII-only so plain LCASE works. When q is blank, omit the FILTER.
-     * Default order: rok desc, cislo asc (G11). With q: citace lex asc (predictable).
+     * Blank q omits the FILTER and orders rok desc, číslo asc.
+     *
+     * <p>With q, rows are ranked by where the needle matched: 0 = číslo equals it,
+     * 1 = citace starts with it, 2 = anything else; then rok desc, citace.
      */
     public static String buildLawSearchQuery(String q, int limit) {
         boolean hasFilter = q != null && !q.isBlank();
@@ -45,10 +47,12 @@ public class EsbirkaSPARQLQuery {
         sb.append("       <").append(NS).append("patří-do-sbírky> ?sbirka .\n");
         if (hasFilter) {
             sb.append("  FILTER(CONTAINS(LCASE(STR(?citace)), LCASE(?qNeedle)))\n");
+            sb.append("  BIND(IF(LCASE(STR(?cislo)) = LCASE(?qNeedle), 0,\n");
+            sb.append("       IF(STRSTARTS(LCASE(STR(?citace)), LCASE(?qNeedle)), 1, 2)) AS ?rank)\n");
         }
         sb.append("}\n");
         if (hasFilter) {
-            sb.append("ORDER BY ?citace\n");
+            sb.append("ORDER BY ?rank DESC(?rok) ?citace\n");
         } else {
             sb.append("ORDER BY DESC(?rok) ?cislo\n");
         }
@@ -58,6 +62,102 @@ public class EsbirkaSPARQLQuery {
         pss.setCommandText(sb.toString());
         if (hasFilter) {
             pss.setLiteral("qNeedle", q);
+        }
+        return pss.toString();
+    }
+
+    /**
+     * Step 1 of the grouped search: distinct předpis numbers prefix-matching {@code cisloPrefix},
+     * each with its dataset-wide act count, capped at {@code limit} <em>groups</em>.
+     *
+     * <p>Ordered by číslo length then číslo, so the shortest (most exact) numbers come first.
+     *
+     * <p>{@code rokPrefix} narrows the aggregate to acts whose rok starts with it, so a
+     * "číslo/rok" needle groups only that year's acts and the counts stay truthful. It is a
+     * prefix, not an equality, because the FE searches per keystroke: "49/19" must return the
+     * 1900s rather than nothing. The rok-předpisu join is added only when a year is given —
+     * without one it is pure cost.
+     */
+    public static String buildLawNumberGroupsQuery(String cisloPrefix, String rokPrefix, int limit) {
+        boolean hasCislo = cisloPrefix != null && !cisloPrefix.isBlank();
+        boolean hasRok = rokPrefix != null && !rokPrefix.isBlank();
+        StringBuilder sb = new StringBuilder();
+        // COUNT(DISTINCT ?akt), not COUNT(*): an act with several patří-do-sbírky or citace
+        // values yields several solutions.
+        sb.append("SELECT ?cislo (COUNT(DISTINCT ?akt) AS ?pocet) WHERE {\n");
+        sb.append("  ?akt a <").append(NS).append("právní-akt> ;\n");
+        sb.append("       <").append(NS).append("citace-právního-aktu> ?citace ;\n");
+        sb.append("       <").append(NS).append("číslo-předpisu> ?cislo");
+        if (hasRok) {
+            sb.append(" ;\n       <").append(NS).append("rok-předpisu> ?rok");
+        }
+        sb.append(" .\n");
+        if (hasCislo) {
+            sb.append("  FILTER(STRSTARTS(LCASE(STR(?cislo)), LCASE(?qNeedle)))\n");
+        }
+        if (hasRok) {
+            // rok-předpisu is xsd:gYear; STR() compares its lexical "1997" form.
+            sb.append("  FILTER(STRSTARTS(STR(?rok), ?rokNeedle))\n");
+        }
+        sb.append("}\n");
+        sb.append("GROUP BY ?cislo\n");
+        sb.append("ORDER BY STRLEN(STR(?cislo)) ?cislo\n");
+        sb.append("LIMIT ").append(limit);
+
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText(sb.toString());
+        if (hasCislo) {
+            pss.setLiteral("qNeedle", cisloPrefix);
+        }
+        if (hasRok) {
+            pss.setLiteral("rokNeedle", rokPrefix);
+        }
+        return pss.toString();
+    }
+
+    /**
+     * Step 2 of the grouped search: every act whose číslo is one of {@code cisla}, newest rok
+     * first, capped at {@code rowLimit} rows. Group size is unbounded, so the cap keeps the
+     * newest acts of each; the dataset-wide totals come from step 1's aggregate.
+     *
+     * <p>Matched via {@code FILTER(STR(?cislo) IN (…))}, not {@code VALUES}: číslo-předpisu is
+     * a typed {@code "49"^^xsd:string} that Virtuoso will not equate with a plain literal, so a
+     * {@code VALUES} block matches zero rows. Same workaround as
+     * {@link #buildLawByNumberYearQuery}.
+     *
+     * <p>{@code rokPrefix} must repeat the year narrowing applied in step 1. Step 1's counts
+     * are year-scoped, so fetching every act of those čísla would display acts the count does
+     * not include — and bury the one year the user asked for.
+     */
+    public static String buildLawsByNumbersQuery(List<String> cisla, String rokPrefix, int rowLimit) {
+        boolean hasRok = rokPrefix != null && !rokPrefix.isBlank();
+        StringBuilder needles = new StringBuilder();
+        for (int i = 0; i < cisla.size(); i++) {
+            if (i > 0) {
+                needles.append(", ");
+            }
+            needles.append("?c").append(i);
+        }
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.setCommandText("""
+                SELECT ?akt ?citace ?cislo ?rok ?sbirka WHERE {
+                  ?akt a <%1$správní-akt> ;
+                       <%1$scitace-právního-aktu> ?citace ;
+                       <%1$sčíslo-předpisu> ?cislo ;
+                       <%1$srok-předpisu> ?rok ;
+                       <%1$spatří-do-sbírky> ?sbirka .
+                  FILTER(STR(?cislo) IN (%2$s))
+                %3$s}
+                ORDER BY DESC(?rok) ?citace
+                LIMIT %4$d
+                """.formatted(NS, needles,
+                hasRok ? "  FILTER(STRSTARTS(STR(?rok), ?rokNeedle))\n" : "",
+                rowLimit));
+        for (int i = 0; i < cisla.size(); i++) {
+            pss.setLiteral("c" + i, cisla.get(i));
+        }
+        if (hasRok) {
+            pss.setLiteral("rokNeedle", rokPrefix);
         }
         return pss.toString();
     }
@@ -89,7 +189,7 @@ public class EsbirkaSPARQLQuery {
     /**
      * Versions for a given law, ordered newest-first by účinnost-znění-od.
      * Latest flagged via equality with má-poslední-znění.
-     * lawIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
+     * lawIri must be canonicalized and validated by EsbirkaServiceImpl before it reaches here.
      */
     public static String buildVersionListQuery(String lawIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
@@ -113,12 +213,11 @@ public class EsbirkaSPARQLQuery {
     /**
      * All fragments of a given version with parent edge and lex-sortable order key.
      * Top-level fragments have parent = <versionIri>/dokument/norma.
-     * versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
+     * versionIri must be canonicalized and validated by EsbirkaServiceImpl before it reaches here.
      *
-     * <p>Only pořadí may be required. citace is OPTIONAL: upstream dropped
-     * citace-označení-fragmentu-znění-právního-aktu (0 triples dataset-wide as of 2026-08-24),
-     * and a required join returns zero rows — the whole law renders empty. Callers derive the
-     * citation from IRI path segments when it is absent.
+     * <p>Only {@code pořadí} may be required — a required join upstream stops populating
+     * returns zero rows and renders the law blank. {@code citace} is absent dataset-wide and
+     * callers derive it from IRI path segments; document roots carry no {@code má-předka}.
      */
     public static String buildFragmentTreeQuery(String versionIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
@@ -139,25 +238,17 @@ public class EsbirkaSPARQLQuery {
     }
 
     /**
-     * Whole-version content query: every fragment of a version with its parent edge,
-     * citation, lex-sortable order key, AND its rendered HTML body (obsah) in a single
-     * round-trip. Used to deliver the full law text to the FE for in-document browsing
-     * without per-fragment {@code /resolve} calls.
+     * Whole-version content: every fragment of a version with its parent edge, citation,
+     * lex-sortable order key and rendered HTML body (obsah) in one round-trip, for delivering
+     * the full law text without per-fragment {@code /resolve} calls.
      *
-     * <p>Only {@code pořadí} may be required. Every other join is OPTIONAL, because a
-     * required join that upstream stops populating returns zero rows and the law renders
-     * blank (HTTP 200, {@code fragments: []}) rather than erroring:
-     * <ul>
-     *   <li>{@code obsah} — structural fragments (Část/Hlava/Díl/Oddíl) carry no text body
-     *       (~13% of fragments for sampled versions).</li>
-     *   <li>{@code citace} — upstream dropped citace-označení-fragmentu-znění-právního-aktu
-     *       entirely (0 triples dataset-wide as of 2026-08-24); the citation is derived from
-     *       IRI path segments when absent.</li>
-     *   <li>{@code parent} — document roots ({@code /dokument/prefix}) have no má-předka.</li>
-     * </ul>
+     * <p>Only {@code pořadí} may be required — a required join upstream stops populating
+     * returns zero rows and renders the law blank. {@code obsah} is absent on structural
+     * fragments, {@code citace} dataset-wide (derived from IRI path segments instead), and
+     * {@code parent} on document roots.
      *
-     * <p>versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the
-     * controller boundary.
+     * <p>versionIri must be canonicalized and validated by EsbirkaServiceImpl before it
+     * reaches here.
      */
     public static String buildVersionContentQuery(String versionIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
