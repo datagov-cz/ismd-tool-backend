@@ -89,8 +89,10 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             key = "'grouped:' + (#q == null ? '' : #q) + '\u0000' + #limit")
     public LawSearchResultDto searchLawsGrouped(String q, int limit) {
         String needle = q == null ? null : q.trim();
+        GroupedNeedle parsed = splitGroupedNeedle(needle);
 
-        List<LawNumberGroupModel> numberGroups = client.searchLawNumberGroups(needle, limit);
+        List<LawNumberGroupModel> numberGroups =
+                client.searchLawNumberGroups(parsed.cislo(), parsed.rok(), limit);
         if (numberGroups.isEmpty()) {
             return LawSearchResultDto.builder()
                     .query(blankToNull(needle))
@@ -109,7 +111,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
 
         Map<String, List<LawDto>> byCislo = new HashMap<>();
-        for (LawModel m : client.fetchLawsByNumbers(cisla, GROUPED_ROW_LIMIT)) {
+        for (LawModel m : client.fetchLawsByNumbers(cisla, parsed.rok(), GROUPED_ROW_LIMIT)) {
             byCislo.computeIfAbsent(m.getCislo() == null ? "" : m.getCislo(),
                     k -> new ArrayList<>()).add(toLawDto(m));
         }
@@ -131,7 +133,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .cislo(g.cislo())
                     // Dataset-wide total from step 1's aggregate, not laws.size().
                     .count(g.pocet())
-                    .exactNumberMatch(needle != null && needle.equalsIgnoreCase(g.cislo()))
+                    // Compared against the číslo part alone: "49/1997" pins číslo 49 exactly,
+                    // and matching the raw needle would make this permanently false.
+                    .exactNumberMatch(parsed.cislo() != null && parsed.cislo().equalsIgnoreCase(g.cislo()))
                     .laws(laws)
                     .build());
         }
@@ -150,6 +154,41 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     private static String blankToNull(String s) {
         return s == null || s.isBlank() ? null : s;
+    }
+
+    /** A grouped-search needle split into its číslo prefix and optional rok prefix. */
+    record GroupedNeedle(String cislo, String rok) {}
+
+    /**
+     * Split a grouped-search needle on '/' into číslo and rok, tolerating a trailing " Sb." and
+     * surrounding whitespace. Both halves are prefixes, and both may be blank.
+     *
+     * <p>Deliberately tolerant, unlike {@link #parseNumberYear}: this runs per keystroke, so
+     * every intermediate state a user types — "49", "49/", "49/19", "49/1997 Sb." — must return
+     * results rather than throw. Anything that is not a číslo/rok shape (letters, a second
+     * slash) is passed through as a číslo prefix, where it simply matches nothing.
+     */
+    static GroupedNeedle splitGroupedNeedle(String needle) {
+        if (needle == null || needle.isBlank()) {
+            return new GroupedNeedle(null, null);
+        }
+        String cleaned = needle.trim();
+        int sb = cleaned.indexOf(" Sb");
+        if (sb > 0) {
+            cleaned = cleaned.substring(0, sb).trim();
+        }
+        int slash = cleaned.indexOf('/');
+        if (slash < 0) {
+            return new GroupedNeedle(blankToNull(cleaned), null);
+        }
+        String cislo = cleaned.substring(0, slash).trim();
+        String rok = cleaned.substring(slash + 1).trim();
+        // A non-numeric year would match no act anyway, but as a prefix filter it would also
+        // silently drop the číslo half's results. Ignoring it keeps the číslo results visible.
+        if (!rok.isEmpty() && !rok.chars().allMatch(Character::isDigit)) {
+            rok = null;
+        }
+        return new GroupedNeedle(blankToNull(cislo), blankToNull(rok));
     }
 
     /**
@@ -179,13 +218,35 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .thenComparing(LawSearchGroupDto::getCislo,
                             Comparator.nullsLast(Comparator.naturalOrder()));
 
-    @Override
-    @Cacheable(cacheNames = "esbirkaLawVersions", key = "#lawIri")
-    public List<LawVersionDto> getVersions(String lawIri) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(lawIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor právního aktu.");
+    /**
+     * Rewrite a legacy e-Sbírka host to the canonical one, leaving everything else untouched.
+     *
+     * <p>Every e-Sbírka IRI entering this service passes through here before it is validated,
+     * compared or cached, so all endpoints accept the same host spellings that {@code /resolve}
+     * and the concept write paths already accept. Called reflectively by the {@code @Cacheable}
+     * SpEL keys below, so it must stay {@code public}.
+     */
+    public String canonicalizeEsbirkaIri(String iri) {
+        return iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+    }
+
+    /** Canonicalize, then validate — a legacy host is a spelling, not an invalid identifier. */
+    private static String requireValidIri(String iri, String message) {
+        String canonical = iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+            throw new IllegalArgumentException(message);
         }
-        List<LawVersionModel> rows = client.fetchVersions(lawIri);
+        return canonical;
+    }
+
+    // Keyed on the canonical form so a legacy-host IRI shares the entry with its canonical
+    // twin rather than issuing an identical second query under its own key.
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawVersions",
+            key = "#root.target.canonicalizeEsbirkaIri(#lawIri)")
+    public List<LawVersionDto> getVersions(String lawIri) {
+        String iri = requireValidIri(lawIri, "Neplatný identifikátor právního aktu.");
+        List<LawVersionModel> rows = client.fetchVersions(iri);
         List<LawVersionDto> out = new ArrayList<>(rows.size());
         for (LawVersionModel m : rows) {
             out.add(toVersionDto(m));
@@ -195,15 +256,13 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     @Override
     public List<FragmentDto> getFragments(String versionIri) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(versionIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor znění právního aktu.");
-        }
-        List<FragmentModel> rows = client.fetchFragments(versionIri);
+        String iri = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
+        List<FragmentModel> rows = client.fetchFragments(iri);
         if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
             log.warn("Fragment tree for {} has {} rows (over {} threshold).",
-                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+                    iri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
         }
-        return assembleTree(rows, versionIri);
+        return assembleTree(rows, iri);
     }
 
     /**
@@ -226,7 +285,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      */
     @Override
     @Cacheable(cacheNames = "esbirkaLawContent",
-            key = "#root.target.normalizeLawRef(#lawRef) + '@' + (#versionIri == null ? '' : #versionIri)")
+            key = "#root.target.normalizeLawRef(#lawRef) + '@' "
+                    + "+ (#versionIri == null ? '' : #root.target.canonicalizeEsbirkaIri(#versionIri))")
     public LawContentDto getLawContent(String lawRef, String versionIri) {
         NumberYear ny = parseNumberYear(lawRef);
 
@@ -276,15 +336,16 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             }
             return latest;
         }
-        if (!SparqlIriValidator.isEsbirkaEliIri(versionIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor znění právního aktu.");
-        }
+        // Canonicalized before the membership scan, not just before validation: v.getIri()
+        // comes from e-Sbírka and is always canonical, so a legacy-host IRI would otherwise
+        // fail membership and report the misleading "nepatří k právnímu aktu".
+        String canonical = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
         for (LawVersionDto v : versions) {
-            if (versionIri.equals(v.getIri())) {
+            if (canonical.equals(v.getIri())) {
                 return v;
             }
         }
-        throw new IllegalArgumentException("Znění " + versionIri
+        throw new IllegalArgumentException("Znění " + canonical
                 + " nepatří k právnímu aktu č. " + ny.number() + "/" + ny.year() + ".");
     }
 

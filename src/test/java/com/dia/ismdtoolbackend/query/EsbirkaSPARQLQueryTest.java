@@ -72,7 +72,7 @@ class EsbirkaSPARQLQueryTest {
     void lawsByNumbers_matchesOnStrNotValues_forVirtuosoDatatypeQuirk() {
         // číslo-předpisu is a typed "49"^^xsd:string that Virtuoso will not equate with the
         // plain literal "49", so a VALUES block matches zero rows.
-        String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49", "490"), 600);
+        String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49", "490"), null, 600);
         assertDoesNotThrow(() -> QueryFactory.create(q));
         assertTrue(q.contains("FILTER(STR(?cislo) IN ("), "must compare via STR(), not VALUES");
         assertFalse(q.contains("VALUES ?cislo"), "a VALUES block silently returns nothing here");
@@ -87,7 +87,7 @@ class EsbirkaSPARQLQueryTest {
 
     @Test
     void lawNumberGroups_aggregatesAndCapsGroups() {
-        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", 20);
+        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", null, 20);
         assertDoesNotThrow(() -> QueryFactory.create(q));
         // COUNT(*) counts solutions, so an act with two patří-do-sbírky or citace values
         // would inflate its group total.
@@ -104,9 +104,50 @@ class EsbirkaSPARQLQueryTest {
 
     @Test
     void lawNumberGroups_blankQOmitsFilter() {
-        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("  ", 20);
+        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("  ", null, 20);
         assertDoesNotThrow(() -> QueryFactory.create(q));
         assertFalse(q.contains("FILTER"));
+    }
+
+    @Test
+    void lawNumberGroups_yearNarrowsTheAggregateOnTheLexicalGYear() {
+        // rok-předpisu is xsd:gYear; STR() reaches its "1997" lexical form. Prefix, not
+        // equality — the FE searches per keystroke, so "49/19" must return the 1900s.
+        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", "1997", 20);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(q.contains("rok-předpisu"), "the year join is required to filter on it");
+        assertTrue(q.contains("STRSTARTS(STR(?rok)"));
+        assertTrue(q.contains("\"1997\""));
+        // Both halves filter: dropping the číslo half would group every act of 1997.
+        assertTrue(q.contains("STRSTARTS(LCASE(STR(?cislo))"));
+        // The count must still be year-scoped, so the aggregate — not a later step — filters.
+        assertTrue(q.indexOf("STRSTARTS(STR(?rok)") < q.indexOf("GROUP BY"));
+    }
+
+    @Test
+    void lawNumberGroups_omitsTheYearJoinWhenNoYearIsGiven() {
+        // A bare "49" must not pay for a join it does not filter on.
+        String q = EsbirkaSPARQLQuery.buildLawNumberGroupsQuery("49", null, 20);
+        assertFalse(q.contains("rok-předpisu"), "unused join must not be in the aggregate");
+        assertFalse(q.contains("?rok"));
+    }
+
+    @Test
+    void lawsByNumbers_repeatsTheYearNarrowingFromStepOne() {
+        // Step 1's counts are year-scoped. Without the same filter here the group would
+        // display acts the count excludes — and bury the year the user actually asked for.
+        String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49"), "1997", 600);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(q.contains("STRSTARTS(STR(?rok)"));
+        assertTrue(q.contains("\"1997\""));
+        assertTrue(q.contains("FILTER(STR(?cislo) IN ("), "číslo matching is unchanged");
+    }
+
+    @Test
+    void lawsByNumbers_blankYearAddsNoFilter() {
+        String q = EsbirkaSPARQLQuery.buildLawsByNumbersQuery(java.util.List.of("49"), "  ", 600);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertFalse(q.contains("STRSTARTS(STR(?rok)"));
     }
 
 

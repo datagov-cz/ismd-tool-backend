@@ -43,6 +43,11 @@ class EsbirkaLawContentCacheTest {
     private static final String LATEST_IRI = LAW_IRI + "/2025-11-01";
     private static final String OLDER_IRI = LAW_IRI + "/2020-01-01";
 
+    /** The pre-.gov.cz host, still present in stored concept sources. */
+    private static final String LEGACY_LAW_IRI =
+            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49";
+    private static final String LEGACY_OLDER_IRI = LEGACY_LAW_IRI + "/2020-01-01";
+
     @MockitoBean
     private EsbirkaSparqlClient client;
 
@@ -123,6 +128,37 @@ class EsbirkaLawContentCacheTest {
         verify(client, times(1)).fetchVersionContent(OLDER_IRI);
     }
 
+
+    @Test
+    void legacyHostVersionIriRendersTheSameZneniAsItsCanonicalTwin() {
+        // A legacy-host IRI used to be rejected outright by /law/content. It is a host
+        // spelling, not a different znění — and the membership scan compares against
+        // e-Sbírka's own canonical IRIs, so it must be canonicalized before that scan.
+        LawContentDto legacy = service.getLawContent("49/1997", LEGACY_OLDER_IRI);
+
+        assertEquals(OLDER_IRI, legacy.getVersionIri(), "echoed back canonical");
+        assertTrue(legacy.getBodyHtml().contains("<p>staré znění</p>"));
+    }
+
+    @Test
+    void legacyAndCanonicalVersionIrisShareOneCacheEntry() {
+        // Same znění, two spellings: a raw-string key would issue the identical ~2 MB
+        // content fetch twice and hold two copies of it.
+        service.getLawContent("49/1997", OLDER_IRI);
+        service.getLawContent("49/1997", LEGACY_OLDER_IRI);
+
+        verify(client, times(1)).fetchVersionContent(OLDER_IRI);
+    }
+
+    @Test
+    void legacyHostLawIriSharesTheVersionListCacheEntry() {
+        // getVersions is keyed on the canonical IRI for the same reason.
+        cacheManager.getCache("esbirkaLawVersions").clear();
+        service.getVersions(LAW_IRI);
+        service.getVersions(LEGACY_LAW_IRI);
+
+        verify(client, times(1)).fetchVersions(LAW_IRI);
+    }
 
     @Test
     void oneArgOverloadIsAlsoCached() {

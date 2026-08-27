@@ -86,6 +86,25 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
+    void getVersionsAcceptsLegacyHostsAndQueriesTheCanonicalIri() {
+        // These used to 400 here while /resolve accepted them. Both legacy spellings must
+        // reach the SPARQL layer canonicalized — the endpoint only knows the .gov.cz host.
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "KONSOL", true)));
+
+        // The bare host carries no /esel-esb/ segment — canonicalization inserts it.
+        for (String legacy : new String[]{
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187",
+                "https://eselpoint.cz/eli/cz/sb/2006/187"}) {
+            List<LawVersionDto> out = service.getVersions(legacy);
+            assertEquals(1, out.size(), "legacy host rejected: " + legacy);
+            assertEquals(VERSION_IRI, out.get(0).getIri(), "canonical IRI echoed back");
+        }
+        // Never the legacy string — e-Sbírka would return nothing for it.
+        verify(client, org.mockito.Mockito.times(2)).fetchVersions(LAW_IRI);
+    }
+
+    @Test
     void getVersionsMapsModelToDtoWithEliPathAndLatest() {
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI,
@@ -108,6 +127,15 @@ class EsbirkaServiceImplTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.getFragments("javascript:alert(1)"));
         assertEquals("Neplatný identifikátor znění právního aktu.", ex.getMessage());
+    }
+
+    @Test
+    void getFragmentsAcceptsLegacyHostAndQueriesTheCanonicalIri() {
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of());
+
+        service.getFragments("https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01");
+
+        verify(client).fetchFragments(VERSION_IRI);
     }
 
     @Test
@@ -529,6 +557,25 @@ class EsbirkaServiceImplTest {
         assertTrue(ex.getMessage().contains("nepatří k právnímu aktu"), ex.getMessage());
         // Must fail before spending a ~2 MB content fetch.
         verify(client, never()).fetchVersionContent(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void getLawContentAcceptsALegacyHostVersionIriAsAMember() {
+        // The subtle half of the legacy-host fix: membership compares against v.getIri(),
+        // which e-Sbírka always returns canonically. Without canonicalizing FIRST, a legacy
+        // IRI passes validation, then fails membership, and the user is told the znění
+        // "nepatří k právnímu aktu" — a wrong-act error for a right-act request.
+        String legacyVersion =
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01";
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of());
+
+        assertEquals(VERSION_IRI,
+                service.getLawContent("49/1997", legacyVersion).getVersionIri());
+        verify(client).fetchVersionContent(VERSION_IRI);
     }
 
     @Test

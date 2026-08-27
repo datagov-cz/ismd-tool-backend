@@ -61,13 +61,13 @@ označení-fragmentu-…  (fragment)  …/{version}/dokument/norma/cast_5/…/pi
 | Endpoint | Purpose | Cache |
 |---|---|---|
 | `GET /api/eli/law/search` | Flat, ranked law list | `esbirkaLawSearch`, 60 min |
-| `GET /api/eli/law/search/grouped` | **NEW** — matches grouped by číslo + ambiguity signal | `esbirkaLawSearch`, 60 min |
+| `GET /api/eli/law/search/grouped` | Matches grouped by číslo + ambiguity signal; accepts `49`, `49/19`, `49/1997` | `esbirkaLawSearch`, 60 min |
 | `GET /api/eli/law/versions` | All znění of a law, newest first, `latest` flagged | `esbirkaLawVersions`, 60 min |
 | `GET /api/eli/law/fragments` | Fragment tree of a znění (no HTML bodies) | — |
 | `GET /api/eli/law/content` | Whole znění: header + version list + tree + HTML | `esbirkaLawContent`, 24 h |
 | `GET /api/eli/resolve` | ELI URL → display object | `esbirkaFragmentResolution`, 24 h |
 
-**Their accepted input shapes are disjoint — see §4 before wiring a search box.**
+**`/law/search/grouped` accepts every input shape; `/law/content` is strict — see §4.**
 
 All are on the **public** security chain (`SecurityConfig.publicSecurityFilterChain`).
 `SecurityConfig` uses an explicit allowlist with `anyRequest().denyAll()`, and the matchers are
@@ -77,56 +77,56 @@ new endpoint must be listed individually or it 403s before `@PreAuthorize` runs.
 
 ## 4. Input Contracts — what each endpoint accepts (READ THIS FIRST, FE)
 
-**The three law-facing endpoints accept _disjoint_ input shapes.** This is deliberate but not
-enforced anywhere in code, and getting it wrong fails *silently* on one of them. All behaviour
-below verified live 2026-08-23.
+**`/law/search/grouped` answers every input shape** — it is the one endpoint a search box needs.
+`/law/content` remains strict, because it renders a single act rather than searching. Behaviour
+verified live 2026-08-27.
 
 | Input the user typed | `/law/search` (flat) | `/law/search/grouped` | `/law/content` |
 |---|---|---|---|
-| `49` (bare number) | ✅ ranked rows | ✅ **the intended endpoint** | ❌ HTTP 400 |
-| `49/1997` (číslo/rok) | ✅ exact act first | ⚠️ **0 groups, HTTP 200** | ✅ **the intended endpoint** |
-| `49/1997 Sb.` | ✅ exact act first | ⚠️ **0 groups, HTTP 200** | ✅ (suffix stripped) |
+| `49` (bare number) | ✅ ranked rows | ✅ groups, `ambiguous: true` | ❌ HTTP 400 |
+| `49/` (mid-typing) | ✅ ranked rows | ✅ same as `49` | ❌ HTTP 400 |
+| `49/19` (partial year) | ✅ ranked rows | ✅ narrowed to the 1900s | ❌ HTTP 400 |
+| `49/1997` (číslo/rok) | ✅ exact act first | ✅ 1 group, `ambiguous: false` | ✅ **the intended endpoint** |
+| `49/1997 Sb.` | ✅ exact act first | ✅ (suffix stripped) | ✅ (suffix stripped) |
 | `` (empty) | ✅ newest acts | ✅ lowest čísla | ❌ HTTP 400 |
 | `abc` (nonsense) | ✅ 0 rows | ✅ 0 groups | ❌ HTTP 400 |
 
-### ⚠️ The trap: grouped search cannot answer a fully-qualified query
+### FE routing: one box, one endpoint
 
-`/law/search/grouped?q=49/1997` returns **HTTP 200 with `groups: []`, `ambiguous: false`,
-`totalMatches: 0`** — indistinguishable from a genuine no-match (`q=abc`).
+Route **every keystroke** to `/law/search/grouped` (debounced — see §8), then call
+`/law/content?law=<číslo/rok>` once the user commits to an act. No needle inspection, no
+endpoint switching. The flat `/law/search` stays available but is no longer required for
+qualified queries.
 
-**Why.** Step 1 matches with `STRSTARTS(STR(?cislo), needle)`, and `?cislo` holds `"49"` — it
-never contains a slash. So `"49/1997"` prefix-matches no číslo at all. For the same reason
-`exactNumberMatch` is **always false** for any needle containing `/`, even when the query pins
-exactly one act.
-
-**Consequence for the FE:** if a search box routes every keystroke to `/search/grouped`, the
-moment the user types the `/` in `49/1997` the results **vanish**, and the response says
-"nothing found" rather than "wrong endpoint".
-
-### Recommended FE routing
+The needle is split on `/` into a **číslo prefix** and a **rok prefix**, and both halves are
+prefix-matched, so results narrow monotonically as the user types and never blank mid-word:
 
 ```
-needle contains "/"  →  /law/search  (flat, exact act ranks first)
-                        …and /law/content?law=<needle> once the user commits
-needle is digits only → /law/search/grouped   (ambiguity resolution: pick a year)
+q=49        → 11 groups, 323 acts, ambiguous
+q=49/       → 11 groups, 323 acts   (a trailing slash carries no year)
+q=49/19     → 11 groups, 163 acts
+q=49/199    → 11 groups,  40 acts
+q=49/1997   →  1 group,    1 act,  ambiguous: false, exactNumberMatch: true
 ```
 
-Or simply: **route to `/law/search/grouped` only while the needle is digits-only.**
+`ambiguous: false` with one act is the FE's cue that the user has pinned an act and the year
+prompt can be skipped.
 
-### If this split is wrong for the FE
+### Notes on the split
 
-It is cheap to change — say which you want:
+- **The year is a prefix, not an equality.** `49/19` must return the 1900s rather than nothing —
+  the FE searches per keystroke, and an equality filter would blank the list on every
+  intermediate state.
+- **Both query steps apply the year filter.** Step 1's `count` is year-scoped; if step 2 fetched
+  every act of that číslo, a group would display 8 acts while claiming a count of 1.
+- **`exactNumberMatch` compares the číslo half**, not the raw needle, so it is now meaningful for
+  qualified queries (it was permanently `false` for anything containing `/`).
+- **A non-numeric year half is ignored rather than applied.** `49/abc` still returns the
+  číslo-49 groups; filtering on an unmatchable year would blank results the user can still use.
+- **`/law/content` is unchanged** and still requires a complete `číslo/rok` — see below.
 
-- **(a) Grouped accepts `číslo/rok` too.** Split the needle on `/`, prefix-match the číslo and
-  filter the year in step 1. Grouped then answers every input shape and `exactNumberMatch`
-  becomes meaningful for qualified queries. ~1 h. Recommended if the FE wants one search box
-  wired to one endpoint.
-- **(b) Grouped rejects `/` with HTTP 400** and a Czech message pointing at `/law/content`.
-  Makes the current split explicit instead of silent. ~15 min.
-- **(c) Leave as-is** and have the FE route as above.
-
-Today the code does **(c)** — no validation, no signal. Nothing else in the system depends on
-that choice.
+Implemented as option (a) of the three sketched here previously, at the FE's request. Options
+(b) "reject `/` with 400" and (c) "leave the split to the FE" are no longer on the table.
 
 ### Other input notes
 
@@ -146,14 +146,13 @@ that choice.
   Note the same message is returned for a *non-existent* version of the right law (e.g.
   `…/1997/49/2020-01-01`, a date with no znění) — membership is the only check, so "wrong act"
   and "no such znění" are not distinguished.
-- **Legacy-host IRIs are handled inconsistently across endpoints.** `/resolve` canonicalises
-  `opendata.eselpoint.cz` / bare `eselpoint.cz` → `opendata.eselpoint.gov.cz` (via
-  `EsbirkaEliParser.canonicalizeHost`), but `/law/versions`, `/law/fragments` and
-  `/law/content?versionIri=` validate the **raw** string and reject it with HTTP 400
-  (`"Neplatný identifikátor právního aktu."`). Verified live 2026-08-23. Harmless while the FE
-  passes IRIs straight through from our own responses; if legacy values are ever read back from
-  storage and replayed into these endpoints, canonicalise first — or move the normalisation into
-  `requireEsbirkaIri`, which would make all endpoints agree (~15 min).
+- **Legacy-host IRIs are accepted everywhere.** `opendata.eselpoint.cz` and bare
+  `eselpoint.cz` are rewritten to `opendata.eselpoint.gov.cz` on every e-Sbírka endpoint, matching
+  what `/resolve` and the concept write paths have always done. Responses always echo the
+  **canonical** IRI, so a legacy value replayed from storage renders normally instead of 400ing.
+  Verified live 2026-08-27: all three spellings of 49/1997 return the same 35 versions.
+  Note the bare host carries **no `/esel-esb/` segment** — `https://eselpoint.cz/eli/cz/...` is
+  the legacy shape, and canonicalisation inserts the segment.
 
 ---
 
@@ -193,16 +192,27 @@ it and render that act's text under this law's header. `selectVersion` therefore
 IRI to appear in the resolved law's own version list — free, since the version list was already
 fetched. It rejects *before* spending the ~2 MB content fetch.
 
+**Canonicalise before the membership scan, not just before validation.** The scan compares
+against `v.getIri()`, which comes from e-Sbírka and is therefore always canonical. A legacy-host
+IRI that is only canonicalised for the *validity* check still fails membership — and reports
+`"Znění … nepatří k právnímu aktu"`, a wrong-act error for a right-act request. Guarded by
+`EsbirkaServiceImplTest.getLawContentAcceptsALegacyHostVersionIriAsAMember`.
+
 The version list is fetched via `self.getVersions(...)`, not `client.fetchVersions(...)`, so it
 shares the `esbirkaLawVersions` cache. This matters for the switcher: because the content cache
 key is version-aware, a user stepping through N znění of one law takes N content-cache misses,
 and a direct client call would re-issue the identical version-list query on every one of them.
 
 ```java
-key = "#root.target.normalizeLawRef(#lawRef) + '@' + (#versionIri == null ? '' : #versionIri)"
+key = "#root.target.normalizeLawRef(#lawRef) + '@' "
+    + "+ (#versionIri == null ? '' : #root.target.canonicalizeEsbirkaIri(#versionIri))"
 ```
 
 `normalizeLawRef` still collapses `"49/1997"`, `" 49/1997 "` and `"49/1997 Sb."` to one key.
+Both cache keys run their input through a normaliser — `esbirkaLawVersions` is keyed on
+`canonicalizeEsbirkaIri(#lawIri)` for the same reason: a legacy-host IRI is the same resource,
+so keying on the raw string would issue the identical query twice and hold two copies of a
+~2 MB result. Both normalisers are `public` because SpEL calls them reflectively.
 
 ### Response header reflects what was rendered
 
@@ -243,7 +253,8 @@ would truncate the best matches before they were ever ranked.
 
 **Ranking only helps sparse čísla.** With ~120 acts numbered 49, a limit of 20 is filled by
 tier 0 alone (49/2026 … 49/2007) and 49/1997 is *still* off the page. Ranking fixes the
-**fully-qualified** query; for a bare number the real fix is `/law/search/grouped` (§7).
+**fully-qualified** query; for a bare number the real fix is `/law/search/grouped` (§7) — which
+since the needle split also answers the qualified query, making it the better default for both.
 
 Empty `q` binds no rank and keeps the `rok desc, číslo asc` order.
 
@@ -263,22 +274,40 @@ So the cap moved into SPARQL, and applies to **groups**, not rows.
 ### Two-step query
 
 ```
-Step 1  buildLawNumberGroupsQuery(q, limit)     → EsbirkaSparqlClient.searchLawNumberGroups
-        SELECT ?cislo (COUNT(*) AS ?pocet)
+Step 0  splitGroupedNeedle(q)                   → EsbirkaServiceImpl
+        "49/1997" → (číslo "49", rok "1997");  "49" → ("49", null)
+              │
+              ▼
+Step 1  buildLawNumberGroupsQuery(cislo, rok, limit) → EsbirkaSparqlClient.searchLawNumberGroups
+        SELECT ?cislo (COUNT(DISTINCT ?akt) AS ?pocet)
         FILTER(STRSTARTS(LCASE(STR(?cislo)), LCASE(?qNeedle)))
+        FILTER(STRSTARTS(STR(?rok), ?rokNeedle))        ← only when a year was typed
         GROUP BY ?cislo  ORDER BY STRLEN(STR(?cislo)) ?cislo  LIMIT {limit}
               │
-              │  distinct čísla + TRUE dataset-wide counts
+              │  distinct čísla + TRUE dataset-wide counts (year-scoped when a year was typed)
               ▼
-Step 2  buildLawsByNumbersQuery(cisla, 600)     → EsbirkaSparqlClient.fetchLawsByNumbers
+Step 2  buildLawsByNumbersQuery(cisla, rok, 600) → EsbirkaSparqlClient.fetchLawsByNumbers
         FILTER(STR(?cislo) IN (?c0, ?c1, …))
+        FILTER(STRSTARTS(STR(?rok), ?rokNeedle))        ← repeats step 1's year narrowing
         ORDER BY DESC(?rok) ?citace   LIMIT 600
               │
               ▼
 Service groups rows by číslo, sorts each group newest-first, orders groups, builds the DTO.
 ```
 
-Cost now tracks the size of the *answer*, not the *noise*: **~0.4 s even for `q=1`**.
+**Both steps must apply the same year filter.** Step 1's `count` is year-scoped, so a step 2
+that fetched every act of those čísla would display acts the count excludes — and bury the one
+year the user asked for.
+
+**The `rok-předpisu` join is added only when a year was typed.** A bare `49` must not pay for a
+join it does not filter on; the aggregate is otherwise číslo-only by design.
+
+**The year filter is `STRSTARTS(STR(?rok), …)`, not equality.** `rok-předpisu` is `xsd:gYear`,
+and `STR()` reaches its lexical `"1997"` form. Prefix rather than equality because the FE
+searches per keystroke — `49/19` must return the 1900s, not nothing.
+
+Cost now tracks the size of the *answer*, not the *noise*: **~0.4 s even for `q=1`**. The added
+`rok` join does not change that — `q=1/19`, the worst qualified shape, measured ~0.3 s.
 
 **The group cap alone does not bound the response.** Group size is itself unbounded (~120 acts
 per low číslo), so 50 groups would stream ~6 000 rows. Step 2 therefore carries a row cap
@@ -316,7 +345,8 @@ semantic and the cheaper one.
 | `ambiguous` | The user still has a choice: >1 group, or one group with >1 act. **False on zero matches** — that is "not found", not "pick a year". The FE's cue to prompt for a year instead of auto-selecting. |
 | `totalMatches` | Acts across the returned groups, summed from the aggregate. |
 | `truncated` | The group cap was filled, so more numbers match than were returned. FE should say "refine your search". |
-| `count` | Dataset-wide total for that číslo, from `COUNT(*)` — **not** the length of `laws`, which is what was fetched for display. |
+| `count` | Dataset-wide total for that číslo, from `COUNT(DISTINCT ?akt)` — **not** the length of `laws`, which is what was fetched for display. Scoped to the year when the needle carried one. |
+| `exactNumberMatch` | The group's číslo equals the needle's **číslo half** — true for `49` and for `49/1997` alike. |
 
 ### Group ordering
 
@@ -433,11 +463,13 @@ Depth is capped at `MAX_FRAGMENT_DEPTH = 10`; >5 000 rows logs a warning.
 ## 11. Component Map
 
 ```
-EsbirkaController              /api/eli/**  — limit validation, Czech error messages
+EsbirkaController              /api/eli/**  — limit validation, Czech error messages,
+                              fail-fast IRI shape check (legacy hosts allowed through)
         │
 EsbirkaService (interface)     ← @Lazy self-proxy target for @Cacheable delegation
         │
-EsbirkaServiceImpl            grouping, tree assembly, version selection, HTML rendering
+EsbirkaServiceImpl            needle split, grouping, tree assembly, version selection,
+                              HTML rendering; canonicalises every IRI before use
         │
 EsbirkaSparqlClient           one method per query; maps ResultSet → models
         │
@@ -451,8 +483,10 @@ Models: `LawModel`, `LawVersionModel`, `LawNumberGroupModel`, `FragmentModel`,
 DTOs: `LawDto`, `LawVersionDto`, `LawSearchGroupDto`, `LawSearchResultDto`, `LawContentDto`,
 `FragmentDto`, `ResolvedLegalSourceDto`.
 
-Every user-supplied IRI passes `SparqlIriValidator.isEsbirkaEliIri` before interpolation; all
-needles are bound via `ParameterizedSparqlString`, never concatenated.
+Every user-supplied IRI is canonicalised (`EsbirkaEliParser.canonicalizeHost`) and then passes
+`SparqlIriValidator.isEsbirkaEliIri` before interpolation — in that order, so a legacy host is
+treated as a spelling rather than an invalid identifier. All needles are bound via
+`ParameterizedSparqlString`, never concatenated.
 
 ---
 
@@ -462,9 +496,9 @@ needles are bound via `ParameterizedSparqlString`, never concatenated.
 |---|---|
 | `EsbirkaSPARQLQueryTest` | query text: rank tiers, `STR()` vs `VALUES`, `GROUP BY` cap, injection escaping |
 | `EsbirkaLawSearchRankingTest` | executes the real query against an in-memory Jena model and asserts **actual result order** |
-| `EsbirkaGroupedSearchTest` | grouping, ambiguity flag, group ordering, dataset-wide counts |
-| `EsbirkaLawContentCacheTest` | runs the **real cache manager** — key collisions and self-invocation are only observable through the Spring proxy |
-| `EsbirkaServiceImplTest` | version selection, membership guard, tree assembly edge cases |
+| `EsbirkaGroupedSearchTest` | grouping, ambiguity flag, group ordering, dataset-wide counts, needle split (`49/1997`, partial years, `Sb.` suffix) |
+| `EsbirkaLawContentCacheTest` | runs the **real cache manager** — key collisions, self-invocation and legacy/canonical key sharing are only observable through the Spring proxy |
+| `EsbirkaServiceImplTest` | version selection, membership guard, legacy-host acceptance, tree assembly edge cases |
 | `EsbirkaControllerTest` | envelope shape, 400/503 mapping |
 
 The ranking, cache-key, membership and self-proxy guards were each **mutation-tested**:

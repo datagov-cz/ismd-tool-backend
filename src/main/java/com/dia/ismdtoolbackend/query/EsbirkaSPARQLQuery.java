@@ -6,7 +6,6 @@ import java.util.List;
 
 public class EsbirkaSPARQLQuery {
 
-    // Predicates verified 2026-04-30 against https://opendata.eselpoint.gov.cz/sparql:
     //   Law      type:        datový/sbírka/pojem/právní-akt
     //   Law      citation:    datový/sbírka/pojem/citace-právního-aktu        ("187/2006 Sb.")
     //   Law      number:      datový/sbírka/pojem/číslo-předpisu              (xsd:string)
@@ -20,11 +19,10 @@ public class EsbirkaSPARQLQuery {
     //   Version  versionType: datový/sbírka/pojem/má-typ-znění-právního-aktu
     //   Version  fragment:    datový/sbírka/pojem/má-fragment-znění
     //   Fragment type:        datový/sbírka/pojem/označení-fragmentu-znění-právního-aktu
-    //   Fragment citation:    datový/sbírka/pojem/citace-označení-fragmentu-znění-právního-aktu
     //   Fragment parent:      datový/sbírka/pojem/má-předka
     //   Fragment order:       datový/sbírka/pojem/pořadí-fragmentu-znění-právního-aktu  (hex string, lex-sortable)
     //
-    // Fragment kinds (verified 2026-05-04 against sample version 187/2006/2026-04-01):
+    //   Fragment kinds (verified 2026-05-04 against sample version 187/2006/2026-04-01):
     //   par, odst, pism, bod, ppc, dil, hlava, oddil, cast, frag,
     //   plus structural parents: dokument/{norma,prefix,postfix,poznamkypodcarou}.
 
@@ -69,22 +67,37 @@ public class EsbirkaSPARQLQuery {
     }
 
     /**
-     * Step 1 of the grouped search: distinct předpis numbers prefix-matching the needle, each
-     * with its dataset-wide act count, capped at {@code limit} <em>groups</em>.
+     * Step 1 of the grouped search: distinct předpis numbers prefix-matching {@code cisloPrefix},
+     * each with its dataset-wide act count, capped at {@code limit} <em>groups</em>.
      *
      * <p>Ordered by číslo length then číslo, so the shortest (most exact) numbers come first.
+     *
+     * <p>{@code rokPrefix} narrows the aggregate to acts whose rok starts with it, so a
+     * "číslo/rok" needle groups only that year's acts and the counts stay truthful. It is a
+     * prefix, not an equality, because the FE searches per keystroke: "49/19" must return the
+     * 1900s rather than nothing. The rok-předpisu join is added only when a year is given —
+     * without one it is pure cost.
      */
-    public static String buildLawNumberGroupsQuery(String q, int limit) {
-        boolean hasFilter = q != null && !q.isBlank();
+    public static String buildLawNumberGroupsQuery(String cisloPrefix, String rokPrefix, int limit) {
+        boolean hasCislo = cisloPrefix != null && !cisloPrefix.isBlank();
+        boolean hasRok = rokPrefix != null && !rokPrefix.isBlank();
         StringBuilder sb = new StringBuilder();
         // COUNT(DISTINCT ?akt), not COUNT(*): an act with several patří-do-sbírky or citace
         // values yields several solutions.
         sb.append("SELECT ?cislo (COUNT(DISTINCT ?akt) AS ?pocet) WHERE {\n");
         sb.append("  ?akt a <").append(NS).append("právní-akt> ;\n");
         sb.append("       <").append(NS).append("citace-právního-aktu> ?citace ;\n");
-        sb.append("       <").append(NS).append("číslo-předpisu> ?cislo .\n");
-        if (hasFilter) {
+        sb.append("       <").append(NS).append("číslo-předpisu> ?cislo");
+        if (hasRok) {
+            sb.append(" ;\n       <").append(NS).append("rok-předpisu> ?rok");
+        }
+        sb.append(" .\n");
+        if (hasCislo) {
             sb.append("  FILTER(STRSTARTS(LCASE(STR(?cislo)), LCASE(?qNeedle)))\n");
+        }
+        if (hasRok) {
+            // rok-předpisu is xsd:gYear; STR() compares its lexical "1997" form.
+            sb.append("  FILTER(STRSTARTS(STR(?rok), ?rokNeedle))\n");
         }
         sb.append("}\n");
         sb.append("GROUP BY ?cislo\n");
@@ -93,8 +106,11 @@ public class EsbirkaSPARQLQuery {
 
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.setCommandText(sb.toString());
-        if (hasFilter) {
-            pss.setLiteral("qNeedle", q);
+        if (hasCislo) {
+            pss.setLiteral("qNeedle", cisloPrefix);
+        }
+        if (hasRok) {
+            pss.setLiteral("rokNeedle", rokPrefix);
         }
         return pss.toString();
     }
@@ -108,8 +124,13 @@ public class EsbirkaSPARQLQuery {
      * a typed {@code "49"^^xsd:string} that Virtuoso will not equate with a plain literal, so a
      * {@code VALUES} block matches zero rows. Same workaround as
      * {@link #buildLawByNumberYearQuery}.
+     *
+     * <p>{@code rokPrefix} must repeat the year narrowing applied in step 1. Step 1's counts
+     * are year-scoped, so fetching every act of those čísla would display acts the count does
+     * not include — and bury the one year the user asked for.
      */
-    public static String buildLawsByNumbersQuery(List<String> cisla, int rowLimit) {
+    public static String buildLawsByNumbersQuery(List<String> cisla, String rokPrefix, int rowLimit) {
+        boolean hasRok = rokPrefix != null && !rokPrefix.isBlank();
         StringBuilder needles = new StringBuilder();
         for (int i = 0; i < cisla.size(); i++) {
             if (i > 0) {
@@ -126,12 +147,17 @@ public class EsbirkaSPARQLQuery {
                        <%1$srok-předpisu> ?rok ;
                        <%1$spatří-do-sbírky> ?sbirka .
                   FILTER(STR(?cislo) IN (%2$s))
-                }
+                %3$s}
                 ORDER BY DESC(?rok) ?citace
-                LIMIT %3$d
-                """.formatted(NS, needles, rowLimit));
+                LIMIT %4$d
+                """.formatted(NS, needles,
+                hasRok ? "  FILTER(STRSTARTS(STR(?rok), ?rokNeedle))\n" : "",
+                rowLimit));
         for (int i = 0; i < cisla.size(); i++) {
             pss.setLiteral("c" + i, cisla.get(i));
+        }
+        if (hasRok) {
+            pss.setLiteral("rokNeedle", rokPrefix);
         }
         return pss.toString();
     }
@@ -163,7 +189,7 @@ public class EsbirkaSPARQLQuery {
     /**
      * Versions for a given law, ordered newest-first by účinnost-znění-od.
      * Latest flagged via equality with má-poslední-znění.
-     * lawIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
+     * lawIri must be canonicalized and validated by EsbirkaServiceImpl before it reaches here.
      */
     public static String buildVersionListQuery(String lawIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
@@ -187,7 +213,7 @@ public class EsbirkaSPARQLQuery {
     /**
      * All fragments of a given version with parent edge and lex-sortable order key.
      * Top-level fragments have parent = <versionIri>/dokument/norma.
-     * versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the controller boundary.
+     * versionIri must be canonicalized and validated by EsbirkaServiceImpl before it reaches here.
      *
      * <p>Only {@code pořadí} may be required — a required join upstream stops populating
      * returns zero rows and renders the law blank. {@code citace} is absent dataset-wide and
@@ -221,8 +247,8 @@ public class EsbirkaSPARQLQuery {
      * fragments, {@code citace} dataset-wide (derived from IRI path segments instead), and
      * {@code parent} on document roots.
      *
-     * <p>versionIri must be pre-validated by SparqlIriValidator.isEsbirkaEliIri at the
-     * controller boundary.
+     * <p>versionIri must be canonicalized and validated by EsbirkaServiceImpl before it
+     * reaches here.
      */
     public static String buildVersionContentQuery(String versionIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();

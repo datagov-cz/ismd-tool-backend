@@ -59,25 +59,27 @@ public class EsbirkaSparqlClient {
     }
 
     /**
-     * Distinct předpis numbers matching the needle, with a dataset-wide act count each,
-     * capped at {@code limit} groups (not rows).
+     * Distinct předpis numbers prefix-matching {@code cisloPrefix}, with a dataset-wide act
+     * count each, capped at {@code limit} groups (not rows). A non-blank {@code rokPrefix}
+     * narrows the aggregate — and therefore the counts — to acts of that year.
      */
-    public List<LawNumberGroupModel> searchLawNumberGroups(String q, int limit) {
+    public List<LawNumberGroupModel> searchLawNumberGroups(String cisloPrefix, String rokPrefix, int limit) {
         return executeSelect("law number groups",
-                EsbirkaSPARQLQuery.buildLawNumberGroupsQuery(q, limit),
+                EsbirkaSPARQLQuery.buildLawNumberGroupsQuery(cisloPrefix, rokPrefix, limit),
                 this::mapNumberGroupRows);
     }
 
     /**
      * Acts carrying one of the given čísla, newest rok first, capped at {@code rowLimit} rows.
-     * Empty input short-circuits without a round-trip.
+     * {@code rokPrefix} repeats step 1's year narrowing. Empty input short-circuits without a
+     * round-trip.
      */
-    public List<LawModel> fetchLawsByNumbers(List<String> cisla, int rowLimit) {
+    public List<LawModel> fetchLawsByNumbers(List<String> cisla, String rokPrefix, int rowLimit) {
         if (cisla == null || cisla.isEmpty()) {
             return List.of();
         }
         return executeSelect("laws by numbers",
-                EsbirkaSPARQLQuery.buildLawsByNumbersQuery(cisla, rowLimit),
+                EsbirkaSPARQLQuery.buildLawsByNumbersQuery(cisla, rokPrefix, rowLimit),
                 this::mapLawRows);
     }
 

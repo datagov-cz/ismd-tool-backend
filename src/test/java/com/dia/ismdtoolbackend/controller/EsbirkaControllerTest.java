@@ -171,6 +171,17 @@ class EsbirkaControllerTest {
     }
 
     @Test
+    void versionsLegacyHostIsNotRejectedAtTheBoundary() throws Exception {
+        // /resolve has always accepted these hosts; this endpoint used to 400 them. The
+        // controller guard must let them through to the service, which canonicalizes.
+        String legacy = "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187";
+        when(esbirkaService.getVersions(legacy)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/eli/law/versions").param("lawIri", legacy))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void versionsService503BubblesUp() throws Exception {
         when(esbirkaService.getVersions(LAW_IRI))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka version list fetch failed"));
@@ -200,6 +211,16 @@ class EsbirkaControllerTest {
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", "javascript:alert(1)"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Neplatný identifikátor znění právního aktu."));
+    }
+
+    @Test
+    void fragmentsLegacyHostIsNotRejectedAtTheBoundary() throws Exception {
+        // Bare legacy host — no /esel-esb/ segment; canonicalization inserts it.
+        String legacy = "https://eselpoint.cz/eli/cz/sb/2006/187/2026-04-01";
+        when(esbirkaService.getFragments(legacy)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", legacy))
+                .andExpect(status().isOk());
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.controller.dto.LawSearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -179,8 +180,15 @@ public class EsbirkaController {
         return limit;
     }
 
+    /**
+     * Reject anything that is not an e-Sbírka ELI IRI, accepting the legacy hosts
+     * ({@code opendata.eselpoint.cz}, bare {@code eselpoint.cz}) that {@code /resolve} and the
+     * concept write paths accept. The service canonicalizes again before querying, so this is a
+     * fail-fast on shape only — it deliberately does not rewrite the value it was given.
+     */
     private static void requireEsbirkaIri(String iri, String message) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(iri)) {
+        String canonical = iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
             throw new IllegalArgumentException(message);
         }
     }
