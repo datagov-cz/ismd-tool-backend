@@ -20,7 +20,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -76,6 +78,42 @@ class EsbirkaLawContentCacheTest {
     private static FragmentModel fragment(String versionIri, String body) {
         return new FragmentModel(versionIri + "/dokument/norma/par_1",
                 versionIri + "/dokument/norma", "§ 1", "par", "0001", body);
+    }
+
+    @Test
+    void contentNavigationTreeIsFullyLabelled() {
+        // The navigation tree is built from /law/content, not /law/fragments. This walks the
+        // real 49/1997 shape through getLawContent to prove the labels reach that response:
+        // the document root and its containers used to render blank, taking the top two
+        // navigation levels with them.
+        String dokument = LATEST_IRI + "/dokument";
+        String norma = dokument + "/norma";
+        String cast = norma + "/cast_1";
+        String par = cast + "/par_1";
+        String textBlock = par + "/frag_3304837";
+        when(client.fetchVersionContent(LATEST_IRI)).thenReturn(List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001", null),
+                new FragmentModel(norma, dokument, null, "norma", "0002", null),
+                new FragmentModel(dokument + "/prefix", dokument, null, "prefix", "0003", null),
+                new FragmentModel(cast, norma, "Část 1", "cast", "0004", null),
+                new FragmentModel(par, cast, "§ 1", "par", "0005", null),
+                new FragmentModel(textBlock, par, null, "frag", "0006", "<p>text</p>")));
+
+        LawContentDto out = service.getLawContent("49/1997", LATEST_IRI);
+
+        var root = out.getFragments().get(0);
+        assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
+        assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
+        assertEquals("Úvodní ustanovení", root.getChildren().get(1).getCitation());
+
+        // The unnumbered text block stays in the body but is flagged out of the navigation,
+        // rather than surfacing its internal id as "§ 1 frag 3304837".
+        var leaf = root.getChildren().get(0).getChildren().get(0).getChildren().get(0)
+                .getChildren().get(0);
+        assertNull(leaf.getCitation());
+        assertFalse(leaf.isNavigable());
+        assertTrue(out.getBodyHtml().contains("<p>text</p>"),
+                "a non-navigable node must still contribute its text to the rendered body");
     }
 
     @Test

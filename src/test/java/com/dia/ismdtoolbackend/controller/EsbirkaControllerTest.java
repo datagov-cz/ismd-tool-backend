@@ -196,7 +196,7 @@ class EsbirkaControllerTest {
     void fragmentsHappyPathReturnsTree() throws Exception {
         FragmentDto root = new FragmentDto(VERSION_IRI + "/par_1",
                 "/eli/cz/sb/2006/187/2026-04-01/par_1",
-                "par", "§ 1", "0001", null, new ArrayList<>());
+                "par", "§ 1", "0001", null, true, new ArrayList<>());
         when(esbirkaService.getFragments(VERSION_IRI)).thenReturn(List.of(root));
 
         mockMvc.perform(get("/api/eli/law/fragments").param("versionIri", VERSION_IRI))
@@ -290,12 +290,12 @@ class EsbirkaControllerTest {
     void contentHappyPathReturnsHeaderVersionsAndTree() throws Exception {
         FragmentDto child = new FragmentDto(VERSION_IRI + "/par_1/odst_1",
                 "/eli/cz/sb/2006/187/2026-04-01/par_1/odst_1",
-                "odst", "§ 1 odst. 1", "0002", "<var>1.</var> Tělo.", new ArrayList<>());
+                "odst", "§ 1 odst. 1", "0002", "<var>1.</var> Tělo.", true, new ArrayList<>());
         List<FragmentDto> children = new ArrayList<>();
         children.add(child);
         FragmentDto root = new FragmentDto(VERSION_IRI + "/par_1",
                 "/eli/cz/sb/2006/187/2026-04-01/par_1",
-                "par", "§ 1", "0001", null, children);
+                "par", "§ 1", "0001", null, true, children);
         LawVersionDto v = new LawVersionDto(VERSION_IRI, "/eli/cz/sb/2006/187/2026-04-01",
                 LocalDate.of(2026, 4, 1), null, "t", true);
         LawContentDto dto = LawContentDto.builder()
