@@ -1,7 +1,9 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -9,6 +11,19 @@ import java.util.List;
 import java.util.Optional;
 
 public interface OntologyMetadataRepository extends JpaRepository<OntologyMetadataEntity, Long> {
+
+    /**
+     * Fetch an ontology's metadata row with a {@code SELECT … FOR UPDATE} row lock.
+     * <p>
+     * Used by the {@code updatedAt} touch path, where several concepts of one ontology contend for
+     * the same parent row. Callers that lock both rows take the concept lock first
+     * ({@link ConceptMetadataRepository#findWithLockById}) and this one second; that concept →
+     * ontology order is the project-wide convention and is what keeps two concurrent edits of
+     * different concepts in the same ontology from deadlocking.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM OntologyMetadataEntity o WHERE o.id = :id")
+    Optional<OntologyMetadataEntity> findWithLockById(@Param("id") Long id);
 
     /**
      * Default (no-source) ontology search. Any authenticated caller sees every

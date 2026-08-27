@@ -1,32 +1,35 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
-import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
+import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
-import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.RDFNode;
+import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
+import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import org.apache.jena.sys.JenaSystem;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -45,28 +48,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 /**
- * Review #8(c) — the end-to-end seam: the REAL {@link ConceptServiceImpl} (real editor/creator/mapper,
- * real PG repos via Testcontainers, real outbox beans + in-mem TDB2) with {@code outbox.enabled=true},
- * driven through the actual enqueue → drain → apply flow. The headline case is **create → rename**:
- * the #4 fix keys both rows on the pre-edit IRI (same aggregate), so the rename's DELETE of old-IRI
- * triples can never apply before the create's INSERT of them.
+ * Guards {@code updatedAt} propagation against REAL Postgres through the REAL {@link ConceptServiceImpl}.
  *
- * <p>Beans are Spring-managed (a {@link TestConfiguration}) so {@code @Transactional}/REQUIRES_NEW on
- * the service and relay are actually proxied — hand-{@code new}'d beans would skip the proxies and the
- * after-commit nudge's REQUIRES_NEW drain would fail with "no transaction". Peripheral read-path deps
- * are mocked.
+ * <p>The headline case is the **RDF-only edit**: changing a concept's definition dirties no mapped
+ * column, so before {@link MetadataTouchService} the {@code save()} was a silent no-op and neither
+ * timestamp moved. The whole suite missed this because it mocks the persistence layer — only a real
+ * PG flush can tell "saved" apart from "no UPDATE emitted".
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
-@Import({ConceptOutboxFlowIntegrationTest.Beans.class, TransactionTemplateConfig.class,
+@Import({UpdatedAtPropagationIntegrationTest.Beans.class, TransactionTemplateConfig.class,
         com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
-// No ambient test transaction: the service methods must run in their OWN @Transactional boundary so
-// the after-commit nudge fires on a real commit (a wrapping test tx would never commit).
+// No ambient test transaction: the service must run in its own @Transactional boundary so each write
+// really commits and the next read sees a committed timestamp.
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
+class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String USER = "user123";
@@ -76,7 +75,6 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
     @Autowired private OutboxEntryRepository outboxRepository;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private ConceptServiceImpl service;
-    @Autowired private OutboxConfig outboxConfig;
     @Autowired private InMemoryTdb2 tdb2;
 
     @BeforeAll
@@ -86,13 +84,14 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void setUp() {
-        outboxConfig.setEnabled(true);
-        outboxConfig.setBatchSize(100);
-        // Clean slate + the FK target ontology row (createMetadataEntity requires it).
         txTemplate.executeWithoutResult(tx -> {
             outboxRepository.deleteAll();
             conceptMetadataRepository.deleteAll();
+            // Flush the child deletes before removing the parents: the ontology→concepts cascade would
+            // otherwise re-attach rows already queued for deletion and leave the ontology row behind.
+            conceptMetadataRepository.flush();
             ontologyMetadataRepository.deleteAll();
+            ontologyMetadataRepository.flush();
             OntologyMetadataEntity ont = new OntologyMetadataEntity();
             ont.setSlug("g-ontology");
             ont.setGraphName(GRAPH);
@@ -107,7 +106,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
     private ClassConceptModel classModel(String name) {
         ClassConceptModel m = new ClassConceptModel();
         m.setConceptType("třída");
-        m.setType("objekt"); // ConceptCreator.addSpecificClassType requires a non-null type
+        m.setType("objekt");
         m.setOntologyGraphName(GRAPH);
         m.setNamespace(GRAPH);
         NameModel nm = new NameModel();
@@ -118,42 +117,87 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         return m;
     }
 
-    @Test
-    void createThenRename_throughRealService_ordersCorrectly_noLostConcept() {
-        // CREATE (flag on): the synchronous after-commit nudge drains, so the concept lands in TDB2.
-        service.createConcept(classModel("Alpha"), USER);
-        ConceptMetadataEntity row = conceptMetadataRepository.findAll().get(0);
-        Long id = row.getId();
-        String oldIri = row.getConceptIri();
-        Model afterCreate = tdb2.dataset().getNamedModel(GRAPH);
-        assertThat(afterCreate.containsResource(afterCreate.getResource(oldIri)))
-                .as("create's nudge drained the concept into TDB2").isTrue();
+    private LocalDateTime ontologyUpdatedAt() {
+        return ontologyMetadataRepository.findByGraphName(GRAPH).orElseThrow().getUpdatedAt();
+    }
 
-        // RENAME (flag on): rename to a new IRI. The outbox row keys on the PRE-EDIT (old) IRI — same
-        // aggregate as the create — so ordering holds and the rename relocates old→new in TDB2.
-        com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel rename =
-                new com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel();
-        rename.setConceptType("třída");
+    private LocalDateTime conceptUpdatedAt(Long id) {
+        return conceptMetadataRepository.findById(id).orElseThrow().getUpdatedAt();
+    }
+
+    private void pause() {
+        try {
+            Thread.sleep(20);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** An edit that changes ONLY RDF (definition) must still bump both timestamps. */
+    @Test
+    void rdfOnlyEdit_bumpsConceptAndOntologyUpdatedAt() {
+        service.createConcept(classModel("Alpha"), USER);
+        Long id = conceptMetadataRepository.findAll().get(0).getId();
+
+        String iriBefore = conceptMetadataRepository.findById(id).orElseThrow().getConceptIri();
+        LocalDateTime conceptBefore = conceptUpdatedAt(id);
+        LocalDateTime ontologyBefore = ontologyUpdatedAt();
+        pause();
+
+        // Same name (no IRI/name change) + a new definition → RDF changes, mapped columns do not.
+        ClassConceptEditModel edit = new ClassConceptEditModel();
+        edit.setConceptType("třída");
         NameModel nm = new NameModel();
         Map<String, String> names = new HashMap<>();
-        names.put("cs", "Beta");
+        names.put("cs", "Alpha");
         nm.setName(names);
-        rename.setNameModel(nm);
+        edit.setNameModel(nm);
+        Map<String, String> definition = new HashMap<>();
+        definition.put("cs", "Nová definice pojmu.");
+        com.dia.ismdtoolbackend.models.concept.DefinitionModel dm =
+                new com.dia.ismdtoolbackend.models.concept.DefinitionModel();
+        dm.setDefinition(definition);
+        edit.setDefinitionModel(dm);
 
-        service.editConcept(id, rename);
+        service.editConcept(id, edit);
 
-        String newIri = conceptMetadataRepository.findById(id).orElseThrow().getConceptIri();
-        assertThat(newIri).as("rename changed the IRI").isNotEqualTo(oldIri);
+        assertThat(conceptMetadataRepository.findById(id).orElseThrow().getConceptIri())
+                .as("precondition: this edit is RDF-only — the IRI must not change")
+                .isEqualTo(iriBefore);
+        assertThat(conceptUpdatedAt(id))
+                .as("RDF-only edit bumps the concept's updatedAt")
+                .isAfter(conceptBefore);
+        assertThat(ontologyUpdatedAt())
+                .as("concept edit propagates to the parent ontology's updatedAt")
+                .isAfter(ontologyBefore);
+    }
 
-        Model g = tdb2.dataset().getNamedModel(GRAPH);
-        assertThat(g.containsResource(g.getResource(newIri))).as("new IRI present in TDB2").isTrue();
-        assertThat(g.listStatements(g.getResource(oldIri), null, (RDFNode) null).hasNext())
-                .as("old IRI fully relocated, not left behind").isFalse();
-        assertThat(g.size()).as("concept survived the rename").isGreaterThan(0);
+    /** Creating a concept modifies the vocabulary, so the parent ontology must move. */
+    @Test
+    void createConcept_bumpsOntologyUpdatedAt() {
+        LocalDateTime before = ontologyUpdatedAt();
+        pause();
 
-        // Both outbox rows applied (DONE) and keyed on the SAME aggregate (the old IRI) — the #4 fix.
-        assertThat(outboxRepository.findAll()).allMatch(r -> r.getStatus() == OutboxStatus.DONE);
-        assertThat(outboxRepository.findAll()).allMatch(r -> oldIri.equals(r.getAggregateIri()));
+        service.createConcept(classModel("Alpha"), USER);
+
+        assertThat(ontologyUpdatedAt()).isAfter(before);
+    }
+
+    /** Deleting a concept likewise modifies the vocabulary. */
+    @Test
+    void deleteConcept_bumpsOntologyUpdatedAt() {
+        service.createConcept(classModel("Alpha"), USER);
+        Long id = conceptMetadataRepository.findAll().get(0).getId();
+
+        LocalDateTime before = ontologyUpdatedAt();
+        pause();
+
+        service.deleteConcept(id);
+
+        assertThat(conceptMetadataRepository.findById(id)).isEmpty();
+        assertThat(ontologyUpdatedAt())
+                .as("deleting a concept bumps the parent ontology's updatedAt")
+                .isAfter(before);
     }
 
     @TestConfiguration
@@ -164,22 +208,21 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
             return c;
         }
         @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
-        @Bean MetadataTouchService metadataTouchService(ConceptMetadataRepository c,
-                                                        OntologyMetadataRepository o) {
-            return new MetadataTouchService(c, o);
-        }
         @Bean @Primary ConceptMetadataMapper conceptMetadataMapper() { return new ConceptMetadataMapperImpl(); }
         @Bean OutboxWriter outboxWriter(OutboxEntryRepository r) { return new OutboxWriter(r); }
         @Bean OutboxRelay outboxRelay(OutboxEntryRepository r, InMemoryTdb2 t, OutboxConfig c) {
             return new OutboxRelay(r, t, c);
         }
         @Bean OutboxRelayTrigger outboxRelayTrigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
+        @Bean MetadataTouchService metadataTouchService(ConceptMetadataRepository c,
+                                                        OntologyMetadataRepository o) {
+            return new MetadataTouchService(c, o);
+        }
 
         @Bean ConceptServiceImpl conceptServiceImpl(
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
-                ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
-                OutboxConfig outboxConfig, OutboxWriter writer, OutboxRelayTrigger trigger,
-                MetadataTouchService touchService) {
+                MetadataTouchService touchService, ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
+                OutboxConfig outboxConfig, OutboxWriter writer, OutboxRelayTrigger trigger) {
             return new ConceptServiceImpl(
                     conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
@@ -190,13 +233,11 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     mock(RppSnapshotHolder.class),
                     mock(ReferencedConceptsEnricher.class),
                     outboxConfig, writer, trigger,
-                    // No external NKD links in this flow's test data → real detector returns empty and the
-                    // mocked snapshot service is never called; reconcileNkdLinks is a no-op here.
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
-                    new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
-                    new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
-                    mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
-                    new com.dia.ismdtoolbackend.config.NkdConfig(),
+                    new NkdLinkDetector(),
+                    new WorkingCopySyncFields(),
+                    mock(NkdSnapshotWarmer.class),
+                    new NkdConfig(),
                     mock(WorkingCopyDeviationServiceImpl.class));
         }
     }

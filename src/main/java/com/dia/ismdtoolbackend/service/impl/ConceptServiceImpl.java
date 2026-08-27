@@ -77,6 +77,7 @@ public class ConceptServiceImpl implements ConceptService {
 
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final MetadataTouchService metadataTouchService;
     private final ConceptMetadataMapper conceptMetadataMapper;
     private final ConceptCreator conceptCreator;
     private final ConceptEditor conceptEditor;
@@ -172,13 +173,17 @@ public class ConceptServiceImpl implements ConceptService {
             // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
             // atomically with the PG metadata delete below.
             outboxWriter.enqueueDeleteConcepts(graphName, conceptUri, relatedConceptUris);
+            OntologyMetadataEntity parent = conceptMetadataOpt.get().getOntologyMetadata();
             conceptMetadataRepository.deleteAll(relatedConceptEntities);
+            metadataTouchService.touchOntology(parent);
             outboxRelayTrigger.nudgeAfterCommit();
             return;
         }
 
         jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);
+        OntologyMetadataEntity parent = conceptMetadataOpt.get().getOntologyMetadata();
         conceptMetadataRepository.deleteAll(relatedConceptEntities);
+        metadataTouchService.touchOntology(parent);
     }
 
     @Override
@@ -609,6 +614,10 @@ public class ConceptServiceImpl implements ConceptService {
         ConceptMetadataEntity entity = createMetadataEntity(createModel, userId, conceptUri);
         ConceptMetadataEntity savedEntity = conceptMetadataRepository.save(entity);
 
+        // Adding a concept modifies the vocabulary: the child FK write does not dirty the parent row,
+        // so bump it explicitly. (Concept row is written above, ontology second — the standard order.)
+        metadataTouchService.touchOntology(savedEntity.getOntologyMetadata());
+
         log.debug("Saved concept metadata: id={}, name={}, type={}, iri={}",
                 savedEntity.getId(), savedEntity.getConceptName(),
                 savedEntity.getConceptType(), savedEntity.getConceptIri());
@@ -904,6 +913,9 @@ public class ConceptServiceImpl implements ConceptService {
 
     private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI) {
         try {
+            // Explicit touch: an RDF-only edit dirties no mapped column, so a plain save() would be a
+            // no-op and updatedAt would never move. Also propagates to the parent ontology.
+            metadataTouchService.touchConceptAndOntology(metadata);
             ConceptMetadataEntity savedMetadata = conceptMetadataRepository.save(metadata);
             log.info("Metadata updated successfully for concept: {}", conceptIRI);
             return conceptMetadataMapper.toDto(savedMetadata);

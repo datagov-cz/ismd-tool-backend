@@ -88,7 +88,9 @@ class ConceptEditFlowIntegrationTest {
         com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector linkDetector =
                 new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
         conceptService = new ConceptServiceImpl(
-                conceptMetadataRepository, ontologyMetadataRepository, conceptMetadataMapper,
+                conceptMetadataRepository, ontologyMetadataRepository,
+                org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.impl.MetadataTouchService.class),
+                conceptMetadataMapper,
                 conceptCreator, realEditor, jenaTDB2Repository, detailExtractor,
                 commentRepository, nkdSparqlClient, deviationComparator,
                 rppSnapshotHolder, referencedConceptsEnricher,
