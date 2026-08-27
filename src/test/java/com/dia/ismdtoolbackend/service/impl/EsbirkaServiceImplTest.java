@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -145,6 +146,131 @@ class EsbirkaServiceImplTest {
         assertEquals(par, out.get(0).getIri());
         assertEquals(fn1, out.get(1).getIri());
         assertEquals(fn2, out.get(2).getIri());
+    }
+
+    // -------- navigation labels: structural containers, root, unnumbered text blocks --------
+
+    @Test
+    void structuralContainersGetDisplayLabels() {
+        // Upstream carries no citace for the containers between the document root and the
+        // first citable unit, so without a label the top two navigation levels render blank.
+        String dokument = VERSION_IRI + "/dokument";
+        String norma = dokument + "/norma";
+        String prilohy = dokument + "/prilohy";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001"),
+                new FragmentModel(norma, dokument, null, "norma", "0002"),
+                new FragmentModel(prilohy, dokument, null, "prilohy", "0003")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        FragmentDto root = out.get(0);
+        assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
+        assertEquals("Přílohy", root.getChildren().get(1).getCitation());
+    }
+
+    @Test
+    void repeatedContainerSiblingsAreDistinguishedByOrdinal() {
+        // Real IRIs include prilohy:2 / postfix:3; parseKindFromIri splits only on '_', so the
+        // suffix arrives as part of the kind and must not fall through to a blank label.
+        String dokument = VERSION_IRI + "/dokument";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001"),
+                new FragmentModel(dokument + "/prilohy", dokument, null, "prilohy", "0002"),
+                new FragmentModel(dokument + "/prilohy:2", dokument, null, "prilohy:2", "0003")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        List<FragmentDto> containers = out.get(0).getChildren();
+        assertEquals("Přílohy", containers.get(0).getCitation());
+        assertEquals("Přílohy (2)", containers.get(1).getCitation());
+    }
+
+    @Test
+    void documentRootIsLabelledWithLawCitationOnlyWhenKnown() {
+        String dokument = VERSION_IRI + "/dokument";
+        List<FragmentModel> rows = List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001"));
+
+        // The fragment-tree endpoint resolves no law metadata, so the root stays unlabelled.
+        assertNull(service.assembleTree(rows, VERSION_IRI).get(0).getCitation());
+
+        // The content endpoint knows the citation and labels the root with it.
+        assertEquals("Zákon č. 49/1997 Sb.",
+                service.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
+    }
+
+    @Test
+    void upstreamCitationWinsOverContainerLabel() {
+        String dokument = VERSION_IRI + "/dokument";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001"),
+                new FragmentModel(dokument + "/norma", dokument, "Vlastní název", "norma", "0002")));
+        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        assertEquals("Vlastní název", out.get(0).getChildren().get(0).getCitation());
+    }
+
+    @Test
+    void childlessFragIsNonNavigableAndCarriesNoSyntheticCitation() {
+        // A frag_* leaf is an unnumbered text block. The segment fallback would render it as
+        // "§ 1 frag 6619443" — the trailing number is an internal upstream id, not a citation.
+        String par = VERSION_IRI + "/par_1";
+        String textBlock = par + "/frag_6619443";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
+                new FragmentModel(textBlock, par, null, "frag", "0002")));
+        FragmentDto leaf = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+        assertNull(leaf.getCitation());
+        assertFalse(leaf.isNavigable());
+    }
+
+    @Test
+    void fragWithChildrenStaysNavigable() {
+        // 1.85M frag_* nodes upstream have children; in 49/1997 alone 22 of them parent real
+        // §/písm./bod subtrees. Suppressing every frag would orphan those citable units.
+        String par = VERSION_IRI + "/par_3";
+        String grouper = par + "/frag_6619455";
+        String pism = par + "/pism_a";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 3", "par", "0001"),
+                new FragmentModel(grouper, par, null, "frag", "0002"),
+                new FragmentModel(pism, grouper, "§ 3 písm. a)", "pism", "0003")));
+        FragmentDto node = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+        assertTrue(node.isNavigable());
+        assertEquals(1, node.getChildren().size());
+        assertTrue(node.getChildren().get(0).isNavigable());
+    }
+
+    @Test
+    void navigationSurvivesUpstreamCitationOutage() {
+        // On 2026-08-24 e-Sbírka deleted citace-označení-fragmentu dataset-wide and served
+        // HTTP 200 with the predicate absent. Every citation below is null to reproduce that:
+        // §/Část labels must degrade to segment-derived text, and containers to their own
+        // labels, rather than the navigation going blank.
+        String dokument = VERSION_IRI + "/dokument";
+        String norma = dokument + "/norma";
+        String cast = norma + "/cast_1";
+        String par = cast + "/par_1";
+        String odst = par + "/odst_2";
+        String pism = odst + "/pism_a";
+        List<FragmentModel> rows = List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001"),
+                new FragmentModel(norma, dokument, null, "norma", "0002"),
+                new FragmentModel(cast, norma, null, "cast", "0003"),
+                new FragmentModel(par, cast, null, "par", "0004"),
+                new FragmentModel(odst, par, null, "odst", "0005"),
+                new FragmentModel(pism, odst, null, "pism", "0006"));
+
+        List<FragmentDto> out = service.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
+
+        FragmentDto root = out.get(0);
+        assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
+        FragmentDto normaDto = root.getChildren().get(0);
+        assertEquals("Text předpisu", normaDto.getCitation());
+        FragmentDto castDto = normaDto.getChildren().get(0);
+        assertEquals("Část 1", castDto.getCitation());
+        FragmentDto parDto = castDto.getChildren().get(0);
+        // Structural ancestors are dropped once a § is present, matching e-Sbírka's own style.
+        assertEquals("§ 1", parDto.getCitation());
+        FragmentDto odstDto = parDto.getChildren().get(0);
+        assertEquals("§ 1 odst. 2", odstDto.getCitation());
+        assertEquals("§ 1 odst. 2 písm. a)", odstDto.getChildren().get(0).getCitation());
     }
 
     @Test
@@ -319,6 +445,46 @@ class EsbirkaServiceImplTest {
         assertEquals(2, out.getVersions().size());
         assertEquals(1, out.getFragments().size());
         assertEquals("<var>§ 1</var>", out.getFragments().get(0).getBodyHtml());
+    }
+
+    @Test
+    void contentNavigationTreeIsFullyLabelled() {
+        // The navigation tree is built from /law/content, not /law/fragments. This walks the
+        // real 49/1997 shape through getLawContent to prove the labels reach that response:
+        // the document root and its containers used to render blank, taking the top two
+        // navigation levels with them.
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        String dokument = VERSION_IRI + "/dokument";
+        String norma = dokument + "/norma";
+        String cast = norma + "/cast_1";
+        String par = cast + "/par_1";
+        String textBlock = par + "/frag_3304837";
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001", null),
+                new FragmentModel(norma, dokument, null, "norma", "0002", null),
+                new FragmentModel(dokument + "/prefix", dokument, null, "prefix", "0003", null),
+                new FragmentModel(cast, norma, "Část 1", "cast", "0004", null),
+                new FragmentModel(par, cast, "§ 1", "par", "0005", null),
+                new FragmentModel(textBlock, par, null, "frag", "0006", "<p>text</p>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+
+        FragmentDto root = out.getFragments().get(0);
+        assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
+        assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
+        assertEquals("Úvodní ustanovení", root.getChildren().get(1).getCitation());
+
+        // The unnumbered text block stays in the body but is flagged out of the navigation,
+        // rather than surfacing its internal id as "§ 1 frag 3304837".
+        FragmentDto leaf = root.getChildren().get(0).getChildren().get(0)
+                .getChildren().get(0).getChildren().get(0);
+        assertNull(leaf.getCitation());
+        assertFalse(leaf.isNavigable());
+        assertTrue(out.getBodyHtml().contains("<p>text</p>"),
+                "a non-navigable node must still contribute its text to the rendered body");
     }
 
     @Test
