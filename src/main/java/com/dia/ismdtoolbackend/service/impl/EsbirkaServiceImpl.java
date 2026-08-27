@@ -46,6 +46,31 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      */
     private static final String DOKUMENT_INFIX = "/dokument/";
 
+    /** Kind of the document root, the single parentless node of a version's fragment tree. */
+    private static final String DOKUMENT_KIND = "dokument";
+
+    /** Kind of an unnumbered fragment: a text block when childless, a structural parent otherwise. */
+    private static final String FRAG_KIND = "frag";
+
+    /**
+     * Display labels for the structural containers that sit between the document root and the
+     * first citable unit. Upstream carries no citace-označení-fragmentu for these, and they are
+     * not fragments in the ELI sense, so without this map the top two levels of the navigation
+     * tree render blank.
+     *
+     * <p>Keyed by kind with any {@code :N} sibling suffix stripped — real IRIs include
+     * {@code postfix:2}, {@code prilohy:4} and the like, which {@code parseKindFromIri} passes
+     * through verbatim.
+     */
+    private static final Map<String, String> CONTAINER_LABELS = Map.of(
+            "prefix", "Úvodní ustanovení",
+            "norma", "Text předpisu",
+            "novela", "Novelizační ustanovení",
+            "prilohy", "Přílohy",
+            "poznamkypodcarou", "Poznámky pod čarou",
+            "postfix", "Závěrečná ustanovení",
+            "zaver", "Závěr");
+
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
 
@@ -128,7 +153,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             versionDtos.add(toVersionDto(v));
         }
 
-        List<FragmentDto> fragments = assembleTree(rows, versionIri);
+        List<FragmentDto> fragments = assembleTree(rows, versionIri, law.getCitace());
 
         return LawContentDto.builder()
                 .lawIri(law.getIri())
@@ -249,12 +274,22 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     record NumberYear(String number, int year) {}
 
     /**
+     * Tree assembly without a law citation, so the document root stays unlabelled. Used by the
+     * lean fragment-tree endpoint, which resolves no law metadata.
+     */
+    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
+        return assembleTree(rows, versionIri, null);
+    }
+
+    /**
      * Tree assembly. A fragment is a <em>root</em> when its parent is a structural document
      * container — {@code <versionIri>/dokument/<container>} for any container (norma = the
      * body, poznamkypodcarou = footnotes, prilohy = annexes, …); roots are detected
      * structurally. Multi-root is supported.
+     *
+     * <p>{@code lawCitation}, when present, labels the otherwise-blank {@code dokument} root.
      */
-    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
+    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri, String lawCitation) {
         if (rows.isEmpty()) {
             return List.of();
         }
@@ -297,8 +332,42 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     orphanCount, versionIri, firstOrphanParent);
         }
 
+        labelDocumentRoots(roots, lawCitation);
+        markNavigable(roots);
         capDepth(roots, 1, versionIri);
         return roots;
+    }
+
+    /**
+     * Flag the nodes that carry no navigable label.
+     */
+    private static void markNavigable(List<FragmentDto> nodes) {
+        for (FragmentDto n : nodes) {
+            boolean textOnly = FRAG_KIND.equals(n.getKind()) && n.getChildren().isEmpty();
+            n.setNavigable(!textOnly);
+            if (textOnly) {
+                n.setCitation(null);
+            }
+            if (!n.getChildren().isEmpty()) {
+                markNavigable(n.getChildren());
+            }
+        }
+    }
+
+    /**
+     * Label the {@code dokument} root with the law citation. Upstream carries no citation for
+     * it and it is not a fragment, so it would otherwise head the navigation tree blank.
+     * Only unlabelled document roots are touched.
+     */
+    private static void labelDocumentRoots(List<FragmentDto> roots, String lawCitation) {
+        if (lawCitation == null || lawCitation.isBlank()) {
+            return;
+        }
+        for (FragmentDto root : roots) {
+            if (DOKUMENT_KIND.equals(root.getKind()) && root.getCitation() == null) {
+                root.setCitation("Zákon č. " + lawCitation);
+            }
+        }
     }
 
     /** Sentinel returned by {@link #resolveAnchor} when a fragment resolves to a tree root. */
@@ -399,14 +468,29 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Fragment citation, falling back to one derived from the IRI path segments when upstream
-     * carries no citace-označení-fragmentu-znění-právního-aktu. Returns null rather than an empty string
-     * when neither source yields a label.
+     * Fragment citation, in order of preference: the upstream
+     * citace-označení-fragmentu-znění-právního-aktu, a structural-container label, then the
+     * IRI path segments. Null when no source yields a label.
+     *
+     * <p>The segment fallback is load-bearing, not decorative: e-Sbírka deleted
+     * citace-označení-fragmentu dataset-wide on 2026-08-24 and restored it later, serving
+     * HTTP 200 with the predicate simply absent throughout. Upstream citations are therefore
+     * the preferred source, never a guaranteed one — if the predicate disappears again,
+     * §/Část labels degrade to segment-derived text instead of blanking the navigation.
+     *
+     * <p>Containers are resolved before the fragment check because they are not fragments in
+     * the ELI sense — {@link EsbirkaEliParser} rejects them, and they make up the whole of the
+     * navigation tree above the first citable unit. Their labels are independent of upstream
+     * data, so they survive such an outage unchanged.
      */
     private static String citationOrSegmentFallback(FragmentModel m) {
         String citation = m.getCitation();
         if (citation != null && !citation.isBlank()) {
             return citation;
+        }
+        String containerLabel = containerLabel(m.getKind());
+        if (containerLabel != null) {
+            return containerLabel;
         }
         ParsedEli parsed = EsbirkaEliParser.parse(m.getIri());
         if (!parsed.isFragment()) {
@@ -415,6 +499,24 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         String derived = EsbirkaCzechCitationFormatter
                 .buildFragmentCitationFromSegments(parsed.fragmentSegments());
         return derived.isBlank() ? null : derived;
+    }
+
+    /**
+     * Label for a structural container kind, or null when the kind is not a container.
+     * A {@code :N} suffix marks a repeated sibling (a second Přílohy block, say) and is
+     * rendered as an ordinal so the siblings stay distinguishable in the navigation.
+     */
+    private static String containerLabel(String kind) {
+        if (kind == null || kind.isBlank()) {
+            return null;
+        }
+        int colon = kind.indexOf(':');
+        String base = colon > 0 ? kind.substring(0, colon) : kind;
+        String label = CONTAINER_LABELS.get(base);
+        if (label == null) {
+            return null;
+        }
+        return colon > 0 ? label + " (" + kind.substring(colon + 1) + ")" : label;
     }
 
     @Override
