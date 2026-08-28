@@ -35,15 +35,36 @@ class EsbirkaSPARQLQueryTest {
     }
 
     @Test
-    void lawSearch_withQ_parsesAndAddsFilterAndCitaceOrder() {
+    void lawSearch_withQ_parsesAndAddsFilterAndRankedOrder() {
         String q = EsbirkaSPARQLQuery.buildLawSearchQuery("187/2006", 50);
         assertDoesNotThrow(() -> QueryFactory.create(q));
         assertTrue(q.contains("FILTER(CONTAINS(LCASE(STR(?citace)), LCASE("));
         // Jena escapes the literal — verify the value is present (not as a raw substring exposed to injection).
         assertTrue(q.contains("\"187/2006\""));
-        assertTrue(q.contains("ORDER BY ?citace"));
-        assertFalse(q.contains("ORDER BY DESC(?rok)"));
+        assertTrue(q.contains("ORDER BY ?rank DESC(?rok) ?citace"),
+                "q-search must rank číslo matches ahead of year-only matches");
         assertTrue(q.contains("LIMIT 50"));
+    }
+
+    @Test
+    void lawSearch_withQ_ranksCisloMatchesAheadOfYearMatches() {
+        // A bare CONTAINS matches "49" in 49/1997, 490/2001 and 1/2049 alike.
+        String q = EsbirkaSPARQLQuery.buildLawSearchQuery("49", 20);
+        assertDoesNotThrow(() -> QueryFactory.create(q));
+        assertTrue(q.contains("BIND(IF(LCASE(STR(?cislo)) = LCASE("), "tier 0: exact číslo match");
+        assertTrue(q.contains("IF(STRSTARTS(LCASE(STR(?citace)), LCASE("), "tier 1: citation prefix");
+        // citace is "<číslo>/<rok> Sb.", so a číslo-prefix tier would be unreachable.
+        assertFalse(q.contains("STRSTARTS(LCASE(STR(?cislo))"), "dead tier must not be emitted");
+        assertTrue(q.contains("AS ?rank)"));
+        // LIMIT applies after ORDER BY, so ranking client-side would truncate first.
+        assertTrue(q.indexOf("AS ?rank)") < q.indexOf("LIMIT"),
+                "rank must be bound inside the WHERE clause, before LIMIT");
+    }
+
+    @Test
+    void lawSearch_emptyQ_hasNoRankBinding() {
+        String q = EsbirkaSPARQLQuery.buildLawSearchQuery(null, 20);
+        assertFalse(q.contains("?rank"), "empty-q must not bind a relevance rank");
     }
 
     @Test

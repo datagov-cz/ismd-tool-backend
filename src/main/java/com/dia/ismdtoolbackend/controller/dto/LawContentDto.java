@@ -28,7 +28,7 @@ public class LawContentDto {
     /** Official citation of the law, e.g. "49/1997 Sb." */
     private String citace;
 
-    /** IRI of the version whose content is in {@link #fragments} (the latest version). */
+    /** IRI of the version whose content is in {@link #fragments}. */
     private String versionIri;
 
     /** ELI path of that version, e.g. /eli/cz/sb/1997/49/2025-11-01 */
@@ -36,6 +36,9 @@ public class LawContentDto {
 
     /** Effective-from date of the rendered version. */
     private LocalDate versionDate;
+
+    /** Whether the rendered version is the law's current znění (má-poslední-znění). */
+    private boolean versionLatest;
 
     /** All versions of this law, newest first; for an FE version switcher. */
     private List<LawVersionDto> versions;
