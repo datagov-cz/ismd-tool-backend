@@ -2,7 +2,9 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.DownloadBlockedByValidationDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
+import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -106,6 +108,18 @@ public class GlobalExceptionHandler {
                 e.getGraphName(), e.getConceptsMissingInScheme());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponseDto.error(data, e.getMessage(), InSchemeDecisionRequiredException.ERROR_CODE));
+    }
+
+    @ExceptionHandler(OntologyDownloadBlockedException.class)
+    public ResponseEntity<ApiResponseDto<DownloadBlockedByValidationDto>> handleOntologyDownloadBlocked(OntologyDownloadBlockedException e) {
+        log.info("Download blocked for {}: {} validation error(s), rules: {}",
+                e.getGraphName(),
+                e.getErrorCount(),
+                e.getErrors().stream().map(ValidationErrorSummaryDto::ruleName).distinct().toList());
+        DownloadBlockedByValidationDto data = new DownloadBlockedByValidationDto(
+                e.getGraphName(), e.getErrorCount(), e.getErrors(), e.isTruncated());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponseDto.error(data, e.getMessage(), OntologyDownloadBlockedException.ERROR_CODE));
     }
 
     @ExceptionHandler(OntologyStorageException.class)
