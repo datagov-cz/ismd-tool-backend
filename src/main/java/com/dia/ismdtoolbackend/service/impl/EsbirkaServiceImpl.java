@@ -18,9 +18,9 @@ import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
@@ -31,7 +31,6 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class EsbirkaServiceImpl implements EsbirkaService {
 
@@ -74,6 +73,17 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
 
+    /** Self-reference through the Spring proxy, so internal calls still hit {@code @Cacheable}. */
+    private final EsbirkaService self;
+
+    public EsbirkaServiceImpl(EsbirkaSparqlClient client,
+                              EsbirkaFragmentResolutionCache resolutionCache,
+                              @Lazy EsbirkaService self) {
+        this.client = client;
+        this.resolutionCache = resolutionCache;
+        this.self = self;
+    }
+
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch", key = "T(java.util.Objects).hash(#q, #limit)")
     public List<LawDto> searchLaws(String q, int limit) {
@@ -85,13 +95,35 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         return out;
     }
 
-    @Override
-    @Cacheable(cacheNames = "esbirkaLawVersions", key = "#lawIri")
-    public List<LawVersionDto> getVersions(String lawIri) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(lawIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor právního aktu.");
+    /**
+     * Rewrite a legacy e-Sbírka host to the canonical one, leaving everything else untouched.
+     *
+     * <p>Every e-Sbírka IRI entering this service passes through here before it is validated,
+     * compared or cached, so all endpoints accept the same host spellings that {@code /resolve}
+     * and the concept write paths already accept. Called reflectively by the {@code @Cacheable}
+     * SpEL keys below, so it must stay {@code public}.
+     */
+    public String canonicalizeEsbirkaIri(String iri) {
+        return iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+    }
+
+    /** Canonicalize, then validate — a legacy host is a spelling, not an invalid identifier. */
+    private static String requireValidIri(String iri, String message) {
+        String canonical = iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+            throw new IllegalArgumentException(message);
         }
-        List<LawVersionModel> rows = client.fetchVersions(lawIri);
+        return canonical;
+    }
+
+    // Keyed on the canonical form so a legacy-host IRI shares the entry with its canonical
+    // twin rather than issuing an identical second query under its own key.
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawVersions",
+            key = "#root.target.canonicalizeEsbirkaIri(#lawIri)")
+    public List<LawVersionDto> getVersions(String lawIri) {
+        String iri = requireValidIri(lawIri, "Neplatný identifikátor právního aktu.");
+        List<LawVersionModel> rows = client.fetchVersions(iri);
         List<LawVersionDto> out = new ArrayList<>(rows.size());
         for (LawVersionModel m : rows) {
             out.add(toVersionDto(m));
@@ -101,70 +133,102 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     @Override
     public List<FragmentDto> getFragments(String versionIri) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(versionIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor znění právního aktu.");
-        }
-        List<FragmentModel> rows = client.fetchFragments(versionIri);
+        String iri = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
+        List<FragmentModel> rows = client.fetchFragments(iri);
         if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
             log.warn("Fragment tree for {} has {} rows (over {} threshold).",
-                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+                    iri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
         }
-        return assembleTree(rows, versionIri);
+        return assembleTree(rows, iri);
     }
 
     /**
-     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered
-     * content of its latest version.
-     *
-     * <p>Resolution chain: parse number/year → exact law lookup (NOT a citation
-     * substring match) → latest version (má-poslední-znění) → whole-version content
-     * query. The returned {@link LawContentDto} carries the resolved law/version header
-     * and the full version list (for an FE switcher) alongside the fragment tree, whose
-     * nodes each carry their rendered HTML body for in-document browsing.
-     *
-     * <p>Cached by the normalized {@code number/year} key — both the resolution and the
-     * (~2 MB) content payload are expensive, and a published version's text is immutable.
+     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered content of
+     * its latest version: parse the ref → exact law lookup → latest znění → content query.
+     * Delegates through {@link #self} so the overload's {@code @Cacheable} applies.
      */
     @Override
-    @Cacheable(cacheNames = "esbirkaLawContent", key = "#root.target.normalizeLawRef(#lawRef)")
     public LawContentDto getLawContent(String lawRef) {
+        return self.getLawContent(lawRef, null);
+    }
+
+    /**
+     * Whole-version content for a caller-chosen znění; null/blank {@code versionIri} renders
+     * the latest version (má-poslední-znění). A supplied IRI is accepted only when it appears
+     * in the resolved law's own version list.
+     *
+     * <p>The returned {@link LawContentDto} carries the law/version header and the full version
+     * list (for an FE switcher) alongside the fragment tree, whose nodes each carry their
+     * rendered HTML body for in-document browsing.
+     *
+     * <p>Cached by normalized {@code number/year} plus the selected version, so each znění gets
+     * its own entry — both the resolution and the (~2 MB) content payload are expensive, and a
+     * published version's text is immutable.
+     */
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawContent",
+            key = "#root.target.normalizeLawRef(#lawRef) + '@' "
+                    + "+ (#versionIri == null ? '' : #root.target.canonicalizeEsbirkaIri(#versionIri))")
+    public LawContentDto getLawContent(String lawRef, String versionIri) {
         NumberYear ny = parseNumberYear(lawRef);
 
         LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
 
-        List<LawVersionModel> versions = client.fetchVersions(law.getIri());
-        LawVersionModel latest = pickLatest(versions);
-        if (latest == null) {
-            throw new IllegalArgumentException(
-                    "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
-        }
+        // Through the proxy so the esbirkaLawVersions cache is used across the N content-cache
+        // misses of a user stepping through one law's znění.
+        List<LawVersionDto> versionDtos = self.getVersions(law.getIri());
+        LawVersionDto selected = selectVersion(versionDtos, versionIri, ny);
 
-        String versionIri = latest.getIri();
-        List<FragmentModel> rows = client.fetchVersionContent(versionIri);
+        String selectedIri = selected.getIri();
+        List<FragmentModel> rows = client.fetchVersionContent(selectedIri);
         if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
             log.warn("Version content for {} has {} rows (over {} threshold).",
-                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+                    selectedIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
         }
 
-        List<LawVersionDto> versionDtos = new ArrayList<>(versions.size());
-        for (LawVersionModel v : versions) {
-            versionDtos.add(toVersionDto(v));
-        }
-
-        List<FragmentDto> fragments = assembleTree(rows, versionIri, law.getCitace());
+        List<FragmentDto> fragments = assembleTree(rows, selectedIri, law.getCitace());
 
         return LawContentDto.builder()
                 .lawIri(law.getIri())
                 .citace(law.getCitace())
-                .versionIri(versionIri)
-                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(versionIri))
-                .versionDate(latest.getUcinnostOd())
+                .versionIri(selectedIri)
+                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(selectedIri))
+                .versionDate(selected.getUcinnostOd())
+                .versionLatest(selected.isLatest())
                 .versions(versionDtos)
                 .fragments(fragments)
                 .bodyHtml(renderBodyHtml(fragments))
                 .build();
+    }
+
+    /**
+     * Pick the znění to render: the caller's {@code versionIri} when supplied, else the
+     * latest. The requested IRI must be a member of {@code versions}.
+     */
+    private static LawVersionDto selectVersion(List<LawVersionDto> versions,
+                                               String versionIri,
+                                               NumberYear ny) {
+        if (versionIri == null || versionIri.isBlank()) {
+            LawVersionDto latest = pickLatest(versions);
+            if (latest == null) {
+                throw new IllegalArgumentException(
+                        "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
+            }
+            return latest;
+        }
+        // Canonicalized before the membership scan, not just before validation: v.getIri()
+        // comes from e-Sbírka and is always canonical, so a legacy-host IRI would otherwise
+        // fail membership and report the misleading "nepatří k právnímu aktu".
+        String canonical = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
+        for (LawVersionDto v : versions) {
+            if (canonical.equals(v.getIri())) {
+                return v;
+            }
+        }
+        throw new IllegalArgumentException("Znění " + canonical
+                + " nepatří k právnímu aktu č. " + ny.number() + "/" + ny.year() + ".");
     }
 
     /**
@@ -207,15 +271,15 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Latest version = the one flagged via má-poslední-znění (LawVersionModel.latest).
-     * Falls back to the first row (fetchVersions orders newest-first by účinnost-znění-od)
-     * when no row is flagged — defensive against upstream data without the flag.
+     * Latest version = the one flagged via má-poslední-znění. Falls back to the first row
+     * (fetchVersions orders newest-first by účinnost-znění-od) when no row is flagged —
+     * defensive against upstream data without the flag.
      */
-    private static LawVersionModel pickLatest(List<LawVersionModel> versions) {
+    private static LawVersionDto pickLatest(List<LawVersionDto> versions) {
         if (versions.isEmpty()) {
             return null;
         }
-        for (LawVersionModel v : versions) {
+        for (LawVersionDto v : versions) {
             if (v.isLatest()) {
                 return v;
             }

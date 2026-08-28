@@ -232,7 +232,7 @@ class EsbirkaControllerTest {
                 .versions(List.of(v))
                 .fragments(List.of(root))
                 .build();
-        when(esbirkaService.getLawContent("187/2006")).thenReturn(dto);
+        when(esbirkaService.getLawContent("187/2006", null)).thenReturn(dto);
 
         mockMvc.perform(get("/api/eli/law/content").param("law", "187/2006"))
                 .andExpect(status().isOk())
@@ -249,7 +249,7 @@ class EsbirkaControllerTest {
 
     @Test
     void contentPartialInputReturns400() throws Exception {
-        when(esbirkaService.getLawContent("49"))
+        when(esbirkaService.getLawContent("49", null))
                 .thenThrow(new IllegalArgumentException("Referenci zadejte ve tvaru číslo/rok (např. 49/1997)."));
         mockMvc.perform(get("/api/eli/law/content").param("law", "49"))
                 .andExpect(status().isBadRequest())
@@ -258,7 +258,7 @@ class EsbirkaControllerTest {
 
     @Test
     void contentUnknownLawReturns400() throws Exception {
-        when(esbirkaService.getLawContent("999/1997"))
+        when(esbirkaService.getLawContent("999/1997", null))
                 .thenThrow(new IllegalArgumentException("Právní akt č. 999/1997 nebyl nalezen."));
         mockMvc.perform(get("/api/eli/law/content").param("law", "999/1997"))
                 .andExpect(status().isBadRequest())
@@ -273,7 +273,7 @@ class EsbirkaControllerTest {
 
     @Test
     void contentService503BubblesUp() throws Exception {
-        when(esbirkaService.getLawContent("187/2006"))
+        when(esbirkaService.getLawContent("187/2006", null))
                 .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "e-Sbírka version content fetch failed"));
 
         mockMvc.perform(get("/api/eli/law/content").param("law", "187/2006"))
