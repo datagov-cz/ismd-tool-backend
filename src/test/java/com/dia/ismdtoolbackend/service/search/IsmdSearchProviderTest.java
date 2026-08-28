@@ -501,6 +501,242 @@ class IsmdSearchProviderTest {
 
     // --- Helpers ---
 
+    // --- Draft visibility under pagination (issue #168) ---
+
+    /**
+     * The regression itself: a draft must not be pushed off the page by published
+     * rows. Previously the merged list was sliced with no ordering, so the draft —
+     * being the newest row, and therefore last in Postgres heap order — fell past
+     * the limit while the total count still counted it.
+     */
+    @Test
+    void search_draftOntology_survivesLimitCutoffAgainstManyPublished() {
+        List<OntologyMetadataEntity> ontologies = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            ontologies.add(createOntology(
+                    "https://example.org/ontology/published-" + i, "test-published-" + i, true));
+        }
+        // Sorted last by the old heap-order behaviour, and beyond limit=5.
+        ontologies.add(createOntology("https://example.org/ontology/draft", "test-draft", false));
+
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(ontologies);
+        when(ontologyMetadataRepository.countSearchByText("test")).thenReturn(21L);
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "test", SearchType.ONTOLOGY, 5, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(5, result.results().size());
+        assertEquals("https://example.org/ontology/draft", result.results().get(0).getIri(),
+                "draft must sort ahead of published rows so the page slice cannot drop it");
+        assertEquals(21, result.totalOntologies());
+    }
+
+    @Test
+    void search_ordersOntologiesBeforeConcepts() {
+        OntologyMetadataEntity ontology =
+                createOntology("https://example.org/ontology/1", "test-ontology", true);
+        ConceptMetadataEntity concept = createConcept(
+                "https://example.org/concept/test", "test-concept", "Test",
+                ConceptType.TRIDA, "https://example.org/ontology/1", true);
+
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(List.of(ontology));
+        when(conceptMetadataRepository.searchByText(eq("test"), eq(false), anyList(), eq(false), isNull()))
+                .thenReturn(List.of(concept));
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "test", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(2, result.results().size());
+        assertEquals(SearchType.ONTOLOGY, result.results().get(0).getType());
+        assertEquals(SearchType.CONCEPT, result.results().get(1).getType());
+    }
+
+    /**
+     * Draft-first outranks ontology-before-concept: a draft concept must precede a
+     * published ontology, confirming the comparator keys are applied in that order.
+     */
+    @Test
+    void search_draftConceptOutranksPublishedOntology() {
+        OntologyMetadataEntity ontology =
+                createOntology("https://example.org/ontology/1", "test-ontology", true);
+        ConceptMetadataEntity draftConcept = createConcept(
+                "https://example.org/concept/draft", "test-draft", "Draft",
+                ConceptType.TRIDA, "https://example.org/ontology/1", false);
+
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(List.of(ontology));
+        when(conceptMetadataRepository.searchByText(eq("test"), eq(false), anyList(), eq(false), isNull()))
+                .thenReturn(List.of(draftConcept));
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "test", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(2, result.results().size());
+        assertEquals("https://example.org/concept/draft", result.results().get(0).getIri());
+        assertEquals(SearchType.ONTOLOGY, result.results().get(1).getType());
+    }
+
+    /**
+     * Pagination must be a clean partition: walking every page yields each row
+     * exactly once, with none repeated or skipped across the page boundary.
+     */
+    @Test
+    void search_pagingAcrossOffsetsNeitherRepeatsNorSkipsRows() {
+        List<OntologyMetadataEntity> ontologies = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            ontologies.add(createOntology(
+                    "https://example.org/ontology/" + i, "test-" + i, i % 2 == 0));
+        }
+        when(ontologyMetadataRepository.searchByText("test")).thenReturn(ontologies);
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+
+        List<String> seen = new ArrayList<>();
+        for (int offset = 0; offset < 7; offset += 3) {
+            createProvider().search("test", SearchType.ONTOLOGY, 3, offset,
+                            "cs", null, null, "user1", false, null)
+                    .results().forEach(r -> seen.add(r.getIri()));
+        }
+
+        assertEquals(7, seen.size(), "every row appears exactly once across all pages");
+        assertEquals(7, new HashSet<>(seen).size(), "no row is returned on two different pages");
+    }
+
+    // --- UNPUBLISHED = everything local (working copies included) ---
+
+    @Test
+    void search_unpublishedOntology_scopesFusekiToAllLocalGraphs() {
+        // A working copy of a published NKD vocabulary is is_published=true — and stays
+        // that way until a concept is edited — so the Fuseki graph scope must cover every
+        // local graph, not findAllByIsPublished(false); otherwise its labels are unreachable.
+        String workingCopyGraph = "https://slovník.gov.cz/a3791---registr-vysokých-škol";
+
+        when(ontologyMetadataRepository.findAllGraphNames())
+                .thenReturn(List.of(workingCopyGraph));
+        when(ontologyMetadataRepository.searchByTextUnpublished("škol"))
+                .thenReturn(List.of());
+        when(jenaTDB2Repository.searchByText(eq("škol"), eq(List.of(workingCopyGraph)), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", workingCopyGraph,
+                        "prefLabel", "A3791 - Registr Vysokých škol",
+                        "prefLabelLang", "cs",
+                        "types", "http://www.w3.org/2004/02/skos/core#ConceptScheme")));
+        when(ontologyMetadataRepository.findAllByGraphNameIn(List.of(workingCopyGraph)))
+                .thenReturn(List.of(createOntology(workingCopyGraph, "a3791---registr-vysokých-škol", true)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "škol", SearchType.ONTOLOGY, 20, 0, "cs", null, null,
+                "user1", false, Boolean.FALSE);
+
+        assertEquals(1, result.results().size(), "Working copy must be reachable under UNPUBLISHED");
+        SearchResultDto dto = result.results().get(0);
+        assertEquals(workingCopyGraph, dto.getIri());
+        assertEquals("A3791 - Registr Vysokých škol", dto.getLabel());
+        verify(ontologyMetadataRepository).findAllGraphNames();
+        verify(ontologyMetadataRepository, never()).findAllByIsPublished(false);
+    }
+
+    @Test
+    void search_ontologyFoundByLabelOnly_backfillsPgFields() {
+        // Fuseki-sourced ontology rows carry no id/slug/isPublished; the ontology-only
+        // branch skips the concept backfill, so it needs its own.
+        String graph = "https://example.org/ontology/1";
+
+        when(ontologyMetadataRepository.searchByText("škol")).thenReturn(List.of());
+        stubVisibleGraphs("user1", List.of(createOntology(graph, "unrelated-slug", false)));
+        when(jenaTDB2Repository.searchByText(eq("škol"), anyList(), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", graph,
+                        "prefLabel", "Vysoké školy",
+                        "types", "http://www.w3.org/2002/07/owl#Ontology")));
+        when(ontologyMetadataRepository.findAllByGraphNameIn(List.of(graph)))
+                .thenReturn(List.of(createOntology(graph, "unrelated-slug", false)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "škol", SearchType.ONTOLOGY, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("unrelated-slug", dto.getSlug(), "slug must be backfilled from PG");
+        assertFalse(dto.getIsPublished(), "publish state must be backfilled from PG");
+    }
+
+    @Test
+    void search_unfiltered_multiWordQueryMatchesLabelNotSlug_backfillsSlug() {
+        // TEST-env repro: ontology named "TEST slovnik" has slug "test-slovnik".
+        // Query "qa test" matches the RDF label but the slug ILIKE '%qa test%'
+        // misses (the slug has no space), so PG returns nothing and only the
+        // Fuseki row survives — with no slug for the FE to build a link from.
+        String graph = "https://slovník.gov.cz/test-slovnik";
+
+        when(ontologyMetadataRepository.searchByText("qa test")).thenReturn(List.of());
+        when(conceptMetadataRepository.searchByText(eq("qa test"), anyBoolean(), anyList(), anyBoolean(), isNull()))
+                .thenReturn(List.of());
+        stubVisibleGraphs("user1", List.of(createOntology(graph, "test-slovnik", false)));
+        when(jenaTDB2Repository.searchByText(eq("qa test"), anyList(), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", graph,
+                        "prefLabel", "TEST slovnik",
+                        "prefLabelLang", "cs",
+                        "types", "http://www.w3.org/2004/02/skos/core#ConceptScheme")));
+        lenient().when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+        lenient().when(ontologyMetadataRepository.findAllByGraphNameIn(anyList()))
+                .thenReturn(List.of(createOntology(graph, "test-slovnik", false)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "qa test", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals("TEST slovnik", dto.getLabel());
+        assertEquals("test-slovnik", dto.getSlug(),
+                "slug must be present or the FE links to /dictionary/null");
+    }
+
+    @Test
+    void search_unfiltered_ontologyFoundByLabelOnly_backfillsPgFields() {
+        // Same shape as the type=ONTOLOGY case, but with no type filter — the path
+        // the FE uses for a plain search box. The ontology row still arrives from
+        // Fuseki with no slug, and the concept-side backfill can't rescue it
+        // (it looks the IRI up in concept_metadata, where an ontology has no row).
+        String graph = "https://example.org/ontology/1";
+
+        when(ontologyMetadataRepository.searchByText("škol")).thenReturn(List.of());
+        when(conceptMetadataRepository.searchByText(eq("škol"), anyBoolean(), anyList(), anyBoolean(), isNull()))
+                .thenReturn(List.of());
+        stubVisibleGraphs("user1", List.of(createOntology(graph, "unrelated-slug", false)));
+        when(jenaTDB2Repository.searchByText(eq("škol"), anyList(), anyInt(), isNull()))
+                .thenReturn(List.of(Map.of(
+                        "resourceIri", graph,
+                        "prefLabel", "Vysoké školy",
+                        "types", "http://www.w3.org/2002/07/owl#Ontology")));
+        lenient().when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+        lenient().when(ontologyMetadataRepository.findAllByGraphNameIn(anyList()))
+                .thenReturn(List.of(createOntology(graph, "unrelated-slug", false)));
+        lenient().when(conceptMetadataRepository.countByGraphNameIn(anyList())).thenReturn(List.of());
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "škol", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertEquals(SearchType.ONTOLOGY, dto.getType());
+        assertEquals("unrelated-slug", dto.getSlug(),
+                "slug must be backfilled on the unfiltered path too");
+    }
+
     private ConceptMetadataEntity createConcept(String iri, String slug, String name,
                                                  ConceptType type, String graphName, boolean published) {
         ConceptMetadataEntity entity = new ConceptMetadataEntity();

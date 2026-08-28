@@ -124,7 +124,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     @Override
     @Transactional
-    @CacheEvict(cacheNames = ReferencedConceptResolutionEngine.CACHE_NAME, allEntries = true)
+    @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String userId,
                                                 NormalizeMode normalizeMode,
                                                 List<String> conceptsToNormalize) throws IOException, OntologyUploadException {
@@ -148,6 +149,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         try {
             String graphName = determineGraphName(finalModel);
             log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
+
+            normalizeOntologyType(finalModel, graphName);
 
             List<String> publishedConceptIris = deviationChecker.checkPublishedResourcesInNKD(finalModel);
             if (!publishedConceptIris.isEmpty()) {
@@ -199,7 +202,10 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             OntologyMetadataModel metadata;
             try {
                 metadata = createOntologyMetadataEntity(graphName, userId);
-                extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId(), publishedConceptIris);
+                boolean ontologyPublished = extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId(), publishedConceptIris);
+                // extractAndSaveConceptMetadata flips is_published on a re-fetched entity; mirror it
+                // onto the returned model so the upload response matches the persisted row.
+                metadata.setIsPublished(ontologyPublished);
             } catch (OntologyAlreadyExistsException e) {
                 // Re-throw without TDB2 cleanup — slug check above should prevent this,
                 // but if it happens (race condition), let @Transactional handle PostgreSQL
@@ -328,6 +334,23 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         };
     }
 
+    /**
+     * Stamps {@code owl:Ontology} on the vocabulary resource when the uploaded data omits it.
+     *
+     * <p>OFN vocabularies commonly declare only {@code skos:ConceptScheme} and the OFN
+     * {@code …/pojem/slovník} type. {@code owl:Ontology} is the foundational type every
+     * ontology-keyed lookup asks for — {@link PublishedResourceUtil#checkPublishedResourcesInNKD}
+     * among them, which decides {@code isPublished}. The create path stamps all three types; upload
+     * must land in the same shape.
+     */
+    private void normalizeOntologyType(OntModel model, String graphName) {
+        Resource ontologyResource = model.getResource(graphName);
+        if (!ontologyResource.hasProperty(RDF.type, OWL2.Ontology)) {
+            ontologyResource.addProperty(RDF.type, OWL2.Ontology);
+            log.info("Normalized ontology {} to owl:Ontology (absent from uploaded data)", graphName);
+        }
+    }
+
     private String extractOntologyIRI(OntModel model) {
         // owl:Ontology is the primary signal; SKOS-only vocabularies declare the
         // vocabulary as a skos:ConceptScheme instead, so accept that too.
@@ -422,13 +445,14 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         }
     }
 
-    private void extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {
+    private boolean extractAndSaveConceptMetadata(OntModel model, String graphName, String userId, Long ontologyMetadataId, List<String> publishedConceptIris) {
         log.info("Extracting concept metadata from ontology: {}", graphName);
 
         OntologyMetadataEntity ontologyMetadata = ontologyMetadataRepository.findById(ontologyMetadataId)
                 .orElseThrow(() -> new IllegalStateException("Ontology metadata not found with id: " + ontologyMetadataId));
 
-        if (publishedConceptIris.contains(graphName)) {
+        boolean ontologyPublished = publishedConceptIris.contains(graphName);
+        if (ontologyPublished) {
             log.info("Ontology {} is published in NKD, setting isPublished = true", graphName);
             ontologyMetadata.setIsPublished(true);
             ontologyMetadataRepository.save(ontologyMetadata);
@@ -482,6 +506,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         } else {
             log.info("No concepts found in uploaded ontology: {}", graphName);
         }
+
+        return ontologyPublished;
     }
 
     private boolean shouldSkipConcept(Resource conceptResource, String graphName) {

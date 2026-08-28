@@ -474,6 +474,31 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 `conceptName` as label and no description. The response `sourceStatuses`
 will report `ISMD` as `DEGRADED` (not `OK`).
 
+#### Note: PG ontology search matches `slug` only — accepted limitation
+
+`OntologyMetadataRepository.searchByText` matches on `slug` alone
+(`unaccent(o.slug) ILIKE unaccent('%query%')`). Ontology *labels* live only in
+RDF and are reachable solely through the Fuseki branch — there is no label
+column to match on. A query hitting an ontology's label but not its slug
+therefore returns no PG row. Because the slug is hyphenated where the label has
+spaces, this is most visible with multi-word queries: `q=qa test` misses slug
+`test-slovnik`, whereas single-token `q=škol` matches `…-vysokých-škol` as a
+plain substring and looks healthy.
+
+**This is deliberate and should not be "fixed" by adding label matching to the
+PG query.** A Fuseki outage takes down concept/ontology *detail* reads as well,
+so a PG-only label match would return rows the user cannot open. Fewer results
+under `DEGRADED` is preferable to links that 500 on click.
+
+The consequence to guard against is on the *enrichment* side, not the matching
+side: a Fuseki-sourced ontology row carries no `id`, `slug`, or `isPublished`,
+and a null slug makes the FE build a `/dictionary/null` link.
+`IsmdSearchProvider.backfillPgFieldsForOntologyRows` repairs those rows from PG
+and runs **after the dedup merge**, so it covers every branch that can emit an
+ontology row — both the `type=ONTOLOGY` path and the unfiltered (`type == null`)
+path. The concept-side backfill cannot stand in for it: that one resolves IRIs
+against `concept_metadata`, which holds no row for an ontology.
+
 ### Deduplication strategy (applies to both NKD and ISMD)
 
 Both NKD SPARQL UNION queries and ISMD parallel PG+Fuseki searches can produce

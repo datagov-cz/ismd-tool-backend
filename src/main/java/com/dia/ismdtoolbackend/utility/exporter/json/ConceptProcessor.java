@@ -517,12 +517,18 @@ public class ConceptProcessor {
     private void addDomainAndRange(Resource concept, Map<String, Object> conceptObj) {
         Statement domainStmt = concept.getProperty(RDFS.domain);
         if (domainStmt != null && domainStmt.getObject().isResource()) {
-            conceptObj.put(DEFINICNI_OBOR, domainStmt.getObject().asResource().getURI());
+            String domainUri = domainStmt.getObject().asResource().getURI();
+            if (domainUri != null) {
+                conceptObj.put(DEFINICNI_OBOR, domainUri);
+            }
         }
 
         Statement rangeStmt = concept.getProperty(RDFS.range);
         if (rangeStmt != null && rangeStmt.getObject().isResource()) {
             String rangeUri = rangeStmt.getObject().asResource().getURI();
+            if (rangeUri == null) {
+                return;
+            }
 
             if (rangeUri.startsWith(XSD)) {
                 conceptObj.put(OBOR_HODNOT, "xsd:" + rangeUri.substring(XSD.length()));
@@ -761,6 +767,7 @@ public class ConceptProcessor {
             Statement datasetStmt = codeListNode.getProperty(datasetProperty);
             if (datasetStmt != null && datasetStmt.getObject().isResource()) {
                 Map<String, Object> codeListObj = new LinkedHashMap<>();
+                codeListObj.put(JSON_IRI, codeListNode.getURI());
                 codeListObj.put("typ", CISELNIK_JSON_LD);
                 codeListObj.put(DATOVA_SADA_V_NKOD, datasetStmt.getObject().asResource().getURI());
                 conceptObj.put(INSTANCE_DEFINOVANY_CISELNIKEM, codeListObj);

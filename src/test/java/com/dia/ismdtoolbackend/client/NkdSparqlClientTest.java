@@ -79,12 +79,20 @@ class NkdSparqlClientTest {
     }
 
     private NkdSparqlClient newClient(OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor,
-                HttpClient.newHttpClient());
+        return newClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor);
     }
 
     private NkdSparqlClient newUnconfiguredClient(OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(configWithEndpoint(""), extractor, HttpClient.newHttpClient());
+        return newClient(configWithEndpoint(""), extractor);
+    }
+
+    /**
+     * Builds the client without Spring. {@code self} is null here: it exists only so the cache
+     * proxy is re-entered in production, and these tests drive the real HTTP path with no cache,
+     * so no call under test dereferences it.
+     */
+    private NkdSparqlClient newClient(NkdConfig cfg, OntologyDetailExtractor extractor) {
+        return new NkdSparqlClient(cfg, extractor, HttpClient.newHttpClient(), null);
     }
 
     private static void stubTurtle(String turtle) {
@@ -380,6 +388,253 @@ class NkdSparqlClientTest {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         assertThrows(RuntimeException.class,
                 () -> newUnconfiguredClient(extractor).fetchPublishedOntology(ONTOLOGY_IRI));
+    }
+
+    // ─── fetchPublishedConceptsBatched ──────────────────────────────────────────
+
+    @Test
+    void batched_slicesEachConceptFromOneResponse() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        OntologyDetailModel.ConceptDetailModel d1 = mock(OntologyDetailModel.ConceptDetailModel.class);
+        OntologyDetailModel.ConceptDetailModel d2 = mock(OntologyDetailModel.ConceptDetailModel.class);
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI),
+                ArgumentMatchers.any())).thenReturn(d1);
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI_2),
+                ArgumentMatchers.any())).thenReturn(d2);
+
+        // One response carrying BOTH concepts, as the batched CONSTRUCT returns them.
+        stubTurtle("<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .\n"
+                 + "<" + CONCEPT_IRI_2 + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .");
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        assertEquals(d1, out.get(CONCEPT_IRI).orElseThrow().detail());
+        assertEquals(d2, out.get(CONCEPT_IRI_2).orElseThrow().detail());
+        assertEquals(ONTOLOGY_IRI, out.get(CONCEPT_IRI).orElseThrow().ontologyIri());
+        // One HTTP call for the whole batch — the entire point.
+        wm.verify(1, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void batched_sliceCarriesOnlyItsOwnSubject_notNeighbours() {
+        // Slicing must reproduce the single-IRI query's output. Pulling a neighbour's triples in
+        // would make a batched deviation disagree with a per-IRI one.
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        java.util.concurrent.atomic.AtomicReference<Model> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any())).thenAnswer(inv -> {
+            Model m = inv.getArgument(0);
+            if (m.contains(m.getResource(CONCEPT_IRI), null, (org.apache.jena.rdf.model.RDFNode) null)) {
+                seen.set(m);
+            }
+            return m;
+        });
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.anyString(),
+                ArgumentMatchers.any())).thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
+
+        stubTurtle("<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .\n"
+                 + "<" + CONCEPT_IRI_2 + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .");
+
+        newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        Model slice = seen.get();
+        assertNotNull(slice);
+        assertTrue(slice.contains(slice.getResource(CONCEPT_IRI), null, (org.apache.jena.rdf.model.RDFNode) null));
+        assertFalse(slice.contains(slice.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null),
+                "slice must not carry a neighbouring concept's triples");
+    }
+
+    @Test
+    void batched_sliceExpandsBlankNodes() {
+        // The second UNION branch of the batched query returns blank-node sub-graphs; a slice must
+        // follow them or the concept loses structure the single-IRI query would have carried.
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        java.util.concurrent.atomic.AtomicReference<Model> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any())).thenAnswer(inv -> {
+            seen.set(inv.getArgument(0));
+            return inv.getArgument(0);
+        });
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.anyString(),
+                ArgumentMatchers.any())).thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
+
+        stubTurtle("@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+                 + "<" + CONCEPT_IRI + "> owl:equivalentClass [ owl:onProperty <http://ex.org/p> ] .");
+
+        newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI));
+
+        Model slice = seen.get();
+        assertNotNull(slice);
+        assertEquals(2, slice.size(), "blank-node sub-graph must be included in the slice");
+    }
+
+    @Test
+    void batched_conceptAbsentFromResponse_mapsToEmpty() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.anyString(),
+                ArgumentMatchers.any())).thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
+
+        // Only concept 1 exists in NKD.
+        stubTurtle("<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .");
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        assertTrue(out.get(CONCEPT_IRI).isPresent());
+        assertTrue(out.get(CONCEPT_IRI_2).isEmpty(), "absent concept must map to empty, as per-IRI does");
+    }
+
+    @Test
+    void batched_emptyUpstream_allEmpty_noExtraction() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        stubEmptyTurtle();
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        assertTrue(out.get(CONCEPT_IRI).isEmpty());
+        assertTrue(out.get(CONCEPT_IRI_2).isEmpty());
+        verify(extractor, never()).applyOFNTransformationsForNkd(ArgumentMatchers.any());
+    }
+
+    @Test
+    void batched_unsafeIriFilteredOut_butStillKeyedEmpty() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        stubEmptyTurtle();
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).fetchPublishedConceptsBatched(List.of("not a valid iri"));
+
+        assertTrue(out.containsKey("not a valid iri"));
+        assertTrue(out.get("not a valid iri").isEmpty());
+        wm.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+    }
+
+    // ─── derivePublishedConceptsFromOntology (merged round-trip) ────────────────
+
+    @Test
+    void derived_producesSameSlicesAsBatched_withoutAnyHttpCall() {
+        // The merge's core guarantee: deriving concepts from the ontology model must yield the same
+        // per-concept slices the batched CONSTRUCT would have produced — and cost zero round-trips,
+        // since the ontology query already carried every in-scheme concept.
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        java.util.Map<String, Model> slicesSeen = new java.util.HashMap<>();
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any())).thenAnswer(inv -> {
+            Model m = inv.getArgument(0);
+            if (m.contains(m.getResource(CONCEPT_IRI), null, (org.apache.jena.rdf.model.RDFNode) null)) {
+                slicesSeen.put(CONCEPT_IRI, m);
+            } else if (m.contains(m.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null)) {
+                slicesSeen.put(CONCEPT_IRI_2, m);
+            }
+            return m;
+        });
+        OntologyDetailModel.ConceptDetailModel d1 = mock(OntologyDetailModel.ConceptDetailModel.class);
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI),
+                ArgumentMatchers.any())).thenReturn(d1);
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.eq(CONCEPT_IRI_2),
+                ArgumentMatchers.any())).thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
+
+        // An ontology CONSTRUCT result: the scheme's own triples PLUS its in-scheme concepts.
+        Model ontologyModel = ModelFactory.createDefaultModel();
+        ontologyModel.read(new java.io.StringReader(
+                "<" + ONTOLOGY_IRI + "> <http://www.w3.org/2004/02/skos/core#prefLabel> \"Scheme\" .\n"
+                        + "<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> .\n"
+                        + "<" + CONCEPT_IRI_2 + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> ."),
+                null, "TURTLE");
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).derivePublishedConceptsFromOntology(
+                        ontologyModel, List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        assertEquals(d1, out.get(CONCEPT_IRI).orElseThrow().detail());
+        assertEquals(ONTOLOGY_IRI, out.get(CONCEPT_IRI).orElseThrow().ontologyIri());
+        assertTrue(out.get(CONCEPT_IRI_2).isPresent());
+        // No network at all — the saving the whole change exists for.
+        wm.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        // Same slicing discipline as the batched path: a slice carries only its own subject, so the
+        // scheme's triples and the neighbouring concept stay out.
+        Model slice = slicesSeen.get(CONCEPT_IRI);
+        assertNotNull(slice);
+        assertFalse(slice.contains(slice.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null),
+                "slice must not carry a neighbouring concept's triples");
+        assertFalse(slice.contains(slice.getResource(ONTOLOGY_IRI), null, (org.apache.jena.rdf.model.RDFNode) null),
+                "slice must not carry the scheme's own triples");
+    }
+
+    @Test
+    void derived_conceptAbsentFromOntologyModel_mapsToEmpty() {
+        // Absence must be reported exactly as the batched path reports it, so the caller can decide
+        // to re-query that concept separately rather than treat it as not-published.
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.anyString(),
+                ArgumentMatchers.any())).thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
+
+        Model ontologyModel = ModelFactory.createDefaultModel();
+        ontologyModel.read(new java.io.StringReader(
+                "<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> ."), null, "TURTLE");
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).derivePublishedConceptsFromOntology(
+                        ontologyModel, List.of(CONCEPT_IRI, CONCEPT_IRI_2));
+
+        assertTrue(out.get(CONCEPT_IRI).isPresent());
+        assertTrue(out.get(CONCEPT_IRI_2).isEmpty());
+    }
+
+    @Test
+    void derived_expandsBlankNodes_likeBatched() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        java.util.concurrent.atomic.AtomicReference<Model> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any())).thenAnswer(inv -> {
+            seen.set(inv.getArgument(0));
+            return inv.getArgument(0);
+        });
+        when(extractor.extractConceptDetail(ArgumentMatchers.any(), ArgumentMatchers.anyString(),
+                ArgumentMatchers.any())).thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
+
+        Model ontologyModel = ModelFactory.createDefaultModel();
+        ontologyModel.read(new java.io.StringReader(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+                        + "<" + CONCEPT_IRI + "> owl:equivalentClass [ owl:onProperty <http://ex.org/p> ] ."),
+                null, "TURTLE");
+
+        newClient(extractor).derivePublishedConceptsFromOntology(ontologyModel, List.of(CONCEPT_IRI));
+
+        Model slice = seen.get();
+        assertNotNull(slice);
+        assertEquals(2, slice.size(), "blank-node sub-graph must be included, as in the batched path");
+    }
+
+    @Test
+    void derived_emptyOrNullModel_allEmpty_noExtraction() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        NkdSparqlClient client = newClient(extractor);
+
+        assertTrue(client.derivePublishedConceptsFromOntology(null, List.of(CONCEPT_IRI))
+                .get(CONCEPT_IRI).isEmpty());
+        assertTrue(client.derivePublishedConceptsFromOntology(ModelFactory.createDefaultModel(), List.of(CONCEPT_IRI))
+                .get(CONCEPT_IRI).isEmpty());
+        verify(extractor, never()).applyOFNTransformationsForNkd(ArgumentMatchers.any());
+    }
+
+    @Test
+    void derived_unsafeIriFilteredOut_butStillKeyedEmpty() {
+        OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
+        Model ontologyModel = ModelFactory.createDefaultModel();
+        ontologyModel.read(new java.io.StringReader(
+                "<" + CONCEPT_IRI + "> <" + IN_SCHEME + "> <" + ONTOLOGY_IRI + "> ."), null, "TURTLE");
+
+        Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
+                newClient(extractor).derivePublishedConceptsFromOntology(
+                        ontologyModel, List.of("not a valid iri"));
+
+        assertTrue(out.containsKey("not a valid iri"));
+        assertTrue(out.get("not a valid iri").isEmpty());
     }
 
     // ─── compile-time noop to keep ModelFactory import alive in case of evolution ───

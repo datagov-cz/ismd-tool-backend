@@ -4,7 +4,9 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
+import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
+import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
@@ -17,6 +19,7 @@ import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.io.StringWriter;
@@ -109,23 +112,21 @@ public class NkdDetailServiceImpl implements NkdDetailService {
             return new NkdResourceNotFoundException("Slovník s IRI " + iri + " nebyl v NKD nalezen.");
         });
 
-        try {
-            String body;
-            if (normalized.equals("ttl")) {
-                StringWriter writer = new StringWriter();
-                model.write(writer, "TTL");
-                body = writer.toString();
-            } else {
-                // NKD already publishes OFN-aligned RDF. We bypass the local-store
-                // OFN re-formatting pipeline (TurtleFilterUtil/TurtleFormatterUtil)
-                // because applying it to an already-OFN payload is a noop at best
-                // and lossy at worst. JsonExporter is enough.
-                body = jsonExporter.exportToJson(model);
-            }
-            return body.getBytes(StandardCharsets.UTF_8);
-        } finally {
-            model.close();
+        // Not closed: fetchPublishedOntologyRaw is @Cacheable, so this is the shared cached
+        // instance — closing it would poison the entry for the rest of its TTL.
+        String body;
+        if (normalized.equals("ttl")) {
+            StringWriter writer = new StringWriter();
+            model.write(writer, "TTL");
+            body = writer.toString();
+        } else {
+            // NKD already publishes OFN-aligned RDF. We bypass the local-store
+            // OFN re-formatting pipeline (TurtleFilterUtil/TurtleFormatterUtil)
+            // because applying it to an already-OFN payload is a noop at best
+            // and lossy at worst. JsonExporter is enough.
+            body = jsonExporter.exportToJson(model);
         }
+        return body.getBytes(StandardCharsets.UTF_8);
     }
 
     @Override
@@ -215,6 +216,61 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         if (!SparqlIriValidator.isSafeHttpIri(iri)) {
             throw new IllegalArgumentException("IRI není platné http(s) URI: " + iri);
         }
+    }
+
+    /**
+     * Shares {@link NkdSparqlClient#PUBLISHED_RESOURCE_CACHE} with the other NKD-published
+     * projections — same source, same 24h-TTL freshness model — under its own key prefix, alongside
+     * the client's {@code concept:} / {@code ontology:} keys.
+     *
+     * <p>Caching is not optional here: the previous implementation reached NKD through the
+     * {@code @Cacheable} {@code fetchPublishedOntology}, so dropping to a raw SELECT made the query
+     * cheaper but sent every warm request to NKD live (measured: 2ms → ~1s).
+     */
+    @Override
+    @Cacheable(cacheNames = NkdSparqlClient.PUBLISHED_RESOURCE_CACHE,
+            key = "'conceptList:' + #ontologyIri")
+    public List<MinimalConceptDto> listOntologyConcepts(String ontologyIri) {
+        validateIri(ontologyIri);
+        ensureEndpointConfigured();
+
+        List<Map<String, String>> rows;
+        try {
+            rows = nkdSparqlClient.executeSelect(
+                    NKDSPARQLBrowseQuery.buildOntologyConceptsQuery(ontologyIri, DEFAULT_LANG));
+        } catch (RuntimeException e) {
+            log.warn("NKD SPARQL error while listing concepts of {}: {}", ontologyIri, e.getMessage());
+            throw new NkdEndpointException("NKD SPARQL endpoint je nedostupný.", e);
+        }
+
+        List<MinimalConceptDto> concepts = new ArrayList<>(rows.size());
+        for (Map<String, String> row : rows) {
+            String iri = row.get("concept");
+            if (iri == null) {
+                continue;
+            }
+            String label = row.get("label");
+            concepts.add(MinimalConceptDto.builder()
+                    .iri(iri)
+                    // NKD concepts have no local slug — the FE deep-links via IRI only.
+                    .name(label == null || label.isBlank() ? Map.of() : Map.of(DEFAULT_LANG, label))
+                    .conceptType(conceptTypeFromRoleMarkers(row))
+                    .build());
+        }
+        log.debug("Listed {} NKD concepts for ontology {}", concepts.size(), ontologyIri);
+        return concepts;
+    }
+
+    /**
+     * Role markers are three independent OPTIONAL binds, so a concept tagged as more than one role
+     * resolves in this fixed order — matching {@code NkdSearchProvider}. Null when NKD publishes no
+     * recognizable role.
+     */
+    private ConceptType conceptTypeFromRoleMarkers(Map<String, String> row) {
+        if (row.get("roleTrida") != null) return ConceptType.TRIDA;
+        if (row.get("roleVlastnost") != null) return ConceptType.VLASTNOST;
+        if (row.get("roleVztah") != null) return ConceptType.VZTAH;
+        return null;
     }
 
     @Override

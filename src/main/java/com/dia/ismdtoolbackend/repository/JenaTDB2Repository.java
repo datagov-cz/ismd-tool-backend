@@ -700,6 +700,106 @@ public class JenaTDB2Repository {
                 });
     }
 
+    /**
+     * Per-concept count of properties/relationships that point at each given concept from a
+     * graph OTHER than {@code ownGraphName}. One batched query for the whole concept list.
+     *
+     * <p>Ontology detail lists only members from its own graph
+     * ({@code OntologyDetailExtractor.MemberIndex} is built from that graph's concept list
+     * alone), while concept detail additionally merges cross-graph members via
+     * {@link #fetchExternalDomainMembers}. These counts are what the two surfaces differ by,
+     * so ontology detail can state how many members it is not showing.
+     *
+     * <p>Attachment matches the extractor exactly, per kind: a vlastnost counts for its
+     * {@code rdfs:domain} only, a vztah for {@code rdfs:domain} OR {@code rdfs:range}
+     * ({@code COUNT(DISTINCT ?member)} so a vztah pointing both at the same concept counts once).
+     *
+     * <p>Concepts with no foreign members are absent from the returned map.
+     */
+    public Map<String, ForeignMemberCount> countExternalDomainMembers(String ownGraphName,
+                                                                     Collection<String> conceptIris) {
+        if (conceptIris == null || conceptIris.isEmpty() || !SparqlIriValidator.isSafeHttpIri(ownGraphName)) {
+            return Map.of();
+        }
+
+        // Validate before interpolating into VALUES: raw concatenation would let a crafted
+        // stored IRI escape <...> and inject SPARQL. Invalid entries are dropped, not sanitized.
+        List<String> safeConceptIris = conceptIris.stream()
+                .filter(SparqlIriValidator::isSafeHttpIri)
+                .distinct()
+                .toList();
+        if (safeConceptIris.isEmpty()) {
+            return Map.of();
+        }
+
+        return executor.execute(
+                "counting cross-graph members for " + safeConceptIris.size() + " concepts",
+                "Failed to count cross-graph domain/range members",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+                    pss.append("SELECT ?concept ?kind (COUNT(DISTINCT ?member) AS ?n) WHERE { ");
+                    pss.append("VALUES ?concept { ");
+                    for (String iri : safeConceptIris) {
+                        pss.appendIri(iri);
+                        pss.append(" ");
+                    }
+                    pss.append("} GRAPH ?g { ");
+                    pss.append("  { ?member rdfs:domain ?concept . ?member rdf:type ?kind . ");
+                    pss.append("    FILTER(?kind = ?vlastnost) } ");
+                    pss.append("  UNION ");
+                    pss.append("  { { ?member rdfs:domain ?concept } UNION { ?member rdfs:range ?concept } ");
+                    pss.append("    ?member rdf:type ?kind . FILTER(?kind = ?vztah) } ");
+                    pss.append("} FILTER(?g != ?ownGraph) ");
+                    pss.append("} GROUP BY ?concept ?kind");
+                    pss.setIri("ownGraph", ownGraphName);
+                    pss.setIri("vlastnost", OFN_NAMESPACE + VLASTNOST);
+                    pss.setIri("vztah", OFN_NAMESPACE + VZTAH);
+
+                    Map<String, Integer> properties = new HashMap<>();
+                    Map<String, Integer> relationships = new HashMap<>();
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            QuerySolution row = rs.next();
+                            Resource concept = row.getResource("concept");
+                            Resource kind = row.getResource("kind");
+                            if (concept == null || !concept.isURIResource() || kind == null) {
+                                continue;
+                            }
+                            int n = row.getLiteral("n").getInt();
+                            if (n <= 0) {
+                                continue;
+                            }
+                            if ((OFN_NAMESPACE + VLASTNOST).equals(kind.getURI())) {
+                                properties.merge(concept.getURI(), n, Integer::sum);
+                            } else if ((OFN_NAMESPACE + VZTAH).equals(kind.getURI())) {
+                                relationships.merge(concept.getURI(), n, Integer::sum);
+                            }
+                        }
+                    }
+
+                    Map<String, ForeignMemberCount> counts = new HashMap<>();
+                    Set<String> touched = new HashSet<>(properties.keySet());
+                    touched.addAll(relationships.keySet());
+                    for (String conceptIri : touched) {
+                        counts.put(conceptIri, new ForeignMemberCount(
+                                properties.get(conceptIri), relationships.get(conceptIri)));
+                    }
+                    log.debug("Counted cross-graph members for {} of {} concept(s) outside graph {}",
+                            counts.size(), safeConceptIris.size(), ownGraphName);
+                    return counts;
+                });
+    }
+
+    /**
+     * Foreign property/relationship counts for one concept. A null component means none
+     * (the field is omitted from the response rather than serialized as 0).
+     */
+    public record ForeignMemberCount(Integer properties, Integer relationships) {
+    }
+
     public List<String> findRelatedConceptUris(String conceptUri, String graphName) {
         return executor.execute(
                 "finding related concepts for " + conceptUri + " in graph " + graphName,
@@ -807,6 +907,12 @@ public class JenaTDB2Repository {
                     // (concepts carry skos:Concept + ofn:pojem + owl:DatatypeProperty/…;
                     // ontologies carry skos:ConceptScheme + owl:Ontology + ofn:slovník) into
                     // one row per resource so LIMIT counts resources, not type triples.
+                    //
+                    // ORDER BY makes the LIMIT slice deterministic. Without it the engine may
+                    // return any subset, so a resource present in the index can vanish from
+                    // results run to run. Publish state is not in the graph (it lives in PG),
+                    // so the caller re-ranks after merge — this ordering only guarantees the
+                    // truncation is stable and repeatable.
                     String sparql = "PREFIX text: <http://jena.apache.org/text#> " +
                             "PREFIX skos: <http://www.w3.org/2004/02/skos/core#> " +
                             "PREFIX dcterms: <http://purl.org/dc/terms/> " +
@@ -828,7 +934,7 @@ public class JenaTDB2Repository {
                             "    OPTIONAL { ?resource skos:definition ?definitionS } " +
                             "    OPTIONAL { ?resource a ?typeS } " +
                             "  } " +
-                            "} GROUP BY ?resource ?g LIMIT " + limit;
+                            "} GROUP BY ?resource ?g ORDER BY ?resource ?g LIMIT " + limit;
                     log.debug("Fuseki text search SPARQL: {}", sparql);
                     List<Map<String, String>> results = new ArrayList<>();
                     try (QueryExecution qExec = conn.query(sparql)) {

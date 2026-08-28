@@ -1,13 +1,15 @@
 package com.dia.ismdtoolbackend.utility.published;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.NkdConceptRefDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.PublishedOntologyDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.OntologyDeviationComparator;
+import com.dia.ismdtoolbackend.service.WorkingCopyDeviationService;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,17 +17,11 @@ import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ResIterator;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.shared.Lock;
 import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @Component
 @RequiredArgsConstructor
@@ -35,14 +31,17 @@ public class PublishedResourceUtil {
     private final NkdSparqlClient nkdSparqlClient;
     private final OntologyDetailExtractor detailExtractor;
     private final OntologyDeviationComparator ontologyDeviationComparator;
-    private final ConceptDeviationComparator conceptDeviationComparator;
-
-    @Value("${nkd.deviation.parallelism:8}")
-    private int deviationParallelism;
+    private final WorkingCopyDeviationService workingCopyDeviationService;
 
     private static final String POJEM_GENERIC = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem";
 
-    public PublishedOntologyDeviationModel checkOntologyDeviation(Model processedModel, OntologyMetadataModel ontologyMetadata) {
+    /**
+     * @param localOntology the caller's already-extracted detail for this graph — the local side of the
+     *                      comparison. Extraction walks every concept and resolves each member's slug, so
+     *                      re-deriving it here would duplicate that whole pass.
+     */
+    public PublishedOntologyDeviationModel checkOntologyDeviation(OntologyDetailModel localOntology,
+                                                                  OntologyMetadataModel ontologyMetadata) {
         if (Boolean.FALSE.equals(ontologyMetadata.getIsPublished())) {
             log.debug("Ontology {} is not published, skipping deviation check", ontologyMetadata.getGraphName());
             return null;
@@ -52,8 +51,6 @@ public class PublishedResourceUtil {
         log.info("Checking ontology deviation for: {}", ontologyIri);
 
         try {
-            OntologyDetailModel localOntology = detailExtractor.extractOntologyDetail(processedModel);
-
             if (localOntology == null) {
                 log.error("Local ontology detail not found for IRI: {}", ontologyIri);
                 return createErrorOntologyDeviation(
@@ -98,89 +95,42 @@ public class PublishedResourceUtil {
             return new HashMap<>();
         }
 
-        // Per-concept deviation checks each fire a CONSTRUCT to NKD; sequential
-        // execution turned the detail endpoint into N×roundtrip latency. Fan out
-        // across a small pool to bound NKD load while collapsing wall time.
-        int parallelism = Math.max(1, Math.min(deviationParallelism, publishedConcepts.size()));
-        log.info("Checking deviations for {} published concepts (parallelism={})",
-                publishedConcepts.size(), parallelism);
+        List<String> conceptIris = publishedConcepts.stream()
+                .map(ConceptMetadataEntity::getConceptIri)
+                .toList();
+        log.info("Checking deviations for {} published concepts", conceptIris.size());
 
-        Map<String, PublishedConceptDeviationModel> deviations = new ConcurrentHashMap<>();
-        ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+        // Single source of truth: the same computation concept detail uses, so the two surfaces can
+        // never disagree. The bulk entry point reads every local projection off the processedModel this
+        // request already transformed — the per-IRI path would re-fetch and re-transform the whole
+        // ontology graph once per concept, since a concept's graphName IS the ontology graph.
+        // The concepts all belong to one graph, so the NKD side can be sliced out of that scheme's
+        // ontology CONSTRUCT — which the ontology deviation check fetches anyway — instead of paying
+        // a second batched concept round-trip.
+        String ontologyIri = publishedConcepts.stream()
+                .map(ConceptMetadataEntity::getGraphName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .count() == 1
+                ? publishedConcepts.get(0).getGraphName()
+                : null;
+
+        Map<String, PublishedConceptDeviationModel> deviations = new HashMap<>();
         try {
-            List<CompletableFuture<Void>> futures = publishedConcepts.stream()
-                    .map(conceptEntity -> CompletableFuture.runAsync(() -> {
-                        String conceptIri = conceptEntity.getConceptIri();
-                        try {
-                            PublishedConceptDeviationModel deviation =
-                                    checkSingleConceptDeviation(processedModel, conceptIri);
-                            if (deviation != null) {
-                                deviations.put(conceptIri, deviation);
-                            }
-                        } catch (Exception e) {
-                            log.error("Error checking concept deviation for {}: {}", conceptIri, e.getMessage(), e);
-                            deviations.put(conceptIri, createErrorConceptDeviation(
-                                    PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                                    "Error checking concept: " + e.getMessage()
-                            ));
-                        }
-                    }, executor))
-                    .toList();
-
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-        } finally {
-            executor.shutdown();
+            deviations.putAll(workingCopyDeviationService.deviationForAllInOntology(
+                    processedModel, conceptIris, ontologyIri));
+        } catch (Exception e) {
+            // Bulk local extraction failed as a unit; degrade to a per-concept error rather than
+            // failing the whole detail response.
+            log.error("Bulk deviation check failed for {} concepts: {}", conceptIris.size(), e.getMessage(), e);
+            for (String conceptIri : conceptIris) {
+                deviations.put(conceptIri, createErrorConceptDeviation(
+                        "Error checking concept: " + e.getMessage(), conceptIri));
+            }
         }
 
         log.info("Completed deviation checks for {} concepts", deviations.size());
         return deviations;
-    }
-
-    private PublishedConceptDeviationModel checkSingleConceptDeviation(Model processedModel, String conceptIri) {
-        try {
-            // Shared Jena Model is read concurrently by the deviation fan-out;
-            // enterCriticalSection(READ) is the documented way to make in-memory
-            // reads safe under concurrency.
-            OntologyDetailModel.ConceptDetailModel localConcept;
-            processedModel.enterCriticalSection(Lock.READ);
-            try {
-                localConcept = detailExtractor.extractConceptDetail(processedModel, conceptIri);
-            } finally {
-                processedModel.leaveCriticalSection();
-            }
-
-            if (localConcept == null) {
-                log.error("Local concept detail not found for IRI: {}", conceptIri);
-                return createErrorConceptDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR,
-                        "Local concept detail not available"
-                );
-            }
-
-            Optional<OntologyDetailModel.ConceptDetailModel> publishedConceptOpt =
-                    nkdSparqlClient.fetchPublishedConcept(conceptIri);
-
-            if (publishedConceptOpt.isEmpty()) {
-                log.warn("Published concept not found in NKD: {}", conceptIri);
-                return createErrorConceptDeviation(
-                        PublishedConceptDeviationModel.DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD,
-                        "Concept not found in NKD SPARQL endpoint"
-                );
-            }
-
-            OntologyDetailModel.ConceptDetailModel publishedConcept = publishedConceptOpt.get();
-            PublishedConceptDeviationModel deviation = conceptDeviationComparator.compareConceptDetails(localConcept, publishedConcept);
-
-            log.debug("Concept deviation check completed for {}: status={}", conceptIri, deviation.getStatus());
-            return deviation;
-
-        } catch (Exception e) {
-            log.error("Error checking published concept deviation for {}: {}", conceptIri, e.getMessage(), e);
-            return createErrorConceptDeviation(
-                    PublishedConceptDeviationModel.DeviationStatus.ENDPOINT_UNAVAILABLE,
-                    "NKD SPARQL endpoint unavailable: " + e.getMessage()
-            );
-        }
     }
 
     private PublishedOntologyDeviationModel createErrorOntologyDeviation(
@@ -230,12 +180,19 @@ public class PublishedResourceUtil {
         return publishedIris;
     }
 
+    /**
+     * An error envelope still carries {@code origin}/{@code source} — the comparison failed, but this is
+     * known to be a working copy and the twin's IRI is known, and the FE needs both to render the block.
+     * No label: it lives on the NKD concept we could not fetch.
+     */
     private PublishedConceptDeviationModel createErrorConceptDeviation(
-            PublishedConceptDeviationModel.DeviationStatus status,
-            String errorMessage) {
+            String errorMessage,
+            String conceptIri) {
         return PublishedConceptDeviationModel.builder()
-                .status(status)
+                .status(PublishedConceptDeviationModel.DeviationStatus.QUERY_ERROR)
                 .errorMessage(errorMessage)
+                .origin(SnapshotOrigin.WORKING_COPY)
+                .source(NkdConceptRefDto.builder().iri(conceptIri).build())
                 .build();
     }
 }

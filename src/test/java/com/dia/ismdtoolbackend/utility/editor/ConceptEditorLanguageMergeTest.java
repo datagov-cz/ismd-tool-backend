@@ -13,6 +13,7 @@ import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,6 +50,20 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
             String lang = lit.getLanguage() != null && !lit.getLanguage().isEmpty() ? lit.getLanguage() : DEFAULT_LANG;
             out.put(lang, lit.getString());
         }
+        return out;
+    }
+
+    /** Like {@link #langValues} but keeps every value per language — altLabel legitimately repeats. */
+    private Map<String, List<String>> allLangValues(Resource resource, Property property) {
+        Map<String, List<String>> out = new HashMap<>();
+        StmtIterator it = resource.listProperties(property);
+        while (it.hasNext()) {
+            var stmt = it.next();
+            var lit = stmt.getObject().asLiteral();
+            String lang = lit.getLanguage() != null && !lit.getLanguage().isEmpty() ? lit.getLanguage() : DEFAULT_LANG;
+            out.computeIfAbsent(lang, k -> new java.util.ArrayList<>()).add(lit.getString());
+        }
+        out.values().forEach(java.util.Collections::sort);
         return out;
     }
 
@@ -163,7 +178,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         existing.addProperty(SKOS.altLabel, model.createLiteral("en alt", "en"));
 
         AltNameModel newAlt = new AltNameModel();
-        newAlt.setAltName(Map.of("cs", "Nový alt"));
+        newAlt.setAltName(Map.of("cs", List.of("Nový alt")));
 
         stubCommonNull();
         when(classConceptEditModel.getAltNameModel()).thenReturn(newAlt);
@@ -174,6 +189,47 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         assertEquals("Nový alt", result.get("cs"));
         assertNull(result.get("en"), "en altLabel must be dropped — altLabel is full-replace");
         assertEquals(1, result.size());
+    }
+
+    // Several alt labels in one language survive the write (the Map<String,String> collapse bug).
+    @Test
+    void altLabel_severalLabelsInOneLanguage_allSurvive() {
+        String iri = DEFAULT_NS + "multi-alt";
+        Resource existing = model.createResource(iri);
+        existing.addProperty(SKOS.prefLabel, model.createLiteral("Jméno", "cs"));
+        existing.addProperty(RDF.type, SKOS.Concept);
+
+        AltNameModel newAlt = new AltNameModel();
+        newAlt.setAltName(Map.of("cs", List.of("Obec", "Municipalita")));
+
+        stubCommonNull();
+        when(classConceptEditModel.getAltNameModel()).thenReturn(newAlt);
+
+        conceptEditor.editConcept(iri, classConceptEditModel, model, null);
+
+        assertEquals(List.of("Municipalita", "Obec"), allLangValues(model.getResource(iri), SKOS.altLabel).get("cs"),
+                "both cs alt labels must be written — the old Map<String,String> kept only the last");
+    }
+
+    // Re-submitting the same multi-value set must not churn the graph (equality is order-insensitive).
+    @Test
+    void altLabel_resubmittingSameLabelsInDifferentOrder_isANoOp() {
+        String iri = DEFAULT_NS + "multi-alt-noop";
+        Resource existing = model.createResource(iri);
+        existing.addProperty(SKOS.prefLabel, model.createLiteral("Jméno", "cs"));
+        existing.addProperty(RDF.type, SKOS.Concept);
+        existing.addProperty(SKOS.altLabel, model.createLiteral("Obec", "cs"));
+        existing.addProperty(SKOS.altLabel, model.createLiteral("Municipalita", "cs"));
+
+        AltNameModel sameAlt = new AltNameModel();
+        sameAlt.setAltName(Map.of("cs", List.of("Municipalita", "Obec")));
+
+        stubCommonNull();
+        when(classConceptEditModel.getAltNameModel()).thenReturn(sameAlt);
+
+        conceptEditor.editConcept(iri, classConceptEditModel, model, null);
+
+        assertEquals(List.of("Municipalita", "Obec"), allLangValues(model.getResource(iri), SKOS.altLabel).get("cs"));
     }
 
     // empty-string value for a tag deletes just that tag from a merged field

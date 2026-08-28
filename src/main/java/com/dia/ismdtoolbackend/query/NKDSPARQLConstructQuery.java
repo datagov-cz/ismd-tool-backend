@@ -62,6 +62,32 @@ public class NKDSPARQLConstructQuery {
         return pss.toString();
     }
 
+    /**
+     * Batched form of {@link #buildConstructQuery(String)}: the same full concept graph + blank-node
+     * expansion, for many IRIs in one round-trip. Per-concept output is identical to the single-IRI
+     * query — the caller slices the returned model by subject.
+     */
+    public static String buildBatchedConstructQuery(List<String> conceptIris) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+        pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+        pss.append("PREFIX owl: <http://www.w3.org/2002/07/owl#> ");
+        pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+        pss.append("PREFIX dcterms: <http://purl.org/dc/terms/> ");
+        pss.append("CONSTRUCT { ?concept ?p ?o . ?o ?nestedP ?nestedO . } ");
+        pss.append("WHERE { VALUES ?concept { ");
+        for (String iri : conceptIris) {
+            pss.appendIri(iri);
+            pss.append(" ");
+        }
+        pss.append("} ");
+        pss.append("{ ?concept ?p ?o . } ");
+        pss.append("UNION ");
+        pss.append("{ ?concept ?p ?o . FILTER(isBlank(?o)) ?o ?nestedP ?nestedO . } ");
+        pss.append("}");
+        return pss.toString();
+    }
+
     public static String buildConstructQuery(String conceptIri) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.setCommandText("""

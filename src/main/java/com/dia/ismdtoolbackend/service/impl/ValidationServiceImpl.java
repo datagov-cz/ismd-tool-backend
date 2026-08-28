@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -66,5 +67,13 @@ public class ValidationServiceImpl implements ValidationService {
                 ontologyMetadataModel.getGraphName(),
                 validationReportEntity.getTimestamp()))
                 .orElse(null);
+    }
+
+    @Override
+    public ValidationReportDto getValidationReportOrEmpty(OntologyMetadataModel ontologyMetadataModel) throws ValidationException {
+        ValidationReportDto report = getValidationReport(ontologyMetadataModel);
+        return report != null
+                ? report
+                : new ValidationReportDto(List.of(), ontologyMetadataModel.getGraphName(), null);
     }
 }

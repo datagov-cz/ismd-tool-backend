@@ -39,7 +39,9 @@ class EsbirkaServiceImplResolveTest {
     void setUp() {
         client = mock(EsbirkaSparqlClient.class);
         cache = mock(EsbirkaFragmentResolutionCache.class);
-        service = new EsbirkaServiceImpl(client, cache);
+        // self is only used by the one-arg getLawContent overload, which this suite
+        // never exercises; null keeps the constructor honest without a stub.
+        service = new EsbirkaServiceImpl(client, cache, null);
     }
 
     @Test

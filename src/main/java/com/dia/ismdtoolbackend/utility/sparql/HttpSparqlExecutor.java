@@ -10,6 +10,7 @@ import org.apache.jena.sparql.exec.http.QueryExecutionHTTPBuilder;
 
 import java.net.http.HttpClient;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -38,6 +39,16 @@ public final class HttpSparqlExecutor {
     private final HttpClient httpClient;
 
     /**
+     * Bounds concurrent in-flight queries to this endpoint, or {@code null} for no limit.
+     *
+     * <p>Without a bulkhead a slow endpoint lets every request thread pile onto it at once, each
+     * holding its own connection for the full timeout. Permits are released in a {@code finally},
+     * and a thread that cannot get one within the query timeout fails as endpoint-unavailable
+     * rather than queueing without bound.
+     */
+    private final Semaphore concurrencyLimiter;
+
+    /**
      * @param endpointLabel  short human-readable name (e.g. {@code "e-Sbírka"}).
      *                       Surfaced in exception messages and the global handler's
      *                       Czech response, so spell it the way you want a user to
@@ -53,10 +64,22 @@ public final class HttpSparqlExecutor {
      */
     public HttpSparqlExecutor(String endpointLabel, String endpointUrl, int timeoutMs,
                               HttpClient httpClient) {
+        this(endpointLabel, endpointUrl, timeoutMs, httpClient, 0);
+    }
+
+    /**
+     * @param maxConcurrentRequests upper bound on in-flight queries to this endpoint;
+     *                              {@code <= 0} means unlimited.
+     */
+    public HttpSparqlExecutor(String endpointLabel, String endpointUrl, int timeoutMs,
+                              HttpClient httpClient, int maxConcurrentRequests) {
         this.endpointLabel = endpointLabel;
         this.endpointUrl = endpointUrl;
         this.timeoutMs = timeoutMs;
         this.httpClient = httpClient;
+        this.concurrencyLimiter = maxConcurrentRequests > 0
+                ? new Semaphore(maxConcurrentRequests, true)
+                : null;
     }
 
     /**
@@ -68,8 +91,41 @@ public final class HttpSparqlExecutor {
         this(endpointLabel, endpointUrl, timeoutMs, null);
     }
 
+    /**
+     * Runs {@code action} holding a permit when this endpoint is bounded, else runs it directly.
+     * The acquire budget is the query timeout: waiting longer than a query may take is pointless,
+     * and reporting unavailable is better than an unbounded queue behind a stalled endpoint.
+     */
+    private <T> T withPermit(String operationLabel, java.util.function.Supplier<T> action) {
+        if (concurrencyLimiter == null) {
+            return action.get();
+        }
+        boolean acquired;
+        try {
+            acquired = concurrencyLimiter.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SparqlEndpointUnavailableException(
+                    endpointLabel, "Interrupted waiting for " + endpointLabel + " capacity", e);
+        }
+        if (!acquired) {
+            log.warn("{} concurrency limit reached ({} permits) during {}; failing fast",
+                    endpointLabel, concurrencyLimiter.availablePermits(), operationLabel);
+            throw new SparqlEndpointUnavailableException(
+                    endpointLabel, endpointLabel + " is busy, try again later");
+        }
+        try {
+            return action.get();
+        } finally {
+            concurrencyLimiter.release();
+        }
+    }
+
+    private static final String ACCEPT_ENCODING = "gzip, deflate";
+
     private QueryExecutionHTTPBuilder service() {
-        QueryExecutionHTTPBuilder builder = QueryExecutionHTTPBuilder.service(endpointUrl);
+        QueryExecutionHTTPBuilder builder = QueryExecutionHTTPBuilder.service(endpointUrl)
+                .httpHeader("Accept-Encoding", ACCEPT_ENCODING);
         return httpClient != null ? builder.httpClient(httpClient) : builder;
     }
 
@@ -80,7 +136,7 @@ public final class HttpSparqlExecutor {
      */
     public <T> T select(String operationLabel, String query, Function<ResultSet, T> mapper) {
         requireConfigured();
-        return SparqlExceptionMapper.strict(
+        return withPermit(operationLabel, () -> SparqlExceptionMapper.strict(
                 operationLabel,
                 SparqlEndpointUnavailableException.class,
                 () -> {
@@ -91,7 +147,7 @@ public final class HttpSparqlExecutor {
                         return mapper.apply(qe.execSelect());
                     }
                 },
-                (msg, cause) -> new SparqlEndpointUnavailableException(endpointLabel, msg, cause));
+                (msg, cause) -> new SparqlEndpointUnavailableException(endpointLabel, msg, cause)));
     }
 
     /**
@@ -100,7 +156,7 @@ public final class HttpSparqlExecutor {
      */
     public Optional<Model> construct(String operationLabel, String query) {
         requireConfigured();
-        return SparqlExceptionMapper.strict(
+        return withPermit(operationLabel, () -> SparqlExceptionMapper.strict(
                 operationLabel,
                 SparqlEndpointUnavailableException.class,
                 () -> {
@@ -110,7 +166,7 @@ public final class HttpSparqlExecutor {
                             .construct();
                     return (model == null || model.isEmpty()) ? Optional.empty() : Optional.of(model);
                 },
-                (msg, cause) -> new SparqlEndpointUnavailableException(endpointLabel, msg, cause));
+                (msg, cause) -> new SparqlEndpointUnavailableException(endpointLabel, msg, cause)));
     }
 
     /**
@@ -123,15 +179,17 @@ public final class HttpSparqlExecutor {
             log.warn("{} endpoint not configured, skipping {}", endpointLabel, operationLabel);
             return Optional.empty();
         }
+        // Lenient by contract: a busy endpoint degrades to empty like any other failure here,
+        // rather than throwing into a best-effort caller.
         return SparqlExceptionMapper.lenient(
                 operationLabel,
-                () -> {
+                () -> withPermit(operationLabel, () -> {
                     Model model = service()
                             .query(query)
                             .timeout(timeoutMs, TimeUnit.MILLISECONDS)
                             .construct();
-                    return (model == null || model.isEmpty()) ? Optional.empty() : Optional.of(model);
-                },
+                    return (model == null || model.isEmpty()) ? Optional.<Model>empty() : Optional.of(model);
+                }),
                 Optional.empty());
     }
 

@@ -10,6 +10,9 @@ import static com.dia.constants.VocabularyConstants.DATUM_A_CAS;
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.OKAMZIK_POSLEDNI_ZMENY;
 import static com.dia.constants.VocabularyConstants.OKAMZIK_VYTVORENI;
+import static com.dia.constants.VocabularyConstants.TRIDA;
+import static com.dia.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.constants.VocabularyConstants.VZTAH;
 
 /**
  * SPARQL queries for browsing NKD ontologies (no text-search filter).
@@ -25,6 +28,11 @@ public class NKDSPARQLBrowseQuery {
             PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
             PREFIX dcterms: <http://purl.org/dc/terms/>
             """;
+
+    // NKD concepts carry either the OFN role tag or the plain OWL type, so role detection accepts both.
+    private static final String OWL_CLASS = "http://www.w3.org/2002/07/owl#Class";
+    private static final String OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#ObjectProperty";
+    private static final String OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#DatatypeProperty";
 
     /**
      * Returns ontology IRIs alphabetically by {@code skos:prefLabel} in the given
@@ -148,6 +156,46 @@ public class NKDSPARQLBrowseQuery {
                 """.formatted(values.toString(),
                 okamzikVytvoreni, datumACas, datum,
                 okamzikZmeny, datumACas, datum);
+    }
+
+    /**
+     * Minimal per-concept projection for one ontology: IRI, display label and role — the only fields
+     * the "list an NKD vocabulary's concepts" view needs.
+     *
+     * <p>The alternative is the full-ontology CONSTRUCT, which pulls every concept's whole triple set
+     * (plus a blank-node level) and then OFN-transforms it, only for the caller to keep three fields
+     * per concept. This reads those three fields directly.
+     *
+     * <p>Label follows the same precedence as the rest of the browse queries: the {@code sortLang}
+     * literal if present, else any-language. Role is projected as three independent OPTIONAL binds,
+     * each accepting the OFN role tag or the equivalent OWL type — the same shape
+     * {@link NKDSPARQLSearchQuery} uses, kept deliberately free of type-narrowing joins that the
+     * Virtuoso planner mishandles.
+     */
+    public static String buildOntologyConceptsQuery(String ontologyIri, String sortLang) {
+        if (!SparqlIriValidator.isSafeHttpIri(ontologyIri)) {
+            throw new IllegalArgumentException("Unsafe IRI for SPARQL: " + ontologyIri);
+        }
+        String safeLang = sanitizeLang(sortLang);
+        return PREFIXES + """
+                SELECT DISTINCT ?concept ?label ?roleTrida ?roleVlastnost ?roleVztah WHERE {
+                  ?concept skos:inScheme <%s> .
+                  OPTIONAL {
+                    ?concept skos:prefLabel ?prefLabel .
+                    FILTER(LANG(?prefLabel) = "%s")
+                  }
+                  OPTIONAL { ?concept skos:prefLabel ?anyLabel }
+                  BIND(COALESCE(?prefLabel, ?anyLabel) AS ?label)
+
+                  OPTIONAL { ?concept a ?roleTrida .     FILTER(?roleTrida IN (<%s>, <%s>)) }
+                  OPTIONAL { ?concept a ?roleVlastnost . FILTER(?roleVlastnost IN (<%s>, <%s>)) }
+                  OPTIONAL { ?concept a ?roleVztah .     FILTER(?roleVztah IN (<%s>, <%s>)) }
+                }
+                ORDER BY ?label ?concept
+                """.formatted(ontologyIri, safeLang,
+                OFN_NAMESPACE + TRIDA, OWL_CLASS,
+                OFN_NAMESPACE + VLASTNOST, OWL_DATATYPE_PROPERTY,
+                OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
     }
 
     /**

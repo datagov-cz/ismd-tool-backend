@@ -95,7 +95,7 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Backstop relay drain schedule (Spring 6-field cron). |
 | `OUTBOX_MAX_ATTEMPTS` | `10` | Apply attempts before a row is marked FAILED. |
 | `OUTBOX_BATCH_SIZE` | `100` | Max rows claimed per relay drain pass. |
-| `OUTBOX_DONE_RETENTION` | `P7D` | Retention for DONE rows (ISO-8601 duration) before pruning. |
+| `OUTBOX_DONE_RETENTION` | `P30D` | Retention for DONE rows (ISO-8601 duration) before pruning. |
 | `OUTBOX_PRUNE_CRON` | `0 30 3 * * *` | DONE-row prune schedule (Spring 6-field cron). |
 
 ### Reconciler (consistency detection)
@@ -111,6 +111,12 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HIKARI_MAX_POOL_SIZE` | `20` | Max Hikari pool size (dev/production). The outbox after-commit nudge briefly holds ~2 connections per writer, so size with headroom. |
+
+## ISMD AI
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ISMD_AI_MAX_JOB_IDS` | `100` | Maximum number of `jobIds` accepted in one suggestion-jobs request. |
 
 ## Security Best Practices
 

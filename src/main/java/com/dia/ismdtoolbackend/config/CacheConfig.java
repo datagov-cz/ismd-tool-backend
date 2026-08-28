@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.config;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -85,8 +86,26 @@ public class CacheConfig {
                 .maximumSize(CONCEPT_METADATA_MAX_ENTRIES)
                 .build());
 
-        // NKD-published deviation projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).
+        // NKD-published projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE). Key shapes share it,
+        // all NKD-sourced with the same 24h-TTL freshness model: 'concept:' / 'conceptWithScheme:' /
+        // 'ontology:' / 'ontologyRaw:' from NkdSparqlClient, and 'conceptList:' from
+        // NkdDetailServiceImpl.listOntologyConcepts.
+        //
+        // Sizing note: maximumSize counts ENTRIES, not bytes, and 'ontologyRaw:' holds a whole Jena
+        // model for one vocabulary (~400 KB for a 381-concept scheme) against ~1 KB for a 'concept:'
+        // entry. One raw entry exists per distinct vocabulary read, so the realistic count is small
+        // (tens), but if the cache is ever dominated by raw models the count-based cap no longer
+        // bounds heap usefully — switch to Caffeine weigher/maximumWeight before raising it.
         mgr.registerCustomCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, Caffeine.newBuilder()
+                .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
+                .build());
+
+        // Canonical local concept projection behind working-copy deviation (WorkingCopyDeviationService).
+        // Both ontology detail and concept detail compare against THIS one cached local read, so they can
+        // never disagree. ISMD edits evict it synchronously (@CacheEvict on the concept/ontology write
+        // paths); its freshness w.r.t. NKD rides the NKD projection TTL above, so a 24h write-TTL matches.
+        mgr.registerCustomCache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, Caffeine.newBuilder()
                 .expireAfterWrite(NKD_PUBLISHED_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(NKD_PUBLISHED_MAX_ENTRIES)
                 .build());

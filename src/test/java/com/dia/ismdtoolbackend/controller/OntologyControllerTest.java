@@ -21,9 +21,15 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.validation.ValidationReportDto;
+import com.dia.validation.ValidationResult;
+import com.dia.validation.ValidationSeverity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -616,6 +622,111 @@ class OntologyControllerTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void testDownloadOntology_BlockedByValidationErrors_ReturnsErrorDetails() throws Exception {
+        Long ontologyId = 21L;
+        OntologyMetadataModel metadata = new OntologyMetadataModel();
+        metadata.setId(ontologyId);
+        metadata.setGraphName("https://example.com/slovnik");
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
+        when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
+        when(validationService.getValidationReport(metadata)).thenReturn(
+                new ValidationReportDto(
+                        List.of(
+                                new ValidationResult(ValidationSeverity.ERROR, "Pojem nemá název", "rule-nazev",
+                                        "https://example.com/pojem/1", "http://www.w3.org/2004/02/skos/core#prefLabel", null),
+                                new ValidationResult(ValidationSeverity.WARNING, "Doporučujeme popis", "rule-popis",
+                                        "https://example.com/pojem/2", null, null)),
+                        metadata.getGraphName(),
+                        Instant.now()));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "json-ld"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION"))
+                .andExpect(jsonPath("$.message").value("Slovník nelze stáhnout, protože obsahuje 1 chybu z kontroly. Opravte je a spusťte kontrolu znovu."))
+                .andExpect(jsonPath("$.data.graphName").value("https://example.com/slovnik"))
+                .andExpect(jsonPath("$.data.errorCount").value(1))
+                .andExpect(jsonPath("$.data.truncated").value(false))
+                // only the ERROR is listed; the WARNING does not block and is not reported here
+                .andExpect(jsonPath("$.data.errors.length()").value(1))
+                .andExpect(jsonPath("$.data.errors[0].ruleName").value("rule-nazev"))
+                .andExpect(jsonPath("$.data.errors[0].message").value("Pojem nemá název"))
+                .andExpect(jsonPath("$.data.errors[0].focusNodeUri").value("https://example.com/pojem/1"));
+
+        verify(ontologyDownloadService, never()).downloadOntology(anyLong(), anyString());
+    }
+
+    @Test
+    void testDownloadOntology_BlockedWithManyErrors_TruncatesListButKeepsFullCount() throws Exception {
+        Long ontologyId = 21L;
+        OntologyMetadataModel metadata = new OntologyMetadataModel();
+        metadata.setId(ontologyId);
+        metadata.setGraphName("https://example.com/slovnik");
+
+        List<ValidationResult> results = IntStream.range(0, 38)
+                .mapToObj(i -> new ValidationResult(ValidationSeverity.ERROR, "Chyba " + i, "rule-" + i,
+                        "https://example.com/pojem/" + i, null, null))
+                .collect(Collectors.toList());
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
+        when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
+        when(validationService.getValidationReport(metadata)).thenReturn(
+                new ValidationReportDto(results, metadata.getGraphName(), Instant.now()));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "json-ld"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION"))
+                .andExpect(jsonPath("$.message").value("Slovník nelze stáhnout, protože obsahuje 38 chyb z kontroly. Opravte je a spusťte kontrolu znovu."))
+                .andExpect(jsonPath("$.data.errorCount").value(38))
+                .andExpect(jsonPath("$.data.truncated").value(true))
+                .andExpect(jsonPath("$.data.errors.length()").value(20));
+    }
+
+    @Test
+    void testDownloadOntology_WarningsOnly_IsNotBlocked() throws Exception {
+        Long ontologyId = 1L;
+        String ttlContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .";
+        OntologyMetadataModel metadata = new OntologyMetadataModel();
+        metadata.setId(ontologyId);
+        metadata.setGraphName("https://example.com/slovnik");
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
+        when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
+        when(validationService.getValidationReport(metadata)).thenReturn(
+                new ValidationReportDto(
+                        List.of(new ValidationResult(ValidationSeverity.WARNING, "Doporučujeme popis", "rule-popis",
+                                "https://example.com/pojem/2", null, null)),
+                        metadata.getGraphName(),
+                        Instant.now()));
+        when(ontologyDownloadService.downloadOntology(ontologyId, "ttl")).thenReturn(ttlContent);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "ttl"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(ttlContent));
+    }
+
+    @Test
+    void testDownloadOntology_ErrorsAllowedByConfig_IsNotBlocked() throws Exception {
+        Long ontologyId = 21L;
+        String ttlContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .";
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(true);
+        when(ontologyDownloadService.downloadOntology(ontologyId, "ttl")).thenReturn(ttlContent);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "ttl"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(ttlContent));
+
+        // the report is not even read when downloads with errors are permitted
+        verify(validationService, never()).getValidationReport(any());
+    }
+
     // ========== Get Ontology Detail Tests ==========
 
     @Test
@@ -657,6 +768,92 @@ class OntologyControllerTest {
 
         mockMvc.perform(get("/api/ontology/{slug}/detail", slug))
                 .andExpect(status().isNotFound());
+    }
+
+    // ========== Get Validation Report Tests ==========
+
+    @Test
+    void testGetValidationReport_Success() throws Exception {
+        String slug = "test-ontology";
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
+        java.time.Instant timestamp = java.time.Instant.parse("2026-08-24T10:15:30Z");
+        com.dia.validation.ValidationResult result = new com.dia.validation.ValidationResult(
+                com.dia.validation.ValidationSeverity.ERROR,
+                "Chybí název pojmu",
+                "rule-name-required",
+                "http://example.org/test-ontology/pojem/1",
+                "http://www.w3.org/2004/02/skos/core#prefLabel",
+                null);
+
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
+        when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
+                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data.results.length()").value(1))
+                .andExpect(jsonPath("$.data.results[0].severity").value("ERROR"))
+                .andExpect(jsonPath("$.data.results[0].message").value("Chybí název pojmu"))
+                .andExpect(jsonPath("$.data.ontologyIri").value("http://example.org/test-ontology"))
+                .andExpect(jsonPath("$.data.timestamp").exists());
+    }
+
+    /** Never validated is a state, not an error — an empty report, not a 404. */
+    @Test
+    void testGetValidationReport_NeverValidatedReturnsEmptyReport() throws Exception {
+        String slug = "test-ontology";
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
+        when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
+                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.results.length()").value(0))
+                .andExpect(jsonPath("$.data.ontologyIri").value("http://example.org/test-ontology"))
+                .andExpect(jsonPath("$.data.timestamp").doesNotExist());
+    }
+
+    /** The report is keyed off the ontology, so an unknown slug 404s before the report lookup. */
+    @Test
+    void testGetValidationReport_OntologyNotFound() throws Exception {
+        String slug = "non-existent-ontology";
+
+        when(ontologyService.getOntologyMetadataBySlug(slug))
+                .thenThrow(new OntologyNotFoundException("Ontology not found"));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isNotFound());
+
+        verify(validationService, never()).getValidationReportOrEmpty(any());
+    }
+
+    /**
+     * The tool's own ValidationException has its own handler — it must surface its message, not
+     * fall through to the generic catch-all's masked "Nastala neočekávaná chyba."
+     */
+    @Test
+    void testGetValidationReport_ReportLookupFailureIsHandled() throws Exception {
+        String slug = "test-ontology";
+        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
+        metadataModel.setSlug(slug);
+        metadataModel.setGraphName("http://example.org/test-ontology");
+
+        when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
+        when(validationService.getValidationReportOrEmpty(metadataModel))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.ValidationException(
+                        "Během načítání zprávy z kontroly došlo k chybě", new RuntimeException("DB down")));
+
+        mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.message").value("Během načítání zprávy z kontroly došlo k chybě"));
     }
 
     // ========== Get Ontology List Tests ==========

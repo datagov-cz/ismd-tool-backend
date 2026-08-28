@@ -37,14 +37,25 @@ public interface NkdSnapshotService {
     PublishedConceptDeviationModel evaluateDeviation(NkdConceptSnapshotEntity snapshot);
 
     /**
+     * The read-path warmer's per-target operation. A snapshot is a frozen copy, so a passive read must
+     * never adopt upstream drift: when a row already exists this only RE-EVALUATES deviation (updates
+     * {@code lastDeviationStatus} / {@code lastCheckedAt}, never the stored triples), so genuine drift
+     * surfaces as {@code HAS_DEVIATIONS} for the user to accept via an explicit update/sync. Only a
+     * first-time link (no row yet) materializes the copy. Overwriting an existing copy is reserved for
+     * the explicit command paths ({@code updateLocalCopy} / edit reconcile).
+     */
+    void refreshOrSeedForWarming(ConceptMetadataEntity owner, String nkdIri, String linkType,
+                                 OwnerChangeSet ownerChangeSet);
+
+    /**
      * Removes the link + snapshot, contributing the removal to {@code ownerChangeSet}.
      * <p>
      * {@code ownerOutgoingStatements} are the owner concept's current outgoing triples (from the
      * owner's graph model); every triple among them whose object is {@code snapshot.nkdIri} is added
      * to {@code toRemove} — this drops all link predicates to the target (broaderClass writes
      * both {@code rdfs:subClassOf} and a namespaced hierarchy prop), without reconstructing predicate
-     * IRIs. The materialized copy triples are added to {@code toRemove} only when this is the
-     * last referencing concept for the NKD IRI in the graph.
+     * IRIs. Only link triples are contributed; the copy itself lives in Postgres and never reaches
+     * the graph.
      */
     void removeSnapshotAndLink(NkdConceptSnapshotEntity snapshot, Set<Statement> ownerOutgoingStatements,
                                OwnerChangeSet ownerChangeSet);
@@ -54,20 +65,20 @@ public interface NkdSnapshotService {
     List<NkdConceptSnapshotEntity> findForGraph(String graphName);
 
     /**
-     * Concept-deletion cascade. Deletes the PG snapshot rows owned by the concepts being
-     * removed and returns the NKD IRIs whose materialized copy is now orphaned — i.e. the
-     * deleted concepts were its last referrers in the graph — so the caller can sweep those copy
-     * subjects out of TDB2 in the same delete operation.
+     * Concept-deletion cascade. Deletes the PG snapshot rows owned by the concepts being removed.
+     * The copy lives only in PG, so there is nothing to sweep out of TDB2.
      * @param deletedConceptIds the owned concepts being deleted (their PG ids)
      * @param graphName         the graph they belong to
-     * @return NKD IRIs whose copy subject should be swept from TDB2 (possibly empty)
      */
-    List<String> cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName);
+    void cascadeConceptDeletion(List<Long> deletedConceptIds, String graphName);
 
     /**
-     * Whole-ontology deletion cascade. Deletes all PG snapshot rows for the graph. The
-     * materialized copy triples need no explicit removal — the caller's {@code DELETE_GRAPH} sweeps
-     * the entire named graph, copies included.
+     * Whole-ontology deletion cascade. Deletes the PG snapshot rows owned by the ontology's concepts
+     * (keyed on the owning-concept FK so a drifted graph_name — see {@link #cascadeConceptDeletion} —
+     * can't strand a row and break the cascaded concept DELETE), plus any remaining rows still tagged
+     * with the graph.
+     * @param conceptIds the ontology's owned concept ids (their PG ids)
+     * @param graphName  the ontology graph
      */
-    void cascadeGraphDeletion(String graphName);
+    void cascadeGraphDeletion(List<Long> conceptIds, String graphName);
 }

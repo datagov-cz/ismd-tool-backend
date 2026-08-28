@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
@@ -159,9 +160,25 @@ public class OntologyDetailModel {
         @JsonProperty("ustanovení-dokládající-neveřejnost-údaje-resolved")
         private List<ResolvedLegalSourceDto> privacyProvisionsResolved;
 
+        @JsonProperty("instance-definovány-číselníkem")
+        private CodeListDto codeList;
+
         private List<ConceptPropertiesModel> conceptProperties;
 
         private List<ConceptRelationshipsModel> conceptRelationships;
+
+        /**
+         * How many properties/relationships from OTHER vocabularies point at this concept.
+         * Set on the local ontology detail only, where the member lists are scoped to the
+         * ontology's own graph; the concept detail lists those members in full instead, so
+         * {@code conceptProperties.size() + foreignPropertyCount} there agrees with the
+         * concept detail's list length. Null when there are none.
+         */
+        @JsonProperty("počet-cizích-vlastností")
+        private Integer foreignPropertyCount;
+
+        @JsonProperty("počet-cizích-vztahů")
+        private Integer foreignRelationshipCount;
 
         /**
          * Pre-resolved metadata for every referenced concept IRI in this detail

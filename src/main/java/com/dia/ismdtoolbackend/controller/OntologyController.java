@@ -9,8 +9,10 @@ import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
+import com.dia.ismdtoolbackend.exception.OntologyDownloadBlockedException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -87,8 +89,10 @@ public class OntologyController {
         // Post-commit, NKD-independent: warm NKD local-copy snapshots for any published-concept links
         // off the request thread. If NKD is down the graph stays cold and first detail-view heals it.
         // Guarded: a saturated executor (TaskRejectedException) must never fail an already-committed upload.
+        // warmGraphNow, not warmGraph: the graph just changed, so the read-path scan throttle must not
+        // suppress this scan.
         try {
-            nkdSnapshotWarmer.warmGraph(savedOntology.getGraphName());
+            nkdSnapshotWarmer.warmGraphNow(savedOntology.getGraphName());
         } catch (Exception e) {
             log.warn("Could not trigger NKD snapshot warming for uploaded graph {}: {}",
                     savedOntology.getGraphName(), e.getMessage());
@@ -169,7 +173,9 @@ public class OntologyController {
 
     @Operation(
             summary = "Stažení slovníku",
-            description = "Umožňuje stáhnout slovník v požadovaném formátu (TTL, JSON-LD). Pokud je povoleno omezení stahování slovníků s chybami, slovníky s validačními chybami nelze stáhnout. Veřejný endpoint."
+            description = "Umožňuje stáhnout slovník v požadovaném formátu (TTL, JSON-LD). Pokud je povoleno omezení stahování slovníků s chybami, "
+                    + "slovníky s validačními chybami nelze stáhnout a endpoint vrací 400 s kódem ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION "
+                    + "a seznamem blokujících chyb. Veřejný endpoint."
     )
     @GetMapping("/{ontologyId}/download")
     public ResponseEntity<Resource> downloadFile(
@@ -185,9 +191,21 @@ public class OntologyController {
         }
 
         if (!validationConfig.isEnableOntologyViolationDownload()) {
-            ValidationReportDto validationReport = validationService.getValidationReport(ontologyService.getOntologyMetadata(ontologyId));
-            if (validationReport != null && validationReport.getResults().stream().anyMatch(ValidationResult::isError)) {
-                return ResponseEntity.badRequest().build();
+            OntologyMetadataModel metadata = ontologyService.getOntologyMetadata(ontologyId);
+            ValidationReportDto validationReport = validationService.getValidationReport(metadata);
+            if (validationReport != null) {
+                List<ValidationResult> errors = validationReport.getResults().stream()
+                        .filter(ValidationResult::isError)
+                        .toList();
+                if (!errors.isEmpty()) {
+                    throw new OntologyDownloadBlockedException(
+                            metadata.getGraphName(),
+                            errors.size(),
+                            errors.stream()
+                                    .limit(OntologyDownloadBlockedException.MAX_LISTED_ERRORS)
+                                    .map(OntologyController::toErrorSummary)
+                                    .toList());
+                }
             }
         }
 
@@ -212,6 +230,21 @@ public class OntologyController {
         GetOntologyDto ontologyDto = ontologyService.getOntologyDetailModel(slug);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(ontologyDto, "Detail slovníku byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Zpráva z poslední kontroly slovníku",
+            description = "Vrací výsledky poslední uložené kontroly slovníku. Zpráva se ukládá při nahrání slovníku a při ručním spuštění kontroly; nevzniká automaticky při úpravě pojmů. "
+                    + "Slovník, který dosud nebyl zkontrolován, vrací prázdný seznam výsledků. Veřejný endpoint."
+    )
+    @GetMapping("/{slug}/validation-report")
+    public ResponseEntity<ApiResponseDto<ValidationReportDto>> getValidationReport(@PathVariable String slug) {
+        log.info("Ontology validation report requested, slug: {}", slug);
+
+        OntologyMetadataModel ontologyMetadata = ontologyService.getOntologyMetadataBySlug(slug);
+        ValidationReportDto report = validationService.getValidationReportOrEmpty(ontologyMetadata);
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(report, "Zpráva z kontroly slovníku byla úspěšně načtena."));
     }
 
     @Operation(
@@ -296,7 +329,11 @@ public class OntologyController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Ontology catalog record requested, ontologyIRI: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
+        log.info("Ontology catalog record requested for user: {}, ontologyIRI: {}, slug: {}",
+                securityUser.getUsername(),
+                catalogRequestDto.getOntologyMetadata().getGraphName(),
+                slug
+        );
 
         String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
 
@@ -312,6 +349,15 @@ public class OntologyController {
         });
 
         return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecord, "Žádost o katalogizační záznam proběhla úspěšně."));
+    }
+
+    private static ValidationErrorSummaryDto toErrorSummary(ValidationResult result) {
+        return new ValidationErrorSummaryDto(
+                result.ruleName(),
+                result.message(),
+                result.focusNodeUri(),
+                result.getFocusNodeName(),
+                result.resultPathUri());
     }
 
     private String getFileExtension(String format) {

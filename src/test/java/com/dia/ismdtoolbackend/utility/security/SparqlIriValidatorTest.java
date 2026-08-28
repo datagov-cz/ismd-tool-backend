@@ -57,6 +57,15 @@ class SparqlIriValidatorTest {
     }
 
     @Test
+    void esbirkaEli_rejectsCombinedSemicolonValue() {
+        // Two ELIs joined by ';' into one URI (malformed upstream in NKD). Its first half matches the
+        // canonical prefix, so without the ';' guard it would slip through and be stored/resolved as junk.
+        assertFalse(SparqlIriValidator.isEsbirkaEliIri(
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2013/256/2022-09-01/dokument/norma/cast_1/par_2/pism_a"
+                        + ";https://www.e-sbirka.cz/eli/cz/sb/2013/256/2022-09-01/dokument/norma/cast_1/par_2/pism_b"));
+    }
+
+    @Test
     void esbirkaEli_rejectsBrokenLegacyHost() {
         // Pre-#106 host (missing .gov), used by the deleted ELI_PATTERN constant.
         assertFalse(SparqlIriValidator.isEsbirkaEliIri(

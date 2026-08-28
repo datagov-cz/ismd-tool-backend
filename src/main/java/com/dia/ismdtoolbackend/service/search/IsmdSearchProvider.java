@@ -35,6 +35,31 @@ public class IsmdSearchProvider implements SearchProvider {
     private static final String SKOS_CONCEPT_SCHEME = "http://www.w3.org/2004/02/skos/core#ConceptScheme";
     private static final String OWL_ONTOLOGY = "http://www.w3.org/2002/07/owl#Ontology";
 
+    /**
+     * Total order applied to the merged result set before the page slice.
+     * <p>
+     * Ordering, outermost key first:
+     * <ol>
+     *   <li>drafts before published — an unpublished row is the one the author is
+     *       actively working on, and is the row most likely to be looked for;</li>
+     *   <li>ontologies before concepts — an ontology hit is the broader container
+     *       and orients the user before its individual concepts;</li>
+     *   <li>most recently modified first, then IRI — recency is the useful tiebreak,
+     *       and IRI makes the order total so pagination never repeats or skips a row
+     *       when two rows share a timestamp.</li>
+     * </ol>
+     * Null publish state sorts with drafts and null timestamps sort last, so a row
+     * with incomplete metadata is never silently pushed off the page.
+     */
+    static final Comparator<SearchResultDto> RESULT_ORDER =
+            Comparator.<SearchResultDto, Boolean>comparing(
+                            r -> Boolean.TRUE.equals(r.getIsPublished()))
+                    .thenComparing(r -> r.getType() != SearchType.ONTOLOGY)
+                    .thenComparing(SearchResultDto::getLastModified,
+                            Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(SearchResultDto::getIri,
+                            Comparator.nullsLast(Comparator.naturalOrder()));
+
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
@@ -79,7 +104,7 @@ public class IsmdSearchProvider implements SearchProvider {
         // has no indexable labels. Role filters (CLASS/PROPERTY/RELATIONSHIP) are
         // concept-only by definition, so they skip the ontology branch entirely.
         if (type == null || type == SearchType.ONTOLOGY) {
-            allResults.addAll(searchOntologies(query, userId, isAdmin, publishedFilter));
+            allResults.addAll(searchOntologies(query, publishedFilter));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -94,8 +119,8 @@ public class IsmdSearchProvider implements SearchProvider {
             allResults.addAll(searchConcepts(query, userId, isAdmin, publishedFilter, lang,
                     ontologyIris, relationTypes, fusekiDegraded, limit, type));
         } else {
-            allResults.addAll(searchOntologyLabelsViaFuseki(query, userId, isAdmin,
-                    publishedFilter, ontologyIris, fusekiDegraded, limit));
+            allResults.addAll(searchOntologyLabelsViaFuseki(
+                    query, userId, isAdmin, publishedFilter, ontologyIris, fusekiDegraded, limit));
         }
 
         // Dedup by IRI
@@ -109,6 +134,15 @@ public class IsmdSearchProvider implements SearchProvider {
             }
         }
 
+        // Backfill ontology rows AFTER dedup, so it covers every branch that can
+        // produce one. A Fuseki row carries no slug, and PG's ontology search
+        // matches on slug alone — so an ontology whose label matches but whose slug
+        // does not ("qa test" against slug "test-slovnik") reaches here PG-less on
+        // BOTH paths. The concept-side backfill cannot rescue it: it resolves IRIs
+        // against concept_metadata, where an ontology has no row. Running after the
+        // merge also means a row already carrying a PG slug is left alone.
+        backfillPgFieldsForOntologyRows(new ArrayList<>(deduped.values()));
+
         // Type filter: apply AFTER dedup so Fuseki-classified ontologies merge with
         // PG ontology hits (and PG concepts merge with Fuseki concepts) before we
         // decide what to drop. Role narrowing (CLASS/PROPERTY/RELATIONSHIP) requires
@@ -116,6 +150,7 @@ public class IsmdSearchProvider implements SearchProvider {
         // — sourced from PG's concept_type column or enriched from Fuseki rdf:types.
         List<SearchResultDto> results = deduped.values().stream()
                 .filter(r -> matchesType(r, type))
+                .sorted(RESULT_ORDER)
                 .toList();
 
         // Apply offset and limit in-memory
@@ -129,10 +164,10 @@ public class IsmdSearchProvider implements SearchProvider {
         // Per-source totals from dedicated count queries (cheap — no LIMIT/OFFSET).
         Integer totalOntologies = SearchProvider.countIfMatches(
                 type == null || type == SearchType.ONTOLOGY,
-                () -> countOntologyMatches(query, userId, isAdmin, publishedFilter));
+                () -> countOntologyMatches(query, publishedFilter));
         Integer totalConcepts = SearchProvider.countIfMatches(
                 type == null || type.isAnyConcept(),
-                () -> countConceptMatches(query, userId, isAdmin, publishedFilter, ontologyIris, type));
+                () -> countConceptMatches(query, publishedFilter, ontologyIris, type));
 
         if (fusekiDegraded.get()) {
             return new SearchProviderResult(paged, results.size(),
@@ -175,8 +210,61 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private Integer countOntologyMatches(String query, String userId,
-                                          boolean isAdmin, Boolean publishedFilter) {
+    /**
+     * Backfills PG-sourced fields on ontology rows that came from the Fuseki label
+     * search. Those rows are built purely from RDF, so they carry no {@code id},
+     * {@code slug} or {@code isPublished}. Without this an ontology found by label
+     * (rather than by slug) reaches the FE with a null slug — which the FE turns
+     * into a {@code /dictionary/null} link — plus a null id and an unknown publish
+     * state, so it sorts with the drafts regardless of what it actually is.
+     * <p>
+     * Runs on the deduped set, so it covers every branch that can emit an ontology
+     * row: the ONTOLOGY-only Fuseki path and the unfiltered path, where the
+     * concept-side backfill cannot help (it resolves IRIs against
+     * {@code concept_metadata}, which holds no row for an ontology).
+     * <p>
+     * Rows that already carry a PG id are skipped — they merged with a PG hit and
+     * have their fields. Visibility is safe: every IRI here already came from a
+     * graph the caller may see. Failure is non-fatal — rows keep their null fields
+     * and search succeeds.
+     */
+    private void backfillPgFieldsForOntologyRows(List<SearchResultDto> rows) {
+        List<String> graphNames = rows.stream()
+                .filter(r -> r.getType() == SearchType.ONTOLOGY && r.getId() == null)
+                .map(SearchResultDto::getIri)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (graphNames.isEmpty()) return;
+
+        Map<String, OntologyMetadataEntity> byGraph;
+        try {
+            byGraph = new HashMap<>();
+            for (OntologyMetadataEntity e : ontologyMetadataRepository.findAllByGraphNameIn(graphNames)) {
+                if (e.getGraphName() != null) byGraph.put(e.getGraphName(), e);
+            }
+        } catch (RuntimeException e) {
+            log.warn("PG ontology backfill for {} Fuseki rows failed, leaving fields null: {}",
+                    graphNames.size(), e.getMessage());
+            return;
+        }
+        if (byGraph.isEmpty()) return;
+
+        for (SearchResultDto dto : rows) {
+            if (dto.getType() != SearchType.ONTOLOGY || dto.getIri() == null) continue;
+            OntologyMetadataEntity e = byGraph.get(dto.getIri());
+            if (e == null) continue;
+
+            if (dto.getId() == null) dto.setId(e.getId());
+            if (dto.getSlug() == null) dto.setSlug(e.getSlug());
+            if (dto.getIsPublished() == null) dto.setIsPublished(e.getIsPublished());
+            if (dto.getLastModified() == null && e.getUpdatedAt() != null) {
+                dto.setLastModified(e.getUpdatedAt().toString());
+            }
+        }
+    }
+
+    private Integer countOntologyMatches(String query, Boolean publishedFilter) {
         try {
             long count = Boolean.FALSE.equals(publishedFilter)
                     ? ontologyMetadataRepository.countSearchByTextUnpublished(query)
@@ -188,8 +276,7 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private Integer countConceptMatches(String query, String userId,
-                                         boolean isAdmin, Boolean publishedFilter,
+    private Integer countConceptMatches(String query, Boolean publishedFilter,
                                          List<String> ontologyIris, SearchType type) {
         try {
             boolean hasGraphFilter = ontologyIris != null && !ontologyIris.isEmpty();
@@ -211,8 +298,7 @@ public class IsmdSearchProvider implements SearchProvider {
         }
     }
 
-    private List<SearchResultDto> searchOntologies(String query, String userId,
-                                                    boolean isAdmin, Boolean publishedFilter) {
+    private List<SearchResultDto> searchOntologies(String query, Boolean publishedFilter) {
         List<OntologyMetadataEntity> entities;
         if (Boolean.FALSE.equals(publishedFilter)) {
             entities = ontologyMetadataRepository.searchByTextUnpublished(query);
@@ -245,7 +331,7 @@ public class IsmdSearchProvider implements SearchProvider {
                 visibleGraphsFor(userId, isAdmin, publishedFilter));
 
         ParallelSearchResults raw = runParallelConceptSearch(
-                query, userId, isAdmin, publishedFilter, filter, limit, fusekiDegraded, type);
+                query, publishedFilter, filter, limit, fusekiDegraded, type);
 
         List<SearchResultDto> merged = mergeByIri(raw.pg(), raw.fuseki());
         backfillPgIdsForFusekiOnlyRows(merged);
@@ -263,7 +349,7 @@ public class IsmdSearchProvider implements SearchProvider {
         boolean unpublishedOnly = Boolean.FALSE.equals(publishedFilter);
         return unpublishedOnly
                 ? getUnpublishedVisibleGraphNames(userId, isAdmin)
-                : getVisibleGraphNames(userId);
+                : getVisibleGraphNames();
     }
 
     /**
@@ -292,8 +378,7 @@ public class IsmdSearchProvider implements SearchProvider {
      * Fuseki failure → PG-only results AND {@code fusekiDegraded} flipped to
      * true so the outer response carries {@link SearchSourceStatus#DEGRADED}.
      */
-    private ParallelSearchResults runParallelConceptSearch(String query, String userId,
-                                                            boolean isAdmin, Boolean publishedFilter,
+    private ParallelSearchResults runParallelConceptSearch(String query, Boolean publishedFilter,
                                                             GraphFilter filter, int limit,
                                                             AtomicBoolean fusekiDegraded,
                                                             SearchType type) {
@@ -695,7 +780,7 @@ public class IsmdSearchProvider implements SearchProvider {
      * {@code userId} parameter is retained for signature symmetry with the
      * unpublished-only path but is no longer needed to narrow visibility.
      */
-    private List<String> getVisibleGraphNames(String userId) {
+    private List<String> getVisibleGraphNames() {
         return ontologyMetadataRepository.findAll().stream()
                 .map(OntologyMetadataEntity::getGraphName)
                 .filter(Objects::nonNull)
@@ -704,21 +789,24 @@ public class IsmdSearchProvider implements SearchProvider {
     }
 
     /**
-     * Graph names visible to the caller when the search is restricted to
-     * {@code is_published = false}. Every authenticated caller sees every
-     * unpublished graph regardless of ownership; the {@code userId}/{@code isAdmin}
-     * short-circuit only mirrors the defense-in-depth guard that keeps an
-     * anonymous, non-admin caller from seeing any unpublished rows (they are
-     * already rejected upstream at {@code SearchServiceImpl.resolveSource}). Used
-     * to scope Fuseki text queries so every hit is transitively inside an
-     * unpublished ontology.
+     * Graph names visible to the caller on the {@code UNPUBLISHED} ("rozpracovaný")
+     * pass — every local ontology, matching the PG row filter so the Fuseki label
+     * search and the PG slug search agree on scope. "Rozpracovaný" means local rather
+     * than draft-flagged: an uploaded working copy is {@code is_published = true}
+     * throughout until a concept is edited, so a publish-state test here would hide
+     * whole vocabularies from the filter.
+     * <p>
+     * Every authenticated caller sees every such graph regardless of ownership; the
+     * {@code userId}/{@code isAdmin} short-circuit only mirrors the defense-in-depth
+     * guard that keeps an anonymous, non-admin caller from seeing any unpublished
+     * rows (they are already rejected upstream at
+     * {@code SearchServiceImpl.resolveSource}).
      */
     private List<String> getUnpublishedVisibleGraphNames(String userId, boolean isAdmin) {
         if (!isAdmin && userId == null) {
             return List.of();
         }
-        return ontologyMetadataRepository.findAllByIsPublished(false).stream()
-                .map(OntologyMetadataEntity::getGraphName)
+        return ontologyMetadataRepository.findAllGraphNames().stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();

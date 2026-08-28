@@ -292,7 +292,7 @@ class EsbirkaSparqlClientTest {
     }
 
     @Test
-    void fetchFragments_skipsRowMissingParent() {
+    void fetchFragments_keepsRowMissingParent() {
         String json = """
                 {
                   "head": { "vars": ["fragment", "parent", "citace", "order"] },
@@ -309,8 +309,13 @@ class EsbirkaSparqlClientTest {
                 """.formatted(VERSION_IRI);
         stubSparql(json);
         List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
-        assertEquals(1, out.size());
-        assertEquals("§ 2", out.get(0).getCitation());
+        // A missing parent must NOT drop the row: document roots (/dokument/prefix) have no
+        // má-předka, and assembleTree surfaces a parentless fragment as a tree root so its
+        // text is never lost.
+        assertEquals(2, out.size());
+        assertNull(out.get(0).getParentIri());
+        assertEquals("§ 1", out.get(0).getCitation());
+        assertEquals("§ 2", out.get(1).getCitation());
     }
 
     // --- fetchVersionContent (obsah body mapping) ---------------------------
@@ -350,7 +355,7 @@ class EsbirkaSparqlClientTest {
     }
 
     @Test
-    void fetchVersionContent_skipsRowMissingParent() {
+    void fetchVersionContent_keepsRowMissingParent() {
         // Same iri/parent guard as the lean fragment path: a row without a parent edge
         // is dropped (it cannot be placed in the tree), even when it carries an obsah body.
         String basePath = VERSION_IRI + "/dokument/norma";
@@ -371,9 +376,12 @@ class EsbirkaSparqlClientTest {
         stubSparql(json);
 
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
-        assertEquals(1, out.size());
-        assertEquals("§ 2", out.get(0).getCitation());
-        assertEquals("<var>§ 2</var>", out.get(0).getBodyHtml());
+        // A missing parent must NOT drop the row — its obsah body would be lost with it.
+        assertEquals(2, out.size());
+        assertNull(out.get(0).getParentIri());
+        assertEquals("<var>orphan</var>", out.get(0).getBodyHtml());
+        assertEquals("§ 2", out.get(1).getCitation());
+        assertEquals("<var>§ 2</var>", out.get(1).getBodyHtml());
     }
 
     @Test

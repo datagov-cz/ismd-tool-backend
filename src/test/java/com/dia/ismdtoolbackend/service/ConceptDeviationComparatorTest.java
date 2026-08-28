@@ -28,6 +28,125 @@ class ConceptDeviationComparatorTest {
     }
 
     @Nested
+    class ObjectSubjectAndPublicPrivate {
+
+        // The type-list labels these pairs are derived from (VocabularyConstants *_JSON_LD).
+        private static final String TOP = "Typ objektu práva";
+        private static final String TSP = "Typ subjektu práva";
+        private static final String VEREJNY = "Veřejný údaj";
+        private static final String NEVEREJNY = "Neveřejný údaj";
+
+        @Test
+        void objectVsSubject_isADistinctSyncableDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", TOP)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", TSP)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNotNull(result.getObjectSubjectType());
+            assertEquals("objekt", result.getObjectSubjectType().getLocalValue());
+            assertEquals("subjekt", result.getObjectSubjectType().getPublishedValue());
+        }
+
+        @Test
+        void sameRole_noObjectSubjectDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", TOP)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", TOP)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getObjectSubjectType());
+        }
+
+        @Test
+        void neitherSideHasRoleMarker_noObjectSubjectDeviation() {
+            // A VLASTNOST/VZTAH carries no objekt/subjekt marker — must never deviate here.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Vlastnost")).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Vlastnost")).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getObjectSubjectType());
+        }
+
+        @Test
+        void publicVsPrivate_isADistinctSyncableDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", VEREJNY)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", NEVEREJNY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNotNull(result.getIsPublic());
+            assertEquals(Boolean.TRUE, result.getIsPublic().getLocalValue());
+            assertEquals(Boolean.FALSE, result.getIsPublic().getPublishedValue());
+        }
+
+        @Test
+        void sameClassification_noPublicPrivateDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .types(List.of("Třída", NEVEREJNY)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .types(List.of("Třída", NEVEREJNY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getIsPublic());
+        }
+    }
+
+    @Nested
+    class NameIsNotCompared {
+
+        // An OFN concept's IRI is derived from its name, so an IRI-matched pair shares a name by
+        // construction. A name difference is therefore never emitted — it could only be NKD stale-IRI
+        // corruption, and syncing it would rewrite our IRI and break the twin match.
+
+        @Test
+        void differentNames_produceNoNameDeviation_andNoOverallDeviation() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .name(Map.of("cs", "Místní název"))
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .name(Map.of("cs", "Publikovaný název"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getName(), "name deviation must never be emitted");
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus(),
+                    "a name-only difference must not register as a deviation");
+        }
+
+        @Test
+        void differentNameButRealDeviationElsewhere_omitsNameButKeepsTheOther() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .name(Map.of("cs", "Místní"))
+                    .definition(Map.of("cs", "Místní definice"))
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .name(Map.of("cs", "Publikovaný"))
+                    .definition(Map.of("cs", "Publikovaná definice"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNull(result.getName(), "name is still omitted even when other fields deviate");
+            assertNotNull(result.getDefinition());
+        }
+    }
+
+    @Nested
     class IdenticalConcepts {
 
         @Test
@@ -109,20 +228,21 @@ class ConceptDeviationComparatorTest {
 
         @Test
         void localNull_publishedNotNull_shouldDetectDeviation() {
+            // definition stands in for the generic multilingual-map null handling; name is no longer compared.
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .name(null)
+                    .definition(null)
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .name(Map.of("cs", "Název"))
+                    .definition(Map.of("cs", "Definice"))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
             assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getName());
-            assertTrue(result.getName().isDifferent());
-            assertNull(result.getName().getLocalValue());
-            assertEquals(Map.of("cs", "Název"), result.getName().getPublishedValue());
+            assertNotNull(result.getDefinition());
+            assertTrue(result.getDefinition().isDifferent());
+            assertNull(result.getDefinition().getLocalValue());
+            assertEquals(Map.of("cs", "Definice"), result.getDefinition().getPublishedValue());
         }
 
         @Test
@@ -244,17 +364,17 @@ class ConceptDeviationComparatorTest {
         @Test
         void mapsWithDifferentLanguageTags_shouldDetectDeviation() {
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .name(Map.of("cs", "Název"))
+                    .definition(Map.of("cs", "Definice"))
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .name(Map.of("en", "Name"))
+                    .definition(Map.of("en", "Definition"))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
 
             assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
-            assertNotNull(result.getName());
-            assertTrue(result.getName().isDifferent());
+            assertNotNull(result.getDefinition());
+            assertTrue(result.getDefinition().isDifferent());
         }
 
         @Test
@@ -276,10 +396,10 @@ class ConceptDeviationComparatorTest {
         @Test
         void mapsWithExtraLanguageTag_shouldDetectDeviation() {
             OntologyDetailModel.ConceptDetailModel local = minimalConcept()
-                    .name(Map.of("cs", "Název", "en", "Name"))
+                    .definition(Map.of("cs", "Definice", "en", "Definition"))
                     .build();
             OntologyDetailModel.ConceptDetailModel published = minimalConcept()
-                    .name(Map.of("cs", "Název"))
+                    .definition(Map.of("cs", "Definice"))
                     .build();
 
             PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
@@ -305,6 +425,39 @@ class ConceptDeviationComparatorTest {
             assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
             assertNotNull(result.getIsPpdf());
             assertTrue(result.getIsPpdf().isDifferent());
+        }
+
+        @Test
+        void localFalsePpdf_vsNullPublishedPpdf_shouldNotDeviate() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .isPpdf(false)
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .isPpdf(null)
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.NO_DEVIATION, result.getStatus());
+            assertNull(result.getIsPpdf());
+        }
+
+        @Test
+        void localTruePpdf_vsNullPublishedPpdf_shouldDeviateAsFalse() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .isPpdf(true)
+                    .build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .isPpdf(null)
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertEquals(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS, result.getStatus());
+            assertNotNull(result.getIsPpdf());
+            assertTrue(result.getIsPpdf().isDifferent());
+            assertEquals(Boolean.TRUE, result.getIsPpdf().getLocalValue());
+            assertEquals(Boolean.FALSE, result.getIsPpdf().getPublishedValue());
         }
 
         @Test
@@ -383,6 +536,72 @@ class ConceptDeviationComparatorTest {
             assertNull(result.getTypes());
             assertNull(result.getName());
             assertNotNull(result.getIdentifier());
+        }
+    }
+
+    @Nested
+    class EliHostCanonicalization {
+
+        private static final String CANONICAL =
+                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8";
+        private static final String LEGACY =
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8";
+
+        @Test
+        void legacyVsCanonicalHost_isNotADeviation_definingLegalSource() {
+            // We store canonical .gov.cz; NKD still publishes legacy .cz. Same ELI, must not deviate.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .definingLegalSources(List.of(CANONICAL)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .definingLegalSources(List.of(LEGACY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getDefiningLegalSources());
+        }
+
+        @Test
+        void legacyVsCanonicalHost_isNotADeviation_privacyProvisions() {
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .privacyProvisions(List.of(CANONICAL)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .privacyProvisions(List.of(LEGACY)).build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getPrivacyProvisions());
+        }
+
+        @Test
+        void malformedCombinedNkdValue_isNotADeviation() {
+            // NKD's only legal source is a ';'-joined pair (malformed upstream) and local has none.
+            // The junk is dropped from the comparison, so this must NOT deviate forever.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .definingLegalSources(List.of()).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .definingLegalSources(List.of(
+                            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/256/2022-09-01/dokument/norma/cast_1/par_2/pism_a"
+                                    + ";https://www.e-sbirka.cz/eli/cz/sb/2013/256/2022-09-01/dokument/norma/cast_1/par_2/pism_b"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNull(result.getDefiningLegalSources());
+        }
+
+        @Test
+        void differentEliPath_stillDeviates() {
+            // Canonicalization only collapses the host — a genuinely different ELI must still deviate.
+            OntologyDetailModel.ConceptDetailModel local = minimalConcept()
+                    .definingLegalSources(List.of(CANONICAL)).build();
+            OntologyDetailModel.ConceptDetailModel published = minimalConcept()
+                    .definingLegalSources(List.of(
+                            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_9"))
+                    .build();
+
+            PublishedConceptDeviationModel result = comparator.compareConceptDetails(local, published);
+
+            assertNotNull(result.getDefiningLegalSources());
         }
     }
 }

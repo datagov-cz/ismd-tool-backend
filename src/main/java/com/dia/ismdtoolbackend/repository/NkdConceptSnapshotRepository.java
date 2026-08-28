@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.repository;
 
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -8,10 +9,23 @@ import java.util.Optional;
 
 public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSnapshotEntity, Long> {
 
-    /** All snapshots owned by one concept (detail view, concept-delete cleanup). */
+    /**
+     * All snapshots owned by one concept (detail view, concept-delete cleanup). Join-fetches the
+     * owner: {@code LinkSnapshotAssembler} reads {@code owningConcept.conceptIri} after the fetching
+     * transaction has closed.
+     */
+    @EntityGraph(attributePaths = "owningConcept")
     List<NkdConceptSnapshotEntity> findByOwningConceptId(Long owningConceptId);
 
-    /** All snapshots in one graph (ontology-delete cleanup). */
+    /** All snapshots owned by any of the given concepts (concept-delete cleanup). */
+    List<NkdConceptSnapshotEntity> findByOwningConceptIdIn(List<Long> owningConceptIds);
+
+    /**
+     * All snapshots in one graph (ontology detail, ontology-delete cleanup). Join-fetches the owner:
+     * every caller reads {@code owningConcept.conceptIri}, which on the LAZY association costs one
+     * extra SELECT per row.
+     */
+    @EntityGraph(attributePaths = "owningConcept")
     List<NkdConceptSnapshotEntity> findByGraphName(String graphName);
 
     /** The unique snapshot for an (owner, NKD IRI) link, if any (upsert lookup). */
@@ -19,11 +33,4 @@ public interface NkdConceptSnapshotRepository extends JpaRepository<NkdConceptSn
 
     /** Every snapshot pointing at one NKD IRI (cross-owner). */
     List<NkdConceptSnapshotEntity> findByNkdIri(String nkdIri);
-
-    /**
-     * How many concepts in a graph link the same NKD IRI — the refcount guarding shared-copy removal.
-     * The materialized copy may be dropped only when this reaches its last referrer; otherwise removing
-     * one link would strip triples other concepts still need.
-     */
-    long countByGraphNameAndNkdIri(String graphName, String nkdIri);
 }

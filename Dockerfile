@@ -44,6 +44,14 @@ ENV SPRING_PROFILES_ACTIVE=production
 
 COPY --from=builder /app/target/ismd-tool-backend-*.jar app.jar
 
+# Application Insights Java agent — baked in but NOT activated here on purpose.
+# Activation is a runtime toggle: Terraform sets
+# JAVA_TOOL_OPTIONS=-javaagent:/app/applicationinsights-agent.jar per env
+# (enable_app_insights_agent), so one image serves all envs and telemetry can be
+# flipped on/off without a rebuild. The agent reads APPLICATIONINSIGHTS_CONNECTION_STRING
+# (injected by TF) for its destination.
+ADD https://github.com/microsoft/ApplicationInsights-Java/releases/download/3.6.2/applicationinsights-agent-3.6.2.jar /app/applicationinsights-agent.jar
+
 LABEL org.opencontainers.image.title="ISMD Tool Backend"
 
 EXPOSE 8080

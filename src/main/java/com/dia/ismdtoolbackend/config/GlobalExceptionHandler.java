@@ -2,12 +2,15 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.DownloadBlockedByValidationDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
+import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -17,7 +20,11 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
@@ -43,6 +50,30 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         log.warn("Constraint violation: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error("Zápis porušuje omezení databáze — pravděpodobně již existuje záznam se stejnou hodnotou."), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ResourceAccessException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceUnavailable(ResourceAccessException e) {
+        log.error("External service unavailable: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponseDto.error("Externí služba není momentálně dostupná."));
+    }
+
+    @ExceptionHandler(RestClientResponseException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceResponse(RestClientResponseException e) {
+        log.warn("External service returned status {}: {}", e.getStatusCode(), e.getMessage());
+        HttpStatusCode status = e.getStatusCode().is5xxServerError()
+                ? HttpStatus.BAD_GATEWAY
+                : e.getStatusCode();
+        return ResponseEntity.status(status)
+                .body(ApiResponseDto.error("Externí služba požadavek odmítla."));
+    }
+
+    @ExceptionHandler(RestClientException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceError(RestClientException e) {
+        log.error("External service call failed: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponseDto.error("Externí služba vrátila neplatnou odpověď."));
     }
 
     @ExceptionHandler(JenaTDB2Exception.class)
@@ -77,6 +108,18 @@ public class GlobalExceptionHandler {
                 e.getGraphName(), e.getConceptsMissingInScheme());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponseDto.error(data, e.getMessage(), InSchemeDecisionRequiredException.ERROR_CODE));
+    }
+
+    @ExceptionHandler(OntologyDownloadBlockedException.class)
+    public ResponseEntity<ApiResponseDto<DownloadBlockedByValidationDto>> handleOntologyDownloadBlocked(OntologyDownloadBlockedException e) {
+        log.info("Download blocked for {}: {} validation error(s), rules: {}",
+                e.getGraphName(),
+                e.getErrorCount(),
+                e.getErrors().stream().map(ValidationErrorSummaryDto::ruleName).distinct().toList());
+        DownloadBlockedByValidationDto data = new DownloadBlockedByValidationDto(
+                e.getGraphName(), e.getErrorCount(), e.getErrors(), e.isTruncated());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponseDto.error(data, e.getMessage(), OntologyDownloadBlockedException.ERROR_CODE));
     }
 
     @ExceptionHandler(OntologyStorageException.class)
@@ -117,6 +160,12 @@ public class GlobalExceptionHandler {
                 .orElse("Neplatná data v požadavku.");
         log.warn("Validation failed: {}", details);
         return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku: " + details), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleHandlerMethodValidation(HandlerMethodValidationException e) {
+        log.warn("Method argument validation failed: {}", e.getMessage());
+        return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku."), HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(TypeMismatchException.class)
@@ -171,6 +220,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleValidationException(ValidationException e) {
         log.error("Validation failed: {}", e.getMessage(), e);
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Distinct from {@link com.dia.exceptions.ValidationException} above: that one is the validator
+     * library's and signals bad input, this one is the tool's own and wraps a failure to store or
+     * read a validation report. Both names are written out in full — the wildcard import of the
+     * tool's exception package makes it otherwise unclear which class either handler binds to.
+     */
+    @ExceptionHandler(com.dia.ismdtoolbackend.exception.ValidationException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(
+            com.dia.ismdtoolbackend.exception.ValidationException e) {
+        log.error("Validation report operation failed: {}", e.getMessage(), e);
+        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @ExceptionHandler(OntologyUploadException.class)

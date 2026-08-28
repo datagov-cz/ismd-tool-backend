@@ -60,6 +60,9 @@ class OntologyServiceImplTest {
     private OntologyMetadataRepository ontologyMetadataRepository;
 
     @Mock
+    private com.dia.ismdtoolbackend.service.impl.MetadataTouchService metadataTouchService;
+
+    @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
 
     @Mock
@@ -178,6 +181,28 @@ class OntologyServiceImplTest {
         verify(validationReportRepository, never()).delete(any());
         verify(jenaTDB2Repository).deleteGraph(TEST_GRAPH_NAME);
         verify(ontologyMetadataRepository).deleteById(TEST_ONTOLOGY_ID);
+    }
+
+    // ========== getOntologyMetadataBySlug Tests ==========
+
+    @Test
+    void getOntologyMetadataBySlug_Success() {
+        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
+
+        OntologyMetadataModel result = ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG);
+
+        assertSame(expectedDto, result);
+    }
+
+    @Test
+    void getOntologyMetadataBySlug_NotFound() {
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.empty());
+
+        assertThrows(OntologyNotFoundException.class,
+                () -> ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG));
     }
 
     // ========== createOntology Tests ==========
@@ -323,6 +348,34 @@ class OntologyServiceImplTest {
     // ========== getOntologyDetailModel Tests ==========
 
     @Test
+    void getOntologyDetail_ReturnsCoreDetailWithoutBuildingFullApiResponse() {
+        Model modelWithData = createModelWithOntologyData();
+        OntologyDetailModel detailModel = OntologyDetailModel.builder()
+                .iri(TEST_GRAPH_NAME)
+                .concepts(List.of())
+                .build();
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
+
+        OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        assertSame(detailModel, result);
+        verify(jenaTDB2Repository).fetchGraph(TEST_GRAPH_NAME);
+        verify(detailExtractor).applyOFNTransformations(modelWithData);
+        verify(detailExtractor).extractOntologyDetail(modelWithData);
+        verifyNoInteractions(
+                ontologyMetadataMapper,
+                conceptMetadataMapper,
+                commentRepository,
+                conceptMetadataRepository,
+                deviationChecker
+        );
+    }
+
+    @Test
     void getOntologyDetailModel_Success() throws OntologyException {
         Model modelWithData = createModelWithOntologyData();
         OntologyDetailModel detailModel = OntologyDetailModel.builder()
@@ -375,6 +428,110 @@ class OntologyServiceImplTest {
         // extractOntologyDetail is called once in main flow (not in checkPublishedOntology since ontology is not published)
         verify(detailExtractor).extractOntologyDetail(modelWithData);
         verify(conceptMetadataMapper).toDto(conceptEntity);
+    }
+
+    // ========== foreign member count Tests ==========
+
+    /**
+     * Ontology detail scopes members to its own graph while concept detail merges cross-graph
+     * ones in; the counts are what the two surfaces differ by, so they must reach the DTO.
+     */
+    @Test
+    void getOntologyDetail_annotatesConceptsWithForeignMemberCounts() {
+        String classIri = TEST_GRAPH_NAME + "/pojem/osoba";
+        String bareIri = TEST_GRAPH_NAME + "/pojem/bez-cizích";
+
+        OntologyDetailModel detailModel = detailWithConcepts(classIri, bareIri);
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
+        when(jenaTDB2Repository.countExternalDomainMembers(eq(TEST_GRAPH_NAME), anyList()))
+                .thenReturn(java.util.Map.of(classIri, new JenaTDB2Repository.ForeignMemberCount(3, 1)));
+
+        OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        OntologyDetailModel.ConceptDetailModel annotated = conceptByIri(result, classIri);
+        assertEquals(3, annotated.getForeignPropertyCount());
+        assertEquals(1, annotated.getForeignRelationshipCount());
+
+        // Absent from the count map => null, not 0, so the keys stay out of the JSON entirely.
+        OntologyDetailModel.ConceptDetailModel untouched = conceptByIri(result, bareIri);
+        assertNull(untouched.getForeignPropertyCount());
+        assertNull(untouched.getForeignRelationshipCount());
+    }
+
+    /** One batched call for the whole ontology — a per-concept call would be an N+1 fan-out. */
+    @Test
+    void getOntologyDetail_countsForeignMembersInASingleBatchedCall() {
+        String a = TEST_GRAPH_NAME + "/pojem/a";
+        String b = TEST_GRAPH_NAME + "/pojem/b";
+        String c = TEST_GRAPH_NAME + "/pojem/c";
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailWithConcepts(a, b, c));
+        when(jenaTDB2Repository.countExternalDomainMembers(anyString(), anyList())).thenReturn(java.util.Map.of());
+
+        ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        ArgumentCaptor<List<String>> irisCaptor = ArgumentCaptor.forClass(List.class);
+        verify(jenaTDB2Repository, times(1))
+                .countExternalDomainMembers(eq(TEST_GRAPH_NAME), irisCaptor.capture());
+        assertEquals(List.of(a, b, c), irisCaptor.getValue());
+    }
+
+    /** Counting is supplementary: a Fuseki failure must not take ontology detail down with it. */
+    @Test
+    void getOntologyDetail_survivesForeignMemberCountFailure() {
+        String classIri = TEST_GRAPH_NAME + "/pojem/osoba";
+
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailWithConcepts(classIri));
+        when(jenaTDB2Repository.countExternalDomainMembers(anyString(), anyList()))
+                .thenThrow(new RuntimeException("Fuseki down"));
+
+        OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        assertNotNull(result);
+        assertNull(conceptByIri(result, classIri).getForeignPropertyCount());
+    }
+
+    /** No concepts => no query at all. */
+    @Test
+    void getOntologyDetail_skipsForeignMemberCountWhenNoConcepts() {
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
+        Model modelWithData = createModelWithOntologyData();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
+        when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
+        when(detailExtractor.extractOntologyDetail(modelWithData))
+                .thenReturn(OntologyDetailModel.builder().iri(TEST_GRAPH_NAME).concepts(List.of()).build());
+
+        ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
+
+        verify(jenaTDB2Repository, never()).countExternalDomainMembers(anyString(), anyList());
+    }
+
+    private static OntologyDetailModel detailWithConcepts(String... conceptIris) {
+        List<OntologyDetailModel.ConceptDetailModel> concepts = new ArrayList<>();
+        for (String iri : conceptIris) {
+            concepts.add(OntologyDetailModel.ConceptDetailModel.builder().iri(iri).build());
+        }
+        return OntologyDetailModel.builder().iri(TEST_GRAPH_NAME).concepts(concepts).build();
+    }
+
+    private static OntologyDetailModel.ConceptDetailModel conceptByIri(OntologyDetailModel detail, String iri) {
+        return detail.getConcepts().stream()
+                .filter(c -> iri.equals(c.getIri()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("concept not in detail: " + iri));
     }
 
     @Test
@@ -716,17 +873,14 @@ class OntologyServiceImplTest {
     void getConceptsByIri_nkdSource_omitsSlug_andResolvesConceptType() {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
-        OntologyDetailModel.ConceptDetailModel c = OntologyDetailModel.ConceptDetailModel.builder()
-                .iri(iri + "/pojem/bar")
-                .name(Map.of("cs", "Bar"))
-                .types(List.of("http://www.w3.org/2002/07/owl#Class"))
-                .build();
-        OntologyDetailModel detail = OntologyDetailModel.builder()
-                .iri(iri)
-                .concepts(List.of(c))
-                .build();
-        when(nkdDetailService.getOntologyDetail(iri))
-                .thenReturn(new GetNkdOntologyDto(detail));
+        // The NKD projection comes from the slim concept listing, not the full ontology detail —
+        // the heavy CONSTRUCT would fetch every concept's whole graph to keep three fields.
+        when(nkdDetailService.listOntologyConcepts(iri)).thenReturn(List.of(
+                MinimalConceptDto.builder()
+                        .iri(iri + "/pojem/bar")
+                        .name(Map.of("cs", "Bar"))
+                        .conceptType(ConceptType.TRIDA)
+                        .build()));
 
         List<MinimalConceptDto> out = ontologyService.getConceptsByIri(iri, SearchSource.NKD);
 
@@ -736,15 +890,15 @@ class OntologyServiceImplTest {
         assertEquals(ConceptType.TRIDA, out.get(0).getConceptType());
         // ISMD path must not be touched for an NKD request.
         verify(ontologyMetadataRepository, never()).findByGraphName(anyString());
+        // The full-ontology detail path must not be used for this projection.
+        verify(nkdDetailService, never()).getOntologyDetail(anyString());
     }
 
     @Test
     void getConceptsByIri_nkdSource_noConcepts_returnsEmptyList() {
         String iri = "https://data.gov.cz/zdroj/slovnik/test";
 
-        OntologyDetailModel detail = OntologyDetailModel.builder().iri(iri).concepts(null).build();
-        when(nkdDetailService.getOntologyDetail(iri))
-                .thenReturn(new GetNkdOntologyDto(detail));
+        when(nkdDetailService.listOntologyConcepts(iri)).thenReturn(List.of());
 
         List<MinimalConceptDto> out = ontologyService.getConceptsByIri(iri, SearchSource.NKD);
 
@@ -824,25 +978,83 @@ class OntologyServiceImplTest {
         when(ontologyMetadataMapper.toDto(e2)).thenReturn(m2);
         when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
 
+        // Comments come back in ONE batched query and are grouped by owning ontology in memory.
         CommentEntity comment = new CommentEntity();
-        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of(comment));
-        when(commentRepository.findByOntologyMetadataId(2L)).thenReturn(List.of());
-        when(commentRepository.findByOntologyMetadataId(3L)).thenReturn(List.of());
+        comment.setOntologyMetadata(e1);
+        when(commentRepository.findByOntologyMetadataIdIn(List.of(1L, 2L, 3L))).thenReturn(List.of(comment));
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
 
         assertEquals(3, out.size());
-        // o/1 has skos:prefLabel "Slovník 1" in the batch model.
-        assertEquals("Slovník 1", m1.getName());
-        // o/2 has skos:prefLabel "Slovník 2" + dcterms:description "Popis 2".
-        assertEquals("Slovník 2", m2.getName());
-        assertEquals("Popis 2", m2.getPopis());
-        // Null-graph entity falls back to UtilityMethods-derived name (not asserting exact
-        // fallback value — what matters is enrichMetadataFromModel was called and returned
-        // without throwing).
+        // o/1 has one untagged skos:prefLabel — keys under DEFAULT_LANG.
+        assertEquals(Map.of("cs", "Slovník 1"), m1.getName());
+        // o/2 has cs+en variants of both prefLabel and description — every one is returned.
+        assertEquals(Map.of("cs", "Slovník 2", "en", "Vocabulary 2"), m2.getName());
+        assertEquals(Map.of("cs", "Popis 2", "en", "Description 2"), m2.getPopis());
+        // Null-graph entity has no IRI to derive a fallback name from, so the map stays empty
+        // rather than carrying a null-valued DEFAULT_LANG entry.
         assertNotNull(mNoGraph);
-        verify(commentRepository).findByOntologyMetadataId(1L);
+        assertTrue(mNoGraph.getName().isEmpty());
+        // One query for the whole page, and never the per-row variant (guards the N+1 regression).
+        verify(commentRepository).findByOntologyMetadataIdIn(List.of(1L, 2L, 3L));
+        verify(commentRepository, never()).findByOntologyMetadataId(anyLong());
+    }
+
+    @Test
+    void getAll_multipleLabelsInSameLanguage_keepsFirstAndDoesNotCollapseOthers() {
+        OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
+        e1.setGraphName("http://example.org/o/1");
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1));
+
+        // Two cs labels plus an en label: the old single-statement read returned whichever
+        // prefLabel Jena handed back first and dropped every other variant.
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Slovník", "cs"));
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Slovník duplicitní", "cs"));
+        m.add(m.createResource("http://example.org/o/1"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Vocabulary", "en"));
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1"))).thenReturn(m);
+
+        OntologyMetadataModel m1 = new OntologyMetadataModel();
+        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+
+        ontologyService.getAll(null, null);
+
+        assertEquals(2, m1.getName().size());
+        assertEquals("Vocabulary", m1.getName().get("en"));
+        assertTrue(m1.getName().get("cs").startsWith("Slovník"));
+    }
+
+    @Test
+    void getAll_noPrefLabel_fallsBackToGraphDerivedNameUnderDefaultLang() {
+        OntologyMetadataEntity e1 = new OntologyMetadataEntity();
+        e1.setId(1L);
+        e1.setGraphName("http://example.org/muj-slovnik");
+        when(ontologyMetadataRepository.findAll()).thenReturn(List.of(e1));
+
+        // Non-empty model that carries no label for this ontology at all.
+        Model m = ModelFactory.createDefaultModel();
+        m.add(m.createResource("http://example.org/other"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Jiný"));
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/muj-slovnik"))).thenReturn(m);
+
+        OntologyMetadataModel m1 = new OntologyMetadataModel();
+        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
+        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
+
+        ontologyService.getAll(null, null);
+
+        assertEquals(Map.of("cs", "Muj slovnik"), m1.getName());
+        assertNull(m1.getPopis());
     }
 
     @Test
@@ -890,13 +1102,12 @@ class OntologyServiceImplTest {
 
         OntologyMetadataModel m1 = new OntologyMetadataModel();
         when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(commentRepository.findByOntologyMetadataId(1L)).thenReturn(List.of());
         when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));
 
         assertEquals(1, out.size());
-        assertEquals("Slovník 1", m1.getName());
+        assertEquals(Map.of("cs", "Slovník 1"), m1.getName());
     }
 
     @Test
@@ -924,6 +1135,10 @@ class OntologyServiceImplTest {
      * submodels. Triples for o/1: only skos:prefLabel. For o/2: skos:prefLabel + dcterms:description.
      * Lets enrichMetadataFromModel exercise both the prefLabel branch and the description branch.
      */
+    /**
+     * o/1 carries an untagged prefLabel (keys under DEFAULT_LANG); o/2 carries cs+en variants of
+     * both prefLabel and description, so the list read is asserted to keep every language.
+     */
     private Model buildBatchMetadataModel() {
         Model m = ModelFactory.createDefaultModel();
         m.add(m.createResource("http://example.org/o/1"),
@@ -931,10 +1146,16 @@ class OntologyServiceImplTest {
                 m.createLiteral("Slovník 1"));
         m.add(m.createResource("http://example.org/o/2"),
                 m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
-                m.createLiteral("Slovník 2"));
+                m.createLiteral("Slovník 2", "cs"));
+        m.add(m.createResource("http://example.org/o/2"),
+                m.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                m.createLiteral("Vocabulary 2", "en"));
         m.add(m.createResource("http://example.org/o/2"),
                 m.createProperty("http://purl.org/dc/terms/description"),
-                m.createLiteral("Popis 2"));
+                m.createLiteral("Popis 2", "cs"));
+        m.add(m.createResource("http://example.org/o/2"),
+                m.createProperty("http://purl.org/dc/terms/description"),
+                m.createLiteral("Description 2", "en"));
         return m;
     }
 }

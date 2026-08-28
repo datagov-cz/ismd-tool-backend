@@ -20,13 +20,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.TRIDA;
 import static com.dia.constants.VocabularyConstants.VLASTNOST;
 import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -71,13 +76,17 @@ class OntologyDetailExtractorRefTest {
 
     @Test
     void extractOntologyDetail_withDbSlugResolver_populatesRefWithSlug() {
+        // The whole-ontology path resolves every subject's slug in ONE findByConceptIriIn rather than a
+        // lookup per member IRI; the ref contract below is unchanged either way.
         ConceptMetadataEntity propertyEntity = new ConceptMetadataEntity();
+        propertyEntity.setConceptIri(PROPERTY_IRI);
         propertyEntity.setSlug("vocab-věk");
         ConceptMetadataEntity relationshipEntity = new ConceptMetadataEntity();
+        relationshipEntity.setConceptIri(RELATIONSHIP_IRI);
         relationshipEntity.setSlug("vocab-bydlí-v");
 
-        when(conceptMetadataRepository.findByConceptIri(PROPERTY_IRI)).thenReturn(Optional.of(propertyEntity));
-        when(conceptMetadataRepository.findByConceptIri(RELATIONSHIP_IRI)).thenReturn(Optional.of(relationshipEntity));
+        when(conceptMetadataRepository.findByConceptIriIn(anyList()))
+                .thenReturn(List.of(propertyEntity, relationshipEntity));
 
         Model model = buildModel();
 
@@ -98,7 +107,7 @@ class OntologyDetailExtractorRefTest {
 
     @Test
     void extractOntologyDetail_dbSlugResolver_missingMetadata_leavesRefNull() {
-        when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
+        when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
 
         Model model = buildModel();
 
@@ -107,6 +116,38 @@ class OntologyDetailExtractorRefTest {
         OntologyDetailModel.ConceptDetailModel classConcept = getClassConcept(detail);
         assertThat(classConcept.getConceptProperties()).allSatisfy(p -> assertThat(p.getRef()).isNull());
         assertThat(classConcept.getConceptRelationships()).allSatisfy(r -> assertThat(r.getRef()).isNull());
+    }
+
+    @Test
+    void extractOntologyDetail_batchesSlugLookups_intoOneQuery() {
+        // The whole-ontology path used to run one findByConceptIri per property AND per relationship of
+        // every concept. One batched query must cover them all.
+        ConceptMetadataEntity propertyEntity = new ConceptMetadataEntity();
+        propertyEntity.setConceptIri(PROPERTY_IRI);
+        propertyEntity.setSlug("vocab-věk");
+        when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of(propertyEntity));
+
+        extractor.extractOntologyDetail(buildModel());
+
+        verify(conceptMetadataRepository, times(1)).findByConceptIriIn(anyList());
+        verify(conceptMetadataRepository, never()).findByConceptIri(anyString());
+    }
+
+    @Test
+    void extractOntologyDetail_memberOutsideTheModel_stillResolvesPerIri() {
+        // Batching prefetches the model's own subjects. A cross-graph member is not among them, so the
+        // resolver must fall back rather than silently reporting a null ref.
+        String external = "https://example.org/other-vocab/pojem/externí";
+        ConceptMetadataEntity externalEntity = new ConceptMetadataEntity();
+        externalEntity.setConceptIri(external);
+        externalEntity.setSlug("other-externí");
+        when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+        when(conceptMetadataRepository.findByConceptIri(external)).thenReturn(Optional.of(externalEntity));
+
+        Model model = buildModel();
+        Function<String, String> resolver = extractor.graphSlugResolver(model);
+
+        assertThat(resolver.apply(external)).isEqualTo("other-externí");
     }
 
     private OntologyDetailModel.ConceptDetailModel getClassConcept(OntologyDetailModel detail) {

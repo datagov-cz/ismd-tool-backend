@@ -74,11 +74,10 @@ public class SecurityConfig {
      *
      * @param http HttpSecurity configuration
      * @return configured SecurityFilterChain for search endpoints
-     * @throws Exception if configuration fails
      */
     @Bean
     @Order(0)
-    public SecurityFilterChain searchSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain searchSecurityFilterChain(HttpSecurity http) {
         log.info("Configuring search security filter chain (Order 0)...");
 
         http
@@ -123,11 +122,10 @@ public class SecurityConfig {
      *
      * @param http HttpSecurity configuration
      * @return configured SecurityFilterChain for public endpoints
-     * @throws Exception if configuration fails
      */
     @Bean
     @Order(1)
-    public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) {
         log.info("Configuring public security filter chain (Order 1)...");
 
         http
@@ -140,6 +138,7 @@ public class SecurityConfig {
                         "/actuator/info",
                         "/api/ontology/*/download",
                         "/api/ontology/*/detail",
+                        "/api/ontology/*/validation-report",
                         "/api/ontology/concepts",
                         "/api/ontology/list",
                         "/api/concept/list",
@@ -185,11 +184,10 @@ public class SecurityConfig {
      *
      * @param http HttpSecurity configuration
      * @return configured SecurityFilterChain for authenticated endpoints
-     * @throws Exception if configuration fails
      */
     @Bean
     @Order(2)
-    public SecurityFilterChain authenticatedSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain authenticatedSecurityFilterChain(HttpSecurity http) {
         log.info("Configuring authenticated security filter chain (Order 2)...");
 
         http
@@ -210,8 +208,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/concept/*/localcopy/*/update").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/localcopy/*").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/concept/*/sync").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
+                        .requestMatchers("/api/ai/**").authenticated()
                         // Admin-only PG↔TDB2 reconciler. Role check is enforced by
                         // @PreAuthorize("hasRole('ADMIN')") on the controller; this matcher
                         // only lets the request reach it (otherwise denyAll() 403s first).

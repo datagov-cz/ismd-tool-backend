@@ -386,6 +386,56 @@ class ReferencedConceptResolutionEngineTest {
                     .as("cached relationship must hold a resolved domain, not an iri-only stub")
                     .isNotNull();
         }
+
+        @Test
+        @DisplayName("stub targets already in the batch are served from it — no second round-trip")
+        void stubsAlreadyInBatchNeedNoSecondQuery() {
+            // The bulk case: domain/range targets are classes of the same vocabulary, so they are
+            // normally already among the resolved rows. Re-querying them is a wasted round-trip —
+            // measured at ~55ms on a 381-concept vocabulary.
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI, DOMAIN_IRI, RANGE_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(
+                            REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, RANGE_IRI),
+                            DOMAIN_IRI, ismdDto(DOMAIN_IRI),
+                            RANGE_IRI, ismdDto(RANGE_IRI))));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out =
+                    resolver.resolveAll(List.of(REL_IRI, DOMAIN_IRI, RANGE_IRI));
+
+            ResolvedConceptDto rel = out.get(REL_IRI);
+            assertThat(rel.resolvedDomain()).isNotNull();
+            assertThat(rel.resolvedDomain().conceptName()).isNotNull();
+            assertThat(rel.resolvedRange()).isNotNull();
+            assertThat(rel.resolvedRange().conceptName()).isNotNull();
+            // Exactly one Fuseki call: the stub expansion was satisfied from rows already fetched.
+            verify(jenaTDB2Repository, times(1)).fetchConceptResolutions(anyList());
+            verify(nkdSparqlClient, never()).fetchConceptResolutions(anyList());
+        }
+
+        @Test
+        @DisplayName("a stub target NOT in the batch still gets its own lookup")
+        void stubNotInBatchStillQueried() {
+            // Only the genuine remainder may go to the network — the short-circuit must not swallow
+            // targets the batch never resolved.
+            when(cache.get(any(String.class), eq(ResolvedConceptDto.class))).thenReturn(null);
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(REL_IRI, DOMAIN_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(
+                            REL_IRI, relationshipWithStubs(REL_IRI, DOMAIN_IRI, RANGE_IRI),
+                            DOMAIN_IRI, ismdDto(DOMAIN_IRI))));
+            when(jenaTDB2Repository.fetchConceptResolutions(List.of(RANGE_IRI)))
+                    .thenReturn(new HashMap<>(Map.of(RANGE_IRI, ismdDto(RANGE_IRI))));
+            when(conceptMetadataRepository.findByConceptIriIn(anyList())).thenReturn(List.of());
+
+            Map<String, ResolvedConceptDto> out = resolver.resolveAll(List.of(REL_IRI, DOMAIN_IRI));
+
+            ResolvedConceptDto rel = out.get(REL_IRI);
+            assertThat(rel.resolvedDomain().conceptName()).as("served from the batch").isNotNull();
+            assertThat(rel.resolvedRange().conceptName()).as("fetched by the follow-up").isNotNull();
+            // The follow-up asked for the missing target ONLY, not for the one already in hand.
+            verify(jenaTDB2Repository).fetchConceptResolutions(List.of(RANGE_IRI));
+        }
     }
 
     @Nested

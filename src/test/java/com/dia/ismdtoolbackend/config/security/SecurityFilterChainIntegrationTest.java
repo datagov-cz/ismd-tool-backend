@@ -191,7 +191,8 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("PATCH", "/api/concept/test/edit"),
                 Arguments.of("DELETE", "/api/concept/test/delete"),
                 Arguments.of("POST", "/api/comment/post"),
-                Arguments.of("DELETE", "/api/comment/test/delete")
+                Arguments.of("DELETE", "/api/comment/test/delete"),
+                Arguments.of("POST", "/api/ai/accept-suggestion")
         );
     }
 

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -10,6 +11,7 @@ import lombok.Setter;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -18,24 +20,19 @@ public class OntologyMetadataModel {
     private Long id;
     private String slug;
     private String graphName;
-    private String name;
+    private Map<String, String> name;
     private UserModel user;
     private Boolean isPublished;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private ConceptSourceTag sourceTag;
     private List<CommentModel> comments;
-    private String popis;
+    private Map<String, String> popis;
     private List<ConceptMetadataModel> concepts;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Integer conceptCount;
-
-    /**
-     * Outcome of the most recent validation; null until first validated. Lets the FE badge an
-     * ontology whose upload-time validation was skipped (validator down) and offer a manual
-     * re-validation. {@code NON_NULL} so existing payloads are unchanged.
-     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private OntologyValidationStatus lastValidationStatus;
-
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Instant lastValidationAt;
 }

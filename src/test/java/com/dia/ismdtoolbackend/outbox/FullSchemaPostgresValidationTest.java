@@ -1,9 +1,13 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Boots the FULL application context against REAL Postgres (Testcontainers) with
@@ -31,9 +35,32 @@ import org.springframework.test.context.TestPropertySource;
 })
 class FullSchemaPostgresValidationTest extends PostgresIntegrationTestBase {
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @Test
     void contextLoadsAgainstRealPostgres() {
         // Success = Liquibase applied the whole changelog AND Hibernate ddl-auto=validate matched
         // every entity to the real Postgres schema. No assertion needed; a mismatch fails the boot.
+    }
+
+    /**
+     * The graph_name index changesets guard themselves with an {@code indexExists} precondition and
+     * {@code MARK_RAN}, so a misspelled table or column would silently mark itself applied and create
+     * nothing — booting is not proof the index landed. graph_name backs {@code findByGraphName} on
+     * nearly every read path and, unlike slug/concept_iri, has no UNIQUE constraint to index it.
+     */
+    @Test
+    void graphNameIndexesExist() {
+        assertEquals(1, countIndex("ontologies", "idx_ontologies_graph_name"));
+        assertEquals(1, countIndex("concepts", "idx_concepts_graph_name"));
+    }
+
+    private int countIndex(String table, String indexName) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM pg_indexes
+                WHERE schemaname = 'ismd_schema' AND tablename = ? AND indexname = ?
+                """, Integer.class, table, indexName);
+        return count == null ? 0 : count;
     }
 }
