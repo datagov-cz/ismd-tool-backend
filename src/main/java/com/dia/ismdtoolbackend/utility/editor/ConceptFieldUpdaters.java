@@ -435,7 +435,8 @@ class ConceptFieldUpdaters {
             return;
         }
 
-        String newRangeURI = DataTypeConverter.getXSDTypeURI(dataType.trim());
+        String xsdTypeURI = DataTypeConverter.getXSDTypeURI(dataType.trim());
+        String newRangeURI = xsdTypeURI != null ? xsdTypeURI : RDFS.Literal.getURI();
 
         if (!Objects.equals(oldRangeURI, newRangeURI)) {
             removeAllByPredicate(newConcept, RDFS.range, toRemove, toAdd);
