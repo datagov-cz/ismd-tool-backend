@@ -59,7 +59,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -953,16 +952,18 @@ public class ConceptServiceImpl implements ConceptService {
     }
 
     /**
-     * Persist the metadata row at the end of an edit. When {@code contentChanged}, {@code updatedAt} is
-     * stamped explicitly so the column means "the concept last changed" — including RDF-only changes.
-     * A no-op edit leaves it unchanged.
+     * Persist the metadata row at the end of an edit. When {@code contentChanged}, the concept and its
+     * parent ontology are touched so {@code updatedAt} means "the concept last changed" — including
+     * RDF-only changes. A no-op edit leaves both timestamps unchanged.
      */
     private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI,
                                                        boolean contentChanged) {
         try {
-            // Explicit touch: an RDF-only edit dirties no mapped column, so a plain save() would be a
-            // no-op and updatedAt would never move. Also propagates to the parent ontology.
-            metadataTouchService.touchConceptAndOntology(metadata);
+            if (contentChanged) {
+                // Explicit touch: an RDF-only edit dirties no mapped column, so a plain save() would be a
+                // no-op and updatedAt would never move. Also propagates to the parent ontology.
+                metadataTouchService.touchConceptAndOntology(metadata);
+            }
             ConceptMetadataEntity savedMetadata = conceptMetadataRepository.save(metadata);
             log.info("Metadata updated successfully for concept: {}", conceptIRI);
             return conceptMetadataMapper.toDto(savedMetadata);

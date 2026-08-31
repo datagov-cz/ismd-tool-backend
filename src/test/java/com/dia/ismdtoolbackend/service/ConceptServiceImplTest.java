@@ -503,6 +503,10 @@ class ConceptServiceImplTest {
     // changed". @LastModifiedDate alone only fires when a mapped column is dirty, so an edit that
     // touches ONLY RDF would leave it at its creation value and the guard would never trip. These
     // three pin the contract: stamp on a real change, leave it alone otherwise.
+    //
+    // The stamp itself lives in MetadataTouchService (which also propagates to the parent ontology),
+    // so these assert the call, not the field — the service is mocked here. That the touch really
+    // moves both timestamps is proven against real Postgres in UpdatedAtPropagationIntegrationTest.
 
     /** An RDF-only edit (no PG column changes) must still move updatedAt. */
     @Test
@@ -516,8 +520,7 @@ class ConceptServiceImplTest {
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
                 TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of(add));
 
-        LocalDateTime before = LocalDateTime.now().minusDays(1);
-        testConceptEntity.setUpdatedAt(before);
+        testConceptEntity.setUpdatedAt(LocalDateTime.now().minusDays(1));
 
         when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
@@ -528,10 +531,7 @@ class ConceptServiceImplTest {
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
-        ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
-        verify(conceptMetadataRepository).save(captor.capture());
-        assertTrue(captor.getValue().getUpdatedAt().isAfter(before),
-                "an RDF-only edit must bump updatedAt so stale-base detection works");
+        verify(metadataTouchService).touchConceptAndOntology(testConceptEntity);
     }
 
     /** A valid edit that resolves to no triple change must NOT move updatedAt. */
@@ -555,9 +555,8 @@ class ConceptServiceImplTest {
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
-        ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
-        verify(conceptMetadataRepository).save(captor.capture());
-        assertEquals(before, captor.getValue().getUpdatedAt(),
+        verify(metadataTouchService, never()).touchConceptAndOntology(any());
+        assertEquals(before, testConceptEntity.getUpdatedAt(),
                 "a no-op edit must not bump updatedAt — it would falsely invalidate staged overlays");
     }
 
@@ -579,6 +578,7 @@ class ConceptServiceImplTest {
                 () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         verify(conceptMetadataRepository, never()).save(any(ConceptMetadataEntity.class));
+        verify(metadataTouchService, never()).touchConceptAndOntology(any());
         assertEquals(before, testConceptEntity.getUpdatedAt(),
                 "a failed edit must leave updatedAt untouched");
     }

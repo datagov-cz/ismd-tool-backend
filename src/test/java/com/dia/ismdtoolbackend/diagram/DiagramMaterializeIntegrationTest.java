@@ -33,6 +33,7 @@ import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
+import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
@@ -796,12 +797,18 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         }
         @Bean OutboxRelayTrigger outboxRelayTrigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
 
+        @Bean MetadataTouchService metadataTouchService(
+                ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo) {
+            return new MetadataTouchService(conceptRepo, ontologyRepo);
+        }
+
         @Bean ConceptServiceImpl conceptServiceImpl(
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
+                MetadataTouchService touchService,
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
                 OutboxConfig outboxConfig, OutboxWriter writer, OutboxRelayTrigger trigger) {
             return new ConceptServiceImpl(
-                    conceptRepo, ontologyRepo, mapper,
+                    conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
                     mock(OntologyDetailExtractor.class),
                     mock(com.dia.ismdtoolbackend.repository.CommentRepository.class),
