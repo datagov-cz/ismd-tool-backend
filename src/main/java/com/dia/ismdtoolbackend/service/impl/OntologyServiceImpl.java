@@ -67,6 +67,7 @@ import static com.dia.constants.VocabularyConstants.*;
 public class OntologyServiceImpl implements OntologyService {
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
+    private final MetadataTouchService metadataTouchService;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
@@ -509,6 +510,11 @@ public class OntologyServiceImpl implements OntologyService {
         } else {
             saveOntologyModel(oldOntologyIRI, model);
         }
+
+        // Both branches bump updatedAt: the IRI-change branch dirties graphName, but an edit that only
+        // touches RDF (name, description) leaves every mapped column identical, so the touch is what
+        // makes updatedAt move at all.
+        metadataTouchService.touchOntology(metadataEntity);
 
         OntologyMetadataModel resultModel = ontologyMetadataMapper.toDto(metadataEntity);
         enrichMetadataFromRDF(resultModel, metadataEntity);

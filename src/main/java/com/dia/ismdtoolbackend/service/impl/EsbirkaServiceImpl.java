@@ -18,9 +18,9 @@ import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
 
@@ -31,7 +31,6 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class EsbirkaServiceImpl implements EsbirkaService {
 
@@ -46,8 +45,44 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      */
     private static final String DOKUMENT_INFIX = "/dokument/";
 
+    /** Kind of the document root, the single parentless node of a version's fragment tree. */
+    private static final String DOKUMENT_KIND = "dokument";
+
+    /** Kind of an unnumbered fragment: a text block when childless, a structural parent otherwise. */
+    private static final String FRAG_KIND = "frag";
+
+    /**
+     * Display labels for the structural containers that sit between the document root and the
+     * first citable unit. Upstream carries no citace-označení-fragmentu for these, and they are
+     * not fragments in the ELI sense, so without this map the top two levels of the navigation
+     * tree render blank.
+     *
+     * <p>Keyed by kind with any {@code :N} sibling suffix stripped — real IRIs include
+     * {@code postfix:2}, {@code prilohy:4} and the like, which {@code parseKindFromIri} passes
+     * through verbatim.
+     */
+    private static final Map<String, String> CONTAINER_LABELS = Map.of(
+            "prefix", "Úvodní ustanovení",
+            "norma", "Text předpisu",
+            "novela", "Novelizační ustanovení",
+            "prilohy", "Přílohy",
+            "poznamkypodcarou", "Poznámky pod čarou",
+            "postfix", "Závěrečná ustanovení",
+            "zaver", "Závěr");
+
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
+
+    /** Self-reference through the Spring proxy, so internal calls still hit {@code @Cacheable}. */
+    private final EsbirkaService self;
+
+    public EsbirkaServiceImpl(EsbirkaSparqlClient client,
+                              EsbirkaFragmentResolutionCache resolutionCache,
+                              @Lazy EsbirkaService self) {
+        this.client = client;
+        this.resolutionCache = resolutionCache;
+        this.self = self;
+    }
 
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch", key = "T(java.util.Objects).hash(#q, #limit)")
@@ -60,13 +95,35 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         return out;
     }
 
-    @Override
-    @Cacheable(cacheNames = "esbirkaLawVersions", key = "#lawIri")
-    public List<LawVersionDto> getVersions(String lawIri) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(lawIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor právního aktu.");
+    /**
+     * Rewrite a legacy e-Sbírka host to the canonical one, leaving everything else untouched.
+     *
+     * <p>Every e-Sbírka IRI entering this service passes through here before it is validated,
+     * compared or cached, so all endpoints accept the same host spellings that {@code /resolve}
+     * and the concept write paths already accept. Called reflectively by the {@code @Cacheable}
+     * SpEL keys below, so it must stay {@code public}.
+     */
+    public String canonicalizeEsbirkaIri(String iri) {
+        return iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+    }
+
+    /** Canonicalize, then validate — a legacy host is a spelling, not an invalid identifier. */
+    private static String requireValidIri(String iri, String message) {
+        String canonical = iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
+            throw new IllegalArgumentException(message);
         }
-        List<LawVersionModel> rows = client.fetchVersions(lawIri);
+        return canonical;
+    }
+
+    // Keyed on the canonical form so a legacy-host IRI shares the entry with its canonical
+    // twin rather than issuing an identical second query under its own key.
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawVersions",
+            key = "#root.target.canonicalizeEsbirkaIri(#lawIri)")
+    public List<LawVersionDto> getVersions(String lawIri) {
+        String iri = requireValidIri(lawIri, "Neplatný identifikátor právního aktu.");
+        List<LawVersionModel> rows = client.fetchVersions(iri);
         List<LawVersionDto> out = new ArrayList<>(rows.size());
         for (LawVersionModel m : rows) {
             out.add(toVersionDto(m));
@@ -76,70 +133,102 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     @Override
     public List<FragmentDto> getFragments(String versionIri) {
-        if (!SparqlIriValidator.isEsbirkaEliIri(versionIri)) {
-            throw new IllegalArgumentException("Neplatný identifikátor znění právního aktu.");
-        }
-        List<FragmentModel> rows = client.fetchFragments(versionIri);
+        String iri = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
+        List<FragmentModel> rows = client.fetchFragments(iri);
         if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
             log.warn("Fragment tree for {} has {} rows (over {} threshold).",
-                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+                    iri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
         }
-        return assembleTree(rows, versionIri);
+        return assembleTree(rows, iri);
     }
 
     /**
-     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered
-     * content of its latest version.
-     *
-     * <p>Resolution chain: parse number/year → exact law lookup (NOT a citation
-     * substring match) → latest version (má-poslední-znění) → whole-version content
-     * query. The returned {@link LawContentDto} carries the resolved law/version header
-     * and the full version list (for an FE switcher) alongside the fragment tree, whose
-     * nodes each carry their rendered HTML body for in-document browsing.
-     *
-     * <p>Cached by the normalized {@code number/year} key — both the resolution and the
-     * (~2 MB) content payload are expensive, and a published version's text is immutable.
+     * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered content of
+     * its latest version: parse the ref → exact law lookup → latest znění → content query.
+     * Delegates through {@link #self} so the overload's {@code @Cacheable} applies.
      */
     @Override
-    @Cacheable(cacheNames = "esbirkaLawContent", key = "#root.target.normalizeLawRef(#lawRef)")
     public LawContentDto getLawContent(String lawRef) {
+        return self.getLawContent(lawRef, null);
+    }
+
+    /**
+     * Whole-version content for a caller-chosen znění; null/blank {@code versionIri} renders
+     * the latest version (má-poslední-znění). A supplied IRI is accepted only when it appears
+     * in the resolved law's own version list.
+     *
+     * <p>The returned {@link LawContentDto} carries the law/version header and the full version
+     * list (for an FE switcher) alongside the fragment tree, whose nodes each carry their
+     * rendered HTML body for in-document browsing.
+     *
+     * <p>Cached by normalized {@code number/year} plus the selected version, so each znění gets
+     * its own entry — both the resolution and the (~2 MB) content payload are expensive, and a
+     * published version's text is immutable.
+     */
+    @Override
+    @Cacheable(cacheNames = "esbirkaLawContent",
+            key = "#root.target.normalizeLawRef(#lawRef) + '@' "
+                    + "+ (#versionIri == null ? '' : #root.target.canonicalizeEsbirkaIri(#versionIri))")
+    public LawContentDto getLawContent(String lawRef, String versionIri) {
         NumberYear ny = parseNumberYear(lawRef);
 
         LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
 
-        List<LawVersionModel> versions = client.fetchVersions(law.getIri());
-        LawVersionModel latest = pickLatest(versions);
-        if (latest == null) {
-            throw new IllegalArgumentException(
-                    "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
-        }
+        // Through the proxy so the esbirkaLawVersions cache is used across the N content-cache
+        // misses of a user stepping through one law's znění.
+        List<LawVersionDto> versionDtos = self.getVersions(law.getIri());
+        LawVersionDto selected = selectVersion(versionDtos, versionIri, ny);
 
-        String versionIri = latest.getIri();
-        List<FragmentModel> rows = client.fetchVersionContent(versionIri);
+        String selectedIri = selected.getIri();
+        List<FragmentModel> rows = client.fetchVersionContent(selectedIri);
         if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
             log.warn("Version content for {} has {} rows (over {} threshold).",
-                    versionIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
+                    selectedIri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
         }
 
-        List<LawVersionDto> versionDtos = new ArrayList<>(versions.size());
-        for (LawVersionModel v : versions) {
-            versionDtos.add(toVersionDto(v));
-        }
-
-        List<FragmentDto> fragments = assembleTree(rows, versionIri);
+        List<FragmentDto> fragments = assembleTree(rows, selectedIri, law.getCitace());
 
         return LawContentDto.builder()
                 .lawIri(law.getIri())
                 .citace(law.getCitace())
-                .versionIri(versionIri)
-                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(versionIri))
-                .versionDate(latest.getUcinnostOd())
+                .versionIri(selectedIri)
+                .versionEliPath(SparqlIriValidator.extractEsbirkaEliPath(selectedIri))
+                .versionDate(selected.getUcinnostOd())
+                .versionLatest(selected.isLatest())
                 .versions(versionDtos)
                 .fragments(fragments)
                 .bodyHtml(renderBodyHtml(fragments))
                 .build();
+    }
+
+    /**
+     * Pick the znění to render: the caller's {@code versionIri} when supplied, else the
+     * latest. The requested IRI must be a member of {@code versions}.
+     */
+    private static LawVersionDto selectVersion(List<LawVersionDto> versions,
+                                               String versionIri,
+                                               NumberYear ny) {
+        if (versionIri == null || versionIri.isBlank()) {
+            LawVersionDto latest = pickLatest(versions);
+            if (latest == null) {
+                throw new IllegalArgumentException(
+                        "Právní akt č. " + ny.number() + "/" + ny.year() + " nemá žádné znění.");
+            }
+            return latest;
+        }
+        // Canonicalized before the membership scan, not just before validation: v.getIri()
+        // comes from e-Sbírka and is always canonical, so a legacy-host IRI would otherwise
+        // fail membership and report the misleading "nepatří k právnímu aktu".
+        String canonical = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
+        for (LawVersionDto v : versions) {
+            if (canonical.equals(v.getIri())) {
+                return v;
+            }
+        }
+        throw new IllegalArgumentException("Znění " + canonical
+                + " nepatří k právnímu aktu č. " + ny.number() + "/" + ny.year() + ".");
     }
 
     /**
@@ -182,15 +271,15 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Latest version = the one flagged via má-poslední-znění (LawVersionModel.latest).
-     * Falls back to the first row (fetchVersions orders newest-first by účinnost-znění-od)
-     * when no row is flagged — defensive against upstream data without the flag.
+     * Latest version = the one flagged via má-poslední-znění. Falls back to the first row
+     * (fetchVersions orders newest-first by účinnost-znění-od) when no row is flagged —
+     * defensive against upstream data without the flag.
      */
-    private static LawVersionModel pickLatest(List<LawVersionModel> versions) {
+    private static LawVersionDto pickLatest(List<LawVersionDto> versions) {
         if (versions.isEmpty()) {
             return null;
         }
-        for (LawVersionModel v : versions) {
+        for (LawVersionDto v : versions) {
             if (v.isLatest()) {
                 return v;
             }
@@ -249,12 +338,22 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     record NumberYear(String number, int year) {}
 
     /**
+     * Tree assembly without a law citation, so the document root stays unlabelled. Used by the
+     * lean fragment-tree endpoint, which resolves no law metadata.
+     */
+    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
+        return assembleTree(rows, versionIri, null);
+    }
+
+    /**
      * Tree assembly. A fragment is a <em>root</em> when its parent is a structural document
      * container — {@code <versionIri>/dokument/<container>} for any container (norma = the
      * body, poznamkypodcarou = footnotes, prilohy = annexes, …); roots are detected
      * structurally. Multi-root is supported.
+     *
+     * <p>{@code lawCitation}, when present, labels the otherwise-blank {@code dokument} root.
      */
-    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
+    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri, String lawCitation) {
         if (rows.isEmpty()) {
             return List.of();
         }
@@ -297,8 +396,42 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     orphanCount, versionIri, firstOrphanParent);
         }
 
+        labelDocumentRoots(roots, lawCitation);
+        markNavigable(roots);
         capDepth(roots, 1, versionIri);
         return roots;
+    }
+
+    /**
+     * Flag the nodes that carry no navigable label.
+     */
+    private static void markNavigable(List<FragmentDto> nodes) {
+        for (FragmentDto n : nodes) {
+            boolean textOnly = FRAG_KIND.equals(n.getKind()) && n.getChildren().isEmpty();
+            n.setNavigable(!textOnly);
+            if (textOnly) {
+                n.setCitation(null);
+            }
+            if (!n.getChildren().isEmpty()) {
+                markNavigable(n.getChildren());
+            }
+        }
+    }
+
+    /**
+     * Label the {@code dokument} root with the law citation. Upstream carries no citation for
+     * it and it is not a fragment, so it would otherwise head the navigation tree blank.
+     * Only unlabelled document roots are touched.
+     */
+    private static void labelDocumentRoots(List<FragmentDto> roots, String lawCitation) {
+        if (lawCitation == null || lawCitation.isBlank()) {
+            return;
+        }
+        for (FragmentDto root : roots) {
+            if (DOKUMENT_KIND.equals(root.getKind()) && root.getCitation() == null) {
+                root.setCitation("Zákon č. " + lawCitation);
+            }
+        }
     }
 
     /** Sentinel returned by {@link #resolveAnchor} when a fragment resolves to a tree root. */
@@ -399,14 +532,29 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Fragment citation, falling back to one derived from the IRI path segments when upstream
-     * carries no citace-označení-fragmentu-znění-právního-aktu. Returns null rather than an empty string
-     * when neither source yields a label.
+     * Fragment citation, in order of preference: the upstream
+     * citace-označení-fragmentu-znění-právního-aktu, a structural-container label, then the
+     * IRI path segments. Null when no source yields a label.
+     *
+     * <p>The segment fallback is load-bearing, not decorative: e-Sbírka deleted
+     * citace-označení-fragmentu dataset-wide on 2026-08-24 and restored it later, serving
+     * HTTP 200 with the predicate simply absent throughout. Upstream citations are therefore
+     * the preferred source, never a guaranteed one — if the predicate disappears again,
+     * §/Část labels degrade to segment-derived text instead of blanking the navigation.
+     *
+     * <p>Containers are resolved before the fragment check because they are not fragments in
+     * the ELI sense — {@link EsbirkaEliParser} rejects them, and they make up the whole of the
+     * navigation tree above the first citable unit. Their labels are independent of upstream
+     * data, so they survive such an outage unchanged.
      */
     private static String citationOrSegmentFallback(FragmentModel m) {
         String citation = m.getCitation();
         if (citation != null && !citation.isBlank()) {
             return citation;
+        }
+        String containerLabel = containerLabel(m.getKind());
+        if (containerLabel != null) {
+            return containerLabel;
         }
         ParsedEli parsed = EsbirkaEliParser.parse(m.getIri());
         if (!parsed.isFragment()) {
@@ -415,6 +563,24 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         String derived = EsbirkaCzechCitationFormatter
                 .buildFragmentCitationFromSegments(parsed.fragmentSegments());
         return derived.isBlank() ? null : derived;
+    }
+
+    /**
+     * Label for a structural container kind, or null when the kind is not a container.
+     * A {@code :N} suffix marks a repeated sibling (a second Přílohy block, say) and is
+     * rendered as an ordinal so the siblings stay distinguishable in the navigation.
+     */
+    private static String containerLabel(String kind) {
+        if (kind == null || kind.isBlank()) {
+            return null;
+        }
+        int colon = kind.indexOf(':');
+        String base = colon > 0 ? kind.substring(0, colon) : kind;
+        String label = CONTAINER_LABELS.get(base);
+        if (label == null) {
+            return null;
+        }
+        return colon > 0 ? label + " (" + kind.substring(colon + 1) + ")" : label;
     }
 
     @Override

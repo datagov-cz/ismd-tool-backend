@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobRes
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.service.AiSuggestionService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -52,6 +53,7 @@ public class AiSuggestionController {
             @PathVariable int number,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @Valid @RequestBody AiClassSuggestionRequestDto request,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.accepted()
@@ -80,6 +82,7 @@ public class AiSuggestionController {
             @PathVariable int number,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @Valid @RequestBody AiSelectedClassSuggestionRequestDto request,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.accepted()
@@ -108,6 +111,7 @@ public class AiSuggestionController {
             @PathVariable int number,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @Valid @RequestBody AiSelectedClassSuggestionRequestDto request,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.accepted()
@@ -130,6 +134,7 @@ public class AiSuggestionController {
     @GetMapping("/legal-acts/class-suggestions-jobs")
     public ResponseEntity<List<AiClassSuggestionsJobResponseDto>> getClassSuggestions(
             @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getClassSuggestions(jwt.getTokenValue(), jobIds));
@@ -146,6 +151,7 @@ public class AiSuggestionController {
     @GetMapping("/legal-acts/property-suggestions-jobs")
     public ResponseEntity<List<AiPropertySuggestionsJobResponseDto>> getPropertySuggestions(
             @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getPropertySuggestions(jwt.getTokenValue(), jobIds));
@@ -162,6 +168,7 @@ public class AiSuggestionController {
     @GetMapping("/legal-acts/relationship-suggestions-jobs")
     public ResponseEntity<List<AiRelationshipSuggestionsJobResponseDto>> getRelationshipSuggestions(
             @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getRelationshipSuggestions(jwt.getTokenValue(), jobIds));
@@ -177,6 +184,7 @@ public class AiSuggestionController {
     @PostMapping("/accept-suggestion")
     public ResponseEntity<Void> acceptSuggestions(
             @RequestBody List<@NotNull @Valid AiFeedbackRequestDto> requests,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         aiSuggestionService.acceptSuggestions(jwt.getTokenValue(), requests);
@@ -193,6 +201,7 @@ public class AiSuggestionController {
     @PostMapping("/like-suggestion")
     public ResponseEntity<Void> likeSuggestions(
             @RequestBody List<@NotNull @Valid AiFeedbackRequestDto> requests,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         aiSuggestionService.likeSuggestions(jwt.getTokenValue(), requests);
@@ -209,6 +218,7 @@ public class AiSuggestionController {
     @PostMapping("/dislike-suggestion")
     public ResponseEntity<Void> dislikeSuggestions(
             @RequestBody List<@NotNull @Valid AiFeedbackRequestDto> requests,
+            @Parameter(hidden = true)
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         aiSuggestionService.dislikeSuggestions(jwt.getTokenValue(), requests);

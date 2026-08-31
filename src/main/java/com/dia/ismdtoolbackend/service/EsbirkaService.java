@@ -23,5 +23,12 @@ public interface EsbirkaService {
      */
     LawContentDto getLawContent(String lawRef);
 
+    /**
+     * Same as {@link #getLawContent(String)} but renders the caller-chosen znění; a null/blank
+     * {@code versionIri} falls back to the latest. The IRI is checked against the resolved
+     * law's own version list.
+     */
+    LawContentDto getLawContent(String lawRef, String versionIri);
+
     ResolvedLegalSourceDto resolveLegalSource(String url);
 }
