@@ -93,9 +93,9 @@ class DiagramMapperTest {
     void toNodeData_mergesOverlayAndFlagsPending() {
         DiagramNodeEntity node = new DiagramNodeEntity();
         node.setConceptIri("https://x/pojem/je-zamestnan-u");
+        // The overlay is supplied by the caller — it lives in diagram_pending_edits, not on the layout row.
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setRange("https://x/pojem/organizace");
-        node.setPendingEdit(overlay);
 
         ConceptDetailModel detail = ConceptDetailModel.builder()
                 .iri("https://x/pojem/je-zamestnan-u")
@@ -103,7 +103,8 @@ class DiagramMapperTest {
                 .build();
 
         DiagramDto.NodeData data = mapper.toNodeData(
-                node, ConceptType.VZTAH, "slug-je-zamestnan-u", detail.getName(), detail, List.of());
+                node, ConceptType.VZTAH, "slug-je-zamestnan-u", detail.getName(), detail, List.of(),
+                overlay);
 
         assertThat(data.conceptType()).isEqualTo(ConceptType.VZTAH);
         assertThat(data.iri()).isEqualTo("https://x/pojem/je-zamestnan-u");
@@ -119,7 +120,7 @@ class DiagramMapperTest {
         DiagramNodeEntity node = new DiagramNodeEntity();
         node.setConceptIri("https://x/pojem/deleted");
 
-        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null);
+        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null, null);
 
         assertThat(data.stale()).isTrue();          // concept deleted underneath the node
         assertThat(data.hasPendingEdits()).isFalse();

@@ -16,6 +16,7 @@ import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -42,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -54,12 +56,16 @@ import static org.mockito.Mockito.when;
 /**
  * Can a Save leave a staged overlay that no read can show? The overlay lives on the CONCEPT's node row, not
  * on the edge it draws, so removing the class it points at removes the edge while the overlay survives —
- * still staged, still counted in {@code pendingChangeCount}, with nothing on the canvas to explain it.
+ * still staged, still applied by Převzít, with nothing on the canvas to explain it.
  *
- * <p>This is the invariant a single read/write DTO would depend on: "every staged overlay is visible in the
- * read it belongs to". These tests establish whether it currently holds. Unlike
- * {@link DiagramOverlayVersionIntegrationTest}, live content is stubbed with real concepts so edges actually
- * project — an empty graph would make every edge absent for the wrong reason.
+ * <p>The invariant that closes this: <b>every staged overlay is reachable in the read it belongs to</b>.
+ * {@code pendingEdits[]} lists them all — rendered or not — so an edit has one stable home no matter how
+ * often canvas membership changes during a session. The {@code pendingEdit} on a node, edge or property
+ * row is a copy for the element that draws it, never the only home. This is also what keeps
+ * {@code overlays[]} safe to be additive.
+ *
+ * <p>Unlike {@link DiagramOverlayVersionIntegrationTest}, live content is stubbed with real concepts so
+ * edges actually project — an empty graph would make every edge absent for the wrong reason.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -209,6 +215,17 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
                 .orElse(null);
     }
 
+    private List<String> nodeIds(DiagramDto diagram) {
+        return diagram.nodes().stream().map(DiagramDto.Node::id).toList();
+    }
+
+    private DiagramDto.PendingEditEntry pendingEditFor(DiagramDto diagram, String conceptIri) {
+        return diagram.pendingEdits().stream()
+                .filter(e -> conceptIri.equals(e.iri()))
+                .findFirst()
+                .orElse(null);
+    }
+
     // ---- case 1: VZTAH whose staged range points at a class removed from the canvas ------------
 
     /**
@@ -230,7 +247,7 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         assertThat(edgeFor(staged, REL))
                 .as("with C on canvas the overlaid edge A→C is drawn")
                 .isNotNull();
-        assertThat(staged.pendingChangeCount()).isEqualTo(1);
+        assertThat(staged.pendingEdits()).hasSize(1);
 
         // The user removes C from the canvas. ReactFlow drops the edge; the FE sends neither C nor overlays.
         DiagramDto after = save(List.of(CLASS_A, CLASS_B));
@@ -238,20 +255,21 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         assertThat(edgeFor(after, REL))
                 .as("C is off-canvas so the edge is no longer projected")
                 .isNull();
-        assertThat(after.pendingChangeCount())
+        assertThat(after.pendingEdits().size())
                 .as("the staged change survives removing C — the overlay lives on REL's row, not on the edge")
                 .isEqualTo(1);
 
-        // NOT invisible: the overlay-carrying row is emitted as a node in its own right, so the read does
-        // still carry the staged edit even though no edge is drawn for it.
-        DiagramDto.Node relNode = after.nodes().stream()
-                .filter(n -> (DiagramMapper.NODE_ID_PREFIX + REL).equals(n.id()))
-                .findFirst().orElse(null);
-        assertThat(relNode)
-                .as("the read emits the VZTAH's overlay-carrying row as a node, so the overlay is reachable")
+        // NOT invisible: a VZTAH is never a canvas node, so the staged edit reaches the client through
+        // pendingEdits[] — the channel for overlays the canvas renders nowhere.
+        assertThat(nodeIds(after))
+                .as("a VZTAH is never emitted in nodes[] — the FE renders relationships from edges[]")
+                .doesNotContain(DiagramMapper.NODE_ID_PREFIX + REL);
+
+        DiagramDto.PendingEditEntry entry = pendingEditFor(after, REL);
+        assertThat(entry)
+                .as("the read carries the VZTAH's staged edit in pendingEdits[], so it stays reachable")
                 .isNotNull();
-        assertThat(relNode.data().pendingEdit().getRange()).isEqualTo(CLASS_C);
-        assertThat(relNode.data().hasPendingEdits()).isTrue();
+        assertThat(entry.pendingEdit().getRange()).isEqualTo(CLASS_C);
     }
 
     // ---- case 2: VLASTNOST whose staged domain points at a class removed from the canvas -------
@@ -284,16 +302,19 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         assertThat(after.nodes())
                 .as("no class renders the property as a ROW once its staged domain is off-canvas")
                 .allSatisfy(n -> assertThat(n.data().properties()).noneMatch(p -> PROP.equals(p.iri())));
-        assertThat(after.pendingChangeCount()).isEqualTo(1);
+        assertThat(after.pendingEdits()).hasSize(1);
 
-        // Same as the VZTAH: the overlay-carrying row is emitted as a node, so it is still reachable.
-        DiagramDto.Node propNode = after.nodes().stream()
-                .filter(n -> (DiagramMapper.NODE_ID_PREFIX + PROP).equals(n.id()))
-                .findFirst().orElse(null);
-        assertThat(propNode)
-                .as("the read emits the VLASTNOST's overlay-carrying row as a node")
+        // Same as the VZTAH: a VLASTNOST is never a canvas node, so the staged edit reaches the client
+        // through pendingEdits[].
+        assertThat(nodeIds(after))
+                .as("a VLASTNOST is never emitted in nodes[] — the FE renders it as a row in its class")
+                .doesNotContain(DiagramMapper.NODE_ID_PREFIX + PROP);
+
+        DiagramDto.PendingEditEntry entry = pendingEditFor(after, PROP);
+        assertThat(entry)
+                .as("the read carries the VLASTNOST's staged edit in pendingEdits[]")
                 .isNotNull();
-        assertThat(propNode.data().pendingEdit().getDomain()).isEqualTo(CLASS_C);
+        assertThat(entry.pendingEdit().getDomain()).isEqualTo(CLASS_C);
     }
 
     // ---- the contrast: a staged overlay whose targets stay on canvas remains visible -----------
@@ -318,7 +339,143 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         assertThat(edge).as("C stays on canvas, so the overlaid edge keeps rendering").isNotNull();
         assertThat(edge.target()).isEqualTo(DiagramMapper.NODE_ID_PREFIX + CLASS_C);
         assertThat(edge.data().hasPendingEdits()).isTrue();
-        assertThat(after.pendingChangeCount()).isEqualTo(1);
+        assertThat(after.pendingEdits())
+                .as("the edit is listed even while its edge renders — one stable home, plus a copy on the "
+                        + "element that draws it")
+                .extracting(DiagramDto.PendingEditEntry::iri)
+                .containsExactly(REL);
+    }
+
+    // ---- nodes[] is the canvas; pendingEdits[] is every staged edit, canvas or not --------------
+
+    /**
+     * The Step 0 guarantee. A VZTAH and a VLASTNOST both carry staged overlays while every class stays on
+     * canvas: neither may appear in {@code nodes[]}, because the FE renders relationships from
+     * {@code edges[]} and properties from {@code data.properties[]}. A node-shaped copy at the origin is
+     * a second, position-less duplicate of something already on screen.
+     */
+    @Test
+    void relationshipsAndPropertiesAreNeverEmittedAsCanvasNodes() {
+        stubLiveContent(concept(CLASS_A, "Třída A"), concept(CLASS_B, "Třída B"),
+                concept(CLASS_C, "Třída C"), liveRel(), liveProp());
+
+        DiagramDto after = saveWithPropertyOn(CLASS_A, List.of(CLASS_A, CLASS_B, CLASS_C),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                        null, CLASS_C, null, null, null),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + PROP,
+                        CLASS_A, null, null, null, null));
+
+        assertThat(after.nodes())
+                .as("nodes[] is the canvas: classes only, whatever else carries an overlay")
+                .allSatisfy(n -> assertThat(n.data().conceptType()).isEqualTo(ConceptType.TRIDA));
+        assertThat(nodeIds(after))
+                .doesNotContain(DiagramMapper.NODE_ID_PREFIX + REL, DiagramMapper.NODE_ID_PREFIX + PROP);
+
+        // Both are rendered — the VZTAH as an edge, the VLASTNOST as a row in A — so neither is orphaned.
+        assertThat(edgeFor(after, REL)).as("the VZTAH renders as an edge").isNotNull();
+        assertThat(after.pendingEdits())
+                .as("pendingEdits[] is complete: both are listed even though the canvas draws both")
+                .extracting(DiagramDto.PendingEditEntry::iri)
+                .containsExactlyInAnyOrder(REL, PROP);
+    }
+
+    /**
+     * A class the user takes off the canvas without discarding its overlay. Layout removal is pure
+     * visuals, so the staged edit must survive — and stay reachable, since no canvas element renders it.
+     */
+    @Test
+    void aClassRemovedFromCanvasKeepsItsOverlayReachableInPendingEdits() {
+        stubLiveContent(concept(CLASS_A, "Třída A"), concept(CLASS_B, "Třída B"),
+                concept(CLASS_C, "Třída C"));
+
+        save(List.of(CLASS_A, CLASS_B, CLASS_C),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + CLASS_C,
+                        null, null, List.of(CLASS_A), null, null));
+
+        DiagramDto after = save(List.of(CLASS_A, CLASS_B));
+
+        assertThat(nodeIds(after))
+                .as("membership is a full replace — the class is off the canvas")
+                .doesNotContain(DiagramMapper.NODE_ID_PREFIX + CLASS_C);
+
+        DiagramDto.PendingEditEntry entry = pendingEditFor(after, CLASS_C);
+        assertThat(entry)
+                .as("its staged edit survives and is reachable — removal carries no RDF intent")
+                .isNotNull();
+        assertThat(entry.pendingEdit().getBroaderConcept()).containsExactly(CLASS_A);
+        assertThat(entry.conceptType()).isEqualTo(ConceptType.TRIDA);
+        assertThat(after.pendingEdits()).hasSize(1);
+    }
+
+    /**
+     * {@code pendingEdits[]} is COMPLETE — it lists every staged edit regardless of what the canvas
+     * renders, so a client can hold one stable list instead of re-deriving which of four places owns an
+     * edit each time membership changes. The copies on nodes, edges and property rows are a rendering
+     * convenience and must never be the only home for an edit.
+     */
+    @Test
+    void pendingEditsListsEveryStagedEditIncludingRenderedOnes() {
+        stubLiveContent(concept(CLASS_A, "Třída A"), concept(CLASS_B, "Třída B"),
+                concept(CLASS_C, "Třída C"), liveRel(), liveProp());
+
+        // REL renders as an edge (both endpoints on canvas); PROP's staged domain is C, then removed.
+        saveWithPropertyOn(CLASS_C, List.of(CLASS_A, CLASS_B, CLASS_C),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
+                        null, CLASS_B, null, null, null),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + PROP,
+                        CLASS_C, null, null, null, null));
+
+        DiagramDto after = save(List.of(CLASS_A, CLASS_B));
+
+        assertThat(after.pendingEdits())
+                .as("both the rendered edit (REL, drawn as an edge) and the invisible one (PROP) are listed")
+                .extracting(DiagramDto.PendingEditEntry::iri)
+                .containsExactlyInAnyOrder(REL, PROP);
+
+        // Everything the canvas draws with a staged edit must ALSO be in the list — the copy on the element
+        // never replaces the entry, so dragging a concept on or off screen cannot move where the edit lives.
+        List<String> renderedWithEdits = new ArrayList<>();
+        after.nodes().stream().filter(n -> n.data().hasPendingEdits())
+                .forEach(n -> renderedWithEdits.add(n.data().iri()));
+        after.edges().stream()
+                .filter(e -> e.data() != null && Boolean.TRUE.equals(e.data().hasPendingEdits()))
+                .forEach(e -> renderedWithEdits.add(e.data().iri()));
+        after.nodes().stream().flatMap(n -> n.data().properties().stream())
+                .filter(DiagramDto.PropertyRow::hasPendingEdits)
+                .forEach(row -> renderedWithEdits.add(row.iri()));
+
+        assertThat(renderedWithEdits).as("this fixture deliberately keeps staged work on screen").isNotEmpty();
+        assertThat(after.pendingEdits()).extracting(DiagramDto.PendingEditEntry::iri)
+                .as("no staged edit lives only on the element that draws it")
+                .containsAll(renderedWithEdits);
+    }
+
+    /**
+     * The case that distinguishes "complete" from "complement": a CLASS that carries a staged edit and
+     * stays on the canvas. It is emitted as a node with its {@code pendingEdit} attached, and it must be
+     * listed here too — otherwise dragging it off canvas would move the edit into this array and dragging
+     * it back would move it out, which is exactly the churn a stable list exists to prevent.
+     */
+    @Test
+    void aStagedEditOnAClassThatStaysOnCanvasIsStillListed() {
+        stubLiveContent(concept(CLASS_A, "Třída A"), concept(CLASS_B, "Třída B"),
+                concept(CLASS_C, "Třída C"));
+
+        DiagramDto after = save(List.of(CLASS_A, CLASS_B, CLASS_C),
+                new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + CLASS_C,
+                        null, null, List.of(CLASS_A), null, null));
+
+        DiagramDto.Node classC = after.nodes().stream()
+                .filter(n -> (DiagramMapper.NODE_ID_PREFIX + CLASS_C).equals(n.id()))
+                .findFirst().orElseThrow();
+        assertThat(classC.data().hasPendingEdits())
+                .as("the class renders as a node carrying its overlay")
+                .isTrue();
+
+        assertThat(after.pendingEdits())
+                .as("and is listed regardless — membership must never decide where an edit lives")
+                .extracting(DiagramDto.PendingEditEntry::iri)
+                .containsExactly(CLASS_C);
     }
 
     @TestConfiguration
@@ -338,18 +495,20 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         }
 
         @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo);
+                                                              ConceptMetadataRepository conceptRepo,
+                                                              DiagramPendingEditRepository pendingEditRepo) {
+            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
         }
 
         /** Proxied self so {@code commitLayout} runs in a transaction — see the version test for why. */
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler, DiagramMapper mapper,
+                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
+                DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
                 @Lazy DiagramServiceImpl self) {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, mapper, self);
+                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
     }
 }

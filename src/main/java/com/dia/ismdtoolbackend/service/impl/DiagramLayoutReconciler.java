@@ -6,10 +6,13 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -27,7 +30,10 @@ import java.util.Set;
  * flush — {@link #reconcileNodes} inserts/updates/removes node rows and applies the staged overlays, and
  * after the caller flushes so new rows have identity, {@link #finalizeLayout} sets viewport, resolves
  * parents, and rebuilds the persisted edge rows. Operates on managed instances via {@link DiagramEntity}'s
- * aggregate helpers. See {@code docs/DIAGRAM_LAYER.md}.
+ * aggregate helpers.
+ *
+ * <p>Layout and staged edits are separate tables: a Save carries both, but neither constrains the other.
+ * See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Component
@@ -36,16 +42,15 @@ public class DiagramLayoutReconciler {
 
     private final DiagramMapper mapper;
     private final ConceptMetadataRepository conceptMetadataRepository;
+    private final DiagramPendingEditRepository pendingEditRepository;
 
     /**
      * Reconcile the node set: update/keep matching rows, insert rows for new IRIs, apply the staged
      * overlays, and remove any persisted node absent from the payload. Returns the incoming nodes keyed by
      * concept IRI, for parent resolution after the caller flushes.
      *
-     * <p>Order is load-bearing: {@code nodes[]} first, then {@code overlays[]}, then the reap. An overlay
-     * provisions a row only when none exists, so a concept in both arrays keeps its real position instead
-     * of the origin anchor. The reap runs last so a row provisioned by an overlay is never a reap
-     * candidate.
+     * <p>Layout writes {@code diagram_nodes} and overlays write {@code diagram_pending_edits}; they
+     * share no row, so their order does not matter and neither can undo the other.
      */
     public Map<String, DiagramNodeEntity> reconcileNodes(DiagramEntity diagram, DiagramLayoutDto layout) {
         Map<String, DiagramNodeEntity> existing = new HashMap<>();
@@ -69,87 +74,66 @@ public class DiagramLayoutReconciler {
             incoming.put(iri, node);
         }
 
-        Set<String> overlayTargets = applyOverlays(diagram, layout, existing, diagramGraphName);
+        applyOverlays(diagram.getOntologyMetadata(), layout, diagramGraphName);
 
-        // A row carrying a staged overlay survives an omission from nodes[]. Relationships and properties
-        // are never sent as nodes (they render as edges and rows), so reaping on absence alone would delete
-        // the row the overlay lives on — silently discarding the user's staged change and the work item
-        // Převzít would have applied. Discarding an overlay is an explicit entry, never a side effect.
+        // Membership is a plain full replace: a row absent from nodes[] is off the canvas.
         List<DiagramNodeEntity> toRemove = diagram.getNodes().stream()
                 .filter(n -> !incoming.containsKey(n.getConceptIri()))
-                .filter(n -> !overlayTargets.contains(n.getConceptIri()))
-                .filter(n -> n.getPendingEdit() == null)
                 .toList();
         toRemove.forEach(diagram::removeNode);
         return incoming;
     }
 
     /**
-     * Apply {@code overlays[]} — additive, never a full replace. An entry stages or updates that concept's
-     * overlay; a concept absent from the array is untouched, so a null or empty array is a no-op. This is
-     * deliberately unlike {@code nodes}/{@code edges}: a staged overlay need not appear in a read at all
-     * (an off-canvas endpoint, or a concept deleted underneath the diagram), so a client cannot be asked to
-     * echo back what it was never shown. Treating omission as discard would destroy staged work on every
-     * save a client builds from its own canvas state.
+     * Apply {@code overlays[]} — additive, never a full replace: an entry stages or updates that concept's
+     * overlay, and a concept absent from the array is untouched, so a null or empty array is a no-op.
+     * Discarding is an entry carrying only {@code conceptIri}, and deletes the row.
      *
-     * <p>Returns the concept IRIs left carrying an overlay, so the caller can keep those rows out of the
-     * reap. A discard entry is excluded: it addresses a concept but leaves the row bare, and a bare row
-     * omitted from {@code nodes[]} is exactly what the reap is for.
+     * <p>Writes {@code diagram_pending_edits} only, never layout.
      */
-    private Set<String> applyOverlays(DiagramEntity diagram, DiagramLayoutDto layout,
-                                      Map<String, DiagramNodeEntity> existing, String diagramGraphName) {
+    private void applyOverlays(OntologyMetadataEntity ontology, DiagramLayoutDto layout,
+                               String diagramGraphName) {
         if (layout.overlays() == null) {
-            return Set.of();
+            return;
         }
 
-        Set<String> targets = new HashSet<>();
+        Set<String> seen = new HashSet<>();
         for (DiagramLayoutDto.Overlay in : layout.overlays()) {
             String iri = mapper.conceptIriFromNodeId(in.conceptIri());
-            if (!targets.add(iri)) {
+            if (!seen.add(iri)) {
                 log.warn("Ignoring duplicate overlay entry for concept {}", iri);
                 continue;
             }
-            // Every overlay target is graph-checked, not just a newly provisioned one: a row that already
-            // exists is the case the staging path used to skip entirely.
+            // Every overlay target is graph-checked, not just a newly staged one.
             requireSameGraph(diagramGraphName, iri);
 
             DiagramPendingEdit edit = mapper.toPendingEdit(in);
-            DiagramNodeEntity node = existing.get(iri);
-            if (node == null) {
-                // Discarding an overlay on a concept with no row is a no-op — provisioning one just to
-                // clear it would leave an empty row behind.
-                if (edit == null) {
-                    continue;
-                }
-                // A relationship renders as an edge and a property as a row, so neither travels in nodes[]
-                // and neither has a row until an overlay stages one. The row exists to carry the overlay,
-                // not a box, and the position columns are NOT NULL — anchor at origin.
-                node = new DiagramNodeEntity();
-                node.setConceptIri(iri);
-                node.setPosX(0.0);
-                node.setPosY(0.0);
-                diagram.addNode(node);
-                existing.put(iri, node);
-            }
+            DiagramPendingEditEntity existing = pendingEditRepository
+                    .findByOntologyMetadataIdAndConceptIri(ontology.getId(), iri)
+                    .orElse(null);
 
             if (edit == null) {
-                node.setPendingEdit(null);
-                // The row now carries nothing, so it has no claim on the reap carve-out. Leaving the IRI in
-                // `targets` would pin a row the payload also omitted from nodes[] — the concept stays off
-                // the canvas but its row survives, and the read emits it as a node anchored at the origin.
-                targets.remove(iri);
+                // Discard: delete the row. Discarding what was never staged is a no-op.
+                if (existing != null) {
+                    pendingEditRepository.delete(existing);
+                }
                 continue;
             }
             requireSameGraph(diagramGraphName, edit);
-            // Stamp the stale-base fingerprint only when the overlay comes into existence on this row.
-            // Refreshing it on every save would absorb a concurrent concept edit instead of reporting it,
-            // and comparing content instead would never clear a conflict the user resolves by re-staging
-            // the same value: discard then stage is the reset, so `prior == null` is the only fresh stamp.
-            DiagramPendingEdit prior = node.getPendingEdit();
-            edit.setBaseUpdatedAt(prior == null ? baseUpdatedAt(iri) : prior.getBaseUpdatedAt());
-            node.setPendingEdit(edit);
+
+            // Stamp the stale-base fingerprint only when the edit first comes into existence — refreshing
+            // it on every save would absorb a concurrent concept edit instead of reporting it.
+            DiagramPendingEditEntity row = existing;
+            if (row == null) {
+                row = new DiagramPendingEditEntity();
+                row.setOntologyMetadata(ontology);
+                row.setConceptIri(iri);
+                row.setBaseUpdatedAt(baseUpdatedAt(iri));
+            }
+            edit.setBaseUpdatedAt(row.getBaseUpdatedAt());
+            row.setPendingEdit(edit);
+            pendingEditRepository.save(row);
         }
-        return targets;
     }
 
     /** The referenced concept's {@code updatedAt} at stage time — null when it has no row. */

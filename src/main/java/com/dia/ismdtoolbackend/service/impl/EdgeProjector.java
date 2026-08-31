@@ -41,10 +41,14 @@ class EdgeProjector {
 
     private final DiagramMapper mapper;
     private final Map<String, List<EdgeWaypoint>> waypoints;
+    /** Staged edits by concept IRI; supplied, since an edit need not have a node row. */
+    private final Map<String, DiagramPendingEdit> overlays;
 
-    EdgeProjector(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints) {
+    EdgeProjector(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints,
+                  Map<String, DiagramPendingEdit> overlays) {
         this.mapper = mapper;
         this.waypoints = waypoints != null ? waypoints : Map.of();
+        this.overlays = overlays != null ? overlays : Map.of();
     }
 
     /**
@@ -57,7 +61,6 @@ class EdgeProjector {
                                   Map<String, ConceptType> types,
                                   Map<String, String> slugs) {
         Set<String> onCanvas = onCanvas(nodes, types);
-        Map<String, DiagramPendingEdit> overlays = overlays(nodes);
 
         List<DiagramDto.Edge> edges = new ArrayList<>();
         for (Map.Entry<String, ConceptDetailModel> entry : live.entrySet()) {
@@ -77,10 +80,8 @@ class EdgeProjector {
     }
 
     /**
-     * Canvas membership is the set of CLASS nodes. A row exists for every concept carrying a staged
-     * overlay — including relationships and properties, which are never sent in {@code nodes[]} — so
-     * "has a row" is not the same question as "is a box on the canvas", and only the latter may serve as
-     * an edge endpoint.
+     * Canvas membership: the CLASS nodes, the only things an edge may attach to. An unknown type is kept —
+     * a stale row whose concept was deleted is still on the canvas.
      */
     private Set<String> onCanvas(List<DiagramNodeEntity> nodes, Map<String, ConceptType> types) {
         Set<String> onCanvas = new HashSet<>();
@@ -103,17 +104,6 @@ class EdgeProjector {
             }
         }
         return curated;
-    }
-
-    /** Staged overlays by concept IRI, for concepts that are canvas nodes and those that are not. */
-    private Map<String, DiagramPendingEdit> overlays(List<DiagramNodeEntity> nodes) {
-        Map<String, DiagramPendingEdit> overlays = new HashMap<>();
-        for (DiagramNodeEntity n : nodes) {
-            if (n.getPendingEdit() != null) {
-                overlays.put(n.getConceptIri(), n.getPendingEdit());
-            }
-        }
-        return overlays;
     }
 
     /**
@@ -182,7 +172,6 @@ class EdgeProjector {
                                                            Map<String, ConceptType> types,
                                                            Map<String, String> slugs) {
         Set<String> onCanvas = onCanvas(nodes, types);
-        Map<String, DiagramPendingEdit> overlays = overlays(nodes);
         Map<String, Set<String>> curated = curatedProperties(nodes);
 
         Map<String, List<DiagramDto.PropertyRow>> byClass = new HashMap<>();

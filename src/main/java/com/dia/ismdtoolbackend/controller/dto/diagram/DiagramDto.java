@@ -25,8 +25,26 @@ public record DiagramDto(
         ViewportDto viewport,
         List<Node> nodes,
         List<Edge> edges,
-        int pendingChangeCount
+        /* Every staged edit, canvas-rendered or not. Always present (empty, never null). */
+        @JsonInclude List<PendingEditEntry> pendingEdits
 ) {
+
+    /**
+     * One staged overlay. Listed whether or not the canvas renders its concept, so a staged edit has one
+     * stable home; the {@code pendingEdit} on a node, edge or property row is a copy for the element that
+     * draws it. Identity is the concept IRI.
+     */
+    @Schema(name = "DiagramPendingEditEntry")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record PendingEditEntry(
+            String iri,
+            ConceptType conceptType,
+            String slug,
+            Map<String, String> label,
+            boolean stale,
+            DiagramPendingEdit pendingEdit
+    ) {
+    }
 
     /**
      * A canvas node: layout from PG, {@code data} joined from live RDF ⊕ overlay.

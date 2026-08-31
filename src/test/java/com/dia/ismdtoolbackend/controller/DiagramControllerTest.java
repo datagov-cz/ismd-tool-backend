@@ -85,7 +85,7 @@ class DiagramControllerTest {
     void getDetail_readableByNonOwner() throws Exception {
         TestOntologySecurityService.setAllowModify(false);   // not the owner → writes would 403
         when(diagramService.getDiagram(eq("pracovni-pomer")))
-                .thenReturn(new DiagramDto("pracovni-pomer", 0L, null, List.of(), List.of(), 0));
+                .thenReturn(new DiagramDto("pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
 
         // canViewResource() (any authenticated) gates the read, NOT belongsToUserBySlug → still 200.
         mockMvc.perform(get("/api/diagram/pracovni-pomer/detail"))
@@ -124,7 +124,7 @@ class DiagramControllerTest {
     void saveLayout_overlayConceptIriWithSlashesTravelsInBody() throws Exception {
         String conceptIri = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
         when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), 1));
+                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), List.of()));
 
         mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -158,7 +158,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_omittedOverlays_isAccepted() throws Exception {
         when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), 0));
+                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), List.of()));
 
         mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -218,7 +218,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_acceptsTheFatReadEdgeShape_ignoringDerivedFields() throws Exception {
         when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), 0));
+                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), List.of()));
 
         String fatEdge = """
                 {"version": 3, "nodes": [],
@@ -254,7 +254,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_omittedEdges_isAccepted() throws Exception {
         when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), 0));
+                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), List.of()));
 
         mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -297,7 +297,7 @@ class DiagramControllerTest {
     void saveLayout_nodeFlagsAbsentOrNull_bindWithoutParseError() throws Exception {
         when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
                 .thenReturn(new DiagramDto("pracovni-pomer", 1L, null,
-                        List.of(), List.of(), 0));
+                        List.of(), List.of(), List.of()));
 
         String absent = """
                 {"version":1,"nodes":[{"id":"https://x/pojem/a","position":{"x":0,"y":16.5}}],
@@ -329,7 +329,7 @@ class DiagramControllerTest {
         DiagramDto.Node node = new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
                 new PositionDto(0.0, 0.0), null, true, null);     // in-diagram form: no version
         when(diagramService.getDiagram(eq("pracovni-pomer")))
-                .thenReturn(new DiagramDto("pracovni-pomer", 7L, null, List.of(node), List.of(), 0));
+                .thenReturn(new DiagramDto("pracovni-pomer", 7L, null, List.of(node), List.of(), List.of()));
 
         String body = mockMvc.perform(get("/api/diagram/pracovni-pomer/detail"))
                 .andExpect(status().isOk())

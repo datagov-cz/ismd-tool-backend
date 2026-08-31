@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.diagram;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
@@ -11,6 +12,7 @@ import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import jakarta.persistence.EntityManager;
@@ -44,6 +46,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private DiagramNodeRepository nodeRepository;
     @Autowired private DiagramEdgeRepository edgeRepository;
+    @Autowired private DiagramPendingEditRepository pendingEditRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private EntityManager em;
 
@@ -86,40 +89,76 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         assertThat(diagramRepository.findByOntologyMetadataSlug("pracovni-pomer")).isPresent();
     }
 
-    // Overlay coexists with the IRI, round-trips through the JSON column, and the CHECK permits it.
+    // A staged edit round-trips through its own table, keyed by (ontology, concept IRI).
     @Test
-    void nodeWithOverlay_roundTripsAndCoexistsWithIri() {
-        DiagramEntity diagram = diagramFor(ontology("overlay-carrier"));
+    void pendingEditRoundTripsAndIsKeyedByOntologyAndConcept() {
+        OntologyMetadataEntity ontology = ontology("overlay-carrier");
 
-        DiagramNodeEntity node = reference(diagram, "https://x/pojem/je-zamestnan-u", 520.0, 210.0);
         DiagramPendingEdit edit = new DiagramPendingEdit();
         edit.setRange("https://x/pojem/organizace");
         edit.setExactMatch(List.of("https://x/pojem/pracuje-u"));
-        node.setPendingEdit(edit);
-        Long id = nodeRepository.save(node).getId();
+        Long id = pendingEditRepository.save(
+                pendingEdit(ontology, "https://x/pojem/je-zamestnan-u", edit)).getId();
 
         em.flush();
         em.clear();
 
-        DiagramNodeEntity reloaded = nodeRepository.findById(id).orElseThrow();
-        assertThat(reloaded.getConceptIri()).isEqualTo("https://x/pojem/je-zamestnan-u"); // IRI kept
+        DiagramPendingEditEntity reloaded = pendingEditRepository.findById(id).orElseThrow();
+        assertThat(reloaded.getConceptIri()).isEqualTo("https://x/pojem/je-zamestnan-u");
         assertThat(reloaded.getPendingEditJson()).contains("organizace");                // diff persisted
         DiagramPendingEdit back = reloaded.getPendingEdit();
         assertThat(back.getRange()).isEqualTo("https://x/pojem/organizace");
         assertThat(back.getExactMatch()).containsExactly("https://x/pojem/pracuje-u");
+
+        assertThat(pendingEditRepository.findByOntologyMetadataIdAndConceptIri(
+                ontology.getId(), "https://x/pojem/je-zamestnan-u")).isPresent();
     }
 
-    // A node with no staged edits is a plain live reference — null overlay, still valid.
+    // A staged edit needs no canvas node: the concept it targets may be off-canvas, or never on it.
     @Test
-    void nodeWithoutOverlay_isValidAndHasNullOverlay() {
+    void pendingEditNeedsNoLayoutRow() {
+        OntologyMetadataEntity ontology = ontology("staged-off-canvas");
+        DiagramPendingEdit edit = new DiagramPendingEdit();
+        edit.setDomain("https://x/pojem/osoba");
+        pendingEditRepository.save(pendingEdit(ontology, "https://x/pojem/vlastnost", edit));
+
+        em.flush();
+        em.clear();
+
+        assertThat(pendingEditRepository.findByOntologyMetadataId(ontology.getId())).hasSize(1);
+        assertThat(nodeRepository.findAll())
+                .as("staging provisions no layout row — membership is nodes[] alone")
+                .noneMatch(n -> "https://x/pojem/vlastnost".equals(n.getConceptIri()));
+    }
+
+    // One staged edit per concept per ontology; re-staging updates rather than duplicating.
+    @Test
+    void secondPendingEditForTheSameConcept_violatesTheUniqueConstraint() {
+        OntologyMetadataEntity ontology = ontology("dup-staged");
+        DiagramPendingEdit edit = new DiagramPendingEdit();
+        edit.setRange("https://x/pojem/a");
+        pendingEditRepository.saveAndFlush(pendingEdit(ontology, "https://x/pojem/rel", edit));
+
+        DiagramPendingEdit other = new DiagramPendingEdit();
+        other.setRange("https://x/pojem/b");
+        assertThatThrownBy(() -> pendingEditRepository.saveAndFlush(
+                pendingEdit(ontology, "https://x/pojem/rel", other)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // A layout row is layout only — nothing on it carries staged intent.
+    @Test
+    void layoutRowCarriesNoStagedEdit() {
         DiagramEntity diagram = diagramFor(ontology("no-overlay"));
         Long id = nodeRepository.save(reference(diagram, "https://x/pojem/plain", 0, 0)).getId();
         em.flush();
         em.clear();
 
         DiagramNodeEntity reloaded = nodeRepository.findById(id).orElseThrow();
-        assertThat(reloaded.getPendingEditJson()).isNull();
-        assertThat(reloaded.getPendingEdit()).isNull();
+        assertThat(reloaded.getConceptIri()).isEqualTo("https://x/pojem/plain");
+        assertThat(pendingEditRepository.findByOntologyMetadataIdAndConceptIri(
+                reloaded.getDiagram().getOntologyMetadata().getId(), "https://x/pojem/plain"))
+                .isEmpty();
     }
 
     @Test
@@ -346,7 +385,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
     // setPendingEdit throws on a serialization failure (no silent null overlay).
     @Test
     void setPendingEdit_throwsOnSerializationFailure() {
-        DiagramNodeEntity node = new DiagramNodeEntity();
+        DiagramPendingEditEntity row = new DiagramPendingEditEntity();
         java.util.List<String> cyclic = new java.util.ArrayList<>();
         @SuppressWarnings({"unchecked", "rawtypes"})
         java.util.List raw = cyclic;
@@ -354,9 +393,29 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         DiagramPendingEdit edit = new DiagramPendingEdit();
         edit.setExactMatch(cyclic);
 
-        assertThatThrownBy(() -> node.setPendingEdit(edit))
+        assertThatThrownBy(() -> row.setPendingEdit(edit))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Failed to serialize pending edit");
-        assertThat(node.getPendingEditJson()).isNull(); // never persisted partial/empty
+        assertThat(row.getPendingEditJson()).isNull(); // never persisted partial/empty
+    }
+
+    // A row exists only while it carries an edit, so discarding deletes it rather than blanking it.
+    @Test
+    void setPendingEdit_rejectsNull() {
+        DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+        row.setConceptIri("https://x/pojem/rel");
+
+        assertThatThrownBy(() -> row.setPendingEdit(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("discard deletes the row");
+    }
+
+    private DiagramPendingEditEntity pendingEdit(OntologyMetadataEntity ontology, String conceptIri,
+                                                 DiagramPendingEdit edit) {
+        DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+        row.setOntologyMetadata(ontology);
+        row.setConceptIri(conceptIri);
+        row.setPendingEdit(edit);
+        return row;
     }
 }

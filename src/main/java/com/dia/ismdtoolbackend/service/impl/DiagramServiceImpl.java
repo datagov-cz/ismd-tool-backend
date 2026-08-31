@@ -18,6 +18,9 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -32,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +57,7 @@ public class DiagramServiceImpl implements DiagramService {
     private final JenaTDB2Repository jenaTDB2Repository;
     private final DiagramMaterializeService materializeService;
     private final DiagramLayoutReconciler layoutReconciler;
+    private final DiagramPendingEditRepository pendingEditRepository;
     private final DiagramMapper mapper;
 
     /**
@@ -69,6 +74,7 @@ public class DiagramServiceImpl implements DiagramService {
                               JenaTDB2Repository jenaTDB2Repository,
                               DiagramMaterializeService materializeService,
                               DiagramLayoutReconciler layoutReconciler,
+                              DiagramPendingEditRepository pendingEditRepository,
                               DiagramMapper mapper,
                               @Lazy DiagramServiceImpl self) {
         this.diagramRepository = diagramRepository;
@@ -78,12 +84,14 @@ public class DiagramServiceImpl implements DiagramService {
         this.jenaTDB2Repository = jenaTDB2Repository;
         this.materializeService = materializeService;
         this.layoutReconciler = layoutReconciler;
+        this.pendingEditRepository = pendingEditRepository;
         this.mapper = mapper;
         this.self = self;
     }
 
     @Override
     @Transactional(readOnly = true)
+    // TODO: never used, remove?
     public List<DiagramSummaryDto> listAll() {
         return diagramRepository.findAll().stream()
                 .map(this::toSummary)
@@ -205,9 +213,9 @@ public class DiagramServiceImpl implements DiagramService {
     // failure can't roll back earlier successes — the per-change partial-ok guarantee.
     @Override
     public MaterializeResultDto materialize(String ontologySlug) {
+        // Staged edits hang off the ontology, so this needs no diagram row.
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
-        DiagramEntity diagram = getOrCreateDiagram(ontology);
-        return materializeService.materialize(diagram.getId());
+        return materializeService.materialize(ontology.getId());
     }
 
     // ---- snapshot -------------------------------------------------------------------------------
@@ -225,7 +233,9 @@ public class DiagramServiceImpl implements DiagramService {
             Map<String, ConceptType> types,
             Map<String, String> slugs,
             Map<Long, String> nodeIriByRowId,
-            Map<String, List<EdgeWaypoint>> edgeWaypoints
+            Map<String, List<EdgeWaypoint>> edgeWaypoints,
+            /* Staged edits by concept IRI. Independent of `nodes` — either may exist without the other. */
+            Map<String, DiagramPendingEdit> overlays
     ) {
 
         /** The snapshot node for a concept IRI, or null when the diagram has no such node. */
@@ -249,7 +259,22 @@ public class DiagramServiceImpl implements DiagramService {
         }
         return new DiagramSnapshot(graphName, diagram.getVersion(), mapper.toViewport(diagram), nodes,
                 conceptTypes(graphName), conceptSlugs(graphName), nodeIriByRowId,
-                edgeWaypoints(diagram));
+                edgeWaypoints(diagram), overlays(ontology));
+    }
+
+    /** Staged edits by concept IRI, read inside the transaction so assembly works on a detached snapshot. */
+    private Map<String, DiagramPendingEdit> overlays(OntologyMetadataEntity ontology) {
+        if (ontology.getId() == null) {
+            return Map.of();   // a transient diagram for an ontology with no row yet
+        }
+        Map<String, DiagramPendingEdit> byIri = new HashMap<>();
+        for (DiagramPendingEditEntity row : pendingEditRepository.findByOntologyMetadataId(ontology.getId())) {
+            DiagramPendingEdit edit = row.getPendingEdit();
+            if (edit != null) {
+                byIri.put(row.getConceptIri(), edit);
+            }
+        }
+        return byIri;
     }
 
     /**
@@ -274,24 +299,55 @@ public class DiagramServiceImpl implements DiagramService {
     /** Join layout rows to live content, apply overlays, project edges and property rows. */
     private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot,
                                 Map<String, ConceptDetailModel> live) {
-        EdgeProjector projector = new EdgeProjector(mapper, snapshot.edgeWaypoints());
+        EdgeProjector projector =
+                new EdgeProjector(mapper, snapshot.edgeWaypoints(), snapshot.overlays());
         Map<String, List<DiagramDto.PropertyRow>> rows =
                 projector.propertyRows(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
 
+        // nodes[] is the canvas: classes only. A relationship renders as an edge and a property as a
+        // row inside its class, so neither appears here.
         List<DiagramDto.Node> nodes = new ArrayList<>();
         for (DiagramNodeEntity node : snapshot.nodes()) {
+            if (!isCanvasMember(snapshot, node.getConceptIri())) {
+                continue;
+            }
             nodes.add(toNode(snapshot, node, live.get(node.getConceptIri()),
                     rows.getOrDefault(node.getConceptIri(), List.of())));
         }
 
         List<DiagramDto.Edge> edges =
                 projector.project(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
-        int pendingChangeCount = (int) snapshot.nodes().stream()
-                .filter(n -> n.getPendingEdit() != null)
-                .count();
 
         return new DiagramDto(ontologySlug, snapshot.version(), snapshot.viewport(), nodes, edges,
-                pendingChangeCount);
+                pendingEdits(snapshot, live));
+    }
+
+    /** Canvas membership: classes only. An unknown type is kept — a stale row is still on the canvas. */
+    private boolean isCanvasMember(DiagramSnapshot snapshot, String conceptIri) {
+        ConceptType type = snapshot.types().get(conceptIri);
+        return type == null || type == ConceptType.TRIDA || type == ConceptType.KONCEPT;
+    }
+
+    /**
+     * Every staged edit on the ontology — what Převzít will apply. Not filtered by what the canvas
+     * renders, so an edit keeps one stable home across membership changes.
+     */
+    private List<DiagramDto.PendingEditEntry> pendingEdits(DiagramSnapshot snapshot,
+                                                           Map<String, ConceptDetailModel> live) {
+        List<DiagramDto.PendingEditEntry> entries = new ArrayList<>();
+        for (Map.Entry<String, DiagramPendingEdit> staged : snapshot.overlays().entrySet()) {
+            String iri = staged.getKey();
+            ConceptDetailModel detail = live.get(iri);
+            entries.add(new DiagramDto.PendingEditEntry(
+                    iri,
+                    snapshot.types().get(iri),
+                    snapshot.slugs().get(iri),
+                    detail != null ? detail.getName() : null,
+                    detail == null,
+                    staged.getValue()));
+        }
+        entries.sort(Comparator.comparing(DiagramDto.PendingEditEntry::iri));
+        return entries;
     }
 
     /** Build one render-ready node; type/slug come from the snapshot, never a fresh PG read. */
@@ -301,7 +357,8 @@ public class DiagramServiceImpl implements DiagramService {
         ConceptType type = snapshot.types().get(conceptIri);
         String slug = snapshot.slugs().get(conceptIri);
         Map<String, String> label = detail != null ? detail.getName() : null;
-        DiagramDto.NodeData data = mapper.toNodeData(node, type, slug, label, detail, properties);
+        DiagramDto.NodeData data = mapper.toNodeData(node, type, slug, label, detail, properties,
+                snapshot.overlays().get(conceptIri));
         String parentId = node.getParentNodeId() != null
                 ? parentWireId(snapshot, node.getParentNodeId())
                 : null;

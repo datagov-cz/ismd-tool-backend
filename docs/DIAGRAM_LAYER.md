@@ -99,19 +99,25 @@ Consequently **dragging an edge endpoint is a concept edit** (repointing an arro
 
 **Incomplete concepts live off-canvas.** A VZTAH missing an endpoint, or a domainless VLASTNOST, is simply not drawn — there is nothing to attach it to. This costs nothing, because placement *is* completion: such a concept reaches the canvas by being dragged in from the ontology detail, and the drop supplies the missing endpoint. The edge/row model therefore never has to represent a half-built concept, which is the one thing the older node-per-concept model could express and this one cannot.
 
-**This invisibility is exactly why overlays are additive.** An off-canvas endpoint means a staged overlay that no read exposes — see the asymmetry section above.
+**This invisibility is exactly why overlays are additive.** An off-canvas endpoint means a staged overlay the canvas draws nowhere — see the asymmetry section above. The read closes the loop with **`pendingEdits[]`**, which lists *every* staged edit whether or not something renders its concept, so an edit is always reachable and always has one stable home. The `pendingEdit` on a node, edge or property row is a copy for the element that draws it, never the only copy: canvas membership changes constantly within a session, and a client must not have to re-derive which of four places owns an edit each time it does.
 
 **Sub-property and sub-relation hierarchy is not rendered.** `rdfs:subPropertyOf` between two properties or two relationships would have to be drawn from a row to a row, or from a line to a line — neither endpoint is a node. Beyond the mechanics, what the user should see or do there is an open business question, so the diagram neither renders nor stages it; the relation stays fully supported in the normal concept editor. See `.planning/diagram-edge-model-REDESIGN.md`.
 
 ## The PG entity model
 
-Three entities in two-plus-one tables, mirroring the `CommentEntity` pattern (FK to `ontologies.id`, pure PG, no outbox). Layout and the pending-edit overlay both live entirely in Postgres.
+Four entities, mirroring the `CommentEntity` pattern (FK to `ontologies.id`, pure PG, no outbox). Layout and the pending-edit overlay both live entirely in Postgres, in **separate tables with separate lifecycles**.
 
 **`diagrams`** — one canonical diagram per ontology (`@OneToOne` unique FK → `OntologyMetadataEntity`, ON DELETE CASCADE), viewport pan/zoom, a `@Version` optimistic-lock column, and `@OneToMany` node/edge collections (cascade ALL, orphanRemoval). Aggregate helpers `addNode`/`addEdge`/`removeNode` keep callers on managed instances; `touch()` forces the `@Version` bump on node/edge-only changes. There is no diagram-owner column — ownership is the ontology's, one join away.
 
-**`diagram_nodes`** — every row references a materialized concept: `concept_iri` **NOT NULL**, `backing` (single-valued `ISMD_CONCEPT`, kept for forward-compat), position, `collapsed`, `parent_node_id`, and `pending_edit_json` — **nullable**; non-null holds the structural overlay diff. `pending_edit_json` **coexists with** `concept_iri` (it is a diff, not a substitute). An entity `@PrePersist`/`@PreUpdate` guard and a Postgres CHECK enforce `concept_iri` always present, and a unique index covers `(diagram_id, concept_iri)`.
+**`diagram_nodes`** — **layout only.** Every row references a materialized concept: `concept_iri` **NOT NULL**, `backing` (single-valued `ISMD_CONCEPT`, kept for forward-compat), position, `collapsed`, `parent_node_id`, `visible_properties_json`. An entity `@PrePersist`/`@PreUpdate` guard and a Postgres CHECK enforce `concept_iri` always present, and a unique index covers `(diagram_id, concept_iri)`.
 
-A row exists for any concept that is **on the canvas or carries an overlay**. A VZTAH or VLASTNOST is never sent as a layout node, so its row is provisioned by the overlay that first stages on it, anchored at the origin — the position columns are NOT NULL and the concept has no box of its own. The same rule is why the Save-time reap spares any row with a non-null `pending_edit_json`: it is not on the canvas, and absence from `nodes[]` must not be read as "delete it".
+A row means exactly one thing: **this concept is a box on the canvas.** Classes only — a VZTAH renders as an edge and a VLASTNOST as a row inside its class, so neither ever has a layout row.
+
+**`diagram_pending_edits`** — **staged RDF intent, and nothing visual.** `pending_edit_json` (**NOT NULL** — a row exists only while there is an edit, so discarding deletes it rather than blanking it), `base_updated_at`, unique on `(ontology_metadata_id, concept_iri)`. **No position columns.**
+
+Scoped to the **ontology, not the diagram**: the ontology is the authority for its own content and a diagram only ever visualises it. That also survives Diagrams 1.1, where one ontology gains many diagrams — a staged edit belongs to the concept, not to whichever canvas staged it.
+
+> **Why these are two tables.** They were once one row, and because canvas membership is "which node rows exist", that made staging an edit pin its concept to the canvas: removing a node — a purely visual act — was blocked by a purely semantic one. A concept with no box of its own had to fabricate a position (the layout columns are NOT NULL) and got anchored at the origin. Splitting them removes the origin fiction, lets the reap be a plain full replace, and makes "the diagram is a subset view" true in the schema rather than only in intent.
 
 **`diagram_edges`** — `edge_key` (the projected edge id these waypoints belong to: a VZTAH's concept IRI, or the composite `edge|KIND|source|target` of a hierarchy link) and `segments_json`, unique per `(diagram_id, edge_key)`. **Waypoints only** — no endpoints, no kind, no content. A row whose edge no longer projects finds no match on read and is cleared by the next Save; nothing has to hunt down orphans.
 
@@ -119,15 +125,14 @@ The overlay content model (`DiagramPendingEdit`) is **structural-only**: `domain
 
 ## Save-time reconciliation
 
-`DiagramLayoutReconciler` applies one Save in a fixed order, and the order is load-bearing:
+`DiagramLayoutReconciler` applies one Save as **two independent halves**:
 
-1. **`nodes[]`** — update matching rows in place, insert rows for new IRIs, and record the incoming set.
-2. **`overlays[]`** — for each entry, graph-check the concept, then set or clear its pending edit, provisioning a row (anchored at the origin) only when none exists.
-3. **Reap** — remove any persisted row that is in neither the incoming node set nor the overlay set **and** carries no pending edit.
+1. **`nodes[]` → `diagram_nodes`** — update matching rows in place, insert rows for new IRIs, then reap: any persisted row absent from the incoming set is removed. A plain full replace, no carve-outs.
+2. **`overlays[]` → `diagram_pending_edits`** — for each entry, graph-check the concept, then upsert its staged edit, or delete the row for a discard (an entry carrying only `conceptIri`).
 
-**Nodes before overlays**, because the origin anchor must only ever apply when *creating* a row. A class present in both arrays — a TRIDA with a staged `broaderConcept` change, the normal case for op 2 — must keep its real position from `nodes[]`. Anchoring unconditionally, or reversing the order, silently moves such classes to the top-left corner on every Save.
+**Neither half constrains the other.** They share no row, so their order does not matter and neither can undo the other: a class can leave the canvas while keeping its staged edit, and staging an edit never puts a concept on the canvas. Removing a node carries no RDF intent — discarding is a separate, explicit instruction.
 
-**Reap last, and provision from the persisted set, not the incoming one.** `diagram_nodes` has a plain unique on `(diagram_id, concept_iri)` and the collection is `orphanRemoval`, so if one Save ever produced a remove of a row and an insert for the same IRI, Hibernate would emit the INSERT before the DELETE and the constraint would fire. This is the same hazard the edge reconciler was already hardened against.
+**Reap provisions from the persisted set, not the incoming one.** `diagram_nodes` has a plain unique on `(diagram_id, concept_iri)` and the collection is `orphanRemoval`, so if one Save ever produced a remove of a row and an insert for the same IRI, Hibernate would emit the INSERT before the DELETE and the constraint would fire. This is the same hazard the edge reconciler was already hardened against.
 
 **Every overlay target is graph-checked on every Save**, not only when its row is provisioned — otherwise a concept that already has a row could receive a foreign-graph overlay unchecked.
 

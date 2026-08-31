@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
-import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -12,7 +12,7 @@ import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import jakarta.persistence.EntityNotFoundException;
@@ -46,7 +46,7 @@ public class DiagramChangeApplier {
 
     private final ConceptService conceptService;
     private final ConceptMetadataRepository conceptMetadataRepository;
-    private final DiagramNodeRepository diagramNodeRepository;
+    private final DiagramPendingEditRepository pendingEditRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
 
     /** The classified op plus the outcome, so the caller can report it without re-deriving the op. */
@@ -55,39 +55,43 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Apply the node's overlay in a fresh transaction and clear it on success. Re-loads the node managed in
-     * this transaction (the caller's instance is from another persistence context). Throws on any failure —
-     * the caller (non-transactional) records it as {@code failed}.
+     * Apply one concept's staged edit in a fresh transaction and clear it on success. Re-loads the staged
+     * row managed in this transaction (the caller's instance is from another persistence context). Throws
+     * on any failure — the caller (non-transactional) records it as {@code failed}.
+     *
+     * <p>Addressed by {@code (ontology, conceptIri)} — a staged edit need not have a canvas node.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Outcome applyChange(Long nodeId) {
-        DiagramNodeEntity node = diagramNodeRepository.findById(nodeId)
-                .orElseThrow(() -> new EntityNotFoundException("Uzel diagramu " + nodeId + " nebyl nalezen."));
-        DiagramPendingEdit overlay = node.getPendingEdit();
-        if (overlay == null) {
+    public Outcome applyChange(Long ontologyId, String conceptIri) {
+        DiagramPendingEditEntity staged = pendingEditRepository
+                .findByOntologyMetadataIdAndConceptIri(ontologyId, conceptIri)
+                .orElse(null);
+        if (staged == null || staged.getPendingEdit() == null) {
             // Raced away since the caller snapshotted — nothing to do.
             return new Outcome(null, Outcome.Kind.MATERIALIZED);
         }
-
+        DiagramPendingEdit overlay = staged.getPendingEdit();
         DiagramOp op = classify(overlay);
 
         ConceptMetadataEntity concept =
-                conceptMetadataRepository.findByConceptIri(node.getConceptIri()).orElse(null);
+                conceptMetadataRepository.findByConceptIri(conceptIri).orElse(null);
         if (concept == null) {
             return new Outcome(op, Outcome.Kind.SKIPPED_STALE);
         }
-        requireSameGraph(node.getDiagram(), concept);
+        String ontologyGraphName = staged.getOntologyMetadata().getGraphName();
+        requireSameGraph(ontologyGraphName, concept.getGraphName(), concept.getConceptIri());
 
         if (isStaleBase(concept, overlay)) {
             throw new StaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
         }
 
         if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
-            applyConvertToHierarchy(overlay, concept, diagramGraphName(node));
+            applyConvertToHierarchy(overlay, concept, ontologyGraphName);
         } else {
             conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
         }
-        node.setPendingEdit(null);
+        // Applied to RDF; the staged row has served its purpose.
+        pendingEditRepository.delete(staged);
         return new Outcome(op, Outcome.Kind.MATERIALIZED);
     }
 
@@ -152,15 +156,6 @@ public class DiagramChangeApplier {
      * The graph the diagram is allowed to write. Read through the node's diagram → ontology, so it is the
      * authorized slug's graph — the same ontology {@code belongsToUserBySlug} checked at the controller.
      */
-    private String diagramGraphName(DiagramNodeEntity node) {
-        return node.getDiagram().getOntologyMetadata().getGraphName();
-    }
-
-    private void requireSameGraph(DiagramEntity diagram, ConceptMetadataEntity concept) {
-        requireSameGraph(diagram.getOntologyMetadata().getGraphName(), concept.getGraphName(),
-                concept.getConceptIri());
-    }
-
     /**
      * A concept outside the diagram's own graph is a rejected request, not a stale reference: the diagram
      * endpoints authorize the ontology slug, so writing any other ontology's concept would escape that check.

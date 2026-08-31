@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
+import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
@@ -16,6 +17,7 @@ import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
@@ -54,6 +56,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     @Autowired private ConceptMetadataRepository conceptRepository;
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private DiagramNodeRepository nodeRepository;
+    @Autowired private DiagramPendingEditRepository pendingEditRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private EntityManager em;
 
@@ -61,7 +64,8 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void initReconciler() {
-        reconciler = new DiagramLayoutReconciler(new DiagramMapper(), conceptRepository);
+        reconciler = new DiagramLayoutReconciler(new DiagramMapper(), conceptRepository,
+                pendingEditRepository);
     }
 
     private DiagramEntity newDiagram(String slug) {
@@ -78,20 +82,30 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramNodeEntity seedNode(DiagramEntity diagram, String iri, double x, double y) {
-        return seedNode(diagram, iri, x, y, null);
-    }
-
-    /** As above, with a staged overlay on the row — the state the reap carve-out protects. */
-    private DiagramNodeEntity seedNode(DiagramEntity diagram, String iri, double x, double y,
-                                       DiagramPendingEdit pendingEdit) {
         DiagramNodeEntity n = new DiagramNodeEntity();
         n.setBacking(DiagramNodeBacking.ISMD_CONCEPT);
         n.setConceptIri(iri);
         n.setPosX(x);
         n.setPosY(y);
-        n.setPendingEdit(pendingEdit);
         diagram.addNode(n);
         return n;
+    }
+
+    /** Stage an edit on a concept of this diagram's ontology, independently of any layout row. */
+    private void stageEdit(DiagramEntity diagram, String iri, DiagramPendingEdit edit) {
+        DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+        row.setOntologyMetadata(diagram.getOntologyMetadata());
+        row.setConceptIri(iri);
+        row.setPendingEdit(edit);
+        pendingEditRepository.saveAndFlush(row);
+    }
+
+    /** The staged edit for a concept of this diagram's ontology, or null when nothing is staged. */
+    private DiagramPendingEdit stagedEdit(DiagramEntity diagram, String iri) {
+        return pendingEditRepository.findByOntologyMetadataIdAndConceptIri(
+                        diagram.getOntologyMetadata().getId(), iri)
+                .map(DiagramPendingEditEntity::getPendingEdit)
+                .orElse(null);
     }
 
     /**
@@ -187,20 +201,16 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     /**
-     * The reap carve-out ({@code DiagramLayoutReconciler:67-70}). A relationship renders as an edge and a
-     * property as a row, so neither ever travels in {@code nodes[]} — their rows exist only to carry a
-     * staged overlay. Reaping on absence alone would delete that row on the very next Save, silently
-     * discarding the user's staged change and the work item Převzít would have applied.
-     *
-     * <p>Guards {@code .filter(n -> n.getPendingEdit() == null)}: without it, this test fails.
+     * A relationship renders as an edge and a property as a row, so neither ever travels in
+     * {@code nodes[]}. Their staged edits live in {@code diagram_pending_edits} and have no layout row at
+     * all, so a Save that omits them cannot touch the staged work Převzít would have applied.
      */
     @Test
-    void nodeCarryingOverlay_survivesOmissionFromNodes() {
+    void stagedEditOnAConceptNeverSentAsANode_survivesTheSave() {
         DiagramEntity diagram = newDiagram("overlay-survives");
         seedNode(diagram, "https://x/pojem/trida", 0, 0);
-        seedNode(diagram, "https://x/pojem/vztah", 0, 0,
-                overlay("https://x/pojem/target"));                 // staged, never sent as a node
         diagramRepository.saveAndFlush(diagram);
+        stageEdit(diagram, "https://x/pojem/vztah", overlay("https://x/pojem/target"));
         em.clear();
 
         // A Save carrying only the class — exactly what the FE sends, since a VZTAH is not a canvas node.
@@ -208,30 +218,30 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         save(managed, new DiagramLayoutDto(null, null,
                 List.of(node("https://x/pojem/trida", 5, 5)), List.of(), null));
 
-        List<DiagramNodeEntity> rows = nodeRepository.findByDiagramId(diagram.getId());
-        assertThat(rows).extracting(DiagramNodeEntity::getConceptIri)
-                .as("the overlay-carrying row must survive omission from nodes[]")
-                .containsExactlyInAnyOrder("https://x/pojem/trida", "https://x/pojem/vztah");
+        assertThat(nodeRepository.findByDiagramId(diagram.getId()))
+                .extracting(DiagramNodeEntity::getConceptIri)
+                .as("layout holds the canvas only — the VZTAH never had a row")
+                .containsExactly("https://x/pojem/trida");
 
-        DiagramNodeEntity vztah = nodeRepository.findByDiagramIdAndConceptIri(
-                diagram.getId(), "https://x/pojem/vztah").orElseThrow();
-        assertThat(vztah.getPendingEdit()).isNotNull();
-        assertThat(vztah.getPendingEdit().getRange())
-                .as("the staged edit itself survives, not just the row")
+        assertThat(stagedEdit(diagram, "https://x/pojem/vztah"))
+                .as("the staged edit survives a Save that never mentions it")
+                .isNotNull()
+                .extracting(DiagramPendingEdit::getRange)
                 .isEqualTo("https://x/pojem/target");
     }
 
     /**
-     * The carve-out is narrow: it spares only rows that actually carry an overlay. A row whose overlay was
-     * discarded is an ordinary canvas node again and reaps on omission like any other — otherwise every
-     * concept ever staged would be undeletable from the canvas.
+     * Membership is a plain full replace with no carve-out: an omitted row is off the canvas whether or
+     * not its concept carries a staged edit. Removing a node is a visual act and carries no RDF intent, so
+     * the edit is left alone — the two instructions in a Save no longer constrain each other.
      */
     @Test
-    void nodeWithoutOverlay_isStillReapedOnOmission() {
+    void classCarryingAStagedEdit_isStillReapedOnOmission() {
         DiagramEntity diagram = newDiagram("overlay-cleared");
         seedNode(diagram, "https://x/pojem/keep", 0, 0);
-        seedNode(diagram, "https://x/pojem/discarded", 1, 1, null);  // overlay already discarded
+        seedNode(diagram, "https://x/pojem/removed", 1, 1);
         diagramRepository.saveAndFlush(diagram);
+        stageEdit(diagram, "https://x/pojem/removed", overlay("https://x/pojem/target"));
         em.clear();
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
@@ -240,20 +250,23 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         assertThat(nodeRepository.findByDiagramId(diagram.getId()))
                 .extracting(DiagramNodeEntity::getConceptIri)
+                .as("a staged edit does not pin its concept to the canvas")
                 .containsExactly("https://x/pojem/keep");
+        assertThat(stagedEdit(diagram, "https://x/pojem/removed"))
+                .as("and leaving the canvas does not discard the staged edit")
+                .isNotNull();
     }
 
     /**
-     * The carve-out spares the row, not the layout: a class that IS sent in {@code nodes[]} while carrying
-     * an overlay is still updated in place, and keeps its staged edit. Pins that sparing a row never means
-     * skipping it.
+     * A class sent in {@code nodes[]} while carrying a staged edit has its layout updated in place and
+     * keeps the edit: the two live in different tables, so writing one cannot disturb the other.
      */
     @Test
-    void nodeCarryingOverlay_isStillUpdatedWhenSent() {
+    void nodeCarryingStagedEdit_isStillUpdatedWhenSent() {
         DiagramEntity diagram = newDiagram("overlay-updated");
-        seedNode(diagram, "https://x/pojem/trida", 0, 0,
-                overlay("https://x/pojem/target"));
+        seedNode(diagram, "https://x/pojem/trida", 0, 0);
         diagramRepository.saveAndFlush(diagram);
+        stageEdit(diagram, "https://x/pojem/trida", overlay("https://x/pojem/target"));
         em.clear();
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
@@ -264,15 +277,15 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 diagram.getId(), "https://x/pojem/trida").orElseThrow();
         assertThat(row.getPosX()).isEqualTo(42.0);                  // layout applied
         assertThat(row.getPosY()).isEqualTo(43.0);
-        assertThat(row.getPendingEdit()).isNotNull();               // overlay untouched
-        assertThat(row.getPendingEdit().getRange()).isEqualTo("https://x/pojem/target");
+        assertThat(stagedEdit(diagram, "https://x/pojem/trida"))    // edit untouched
+                .isNotNull()
+                .extracting(DiagramPendingEdit::getRange).isEqualTo("https://x/pojem/target");
     }
 
     /**
-     * The origin anchor belongs to row CREATION only. A class carrying a staged edit is sent in
-     * {@code nodes[]} and in {@code overlays[]} on the same Save — the normal case for op 2 — and its real
-     * position must win. Anchoring unconditionally, or applying overlays before nodes, silently moves every
-     * such class to the top-left corner on every Save.
+     * A class sent in {@code nodes[]} and in {@code overlays[]} on the same Save — the normal case for
+     * op 2 — keeps the position from {@code nodes[]}. Staging writes no layout at all, so the two halves
+     * of a Save cannot fight over the row.
      */
     @Test
     void overlayOnAConceptAlsoInNodes_keepsItsRealPosition() {
@@ -290,15 +303,14 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
         DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
                 diagram.getId(), "https://x/pojem/trida").orElseThrow();
-        assertThat(row.getPosX()).as("the class keeps its canvas position, not the origin anchor")
-                .isEqualTo(250.0);
+        assertThat(row.getPosX()).as("the class keeps the position sent in nodes[]").isEqualTo(250.0);
         assertThat(row.getPosY()).isEqualTo(175.0);
-        assertThat(row.getPendingEdit()).isNotNull();
+        assertThat(stagedEdit(diagram, "https://x/pojem/trida")).isNotNull();
     }
 
-    /** A brand-new overlay-only row has no box of its own, so it anchors at the origin. */
+    /** Staging is not placement: an overlay on a concept absent from {@code nodes[]} adds no canvas row. */
     @Test
-    void overlayOnAConceptNotInNodes_provisionsAtOrigin() {
+    void overlayOnAConceptNotInNodes_addsNoLayoutRow() {
         DiagramEntity diagram = newDiagram("anchor-new");
         diagramRepository.saveAndFlush(diagram);
         em.clear();
@@ -310,11 +322,10 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 List.of(new DiagramLayoutDto.Overlay("iri:https://x/pojem/vztah",
                         null, "https://x/pojem/b", null, null, null))));
 
-        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
-                diagram.getId(), "https://x/pojem/vztah").orElseThrow();
-        assertThat(row.getPosX()).isEqualTo(0.0);
-        assertThat(row.getPosY()).isEqualTo(0.0);
-        assertThat(row.getPendingEdit()).isNotNull();
+        assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), "https://x/pojem/vztah"))
+                .as("staging an edit never puts a concept on the canvas")
+                .isEmpty();
+        assertThat(stagedEdit(diagram, "https://x/pojem/vztah")).isNotNull();
     }
 
     @Test
@@ -563,9 +574,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         save(again, overlayOnly(iri, "https://x/pojem/a"));
         em.clear();
 
-        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
-                diagram.getId(), iri).orElseThrow();
-        assertThat(row.getPendingEdit().getBaseUpdatedAt())
+        assertThat(stagedEdit(again, iri).getBaseUpdatedAt())
                 .as("re-sending a staged overlay must not refresh the stale-base fingerprint")
                 .isEqualTo(staged);
     }
@@ -600,22 +609,17 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 List.of(new DiagramLayoutDto.Overlay("iri:" + iri,
                         null, null, null, null, null))));
         em.clear();
-        // The discard clears the overlay, and with the concept also absent from nodes[] the bare row is
-        // reaped — a discarded overlay has no claim on the reap carve-out. Either way the overlay is gone,
-        // which is what the re-stage below needs.
-        assertThat(nodeRepository.findByDiagramIdAndConceptIri(diagram.getId(), iri)
-                .map(DiagramNodeEntity::getPendingEdit).orElse(null))
-                .as("the discard must actually clear the overlay").isNull();
+        // The discard deletes the staged row, which is what the re-stage below needs.
+        assertThat(stagedEdit(discarding, iri))
+                .as("the discard must actually remove the staged edit").isNull();
         em.clear();
 
         DiagramEntity restaging = diagramRepository.findById(diagram.getId()).orElseThrow();
         save(restaging, overlayOnly(iri, "https://x/pojem/a"));
         em.clear();
 
-        DiagramNodeEntity row = nodeRepository.findByDiagramIdAndConceptIri(
-                diagram.getId(), iri).orElseThrow();
-        assertThat(row.getPendingEdit().getBaseUpdatedAt())
-                .as("staging onto a cleared row re-reads the concept's current updatedAt")
+        assertThat(stagedEdit(restaging, iri).getBaseUpdatedAt())
+                .as("staging after a discard re-reads the concept's current updatedAt")
                 .isEqualTo(afterEdit)
                 .isNotEqualTo(staged);
     }

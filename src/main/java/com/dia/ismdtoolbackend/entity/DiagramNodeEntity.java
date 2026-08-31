@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.entity;
 
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
-import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -17,9 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
 /**
- * One node on a diagram canvas — always references a materialized ISMD concept ({@link #conceptIri}), and
- * may carry a staged structural overlay ({@link #pendingEditJson}) that coexists with the IRI.
- * See {@code docs/DIAGRAM_LAYER.md}.
+ * One node on a diagram canvas: a position for a materialized ISMD concept ({@link #conceptIri}).
+ * Layout only — a row means "this concept is on the canvas". Staged structural edits live in
+ * {@link DiagramPendingEditEntity}. See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Entity
 @Table(name = "diagram_nodes")
@@ -59,10 +58,6 @@ public class DiagramNodeEntity {
     @Column(name = "parent_node_id")
     private Long parentNodeId;
 
-    /** Serialized {@link DiagramPendingEdit} overlay; null when the node has no staged edits. */
-    @Column(name = "pending_edit_json", columnDefinition = "text")
-    private String pendingEditJson;
-
     /** Serialized IRI list: the VLASTNOST rows this class cell renders. */
     @Column(name = "visible_properties_json", columnDefinition = "text")
     private String visiblePropertiesJson;
@@ -83,33 +78,6 @@ public class DiagramNodeEntity {
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-    /** Deserialize the overlay; {@code null} on absent/malformed JSON (logged). */
-    public DiagramPendingEdit getPendingEdit() {
-        if (pendingEditJson == null || pendingEditJson.isBlank()) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(pendingEditJson, DiagramPendingEdit.class);
-        } catch (JsonProcessingException e) {
-            log.error("Failed to deserialize pending-edit JSON for diagram node id={}", id, e);
-            return null;
-        }
-    }
-
-    /** Serialize and store the overlay; a null value clears the column. */
-    public void setPendingEdit(DiagramPendingEdit edit) {
-        if (edit == null) {
-            this.pendingEditJson = null;
-            return;
-        }
-        try {
-            this.pendingEditJson = objectMapper.writeValueAsString(edit);
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException(
-                    "Failed to serialize pending edit for diagram node id=" + id, e);
-        }
-    }
 
     /**
      * The property IRIs this class cell renders; empty on absent/malformed JSON (logged). Empty is a

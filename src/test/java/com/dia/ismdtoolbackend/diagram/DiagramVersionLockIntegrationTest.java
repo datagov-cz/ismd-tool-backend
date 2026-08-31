@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -227,8 +228,9 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         }
 
         @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo);
+                                                              ConceptMetadataRepository conceptRepo,
+                                                              DiagramPendingEditRepository pendingEditRepo) {
+            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
         }
 
         /**
@@ -238,10 +240,11 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler, DiagramMapper mapper,
+                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
+                DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
                 @Lazy DiagramServiceImpl self) {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, mapper, self);
+                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
     }
 }

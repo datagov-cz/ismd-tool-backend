@@ -16,6 +16,7 @@ import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -94,6 +95,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     @Autowired private OntologyMetadataRepository ontologyRepo;
     @Autowired private DiagramRepository diagramRepo;
     @Autowired private DiagramNodeRepository nodeRepo;
+    @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
@@ -186,12 +188,11 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
     /**
      * A relationship renders as an edge and a property as a row, so neither is ever sent in the layout's
-     * {@code nodes[]} — and neither has a node row until an overlay is staged on it. Staging must therefore
-     * provision the row rather than 404, or ops 1/4/5/6 (every structural edit that targets a relationship
-     * or property) would be impossible through the API.
+     * {@code nodes[]}. Staging on one must therefore work without any canvas node, or ops 1/4/5/6 (every
+     * structural edit that targets a relationship or property) would be impossible through the API.
      */
     @Test
-    void overlayOnSave_provisionsARowForAConceptThatIsNotACanvasNode() {
+    void overlayOnSave_stagesForAConceptThatIsNotACanvasNode() {
         seedCanvas();                                  // only CLASS_A and CLASS_B are nodes
         seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
 
@@ -199,20 +200,24 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
                         null, CLASS_B, null, null, null));
 
-        assertThat(saved.pendingChangeCount()).isEqualTo(1);
+        assertThat(saved.pendingEdits()).hasSize(1);
+        assertThat(pendingEditRepo.findByOntologyMetadataIdAndConceptIri(
+                ontologyRepo.findBySlug(SLUG).orElseThrow().getId(), REL))
+                .as("the edit is staged against the ontology, needing no canvas node")
+                .isPresent();
         assertThat(nodeRepo.findByDiagramIdAndConceptIri(
                 diagramRepo.findByOntologyMetadataSlug(SLUG).orElseThrow().getId(), REL))
-                .as("a VZTAH never travels in nodes[], so the overlay must provision its row")
-                .isPresent();
+                .as("and staging adds no layout row — a VZTAH is not a canvas node")
+                .isEmpty();
     }
 
     /**
-     * The staged row must survive the next Save. The FE's {@code nodes[]} carries classes only, so reaping
-     * on absence alone would silently delete the overlay — and with it the work item Převzít would apply.
-     * Discarding an overlay is an explicit entry, never a side effect of saving the layout.
+     * The staged edit must survive the next Save. The FE's {@code nodes[]} carries classes only, and layout
+     * writes cannot touch staged work — so an ordinary save leaves the work item Převzít would apply
+     * intact. Discarding is an explicit entry, never a side effect of saving the layout.
      */
     @Test
-    void savingTheLayout_doesNotReapAConceptCarryingAStagedOverlay() {
+    void savingTheLayout_doesNotDiscardAStagedEdit() {
         seedCanvas();
         seedConcept(ontologyRepo.findBySlug(SLUG).orElseThrow(), REL, "vztah");
         saveWithOverlays(new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
@@ -225,10 +230,10 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 List.of(),
                 List.of()));
 
-        assertThat(nodeRepo.findByDiagramIdAndConceptIri(
-                diagramRepo.findByOntologyMetadataSlug(SLUG).orElseThrow().getId(), REL))
+        assertThat(pendingEditRepo.findByOntologyMetadataIdAndConceptIri(
+                ontologyRepo.findBySlug(SLUG).orElseThrow().getId(), REL))
                 .isPresent();
-        assertThat(after.pendingChangeCount()).isEqualTo(1);   // still stageable for Převzít
+        assertThat(after.pendingEdits()).hasSize(1);   // still stageable for Převzít
     }
 
     /**
@@ -244,7 +249,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 broaderOverlay(CLASS_A, CLASS_B),
                 new DiagramLayoutDto.Overlay(DiagramMapper.NODE_ID_PREFIX + REL,
                         null, CLASS_B, null, null, null));
-        assertThat(diagramService.getDiagram(SLUG).pendingChangeCount()).isEqualTo(2);
+        assertThat(diagramService.getDiagram(SLUG).pendingEdits()).hasSize(2);
 
         // null overlays — the FE's ReactFlow-built autosave body.
         DiagramDto afterNull = diagramService.saveLayout(SLUG, new DiagramLayoutDto(
@@ -252,12 +257,12 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 List.of(node(CLASS_A, 0, 0), node(CLASS_B, 100, 0)),
                 List.of(),
                 null));
-        assertThat(afterNull.pendingChangeCount())
+        assertThat(afterNull.pendingEdits().size())
                 .as("overlays:null must not discard anything").isEqualTo(2);
 
         // and the explicitly-empty array means the same thing.
         DiagramDto afterEmpty = saveWithOverlays();
-        assertThat(afterEmpty.pendingChangeCount())
+        assertThat(afterEmpty.pendingEdits().size())
                 .as("overlays:[] must not discard anything").isEqualTo(2);
     }
 
@@ -274,7 +279,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
         DiagramDto after = saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
 
-        assertThat(after.pendingChangeCount())
+        assertThat(after.pendingEdits().size())
                 .as("the REL's overlay survives a save that only mentions CLASS_A").isEqualTo(2);
         assertThat(nodeOf(after, CLASS_A).data().hasPendingEdits()).isTrue();
     }
@@ -294,7 +299,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(nodeOf(after, CLASS_A).data().hasPendingEdits())
                 .as("the all-null entry discarded CLASS_A's overlay").isFalse();
-        assertThat(after.pendingChangeCount())
+        assertThat(after.pendingEdits().size())
                 .as("the REL's overlay is untouched").isEqualTo(1);
     }
 
@@ -475,10 +480,9 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                         .isEqualTo(before + 1));
 
         txTemplate.executeWithoutResult(tx -> assertThat(
-                nodeRepo.findByDiagramIdAndConceptIri(
-                        diagramRepo.findByOntologyMetadataSlug(SLUG).orElseThrow().getId(), CLASS_A)
-                        .orElseThrow().getPendingEdit())
-                .as("the staged overlay is committed despite the failed read").isNotNull());
+                pendingEditRepo.findByOntologyMetadataIdAndConceptIri(
+                        ontologyRepo.findBySlug(SLUG).orElseThrow().getId(), CLASS_A))
+                .as("the staged overlay is committed despite the failed read").isPresent());
     }
 
     /**
@@ -553,8 +557,9 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         }
 
         @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo);
+                                                              ConceptMetadataRepository conceptRepo,
+                                                              DiagramPendingEditRepository pendingEditRepo) {
+            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
         }
 
         /**
@@ -566,10 +571,11 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler, DiagramMapper mapper,
+                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
+                DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
                 @Lazy DiagramServiceImpl self) {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, mapper, self);
+                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
     }
 }

@@ -165,9 +165,22 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
     }
   ],
 
-  "pendingChangeCount": 1        // pohání ovládací prvek „Převzít N změn"
+  // KAŽDÁ nasazená úprava, ať už její pojem plátno vykresluje, nebo ne. Vždy přítomno (prázdné, nikdy null).
+  // `pendingEdits.length` pohání ovládací prvek „Převzít N změn".
+  "pendingEdits": [
+    { "iri": "https://…/pojem/je-zamestnan-u",
+      "conceptType": "VZTAH",
+      "slug": "pracovni-pomer-je-zamestnan-u",
+      "label": { "cs": "je zaměstnán u" },
+      "stale": false,                          // true ⇒ pojem byl pod diagramem smazán
+      "pendingEdit": { "range": "https://…/pojem/organizace" } }
+  ]
 }
 ```
+
+**`nodes[]` je plátno: pouze třídy.** Vztah je v `edges[]`, vlastnost v `data.properties[]` své třídy. Ani jeden není nikdy uzlem — na klientovi není potřeba filtrovat podle `conceptType`.
+
+**`pendingEdits[]` je jediný stabilní domov nasazené práce.** Je *úplné*, ne zbytkové: pojem, který plátno vykresluje, nese svůj overlay na daném prvku **a zároveň** je zde. Ta redundance je záměrná — členství na plátně se během relace neustále mění (třídu odtáhnete pryč, pak zpět) a seznam obsahující jen neviditelné úpravy by při každé takové změně položku vkládal a zase vyjímal, takže by klient musel po každém uložení znovu odvozovat, které ze čtyř míst danou úpravu vlastní. Identitou je IRI pojmu; úpravu čtěte odsud a kopii na uzlu/hraně/řádku berte jako pomůcku pro vykreslení.
 
 **Uzel nenese žádnou `version`.** Verze patří diagramu; klíč u žádného uzlu není — ani jako `null`.
 
@@ -186,11 +199,14 @@ Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte 
 | Pole | Vynecháno / `null` | `[]` |
 |---|---|---|
 | `version` | **400** — vždy povinné | — |
-| `nodes` | **400** — vždy povinné | plátno vyprázdněno (řádky nesoucí overlay přežijí — viz Uzly) |
+| `nodes` | **400** — vždy povinné | plátno vyprázdněno (nasazené úpravy nedotčeny — jsou v jiné tabulce) |
+| `nodes[].properties` | daná třída nevykreslí **žádné** řádky vlastností | totéž |
 | `edges` | všechny body lomu se vrátí k výchozímu vedení | totéž |
 | **`overlays`** | **nasazené úpravy nedotčeny** | **nasazené úpravy nedotčeny** |
 
 Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný** způsob, jak overlay zahodit, je položka nesoucí `conceptIri` a nic jiného.
+
+**Rozvržení a nasazené úpravy jsou nezávislé.** Žijí v oddělených tabulkách, takže odebrání uzlu z plátna nikdy nezahodí jeho nasazenou úpravu a nasazení úpravy nikdy nedostane pojem na plátno. Odebrání je čistá prezentace a nenese žádný RDF záměr; zahození je vlastní, explicitní pokyn.
 
 > **Proč se `overlays` liší od `edges`.** Nasazený overlay se v čtení objevit vůbec nemusí — jeho koncová třída může být mimo plátno, nebo mohl být pojem smazán pod diagramem — takže po klientovi nelze chtít, aby poslal zpět něco, co mu nikdy nebylo ukázáno. Kdyby vynechání znamenalo zahození, zničilo by to nasazenou práci při každém uložení sestaveném ze stavu plátna, což je přesně způsob, jak se automatické ukládání nad ReactFlow staví. Asymetrie je záměrná; „neopravujte" ji preventivním posíláním `overlays: []`.
 
@@ -201,10 +217,12 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
   // pouze třídy; vztah ani vlastnost nikdy nejsou uzel
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
-      "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false },
+      "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false,
+      // řádky VLASTNOSTí, které tato třída vykreslí — ploché pole IRI, úplná náhrada jako `position`
+      "properties": ["https://…/pojem/datum-narozeni"] },
     // parentId/collapsed jsou volitelné — vynechané nebo null znamená bez rodiče / nesbaleno
     { "id": "iri:https://…/pojem/organizace",
-      "position": { "x": 720, "y": 80 } }
+      "position": { "x": 720, "y": 80 }, "properties": [] }
   ],
   // jen body lomu — pošlete zpět id, které jste dostali při čtení; konce se odvozují, neposílají
   "edges": [
@@ -223,9 +241,17 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
 
 ### Uzly — členství
 
-**`nodes[]` je autoritativní pro členství na plátně.** Přítomný uzel zůstává (nebo je **přidán**, je-li jeho IRI na plátně nové; odpověď doplní jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen). K přidání uzlu stačí `{id, position}`; zbytek backend doplní z živého RDF.
+**`nodes[]` je autoritativní pro členství na plátně.** Přítomný uzel zůstává (nebo je **přidán**, je-li jeho IRI na plátně nové; odpověď doplní jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen, a stejně tak jakákoli úprava na něm nasazená). K přidání uzlu stačí `{id, position}`; zbytek backend doplní z živého RDF.
 
-Řádek, který nese nasazený overlay, **není** sklizen tím, že chybí v `nodes[]` — právě tak si VZTAH nebo VLASTNOST udrží svou nasazenou úpravu, protože ani jeden nikdy necestuje jako uzel.
+**Pouze třídy.** VZTAH cestuje v `edges[]` a VLASTNOST uvnitř `properties[]` své třídy — nikdy jako uzel, v žádném směru.
+
+### `nodes[].properties` — řádky, které třída vykresluje
+
+**Plané pole IRI vlastností, autoritativní úplná náhrada** — chová se jako `position`, ne jako `overlays`. Vlastnost se vykreslí jako řádek uvnitř třídy jen tehdy, dokud ji ta třída uvádí. Členství je **kurátorované, ne odvozené**: třída s `"properties": []` nezobrazí žádné řádky, i když její VLASTNOSTi v RDF existují, a backend se nikdy nevrací k „zobraz všechny".
+
+> ⚠ **Vynechání klíče je totéž jako poslat `[]`** — smaže řádky dané třídy. Uložení sestavené ze stavu ReactFlow musí aktuální řádky poslat zpět a namapovat bohaté objekty ze čtení na IRI: `node.data.properties.map(p => p.iri)`.
+
+**Přidání** řádku = zahrnout jeho IRI; **odebrání** = vynechat ho a zbytek poslat znovu. **Přesun vlastnosti k jiné třídě vyžaduje obojí**: uvést ji u nové hostitelské třídy *a* nasadit `{"domain": "<nová třída>"}` na její overlay. Samotný overlay nevykreslí nic — umístění a struktura jsou oddělené pokyny.
 
 ### Hrany — jen body lomu
 
@@ -326,23 +352,27 @@ Toto je jediný stav, kdy odpověď se `success: false` přesto znamená, že z�
 
 ## Materializace — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
 
-Aplikuje každou nasazenou změnu. Jeden záznam na nasazenou **změnu** (změna může zasahovat dva pojmy). Per-změna částečně-OK; dvoupojmová změna (otočení, vztah→hierarchie) je vše-nebo-nic. Overlays se při úspěchu mažou, takže `pendingChangeCount` klesne na 0.
+Aplikuje každou nasazenou změnu. Jeden záznam na nasazenou **změnu** (změna může zasahovat dva pojmy). Per-změna částečně-OK; dvoupojmová změna (otočení, vztah→hierarchie) je vše-nebo-nic. Nasazené úpravy se při úspěchu mažou, takže `pendingEdits[]` se vyprázdní.
+
+**Členství na plátně zde nehraje roli.** Materializuje se každá nasazená úprava, včetně té, jejíž pojem na plátně není — uživatel ji nasadil a skrytí boxu není rozhodnutí ji zahodit.
 
 ```jsonc
 {
   "materialized": [
-    { "nodeId": 1042, "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
+    { "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
   ],
   "failed": [
-    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "SWAP_DIRECTION",
+    { "conceptIri": "https://…/organizace", "op": "SWAP_DIRECTION",
       "error": "VALIDATION", "message": "range must be a class", "status": 400 }
       // změna zůstává nasazená; uživatel opraví a spustí Převzít znovu
   ],
   "skippedStale": [
-    { "nodeId": 1060, "conceptIri": "https://…/deleted-x" }   // pojem je pryč; změnu nelze aplikovat
+    { "conceptIri": "https://…/deleted-x" }   // pojem je pryč; změnu nelze aplikovat
   ]
 }
 ```
+
+**Každý záznam je klíčovaný přes `conceptIri`** — stejnou identitou, jakou používá `pendingEdits[]`, takže řádek výsledku přímo odpovídá nasazené úpravě, ze které vznikl. Žádné `nodeId` není: nasazená úprava nemusí mít uzel na plátně vůbec.
 
 `op` ∈ `SWAP_DIRECTION` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `CONVERT_TO_HIERARCHY`. (Nastavení domény vlastnosti bez domény i přesměrování existující se obojí hlásí jako `CHANGE_PROPERTY_PARENT` — z overlaye je nelze rozlišit.)
 

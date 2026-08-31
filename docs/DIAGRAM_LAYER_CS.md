@@ -91,7 +91,7 @@ Vytvoření pojmu a odebrání uzlu jsou okamžité/lokální; **strukturální 
 
 Každý pojem je vykreslen ve tvaru, který odpovídá tomu, čím *je*. **Třída** (TRIDA) je uzel. **Vztah** (VZTAH) je *hrana* mezi svou třídou `rdfs:domain` a `rdfs:range` — jedna hrana nesoucí vlastní identitu pojmu, protože přesně to vztah znamená. **Vlastnost** (VLASTNOST) má jen doménu (její range je literálový datový typ, takže není ke komu druhému vést), a je proto *řádkem uvnitř* třídy, která ji vlastní.
 
-Zásadní je, že jde o rozhodnutí o **vykreslení**, ne o vlastnictví. Všechny tři zůstávají plnohodnotnými pojmy s vlastním IRI, vlastním řádkem v `diagram_nodes` a vlastním overlayem. Identitou je vždy IRI pojmu, a proto položka v `overlays[]` adresuje třídu, vztah i vlastnost naprosto stejně — žádný z nich nemusí být „uzlem", aby šel nasadit.
+Zásadní je, že jde o rozhodnutí o **vykreslení**, ne o vlastnictví. Všechny tři zůstávají plnohodnotnými pojmy s vlastním IRI a vlastním overlayem. Identitou je vždy IRI pojmu, a proto položka v `overlays[]` adresuje třídu, vztah i vlastnost naprosto stejně — žádný z nich nemusí být „uzlem", aby šel nasadit.
 
 Z toho plyne, že **tažení konce hrany je editace pojmu** (přesměrování šipky mění overlay `range` u VZTAHu; přetažení řádku vlastnosti do jiné třídy mění `domain` u VLASTNOSTi) a **nakreslení nové čáry vztahu je vytvoření pojmu VZTAH**. Hrany nikdy neakumulují vlastní rozpracovaný stav; při čtení se znovu projektují z `živý ⊕ overlay`. Overlay pojmu je jediným zdrojem pravdy pro domain/range/hierarchii.
 
@@ -105,13 +105,19 @@ Z toho plyne, že **tažení konce hrany je editace pojmu** (přesměrování š
 
 ## Entitní model v PG
 
-Tři entity ve dvou plus jedné tabulce, po vzoru `CommentEntity` (FK na `ontologies.id`, čisté PG, bez outboxu). Rozvržení i overlay rozpracovaných úprav žijí celé v Postgresu.
+Čtyři entity, po vzoru `CommentEntity` (FK na `ontologies.id`, čisté PG, bez outboxu). Rozvržení i overlay rozpracovaných úprav žijí celé v Postgresu, v **oddělených tabulkách s oddělenými životními cykly**.
 
 **`diagrams`** — jeden kanonický diagram na ontologii (`@OneToOne` unikátní FK → `OntologyMetadataEntity`, ON DELETE CASCADE), posun/přiblížení viewportu, sloupec optimistického zámku `@Version` a `@OneToMany` kolekce uzlů/hran (cascade ALL, orphanRemoval). Agregátní pomocníci `addNode`/`addEdge`/`removeNode` drží volající na spravovaných instancích; `touch()` vynutí posun `@Version` i při změnách jen v uzlech/hranách. Sloupec vlastníka diagramu neexistuje — vlastnictví patří ontologii, o jeden join dál.
 
-**`diagram_nodes`** — každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro budoucí rozšíření), pozice, `collapsed`, `parent_node_id` a `pending_edit_json` — **nullable**; nenulové drží strukturální diff overlaye. `pending_edit_json` **koexistuje s** `concept_iri` (je to diff, ne náhrada). Entitní strážce `@PrePersist`/`@PreUpdate` a CHECK v Postgresu vynucují, že `concept_iri` je vždy přítomné, a unikátní index pokrývá `(diagram_id, concept_iri)`.
+**`diagram_nodes`** — **jen rozvržení.** Každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro budoucí rozšíření), pozice, `collapsed`, `parent_node_id`, `visible_properties_json`. Entitní strážce `@PrePersist`/`@PreUpdate` a CHECK v Postgresu vynucují, že `concept_iri` je vždy přítomné, a unikátní index pokrývá `(diagram_id, concept_iri)`.
 
-Řádek existuje pro každý pojem, který je **na plátně nebo nese overlay**. VZTAH ani VLASTNOST se nikdy neposílají jako uzel rozvržení, takže jejich řádek zřizuje až overlay, který se na ně poprvé nasadí, ukotvený v počátku — sloupce pozice jsou NOT NULL a pojem nemá vlastní box. Ze stejného důvodu sklizeň při Uložit šetří každý řádek s nenulovým `pending_edit_json`: není na plátně a jeho nepřítomnost v `nodes[]` se nesmí číst jako „smaž ho".
+Řádek znamená přesně jednu věc: **tento pojem je box na plátně.** Pouze třídy — VZTAH se vykresluje jako hrana a VLASTNOST jako řádek uvnitř své třídy, takže ani jeden nemá řádek rozvržení.
+
+**`diagram_pending_edits`** — **nasazený RDF záměr, nic vizuálního.** `pending_edit_json` (**NOT NULL** — řádek existuje jen po dobu, kdy je co aplikovat, takže zahození ho maže, ne vyprazdňuje), `base_updated_at`, unikát na `(ontology_metadata_id, concept_iri)`. **Žádné sloupce pozice.**
+
+Vázáno na **ontologii, ne na diagram**: ontologie je autoritou nad svým obsahem a diagram ho jen zobrazuje. To zároveň přežije Diagramy 1.1, kde jedna ontologie dostane více diagramů — nasazená úprava patří pojmu, ne tomu plátnu, které ji nasadilo.
+
+> **Proč jsou to dvě tabulky.** Kdysi to byl jeden řádek, a protože členství na plátně je „které řádky uzlů existují", nasazení úpravy tím připnulo její pojem na plátno: odebrání uzlu — čistě vizuální úkon — bylo blokováno úkonem čistě sémantickým. Pojem bez vlastního boxu si musel vymyslet pozici (sloupce rozvržení jsou NOT NULL) a skončil ukotvený v počátku. Rozdělení tuto fikci odstraňuje, dovoluje sklizni být prostou úplnou náhradou a dělá z „diagram je pohled na podmnožinu" pravdu ve schématu, ne jen v záměru.
 
 **`diagram_edges`** — `edge_key` (id projektované hrany, ke které tyto zlomové body patří: IRI pojmu VZTAH, nebo složené `edge|KIND|source|target` u hierarchického odkazu) a `segments_json`, unikátní na `(diagram_id, edge_key)`. **Jen zlomové body** — žádné konce, žádný druh, žádný obsah. Řádek, jehož hrana se už neprojektuje, při čtení nenajde protějšek a příští Uložit ho smaže; nic nemusí dohledávat sirotky.
 
@@ -121,13 +127,12 @@ Obsahový model overlaye (`DiagramPendingEdit`) je **čistě strukturální**: `
 
 `DiagramLayoutReconciler` aplikuje jedno Uložit v pevném pořadí a to pořadí je nosné:
 
-1. **`nodes[]`** — aktualizovat odpovídající řádky na místě, vložit řádky pro nová IRI a zaznamenat příchozí množinu.
-2. **`overlays[]`** — u každé položky zkontrolovat graf pojmu, pak nastavit nebo vyprázdnit jeho rozpracovanou úpravu a zřídit řádek (ukotvený v počátku) jen tehdy, když žádný neexistuje.
-3. **Sklizeň** — odstranit každý uložený řádek, který není ani v příchozí množině uzlů, ani v množině overlayů, **a** nenese rozpracovanou úpravu.
+1. **`nodes[]` → `diagram_nodes`** — aktualizovat odpovídající řádky na místě, vložit řádky pro nová IRI, pak sklidit: každý uložený řádek chybějící v příchozí množině se odstraní. Prostá úplná náhrada, bez výjimek.
+2. **`overlays[]` → `diagram_pending_edits`** — u každé položky zkontrolovat graf pojmu, pak nasadit či aktualizovat jeho úpravu, nebo řádek smazat při zahození (položka nesoucí jen `conceptIri`).
 
-**Nejdřív uzly, pak overlays**, protože ukotvení v počátku se smí uplatnit jen při *vytváření* řádku. Třída přítomná v obou polích — TRIDA s nasazenou změnou `broaderConcept`, běžný případ op 2 — si musí ponechat svou skutečnou pozici z `nodes[]`. Bezpodmínečné ukotvení nebo obrácené pořadí by takové třídy při každém Uložit tiše přesunulo do levého horního rohu.
+**Ani jedna polovina neomezuje druhou.** Nesdílejí řádek, takže na jejich pořadí nezáleží a žádná nemůže zrušit tu druhou: třída může opustit plátno a přitom si ponechat nasazenou úpravu, a nasazení úpravy nikdy nedostane pojem na plátno. Odebrání uzlu nenese žádný RDF záměr — zahození je samostatný, explicitní pokyn.
 
-**Sklízet až nakonec a zřizovat z uložené množiny, ne z příchozí.** `diagram_nodes` má prostý unikát na `(diagram_id, concept_iri)` a kolekce je `orphanRemoval`, takže kdyby jedno Uložit kdy vyprodukovalo odstranění řádku a vložení pro totéž IRI, Hibernate by vydal INSERT před DELETE a omezení by spadlo. Je to totéž riziko, proti kterému už byl zpevněn rekonciliátor hran.
+**Zřizovat z uložené množiny, ne z příchozí.** `diagram_nodes` má prostý unikát na `(diagram_id, concept_iri)` a kolekce je `orphanRemoval`, takže kdyby jedno Uložit kdy vyprodukovalo odstranění řádku a vložení pro totéž IRI, Hibernate by vydal INSERT před DELETE a omezení by spadlo. Je to totéž riziko, proti kterému už byl zpevněn rekonciliátor hran.
 
 **Graf se kontroluje u každého cíle overlaye při každém Uložit**, ne jen při zřizování řádku — jinak by pojem, který už řádek má, mohl dostat overlay z cizího grafu bez kontroly.
 

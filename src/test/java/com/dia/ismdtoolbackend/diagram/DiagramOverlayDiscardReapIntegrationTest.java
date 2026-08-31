@@ -16,6 +16,7 @@ import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
@@ -90,6 +91,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
     @Autowired private OntologyMetadataRepository ontologyRepo;
     @Autowired private DiagramRepository diagramRepo;
     @Autowired private DiagramNodeRepository nodeRepo;
+    @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
@@ -131,25 +133,25 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
     /**
      * The exact shape of the reported payload: the property is omitted from {@code nodes[]} (removed from
      * the canvas) while {@code overlays[]} carries a contentless entry for it (discard the staged edit).
-     * The two instructions are independent; the discard must not veto the removal.
+     * The two instructions are independent; neither vetoes the other.
      */
     @Test
-    void discardingAnOverlayOnAPropertyOmittedFromNodes_stillReapsTheRow() {
-        // Stage a domain overlay on the property so it has a row of its own, then discard it in the same
-        // save that drops the property from the canvas.
+    void discardingAnOverlayOnAPropertyOmittedFromNodes_removesTheStagedEdit() {
+        // Stage a domain overlay on the property, then discard it in the same save that drops the
+        // property from the canvas.
         save(List.of(CLASS_A, CLASS_B), overlayWithDomain(PROP, CLASS_B));
-        assertThat(rowExists(PROP)).as("staging provisions a row for the property").isTrue();
+        assertThat(isStaged(PROP)).as("staging records an edit for the property").isTrue();
+        assertThat(rowExists(PROP)).as("and adds no layout row — a VLASTNOST is not a canvas node").isFalse();
 
         DiagramDto after = save(List.of(CLASS_A, CLASS_B), discard(PROP));
 
-        assertThat(rowExists(PROP))
-                .as("the property is absent from nodes[] and its overlay was discarded — nothing left to "
-                        + "protect, so the row must be reaped")
+        assertThat(isStaged(PROP))
+                .as("a contentless entry deletes the staged edit rather than blanking it")
                 .isFalse();
         assertThat(nodeIds(after))
-                .as("a reaped row must not come back as an orphaned propertyNode on the next read")
+                .as("and nothing comes back as an orphaned propertyNode on the next read")
                 .doesNotContain(DiagramMapper.NODE_ID_PREFIX + PROP);
-        assertThat(after.pendingChangeCount()).isZero();
+        assertThat(after.pendingEdits()).isEmpty();
     }
 
     /**
@@ -263,14 +265,14 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         assertThat(conceptRepo.findByConceptIri(PROP))
                 .as("the concept still exists; only the canvas changed")
                 .isPresent();
-        assertThat(after.pendingChangeCount())
+        assertThat(after.pendingEdits().size())
                 .as("visibility is layout-only and never counts as staged work")
                 .isZero();
     }
 
     /**
      * Option (b): hiding a property that carries a staged overlay removes the ROW but must not hide the
-     * staged work — the overlay-carrying row is still emitted as a node, so nothing goes invisible.
+     * staged work — it moves to {@code pendingEdits[]}, so nothing goes invisible.
      */
     @Test
     void hidingAPropertyThatCarriesAnOverlay_keepsTheOverlayReachable() {
@@ -281,28 +283,32 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
 
         assertThat(propertyIris(after, CLASS_A)).as("the row is gone from the class cell").isEmpty();
         assertThat(nodeIds(after))
-                .as("but the overlay-carrying row is still emitted, so the staged edit stays reachable")
-                .contains(DiagramMapper.NODE_ID_PREFIX + PROP);
-        assertThat(after.pendingChangeCount())
+                .as("a VLASTNOST is never a canvas node")
+                .doesNotContain(DiagramMapper.NODE_ID_PREFIX + PROP);
+        assertThat(after.pendingEdits())
+                .as("the staged edit stays reachable through pendingEdits[]")
+                .extracting(DiagramDto.PendingEditEntry::iri)
+                .contains(PROP);
+        assertThat(after.pendingEdits().size())
                 .as("hiding does not discard the staged edit")
                 .isEqualTo(1);
     }
 
-    // ---- the invariant the carve-out exists to protect ------------------------------------------
+    // ---- the invariant the split protects --------------------------------------------------------
 
     /**
-     * The carve-out must keep doing its job: a REAL overlay on a concept absent from {@code nodes[]}
-     * survives, because a property never travels in {@code nodes[]} and reaping it would silently discard
-     * staged work. Only the contentless-discard case may reap.
+     * A REAL overlay on a concept absent from {@code nodes[]} survives a Save: a property never travels in
+     * {@code nodes[]}, and layout writes cannot reach staged work. Only an explicit contentless entry
+     * removes it.
      */
     @Test
-    void aRealOverlayOnAPropertyAbsentFromNodes_survivesTheReap() {
+    void aRealOverlayOnAPropertyAbsentFromNodes_survivesTheSave() {
         DiagramDto after = save(List.of(CLASS_A, CLASS_B), overlayWithDomain(PROP, CLASS_B));
 
-        assertThat(rowExists(PROP))
-                .as("a staged overlay is never reaped merely because its concept is absent from nodes[]")
+        assertThat(isStaged(PROP))
+                .as("a staged edit is never removed merely because its concept is absent from nodes[]")
                 .isTrue();
-        assertThat(after.pendingChangeCount()).isEqualTo(1);
+        assertThat(after.pendingEdits()).hasSize(1);
     }
 
     // ---- fixtures -------------------------------------------------------------------------------
@@ -338,6 +344,14 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         return Boolean.TRUE.equals(txTemplate.execute(tx -> diagramRepo.findByOntologyMetadataSlug(SLUG)
                 .map(d -> d.getNodes().stream().anyMatch(n -> conceptIri.equals(n.getConceptIri())))
                 .orElse(false)));
+    }
+
+    /** Whether the concept currently carries a staged edit. */
+    private boolean isStaged(String conceptIri) {
+        return Boolean.TRUE.equals(txTemplate.execute(tx -> pendingEditRepo
+                .findByOntologyMetadataIdAndConceptIri(
+                        ontologyRepo.findBySlug(SLUG).orElseThrow().getId(), conceptIri)
+                .isPresent()));
     }
 
     private List<String> nodeIds(DiagramDto diagram) {
@@ -419,17 +433,19 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         }
 
         @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo);
+                                                              ConceptMetadataRepository conceptRepo,
+                                                              DiagramPendingEditRepository pendingEditRepo) {
+            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
         }
 
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler, DiagramMapper mapper,
+                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
+                DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
                 @Lazy DiagramServiceImpl self) {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, mapper, self);
+                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
     }
 }

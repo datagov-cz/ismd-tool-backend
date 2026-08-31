@@ -94,8 +94,8 @@ public class DiagramMapper {
                                           String slug,
                                           Map<String, String> label,
                                           ConceptDetailModel detail,
-                                          List<DiagramDto.PropertyRow> properties) {
-        DiagramPendingEdit overlay = node.getPendingEdit();
+                                          List<DiagramDto.PropertyRow> properties,
+                                          DiagramPendingEdit overlay) {
         boolean hasPendingEdits = overlay != null;
         boolean stale = detail == null;
         return new DiagramDto.NodeData(

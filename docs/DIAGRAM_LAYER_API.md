@@ -165,9 +165,22 @@ The backend has already joined layout rows to live concept content and applied e
     }
   ],
 
-  "pendingChangeCount": 1        // drives the "Převzít N changes" affordance
+  // EVERY staged edit, whether or not the canvas renders its concept. Always present (empty, never null).
+  // `pendingEdits.length` drives the "Převzít N changes" affordance.
+  "pendingEdits": [
+    { "iri": "https://…/pojem/je-zamestnan-u",
+      "conceptType": "VZTAH",
+      "slug": "pracovni-pomer-je-zamestnan-u",
+      "label": { "cs": "je zaměstnán u" },
+      "stale": false,                          // true ⇒ the concept was deleted underneath the diagram
+      "pendingEdit": { "range": "https://…/pojem/organizace" } }
+  ]
 }
 ```
+
+**`nodes[]` is the canvas: classes only.** A relationship is in `edges[]`, a property in its class's `data.properties[]`. Neither is ever a node — no filtering by `conceptType` is required on the client.
+
+**`pendingEdits[]` is the one stable home for staged work.** It is *complete*, not a leftover: a concept the canvas draws carries its overlay on that element **and** appears here. That redundancy is deliberate — canvas membership changes constantly within a session (drag a class off, drag it back), and a list holding only the invisible edits would move an entry in and out on every such change, forcing the client to re-derive which of four places owns each edit after every save. Identity is the concept IRI; read the edit from here and treat the copy on a node/edge/row as a rendering convenience.
 
 **A node carries no `version`.** The version belongs to the diagram; the key is absent from every node, not present-and-null.
 
@@ -186,11 +199,14 @@ One call carries everything: layout **and** the structural overlays. Strip React
 | Field | Omitted / `null` | `[]` |
 |---|---|---|
 | `version` | **400** — always required | — |
-| `nodes` | **400** — always required | canvas emptied (rows carrying an overlay survive — see Nodes) |
+| `nodes` | **400** — always required | canvas emptied (staged edits are untouched — a separate table) |
+| `nodes[].properties` | that class renders **no** property rows | same |
 | `edges` | all waypoints revert to default routing | same |
 | **`overlays`** | **staged edits untouched** | **staged edits untouched** |
 
 A concept absent from `overlays` keeps whatever is staged on it. The **only** way to discard an overlay is an entry carrying `conceptIri` and nothing else.
+
+**Layout and staged edits are independent.** They live in separate tables, so removing a node from the canvas never discards its staged edit, and staging an edit never puts a concept on the canvas. Removal is pure presentation and carries no RDF intent; discarding is its own explicit instruction.
 
 > **Why `overlays` differs from `edges`.** A staged overlay need not appear in a read at all — its endpoint class may be off-canvas, or the concept may have been deleted underneath the diagram — so the client cannot be asked to echo back what it was never shown. Treating omission as discard would destroy staged work on every save built from canvas state, which is exactly how a ReactFlow-driven autosave is built. The asymmetry is deliberate; do not "fix" it by sending `overlays: []` defensively.
 
@@ -201,10 +217,12 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
   // classes only; a relationship or property is never a node
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
-      "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false },
+      "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false,
+      // the VLASTNOST rows this class renders — a flat IRI array, full-replace like `position`
+      "properties": ["https://…/pojem/datum-narozeni"] },
     // parentId/collapsed are optional — omitted or null means no parent / not collapsed
     { "id": "iri:https://…/pojem/organizace",
-      "position": { "x": 720, "y": 80 } }
+      "position": { "x": 720, "y": 80 }, "properties": [] }
   ],
   // waypoints only — echo the id you were given on read; endpoints are derived, never sent
   "edges": [
@@ -223,9 +241,17 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
 
 ### Nodes — membership
 
-**`nodes[]` is authoritative for canvas membership.** A node present is kept (or **added** if its IRI is new to the canvas; the response hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
+**`nodes[]` is authoritative for canvas membership.** A node present is kept (or **added** if its IRI is new to the canvas; the response hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched, and so is any edit staged on it). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
-A row that carries a staged overlay is **not** reaped by being absent from `nodes[]` — that is how a VZTAH or VLASTNOST keeps its staged edit, since neither ever travels as a node.
+**Classes only.** A VZTAH travels in `edges[]` and a VLASTNOST inside its class's `properties[]` — never as a node, in either direction.
+
+### `nodes[].properties` — the rows a class renders
+
+**A flat array of VLASTNOST IRIs, authoritative full-replace** — it behaves like `position`, not like `overlays`. A property renders as a row inside a class only while that class lists it. Membership is **curated, not derived**: a class with `"properties": []` shows no rows even when its VLASTNOSTi exist in RDF, and the backend never falls back to "show all".
+
+> ⚠ **Omitting the key is the same as sending `[]`** — it wipes that class's rows. A Save built from ReactFlow state must echo the current rows back, mapping the read's rich objects to IRIs: `node.data.properties.map(p => p.iri)`.
+
+**Adding** a row = include its IRI; **removing** = omit it and resend the rest. **Moving a property to another class needs both**: list it under the new host *and* stage `{"domain": "<new class>"}` on its overlay. The overlay alone renders nothing — placement and structure are separate instructions.
 
 ### Edges — waypoints only
 
@@ -326,23 +352,27 @@ This is the one status where a `success: false` response still means the write l
 
 ## Materialize — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
 
-Applies every staged change. One entry per staged **change** (a change may span two concepts). Per-change partial-ok; a two-concept change (flip, rel→hierarchy) is all-or-nothing. Overlays clear on success, so `pendingChangeCount` drops to 0.
+Applies every staged change. One entry per staged **change** (a change may span two concepts). Per-change partial-ok; a two-concept change (flip, rel→hierarchy) is all-or-nothing. Staged edits are deleted on success, so `pendingEdits[]` empties.
+
+**Canvas membership is irrelevant here.** Every staged edit materializes, including one whose concept is not on the canvas — the user staged it, and hiding a box is not a decision to abandon the edit.
 
 ```jsonc
 {
   "materialized": [
-    { "nodeId": 1042, "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
+    { "conceptIri": "https://…/je-zamestnan-u", "op": "SWAP_DIRECTION" }
   ],
   "failed": [
-    { "nodeId": 1055, "conceptIri": "https://…/organizace", "op": "SWAP_DIRECTION",
+    { "conceptIri": "https://…/organizace", "op": "SWAP_DIRECTION",
       "error": "VALIDATION", "message": "range must be a class", "status": 400 }
       // change kept staged; user fixes and re-runs Převzít
   ],
   "skippedStale": [
-    { "nodeId": 1060, "conceptIri": "https://…/deleted-x" }   // concept gone; change un-applyable
+    { "conceptIri": "https://…/deleted-x" }   // concept gone; change un-applyable
   ]
 }
 ```
+
+**Every entry is keyed by `conceptIri`** — the same identity `pendingEdits[]` uses, so a result row maps straight onto the staged edit it came from. There is no `nodeId`: a staged edit need not have a canvas node at all.
 
 `op` ∈ `SWAP_DIRECTION` · `CHANGE_HIERARCHY_TYPE` · `CHANGE_PROPERTY_PARENT` · `CONVERT_TO_HIERARCHY`. (Setting a domainless property's domain and repointing an existing one both report as `CHANGE_PROPERTY_PARENT` — indistinguishable from the overlay.)
 

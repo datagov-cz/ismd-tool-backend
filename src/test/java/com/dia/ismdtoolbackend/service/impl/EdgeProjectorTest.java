@@ -31,7 +31,12 @@ class EdgeProjectorTest {
     private static final String C = "https://x/pojem/c";
     private static final String PROP = "https://x/pojem/prop";
 
-    private final EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of());
+    private final EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of());
+
+    /** A projector whose staged edits are the given (conceptIri -> overlay) pairs; no waypoints. */
+    private EdgeProjector projectorStaging(String conceptIri, DiagramPendingEdit overlay) {
+        return new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(conceptIri, overlay));
+    }
 
     private DiagramNodeEntity node(String iri) {
         DiagramNodeEntity n = new DiagramNodeEntity();
@@ -101,15 +106,11 @@ class EdgeProjectorTest {
 
     @Test
     void overlayRangeOverridesLiveAndIsFlaggedPending() {
-        DiagramNodeEntity a = node(A);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setRange(C);
-        // the overlay lives on the VZTAH, which is not a node — staged via its own row
-        DiagramNodeEntity relRow = node(REL);
-        relRow.setPendingEdit(overlay);
-
-        List<DiagramDto.Edge> edges = projector.project(
-                List.of(a, node(B), node(C), relRow), live(A, B),
+        // The overlay is keyed by the VZTAH's IRI and supplied to the projector; the VZTAH is not a node.
+        List<DiagramDto.Edge> edges = projectorStaging(REL, overlay).project(
+                List.of(node(A), node(B), node(C)), live(A, B),
                 types(Map.of(REL, ConceptType.VZTAH)), Map.of());
 
         assertThat(edges).singleElement().satisfies(e -> {
@@ -156,16 +157,15 @@ class EdgeProjectorTest {
 
     @Test
     void emptyListOverlay_clearsHierarchyEdge() {
-        DiagramNodeEntity child = node(A);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of());                  // "remove all superclasses"
-        child.setPendingEdit(overlay);
 
         Map<String, ConceptDetailModel> live = new HashMap<>();
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
         live.put(B, concept(B));
 
-        assertThat(projector.project(List.of(child, node(B)), live, types(Map.of()), Map.of()))
+        assertThat(projectorStaging(A, overlay)
+                .project(List.of(node(A), node(B)), live, types(Map.of()), Map.of()))
                 .isEmpty();
     }
 
@@ -180,7 +180,7 @@ class EdgeProjectorTest {
     @Test
     void persistedWaypointsAreJoinedOntoTheProjectedEdge() {
         EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
-                Map.of(REL, List.of(new EdgeWaypoint(40, 80))));
+                Map.of(REL, List.of(new EdgeWaypoint(40, 80))), Map.of());
 
         List<DiagramDto.Edge> edges = withGeometry.project(
                 List.of(node(A), node(B)), live(A, B),
@@ -194,13 +194,10 @@ class EdgeProjectorTest {
     @Test
     void repointedEndpoint_dropsTheSavedWaypoints() {
         String staleKey = EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B);
-        EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
-                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))));
-
-        DiagramNodeEntity child = node(A);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of(C));                 // repointed from B to C
-        child.setPendingEdit(overlay);
+        EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
+                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))), Map.of(A, overlay));
 
         Map<String, ConceptDetailModel> live = new HashMap<>();
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
@@ -208,7 +205,7 @@ class EdgeProjectorTest {
         live.put(C, concept(C));
 
         List<DiagramDto.Edge> edges = withGeometry.project(
-                List.of(child, node(B), node(C)), live, types(Map.of()), Map.of());
+                List.of(node(A), node(B), node(C)), live, types(Map.of()), Map.of());
 
         assertThat(edges).singleElement().satisfies(e -> {
             assertThat(e.target()).isEqualTo("iri:" + C);
@@ -271,18 +268,16 @@ class EdgeProjectorTest {
 
     @Test
     void overlayDomainMovesThePropertyToAnotherClass() {
-        DiagramNodeEntity propRow = node(PROP);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setDomain(B);
-        propRow.setPendingEdit(overlay);
 
         Map<String, ConceptDetailModel> live = new HashMap<>();
         live.put(A, concept(A));
         live.put(B, concept(B));
         live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A).build());
 
-        Map<String, List<DiagramDto.PropertyRow>> rows = projector.propertyRows(
-                List.of(nodeWith(A, PROP), nodeWith(B, PROP), propRow), live,
+        Map<String, List<DiagramDto.PropertyRow>> rows = projectorStaging(PROP, overlay).propertyRows(
+                List.of(nodeWith(A, PROP), nodeWith(B, PROP)), live,
                 types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of());
 
         assertThat(rows).doesNotContainKey(A);
