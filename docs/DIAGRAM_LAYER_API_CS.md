@@ -249,7 +249,7 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
 
 **Plané pole IRI vlastností, autoritativní úplná náhrada** — chová se jako `position`, ne jako `overlays`. Vlastnost se vykreslí jako řádek uvnitř třídy jen tehdy, dokud ji ta třída uvádí. Členství je **kurátorované, ne odvozené**: třída s `"properties": []` nezobrazí žádné řádky, i když její VLASTNOSTi v RDF existují, a backend se nikdy nevrací k „zobraz všechny".
 
-> ⚠ **Vynechání klíče je totéž jako poslat `[]`** — smaže řádky dané třídy. Uložení sestavené ze stavu ReactFlow musí aktuální řádky poslat zpět a namapovat bohaté objekty ze čtení na IRI: `node.data.properties.map(p => p.iri)`.
+**Vynechání klíče je totéž jako poslat `[]`** — uzel v payloadu udává svou úplnou množinu řádků. Tvar pro čtení a zápis se liší: čtení vrací bohaté objekty `PropertyRow`, zápis bere holá IRI, takže uložení mapuje `node.data.properties.map(p => p.iri)`.
 
 **Přidání** řádku = zahrnout jeho IRI; **odebrání** = vynechat ho a zbytek poslat znovu. **Přesun vlastnosti k jiné třídě vyžaduje obojí**: uvést ji u nové hostitelské třídy *a* nasadit `{"domain": "<nová třída>"}` na její overlay. Samotný overlay nevykreslí nic — umístění a struktura jsou oddělené pokyny.
 

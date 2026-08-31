@@ -249,7 +249,7 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
 
 **A flat array of VLASTNOST IRIs, authoritative full-replace** — it behaves like `position`, not like `overlays`. A property renders as a row inside a class only while that class lists it. Membership is **curated, not derived**: a class with `"properties": []` shows no rows even when its VLASTNOSTi exist in RDF, and the backend never falls back to "show all".
 
-> ⚠ **Omitting the key is the same as sending `[]`** — it wipes that class's rows. A Save built from ReactFlow state must echo the current rows back, mapping the read's rich objects to IRIs: `node.data.properties.map(p => p.iri)`.
+**Omitting the key is the same as sending `[]`** — a node in the payload states its full row set. Note the read and write shapes differ: the read returns rich `PropertyRow` objects, the write takes bare IRIs, so a Save maps `node.data.properties.map(p => p.iri)`.
 
 **Adding** a row = include its IRI; **removing** = omit it and resend the rest. **Moving a property to another class needs both**: list it under the new host *and* stage `{"domain": "<new class>"}` on its overlay. The overlay alone renders nothing — placement and structure are separate instructions.
 
