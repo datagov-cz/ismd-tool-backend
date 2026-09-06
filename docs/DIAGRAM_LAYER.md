@@ -114,6 +114,8 @@ A canvas may place a concept from **another ISMD ontology, or from NKD**, so the
 
 **The rule that makes this safe: every link the canvas can draw has its origin on a concept we own.** The triple is written in our graph and the foreign resource is never written. A VZTAH we own carries `rdfs:range` pointing at the foreign class; `rdfs:subClassOf` is written on our child; `skos:exactMatch` is asserted from our side. (`exactMatch` is symmetric in SKOS, so the converse is *entailed* — we assert our half and never write theirs.)
 
+**A foreign node is an edge target, never an edge source.** The projector skips hierarchy and equivalence whose subject is foreign, so a link between two foreign nodes is not drawn even when both are on the canvas and the triple is real: it belongs to the graph that owns it, and this canvas can neither stage nor reroute it. A link from an owned concept to a foreign one is exactly what the feature draws.
+
 **The flag exempts placement only.** An overlay may never target a foreign concept, because materializing it would write another ontology's RDF. That is enforced at ingress and re-asserted at materialize (`FOREIGN_CONCEPT`), and it is what keeps the cross-tenant write guarantee intact. The flag is also a claim the server verifies both ways: a foreign IRI is accepted only on a node that sets it, and setting it on an own-graph concept is a 400.
 
 **Reads fetch the foreign graphs too**, grouped one fetch per graph rather than per node — without that a foreign node renders label-less and `stale`, indistinguishable from a concept someone deleted. A foreign graph that fails to load degrades its nodes to `stale` rather than failing the whole read.

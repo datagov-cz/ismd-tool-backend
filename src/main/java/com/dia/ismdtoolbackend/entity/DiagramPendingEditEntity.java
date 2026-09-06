@@ -20,16 +20,13 @@ import java.time.LocalDateTime;
 /**
  * One staged, uncommitted structural edit to a real concept, applied to RDF by Převzít.
  *
- * <p>Scoped to the DIAGRAM and keyed by concept IRI. Each canvas stages independently, so two diagrams
- * of one ontology may hold competing edits on the same concept — that is what makes a cross-diagram
- * conflict a detectable state instead of a shared row one save silently overwrites. It is still
- * independent of canvas <em>membership</em>: a staged edit needs no node row and survives a node's
- * removal.
+ * <p>Scoped to the DIAGRAM and keyed by concept IRI, so two diagrams of one ontology may hold competing
+ * edits on the same concept and the conflict is detectable. Independent of canvas <em>membership</em>:
+ * a staged edit needs no node row and survives a node's removal.
  *
- * <p>{@code ontologyMetadata} is kept alongside {@code diagram} deliberately — it is the cheap scope
- * check and the join key for the conflict query, which looks for one concept staged across SIBLING
- * diagrams of the same ontology. A row exists only while there is an edit: discarding deletes it.
- * See {@code docs/DIAGRAM_LAYER.md}.
+ * <p>{@code ontologyMetadata} is kept alongside {@code diagram} as the scope check and the join key for
+ * the sibling-conflict query. A row exists only while there is an edit — discarding deletes it. See
+ * {@code docs/DIAGRAM_LAYER.md}.
  */
 @Entity
 @Table(name = "diagram_pending_edits")

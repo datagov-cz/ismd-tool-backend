@@ -185,6 +185,35 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .hasSize(1);
     }
 
+    /**
+     * The (diagram, concept_iri) unique index is a plain btree over the raw column, so the worst-case
+     * IRI must stay inside Postgres's ~2704-byte index-row limit. {@code VARCHAR(1024)} bounds it in
+     * CHARACTERS while the limit counts BYTES, so this pins the arithmetic: 1024 characters of two-byte
+     * Czech accents still fits. Unlike {@code diagram_edges.edge_key}, which is TEXT and concatenates
+     * two IRIs — that one genuinely needed the {@code md5()} index 017 gave it.
+     */
+    @Test
+    void aMaximallyLongAccentedConceptIri_staysWithinTheIndexRowLimit() {
+        DiagramEntity diagram = diagramFor(ontology("long-iri"));
+        // 985 chars — as close to the VARCHAR(1024) cap as a repeated accented segment reaches.
+        String longIri = "https://slovnik.gov.cz/legislativni/sbirka/pojem/"
+                + "příliš-žluťoučký-kůň-úpěl-ďábelské-ódy-".repeat(24);
+        assertThat(longIri.length()).isLessThanOrEqualTo(1024);
+        assertThat(longIri.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                .as("the column's character cap keeps even an all-accent IRI under the btree byte limit")
+                .isLessThan(2704);
+
+        DiagramPendingEdit edit = new DiagramPendingEdit();
+        edit.setRange("https://x/pojem/a");
+        pendingEditRepository.saveAndFlush(pendingEdit(diagram, longIri, edit));
+
+        em.flush();
+        em.clear();
+
+        assertThat(pendingEditRepository.findByDiagramIdAndConceptIri(diagram.getId(), longIri))
+                .isPresent();
+    }
+
     // A layout row is layout only — nothing on it carries staged intent.
     @Test
     void layoutRowCarriesNoStagedEdit() {

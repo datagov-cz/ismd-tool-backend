@@ -114,6 +114,8 @@ Plátno může umístit pojem z **jiné ISMD ontologie nebo z NKD**, aby uživat
 
 **Pravidlo, které to činí bezpečným: každý odkaz, který plátno umí nakreslit, má původ na pojmu, který vlastníme.** Trojice se zapisuje do našeho grafu a cizí zdroj se nikdy nezapisuje. VZTAH, který vlastníme, nese `rdfs:range` mířící na cizí třídu; `rdfs:subClassOf` se zapisuje na našeho potomka; `skos:exactMatch` se tvrdí z naší strany. (`exactMatch` je v SKOS symetrický, takže opačná trojice *plyne* z odvození — tvrdíme svou polovinu a jejich nikdy nezapisujeme.)
 
+**Cizí uzel je cílem hrany, nikdy jejím zdrojem.** Projektor přeskakuje hierarchii a ekvivalenci, jejichž subjektem je cizí pojem, takže odkaz mezi dvěma cizími uzly se nekreslí, ani když jsou oba na plátně a trojice existuje: patří grafu, který ji vlastní, a toto plátno ji neumí ani rozpracovat, ani přesměrovat. Odkaz z vlastního pojmu na cizí je přesně to, co tato funkce kreslí.
+
 **Příznak povoluje pouze umístění.** Overlay nikdy nesmí mířit na cizí pojem, protože jeho materializace by zapsala RDF jiné ontologie. To je vynuceno na vstupu a znovu ověřeno při materializaci (`FOREIGN_CONCEPT`) a je to právě to, co zachovává záruku proti zápisům napříč vlastníky. Příznak je zároveň tvrzení, které server ověřuje oběma směry: cizí IRI je přijato jen na uzlu, který ho nastaví, a nastavení na vlastním pojmu je 400.
 
 **Čtení načítá i cizí grafy**, seskupeně po jednom načtení na graf, ne na uzel — bez toho se cizí uzel vykreslí bez názvu a jako `stale`, k nerozeznání od pojmu, který někdo smazal. Cizí graf, který se nepodaří načíst, degraduje své uzly na `stale`, místo aby shodil celé čtení.

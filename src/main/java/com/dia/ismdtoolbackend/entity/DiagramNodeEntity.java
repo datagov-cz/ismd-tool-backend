@@ -64,9 +64,8 @@ public class DiagramNodeEntity {
 
     /**
      * This node references a concept OUTSIDE the diagram's ontology graph — placed for context and
-     * rendered read-only. It is a claim the write path verifies: a foreign IRI is accepted only on a row
-     * that sets this, and a row that sets it must genuinely resolve to another graph. The diagram may
-     * reference such a concept, never edit it, so an overlay is never allowed to target one.
+     * rendered read-only. A claim the write path verifies both ways: a foreign IRI needs this set, and a
+     * row that sets it must resolve to another graph. No overlay may target such a concept.
      */
     @Column(name = "is_foreign", nullable = false)
     private boolean isForeign = false;

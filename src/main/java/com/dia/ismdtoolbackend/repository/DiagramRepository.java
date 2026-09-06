@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,14 +14,36 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
     /** Every diagram of an ontology, oldest first — the diagram picker. */
     List<DiagramEntity> findByOntologyMetadataIdOrderByIdAsc(Long ontologyMetadataId);
 
+    /** One list row per diagram: identity, its ontology, and the node count summed in SQL. */
+    interface DiagramSummaryRow {
+        Long getDiagramId();
+        String getName();
+        String getSlug();
+        String getGraphName();
+        long getNodeCount();
+        LocalDateTime getUpdatedAt();
+    }
+
     /**
-     * A diagram, resolved only if it belongs to the given ontology.
-     *
-     * <p>The write endpoints authorize the ontology <em>slug</em>; the diagram id in the path is
-     * unconstrained by that check, so an owner of any ontology could otherwise reach another
-     * ontology's diagram through their own slug. Filtering on both columns in ONE query is the guard —
-     * a load-by-id followed by a comparison would leak existence through timing and through any
-     * exception thrown before the compare.
+     * Diagram list rows, joined to the ontology and counting nodes in one query. The entity path would
+     * lazy-load {@code nodes} (and, for the all-diagrams list, {@code ontologyMetadata}) once per row.
+     */
+    @Query("""
+            select d.id as diagramId, d.name as name, o.slug as slug, o.graphName as graphName,
+                   d.updatedAt as updatedAt, count(n.id) as nodeCount
+            from DiagramEntity d
+            join d.ontologyMetadata o
+            left join d.nodes n
+            where (:ontologyMetadataId is null or o.id = :ontologyMetadataId)
+            group by d.id, d.name, o.slug, o.graphName, d.updatedAt
+            order by d.id asc
+            """)
+    List<DiagramSummaryRow> findSummaries(@Param("ontologyMetadataId") Long ontologyMetadataId);
+
+    /**
+     * A diagram, resolved only if it belongs to the given ontology. The endpoints authorize the ontology
+     * <em>slug</em> and leave the diagram id unconstrained, so filtering on both columns in ONE query is
+     * the guard against reaching another ontology's diagram through your own slug.
      */
     Optional<DiagramEntity> findByIdAndOntologyMetadataId(Long id, Long ontologyMetadataId);
 
@@ -31,12 +54,9 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
     boolean existsByOntologyMetadataIdAndName(Long ontologyMetadataId, String name);
 
     /**
-     * Diagrams whose ontology slug matches the query (accent-insensitive), mirroring the ontology
-     * text search. Backs {@code type=DIAGRAM} results in ISMD search.
-     *
-     * <p><strong>One row per diagram.</strong> Each canvas is a distinct destination with its own name,
-     * so all of an ontology's diagrams are returned; the result rows carry the diagram id and name that
-     * tell them apart.
+     * Diagrams whose ontology slug or own name matches the query (accent-insensitive). Backs
+     * {@code type=DIAGRAM} results in ISMD search, one row per diagram — each canvas is its own
+     * destination.
      */
     @Query(value = """
             SELECT d.* FROM ismd_schema.diagrams d

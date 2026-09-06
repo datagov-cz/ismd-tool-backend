@@ -32,13 +32,8 @@ public interface DiagramPendingEditRepository extends JpaRepository<DiagramPendi
 
     /**
      * Staged edits on the SAME concepts held by OTHER diagrams of this ontology — the conflict set.
-     *
-     * <p>Materializing one diagram writes RDF the sibling's staged edit was based on, so the sibling
-     * would afterwards fail STALE_BASE. Reporting the collision up front lets the user choose which
-     * side to discard instead of discovering it one concept at a time.
-     *
-     * <p>Scoped by ontology as well as by the concept IRIs: a diagram may only ever conflict with a
-     * sibling view of its own ontology.
+     * Scoped by ontology as well as by concept IRI: a diagram only ever conflicts with a sibling view
+     * of its own ontology.
      */
     @Query("select e from DiagramPendingEditEntity e "
             + "where e.ontologyMetadata.id = :ontologyId "
@@ -49,7 +44,7 @@ public interface DiagramPendingEditRepository extends JpaRepository<DiagramPendi
                                                    @Param("conceptIris") Collection<String> conceptIris);
 
     /** Discard the named concepts' staged edits across every OTHER diagram of this ontology. */
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from DiagramPendingEditEntity e "
             + "where e.ontologyMetadata.id = :ontologyId "
             + "and e.diagram.id <> :diagramId "
@@ -59,7 +54,7 @@ public interface DiagramPendingEditRepository extends JpaRepository<DiagramPendi
                                     @Param("conceptIris") Collection<String> conceptIris);
 
     /** Discard the named concepts' staged edits on THIS diagram. */
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from DiagramPendingEditEntity e "
             + "where e.diagram.id = :diagramId and e.conceptIri in :conceptIris")
     int deleteOnDiagram(@Param("diagramId") Long diagramId,

@@ -34,9 +34,9 @@ public class NkdLinkDetector {
      * exactMatch) of {@code conceptIri} in {@code model}. These are the snapshot candidates.
      *
      * <p>A <strong>VZTAH</strong> additionally contributes its external {@code rdfs:range} as a
-     * {@link SnapshotLinkType#RANGE_TARGET}: a relationship's range is a class, so pointing it at a
-     * published NKD concept is a legitimate cross-vocabulary link, and snapshotting it is what gives the
-     * diagram a local label to draw and wires the target into the upstream-deletion cascade.
+     * {@link SnapshotLinkType#RANGE_TARGET} — a relationship's range is a class, so the link is a valid
+     * cross-vocabulary one, and the snapshot gives the diagram a local label and joins the deletion
+     * cascade.
      *
      * @param conceptType drives the hierarchy relation's meaning (TRIDA→broaderClass via subClassOf,
      *                    VLASTNOST→superProperty / VZTAH→superRelation via subPropertyOf). May be null.
@@ -64,12 +64,9 @@ public class NkdLinkDetector {
      * The external {@code rdfs:domain} / {@code rdfs:range} target IRIs the edit hook must reject when
      * they resolve to a published NKD concept. These are reject candidates, never snapshot candidates.
      *
-     * <p><strong>{@code rdfs:domain} is collected for every type</strong> — a domain pointing at a
-     * published concept is invalid input whatever the subject is.
-     *
-     * <p><strong>{@code rdfs:range} is collected for every type EXCEPT VZTAH.</strong> A VLASTNOST's
-     * range is an XSD datatype, so a concept there is malformed; a VZTAH's range is a class, and
-     * pointing it at a published NKD concept is a supported cross-vocabulary link — snapshotted as
+     * <p>{@code rdfs:domain} is collected for every type — a domain pointing at a published concept is
+     * invalid input whatever the subject is. {@code rdfs:range} is collected for every type EXCEPT
+     * VZTAH: a VLASTNOST's range is an XSD datatype, while a VZTAH's is a class and is snapshotted as
      * {@link SnapshotLinkType#RANGE_TARGET} by {@link #allowedTargets} instead of rejected here.
      *
      * @param conceptType the subject's type; null is treated conservatively (range still collected).

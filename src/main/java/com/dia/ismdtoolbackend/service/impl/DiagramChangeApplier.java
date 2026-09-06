@@ -34,10 +34,9 @@ import java.util.Objects;
 
 /**
  * Applies one staged overlay to the ontology in its OWN transaction ({@code REQUIRES_NEW}), so a failing
- * change rolls back only itself and cannot poison sibling changes in the same Převzít — the per-change
- * partial-ok guarantee. The overlay-clear commits with this change's transaction; a thrown exception rolls
- * back both the RDF edit and the clear, leaving the overlay staged. Callers run OUTSIDE a transaction and
- * translate a thrown exception into a {@code failed} report. See {@code docs/DIAGRAM_LAYER.md}.
+ * change rolls back only itself. The overlay-clear commits with that transaction, so a thrown exception
+ * rolls back the RDF edit and the clear together and leaves the overlay staged. Callers run outside a
+ * transaction and turn the exception into a {@code failed} report. See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Service
@@ -56,11 +55,8 @@ public class DiagramChangeApplier {
 
     /**
      * Apply one concept's staged edit in a fresh transaction and clear it on success. Re-loads the staged
-     * row managed in this transaction (the caller's instance is from another persistence context). Throws
-     * on any failure — the caller (non-transactional) records it as {@code failed}.
-     *
-     * <p>Addressed by {@code (diagram, conceptIri)} — a staged edit need not have a canvas node.
-     * {@code ontologyId} is passed for logging/scope symmetry; the staged row carries its own ontology.
+     * row managed in this transaction, and throws on any failure for the caller to record as
+     * {@code failed}. Addressed by {@code (diagram, conceptIri)} — a staged edit need not have a node.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Outcome applyChange(Long diagramId, Long ontologyId, String conceptIri) {
@@ -126,9 +122,9 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Op 6 <em>adds</em> a super-class; the edit model's {@code broaderConcept} is a full replace, so the
-     * class's existing {@code rdfs:subClassOf} links must be read and carried through or the edit silently
-     * drops them. Order is stable (existing first, new appended) and an already-present broader is a no-op.
+     * Op 6 <em>adds</em> a super-class, but the edit model's {@code broaderConcept} is a full replace, so
+     * existing {@code rdfs:subClassOf} links are read and carried through. Existing first, new appended;
+     * an already-present broader is a no-op.
      */
     private List<String> mergedBroaderFor(ConceptMetadataEntity targetClass, String newBroader) {
         Model graph = jenaTDB2Repository.fetchGraph(targetClass.getGraphName());
@@ -154,12 +150,8 @@ public class DiagramChangeApplier {
     // ---- graph scoping --------------------------------------------------------------------------
 
     /**
-     * The graph the diagram is allowed to write. Read through the node's diagram → ontology, so it is the
-     * authorized slug's graph — the same ontology {@code belongsToUserBySlug} checked at the controller.
-     */
-    /**
-     * A concept outside the diagram's own graph is a rejected request, not a stale reference: the diagram
-     * endpoints authorize the ontology slug, so writing any other ontology's concept would escape that check.
+     * A concept outside the diagram's own graph is a rejected request, not a stale reference — the diagram
+     * endpoints authorize the ontology slug, so writing another ontology's concept would escape that check.
      */
     private void requireSameGraph(String diagramGraphName, String conceptGraphName, String conceptIri) {
         if (!Objects.equals(diagramGraphName, conceptGraphName)) {
@@ -171,16 +163,16 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Same check for a raw overlay IRI that need not have a PG row. An unresolvable IRI is not rejected here
-     * — it becomes an ordinary rdfs:subClassOf object and cannot reach another ontology's concept; only a
-     * row in a different graph is a cross-tenant reach.
+     * Same check for a raw overlay IRI that need not have a PG row. An unresolvable IRI passes — it becomes
+     * an ordinary rdfs:subClassOf object; only a row in a different graph is a cross-tenant reach.
      */
     private void requireSameGraphIri(String diagramGraphName, String conceptIri) {
         if (conceptIri == null) {
             return;
         }
         conceptMetadataRepository.findByConceptIri(conceptIri)
-                .map(ConceptMetadataEntity::getGraphName).ifPresent(graphName -> requireSameGraph(diagramGraphName, graphName, conceptIri));
+                .map(ConceptMetadataEntity::getGraphName)
+                .ifPresent(graphName -> requireSameGraph(diagramGraphName, graphName, conceptIri));
     }
 
     // ---- op classification ----------------------------------------------------------------------
@@ -198,9 +190,7 @@ public class DiagramChangeApplier {
         if (overlay.getDomain() != null && overlay.getRange() != null) {
             return DiagramOp.SWAP_DIRECTION;
         }
-        if (overlay.getBroaderConcept() != null
-
-                || overlay.getExactMatch() != null) {
+        if (overlay.getBroaderConcept() != null || overlay.getExactMatch() != null) {
             return DiagramOp.CHANGE_HIERARCHY_TYPE;
         }
         return DiagramOp.CHANGE_PROPERTY_PARENT;

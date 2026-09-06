@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.Outcome;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.StaleBaseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -19,10 +20,9 @@ import java.util.List;
 
 /**
  * Materialize (Převzít) orchestrator. Resolves the staged work-list up front, then applies each change
- * through {@link DiagramChangeApplier}, which runs each in its OWN transaction. This method is intentionally
- * NOT transactional: a failing change rolls back only itself, so earlier successes (their RDF edits, outbox
- * rows, and overlay-clears) stay committed — the per-change partial-ok guarantee. See
- * {@code docs/DIAGRAM_LAYER.md}.
+ * through {@link DiagramChangeApplier}, which runs each in its OWN transaction. Deliberately not
+ * transactional itself, so a failing change rolls back only itself and earlier successes stay committed.
+ * See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Service
@@ -54,6 +54,10 @@ public class DiagramMaterializeService {
                 failed.add(fail(diagramId, conceptIri, "FOREIGN_CONCEPT", e.getMessage(), 400));
             } catch (ConceptValidationException | OntologyValidationException e) {
                 failed.add(fail(diagramId, conceptIri, "VALIDATION", e.getMessage(), 400));
+            } catch (AccessDeniedException e) {
+                // The caller owns the ontology but not this concept; a per-change 403, not a server error.
+                failed.add(fail(diagramId, conceptIri, "FORBIDDEN",
+                        "Nemáte oprávnění upravit tento pojem.", 403));
             } catch (RuntimeException e) {
                 log.error("Materialize failed for concept {}", conceptIri, e);
                 failed.add(fail(diagramId, conceptIri, "ERROR", "Nastala neočekávaná chyba.", 500));

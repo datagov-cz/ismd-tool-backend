@@ -17,23 +17,17 @@ import java.util.List;
  * One visual layout of an ontology — a ReactFlow canvas. An ontology may have MANY diagrams, each a
  * differently-scoped view of the same concepts.
  *
- * <p>Holds only presentation data: node positions, edges the diagram owns, and the saved viewport. It
- * never owns concept content — real-concept nodes reference an IRI and are joined to live PG/RDF on read;
- * only draft nodes carry their own (pre-promotion) content. Because content has a single owner elsewhere,
- * this entity lives purely in Postgres — no outbox, no RDF write, no reconciler.
+ * <p>Holds only presentation data: node positions, edges the diagram owns, and the saved viewport. Nodes
+ * reference a concept by IRI and are joined to live PG/RDF on read, so this entity lives purely in
+ * Postgres — no outbox, no RDF write, no reconciler.
  *
- * <p>The {@code version} column backs an optimistic lock on the layout save so concurrent editors of the
- * same canvas get a conflict instead of a silent last-write-wins clobber. The comparison is made in
- * {@code DiagramServiceImpl.requireCurrentVersion} against the version the CLIENT sends, not by JPA:
- * the save loads this row fresh in its own transaction, so Hibernate would only ever compare the
- * just-read version against itself and always win.
+ * <p>The {@code version} column backs an optimistic lock on the layout save. The comparison is made in
+ * {@code DiagramServiceImpl.requireCurrentVersion} against the version the CLIENT sends, not by JPA.
  *
- * <p><strong>Save-path obligation.</strong> {@code @Version} only bumps when a column of the
- * {@code diagrams} row itself changes. Node/edge edits touch child tables and do <em>not</em> dirty this
- * row, so a layout save that only moves nodes would slip past the lock. The save service MUST force the
- * bump — acquire {@code LockModeType.OPTIMISTIC_FORCE_INCREMENT} on the diagram (or call
- * {@link #touch()}) whenever it mutates {@code nodes}/{@code edges} — or the optimistic lock protects
- * only viewport changes.
+ * <p><strong>Save-path obligation.</strong> {@code @Version} bumps only when a column of the
+ * {@code diagrams} row itself changes, and node/edge edits touch child tables. A save that mutates
+ * {@code nodes}/{@code edges} must therefore call {@link #touch()} (or take
+ * {@code OPTIMISTIC_FORCE_INCREMENT}) or the lock covers viewport changes alone.
  *
  * <p><strong>Node deletion.</strong> Delete nodes through {@link #removeNode(DiagramNodeEntity)},
  * never {@code getNodes().remove(...)}.
@@ -56,11 +50,10 @@ public class DiagramEntity {
 
     /**
      * The ontology this canvas visualizes. Many diagrams may share one ontology. DB-cascade on ontology
-     * delete drops every diagram (and, via their own FKs, their nodes, edges and staged edits).
+     * delete drops every diagram, and via their own FKs their nodes, edges and staged edits.
      *
-     * <p>Ownership is gated by the diagram's ontology. A diagram carries no owner column of its own, so
-     * an endpoint that authorizes the ontology slug must still assert that the diagram it was handed
-     * belongs to that ontology — the slug alone does not constrain the id.
+     * <p>A diagram carries no owner column of its own, so an endpoint that authorizes the ontology slug
+     * must still assert that the diagram it was handed belongs to that ontology.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)
@@ -68,8 +61,7 @@ public class DiagramEntity {
 
     /**
      * User-facing name, distinguishing this canvas from the ontology's other diagrams. Unique within the
-     * ontology (not globally — two slovníky may each have a "Hlavní diagram"), because the name is how a
-     * user tells two canvases apart in a picker or a search result.
+     * ontology, not globally — two slovníky may each have a "Hlavní diagram".
      */
     @Column(name = "name", nullable = false)
     private String name;
@@ -129,10 +121,8 @@ public class DiagramEntity {
 
     /**
      * Remove a node and null the {@code parentNodeId} of any children grouped under it — one unit of work.
-     *
-     * <p>Incident waypoint rows are deliberately left alone: an edge row records only the projected edge id
-     * it carries geometry for, so a row whose edge no longer projects finds no match on read and is dropped
-     * by the next Save, which full-replaces the set.
+     * Incident waypoint rows are left alone: a row whose edge no longer projects finds no match on read
+     * and is dropped by the next Save.
      */
     public void removeNode(DiagramNodeEntity node) {
         if (node.getId() != null) {

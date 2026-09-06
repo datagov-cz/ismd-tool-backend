@@ -14,15 +14,13 @@ import java.util.List;
 /**
  * Diagram rows for ISMD search, mapped to DTOs inside an open persistence session.
  *
- * <p>Its own bean, not a method on {@link IsmdSearchProvider}, for two reasons. A private method there
- * would be self-invoked and bypass the transaction proxy entirely. And the transaction must NOT span
- * the provider's whole {@code search} — that method also calls Fuseki (10s timeout) and would hold a
- * pooled DB connection across an external HTTP call.
+ * <p>Its own bean, not a method on {@link IsmdSearchProvider}: a private method there would be
+ * self-invoked and bypass the transaction proxy, and the transaction must not span the provider's whole
+ * {@code search}, which also calls Fuseki and would hold a pooled connection across that HTTP call.
  *
- * <p>The session matters because {@code searchByOntologyText} is a native query (no fetch join
- * possible) and {@link DiagramEntity#getOntologyMetadata()} is {@code LAZY} — mapping outside a
- * session throws {@code LazyInitializationException}, which aborts the whole ISMD provider and
- * silently discards its ontology and concept results too.
+ * <p>The session is required because {@code searchByOntologyText} is a native query and
+ * {@link DiagramEntity#getOntologyMetadata()} is {@code LAZY}; mapping outside one throws
+ * {@code LazyInitializationException} and aborts the whole ISMD provider.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,14 +29,14 @@ public class DiagramSearchLookup {
     private final DiagramRepository diagramRepository;
 
     /**
-     * Diagrams whose ontology slug matches, already mapped — no lazy proxy escapes.
+     * Matching diagrams, already mapped — no lazy proxy escapes. {@code publishedFilter} mirrors the
+     * ontology branch: {@code FALSE} narrows to unpublished ontologies' diagrams, {@code null} returns
+     * them regardless of publish state.
      *
-     * <p>{@code REQUIRED}, not {@code REQUIRES_NEW}: the search provider runs without an ambient
-     * transaction, so this opens one either way, and joining an existing transaction (rather than
-     * suspending it for a second pooled connection) is the cheaper behaviour if a caller ever has one.
-     *
-     * <p>{@code publishedFilter} mirrors the ontology branch: {@code FALSE} narrows to unpublished
-     * ontologies' diagrams, {@code null} (no filter) returns them regardless of publish state.
+     * <p>No ownership filter, matching {@code OntologyMetadataRepository.searchByText}: any authenticated
+     * caller sees every slovník, drafts included, and anonymous callers are forced to NKD before they
+     * reach here. A diagram is therefore no more visible than the ontology it belongs to — but note it
+     * surfaces a user-authored NAME, where the ontology row surfaces only a slug.
      */
     @Transactional(readOnly = true)
     public List<SearchResultDto> search(String query, Boolean publishedFilter) {
@@ -58,15 +56,12 @@ public class DiagramSearchLookup {
     }
 
     /**
-     * Synthetic IRI ({@code <graphName>#diagram-<id>}) so a diagram row never dedup-collides with its
-     * ontology's own ONTOLOGY row on a {@code type=null} pass — and, since an ontology may hold many
-     * diagrams, so that its diagrams do not collide with each other either.
+     * Synthetic IRI ({@code <graphName>#diagram-<id>}) so a diagram row dedup-collides neither with its
+     * ontology's own ONTOLOGY row nor with the ontology's other diagrams.
      *
-     * <p>{@code label} is the diagram's own name, which is what distinguishes two canvases of one
-     * ontology in a result list; {@code slug} stays the ontology's, and pairs with {@code diagramId}
-     * to route: {@code /api/diagram/{slug}/{diagramId}/detail}.
-     *
-     * <p>{@code isPublished} is the ontology's — a diagram has no publish state of its own.
+     * <p>{@code label} is the diagram's own name; {@code slug} stays the ontology's and pairs with
+     * {@code diagramId} to route {@code /api/diagram/{slug}/{diagramId}/detail}. {@code isPublished} is
+     * the ontology's — a diagram has no publish state of its own.
      */
     private SearchResultDto toDto(DiagramEntity d) {
         String graphName = d.getOntologyMetadata().getGraphName();

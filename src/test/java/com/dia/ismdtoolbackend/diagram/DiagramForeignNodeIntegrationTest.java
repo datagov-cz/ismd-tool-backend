@@ -90,6 +90,8 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     private static final String OTHER_SLUG = "other-ontology";
     private static final String OTHER_USER = "someone-else-999";
     private static final String FOREIGN_CLASS = OTHER_GRAPH + "/pojem/osoba";
+    /** A second concept of that same foreign ontology, so a link between two foreign nodes is testable. */
+    private static final String FOREIGN_PARENT = OTHER_GRAPH + "/pojem/subjekt";
 
     /** An NKD IRI: external, published, and with no PG row of its own. */
     private static final String NKD_CLASS = "https://slovnik.gov.cz/legislativni/sbirka/pojem/osoba";
@@ -120,6 +122,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
             seedConcept(mine, MY_CLASS, "Zaměstnanec", ConceptType.TRIDA, GRAPH);
             OntologyMetadataEntity theirs = ontology(OTHER_SLUG, OTHER_GRAPH, OTHER_USER);
             seedConcept(theirs, FOREIGN_CLASS, "Osoba", ConceptType.TRIDA, OTHER_GRAPH);
+            seedConcept(theirs, FOREIGN_PARENT, "Subjekt", ConceptType.TRIDA, OTHER_GRAPH);
         });
     }
 
@@ -147,6 +150,47 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(foreign.data().readOnly())
                 .as("the FE must render it non-editable")
                 .isTrue();
+    }
+
+    /**
+     * A link BETWEEN two foreign concepts is not drawn. Every edge the canvas renders is asserted from a
+     * concept this ontology owns; a foreign concept's own {@code rdfs:subClassOf} belongs to the graph
+     * that owns it, and drawing it here would present another ontology's structure as this diagram's —
+     * an edge no overlay can ever stage, unstage or reroute, because the overlay guard refuses a foreign
+     * subject.
+     */
+    @Test
+    void hierarchyBetweenTwoForeignConcepts_isNotProjected() {
+        stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
+        stubGraph(OTHER_GRAPH,
+                subClassOf(concept(FOREIGN_CLASS, "Osoba"), FOREIGN_PARENT),
+                concept(FOREIGN_PARENT, "Subjekt"));
+
+        DiagramDto read = save(node(MY_CLASS, 0, 0, false),
+                node(FOREIGN_CLASS, 300, 0, true),
+                node(FOREIGN_PARENT, 600, 0, true));
+
+        assertThat(read.edges())
+                .as("the foreign graph's own hierarchy is not this diagram's to draw")
+                .isEmpty();
+    }
+
+    /**
+     * The converse, so the rule above is a scope limit and not a blanket suppression: a link asserted
+     * FROM an owned concept TO a foreign one is exactly what the feature exists to draw.
+     */
+    @Test
+    void hierarchyFromAnOwnedConceptToAForeignOne_isProjected() {
+        stubGraph(GRAPH, subClassOf(concept(MY_CLASS, "Zaměstnanec"), FOREIGN_CLASS));
+        stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
+
+        DiagramDto read = save(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, true));
+
+        assertThat(read.edges())
+                .as("our concept's own subClassOf to a foreign target still draws")
+                .hasSize(1);
+        assertThat(read.edges().get(0).source()).isEqualTo(DiagramMapper.NODE_ID_PREFIX + MY_CLASS);
+        assertThat(read.edges().get(0).target()).isEqualTo(DiagramMapper.NODE_ID_PREFIX + FOREIGN_CLASS);
     }
 
     /** An own-ontology node is unaffected: not read-only, and still read from its own graph. */
@@ -180,6 +224,10 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void unreadableForeignGraph_degradesToStale_ratherThanFailingTheRead() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
+        // Stub the foreign graph to a WORKING baseline first, then break it: without this the node
+        // would render stale merely because the fixture never stubbed OTHER_GRAPH, and the assertion
+        // below would hold with the throw removed.
+        stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
         when(tdb2.fetchGraph(eq(OTHER_GRAPH))).thenThrow(new RuntimeException("Fuseki down"));
 
         DiagramDto read = save(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, true));
@@ -261,6 +309,12 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
 
     private ConceptDetailModel concept(String iri, String name) {
         return ConceptDetailModel.builder().iri(iri).name(Map.of("cs", name)).build();
+    }
+
+    /** The same concept, carrying an {@code rdfs:subClassOf} to {@code broader}. */
+    private ConceptDetailModel subClassOf(ConceptDetailModel c, String broader) {
+        c.setBroaderClasses(List.of(broader));
+        return c;
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y, boolean foreign) {

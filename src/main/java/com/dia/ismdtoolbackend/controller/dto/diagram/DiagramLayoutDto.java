@@ -10,10 +10,9 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /**
- * Thin write body for {@code PUT /api/diagram/{slug}/layout} (Save) — the diagram's only write endpoint.
- * Layout only — never RDF. The {@code nodes} array is authoritative for canvas membership (idempotent
- * full-replace): a node present is kept or added (a new IRI is hydrated in the response), a node omitted
- * is removed from the canvas. {@code overlays} is additive, not authoritative — see the field.
+ * Thin write body for {@code PUT /api/diagram/{slug}/{diagramId}/layout} (Save). Layout only — never RDF.
+ * {@code nodes} is authoritative for canvas membership (idempotent full-replace): a node present is kept
+ * or added, a node omitted is removed. {@code overlays} is additive, not authoritative — see the field.
  * See {@code docs/DIAGRAM_LAYER_API.md}.
  */
 public record DiagramLayoutDto(
@@ -21,17 +20,12 @@ public record DiagramLayoutDto(
         @NotNull Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
-        /* Optional: null and [] both mean "no hand-routed edges" — the state of a freshly auto-laid-out
-         * canvas, where ReactFlow has positioned everything and the user has not dragged a waypoint yet.
-         * Full-replace of the saved waypoints: an omitted edge still renders (it is re-projected), it just
-         * reverts to default routing. */
+        /* Optional full-replace of the saved waypoints; null and [] both mean "no hand-routed edges".
+         * An omitted edge still renders — it is re-projected, and reverts to default routing. */
         @Valid List<Edge> edges,
-        /* Optional, and ADDITIVE — deliberately unlike `edges` above. An entry stages or updates that
-         * concept's overlay; a concept absent from the array keeps whatever is already staged, so null and
-         * [] both mean "not touching overlays". Discarding is explicit: an entry carrying only conceptIri.
-         * Full-replace is wrong here because a staged overlay need not be visible in a read at all (an
-         * off-canvas endpoint, or a concept deleted underneath the diagram), so the client cannot echo back
-         * what it was never shown. */
+        /* Optional, and ADDITIVE — unlike `edges` above. An entry stages or updates that concept's
+         * overlay; a concept absent from the array keeps whatever is already staged, so null and [] both
+         * mean "not touching overlays". Discarding is explicit: an entry carrying only conceptIri. */
         @Valid List<Overlay> overlays
 ) {
 
@@ -50,9 +44,8 @@ public record DiagramLayoutDto(
             /*
              * This node references a concept from ANOTHER ontology (or NKD), placed for context and
              * rendered read-only. Optional; omitted means an ordinary own-ontology node. The server
-             * verifies the claim both ways — a foreign IRI is accepted only with this set, and setting it
-             * on an own-graph concept is a 400. It permits PLACEMENT only: an overlay may never target a
-             * foreign concept, so it can be referenced but never edited.
+             * verifies the claim both ways — a foreign IRI needs this set, and setting it on an own-graph
+             * concept is a 400. Permits PLACEMENT only: no overlay may target a foreign concept.
              */
             Boolean isForeign
     ) {
@@ -69,9 +62,8 @@ public record DiagramLayoutDto(
      * the last read — a VZTAH's concept IRI, or the composite {@code edge|KIND|source|target} of a
      * hierarchy/equivalence link. {@code segments} is optional; omitted or null means default routing.
      *
-     * <p>Endpoints and kind are deliberately absent: they are derived from {@code rdfs:domain}/
-     * {@code rdfs:range} ⊕ overlay on every read, so accepting them here would let a client persist a
-     * value that contradicts the projection. Structural changes go through the overlay endpoint.
+     * <p>Endpoints and kind are absent: they are re-derived from {@code rdfs:domain}/{@code rdfs:range}
+     * ⊕ overlay on every read. Structural changes go through {@code overlays}.
      */
     @Schema(name = "DiagramLayoutEdge")
     public record Edge(
@@ -84,18 +76,16 @@ public record DiagramLayoutDto(
      * One concept's staged structural overlay. Only the changed structural fields; IRIs as strings.
      * Structural-only — never RDF content.
      *
-     * <p>{@code conceptIri} identifies the target concept, optionally {@code iri:}-prefixed. It addresses a
-     * <em>concept</em>, not a canvas node — a VZTAH renders as an edge and a VLASTNOST as a row inside its
-     * class, and both are staged through this same field by their own IRI, which is why overlays ride their
-     * own array rather than nesting inside {@code nodes}.
+     * <p>{@code conceptIri} identifies the target <em>concept</em>, not a canvas node, optionally
+     * {@code iri:}-prefixed — a VZTAH renders as an edge and a VLASTNOST as a row, and both are staged
+     * here by their own IRI.
      *
      * <p>An entry carrying every overlay field null discards that concept's overlay; {@code conceptIri} is
      * addressing, not content, so it never counts toward emptiness. An explicitly-empty <em>list</em>
      * ({@code "broaderConcept": []}) is not empty — it stages "clear this predicate".
      *
-     * <p>{@code baseUpdatedAt} is deliberately absent from the wire: the service captures the concept's
-     * stale-base fingerprint itself. Accepting it would let a client forge the value the STALE_BASE guard
-     * compares against.
+     * <p>{@code baseUpdatedAt} is absent from the wire: the service captures the stale-base fingerprint
+     * itself, so a client cannot forge the value the STALE_BASE guard compares against.
      */
     @Schema(name = "DiagramLayoutOverlay")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -110,8 +100,8 @@ public record DiagramLayoutDto(
 
         /**
          * Op 6 marker: add {@code broader} as a super-class of {@code addBroaderOn}, then delete the VZTAH.
-         * Both endpoints are mandatory — the marker deletes a concept, and a missing endpoint would delete
-         * it without establishing the hierarchy link that replaces it.
+         * Both endpoints are mandatory — a missing one would delete the concept without the hierarchy
+         * link that replaces it.
          */
         @Schema(name = "DiagramLayoutOverlayConvertToHierarchy")
         public record ConvertToHierarchy(@NotBlank String addBroaderOn, @NotBlank String broader) {

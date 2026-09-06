@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,11 +32,11 @@ class EdgeProjectorTest {
     private static final String C = "https://x/pojem/c";
     private static final String PROP = "https://x/pojem/prop";
 
-    private final EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of());
+    private final EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of());
 
     /** A projector whose staged edits are the given (conceptIri -> overlay) pairs; no waypoints. */
     private EdgeProjector projectorStaging(String conceptIri, DiagramPendingEdit overlay) {
-        return new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(conceptIri, overlay));
+        return new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(conceptIri, overlay), Set.of());
     }
 
     private DiagramNodeEntity node(String iri) {
@@ -155,6 +156,37 @@ class EdgeProjectorTest {
         });
     }
 
+    /**
+     * A foreign concept is an edge TARGET, never a SOURCE. Its outgoing triples belong to the graph that
+     * owns them, and this canvas can neither stage nor reroute them, so drawing one would present another
+     * ontology's structure as this diagram's.
+     */
+    @Test
+    void foreignSource_doesNotProjectItsOwnHierarchy() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+
+        List<DiagramDto.Edge> edges = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(A))
+                .project(List.of(node(A), node(B)), live, types(Map.of()), Map.of());
+
+        assertThat(edges).isEmpty();
+    }
+
+    /** The converse: a foreign concept as the TARGET of an owned concept's link still draws. */
+    @Test
+    void foreignTarget_ofAnOwnedSource_stillProjects() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+
+        List<DiagramDto.Edge> edges = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(B))
+                .project(List.of(node(A), node(B)), live, types(Map.of()), Map.of());
+
+        assertThat(edges).singleElement()
+                .satisfies(e -> assertThat(e.id()).isEqualTo("edge|SUBCLASS_OF|" + A + "|" + B));
+    }
+
     @Test
     void emptyListOverlay_clearsHierarchyEdge() {
         DiagramPendingEdit overlay = new DiagramPendingEdit();
@@ -180,7 +212,7 @@ class EdgeProjectorTest {
     @Test
     void persistedWaypointsAreJoinedOntoTheProjectedEdge() {
         EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
-                Map.of(REL, List.of(new EdgeWaypoint(40, 80))), Map.of());
+                Map.of(REL, List.of(new EdgeWaypoint(40, 80))), Map.of(), Set.of());
 
         List<DiagramDto.Edge> edges = withGeometry.project(
                 List.of(node(A), node(B)), live(A, B),
@@ -197,7 +229,7 @@ class EdgeProjectorTest {
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of(C));                 // repointed from B to C
         EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
-                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))), Map.of(A, overlay));
+                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))), Map.of(A, overlay), Set.of());
 
         Map<String, ConceptDetailModel> live = new HashMap<>();
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());

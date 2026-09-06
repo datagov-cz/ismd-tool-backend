@@ -27,13 +27,10 @@ import java.util.Set;
 /**
  * The Save-time reconcile: the incoming layout is authoritative for canvas membership, while
  * {@code overlays[]} is additive over whatever is already staged. Splits into two steps around the caller's
- * flush — {@link #reconcileNodes} inserts/updates/removes node rows and applies the staged overlays, and
- * after the caller flushes so new rows have identity, {@link #finalizeLayout} sets viewport, resolves
- * parents, and rebuilds the persisted edge rows. Operates on managed instances via {@link DiagramEntity}'s
- * aggregate helpers.
- *
- * <p>Layout and staged edits are separate tables: a Save carries both, but neither constrains the other.
- * See {@code docs/DIAGRAM_LAYER.md}.
+ * flush: {@link #reconcileNodes} inserts/updates/removes node rows and applies the staged overlays, then
+ * {@link #finalizeLayout} sets viewport, resolves parents, and rebuilds the persisted edge rows. Layout and
+ * staged edits live in separate tables — a Save carries both, neither constrains the other. See
+ * {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Component
@@ -48,9 +45,6 @@ public class DiagramLayoutReconciler {
      * Reconcile the node set: update/keep matching rows, insert rows for new IRIs, apply the staged
      * overlays, and remove any persisted node absent from the payload. Returns the incoming nodes keyed by
      * concept IRI, for parent resolution after the caller flushes.
-     *
-     * <p>Layout writes {@code diagram_nodes} and overlays write {@code diagram_pending_edits}; they
-     * share no row, so their order does not matter and neither can undo the other.
      */
     public Map<String, DiagramNodeEntity> reconcileNodes(DiagramEntity diagram, DiagramLayoutDto layout) {
         Map<String, DiagramNodeEntity> existing = new HashMap<>();
@@ -145,10 +139,9 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Op 6's {@code addBroaderOn} / {@code broader} name concepts that need never be on the canvas, so they
-     * are the one overlay input that can reach {@code editConcept}/{@code deleteConcept} on its own. Reject
-     * a foreign target at stage time rather than letting it sit staged until Převzít. The applier
-     * re-asserts this — an overlay staged before this check existed is still refused there.
+     * Op 6's {@code addBroaderOn} / {@code broader} name concepts that need never be on the canvas, so
+     * they are the one overlay input reaching {@code editConcept}/{@code deleteConcept} on their own.
+     * Rejected here at stage time; the applier re-asserts it at Převzít.
      */
     private void requireSameGraph(String diagramGraphName, DiagramPendingEdit edit) {
         DiagramPendingEdit.ConvertToHierarchy marker = edit.getConvertToHierarchy();
@@ -160,18 +153,11 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * A node's IRI must agree with what the node claims to be.
+     * A node's IRI must agree with what the node claims: an unflagged node stays own-graph, and a node
+     * flagged foreign must genuinely resolve elsewhere. A false claim in either direction is rejected.
      *
-     * <p>An ordinary node may only reference a concept in the diagram's own graph — Save authorizes the
-     * ontology slug, so persisting a foreign IRI unflagged would stage a write the caller was never
-     * authorized for. A node explicitly marked foreign is the deliberate exception: it is placed for
-     * context and rendered read-only, and it must genuinely resolve elsewhere, so a foreign flag on an
-     * own-graph concept is rejected too. The flag is a claim, and a false claim in either direction is a
-     * bug worth surfacing rather than silently normalizing.
-     *
-     * <p>This exemption covers node placement ONLY. Overlay targets stay strictly own-graph
-     * ({@link #requireSameGraph}), so a foreign concept can be referenced but never edited — which is what
-     * keeps the cross-tenant write fix intact.
+     * <p>The exemption covers node placement only — overlay targets stay strictly own-graph
+     * ({@link #requireSameGraph}), so a foreign concept can be referenced but never edited.
      */
     private void requireNodeGraph(String diagramGraphName, String conceptIri, boolean claimsForeign) {
         if (!claimsForeign) {
@@ -195,17 +181,14 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * A node may only reference a concept in the diagram's own ontology graph. Save authorizes the ontology
-     * slug, so persisting a foreign IRI here would stage a write the caller was never authorized for — the
-     * canvas is the ingress for every later materialize.
+     * The IRI must reference a concept in the diagram's own ontology graph; Save authorizes the slug only,
+     * so a foreign IRI here would stage a write the caller was never authorized for.
      *
-     * <p>An IRI with no concept row is NOT rejected: a node whose concept was deleted out from under the
-     * canvas is a legitimate state that Převzít reports as {@code skippedStale}, and failing the whole save
-     * would strand the user with an unsaveable canvas. Only a row in a <em>different</em> graph is foreign.
+     * <p>An IRI with no concept row passes: its concept was deleted out from under the canvas, which
+     * Převzít reports as {@code skippedStale}. Only a row in a <em>different</em> graph is foreign.
      */
     private void requireSameGraph(String diagramGraphName, String conceptIri) {
-        // Op 6's marker endpoints are not guaranteed non-null at this layer; a null one is left to
-        // materialize, which reports it as a per-change VALIDATION failure rather than an NPE here.
+        // A null op-6 marker endpoint is left to materialize, which reports it as a VALIDATION failure.
         if (conceptIri == null) {
             return;
         }
@@ -268,12 +251,11 @@ public class DiagramLayoutReconciler {
 
     /**
      * Full-replace the persisted waypoint rows; read always re-projects the edges themselves. An edge
-     * carrying no waypoints stores nothing — there is nothing to remember about default routing.
+     * carrying no waypoints stores nothing.
      *
-     * <p>Reconciled <em>in place</em>, never cleared-and-reinserted: with {@code orphanRemoval} Hibernate
-     * emits the INSERT before the DELETE in one flush, so re-saving a still-routed edge would collide with
-     * the {@code (diagram_id, edge_key)} unique constraint — a 500 on the second save of any canvas that
-     * has ever had a waypoint drawn. Matching rows are updated, absent ones removed.
+     * <p>Reconciled <em>in place</em>, never cleared-and-reinserted: Hibernate flushes the INSERT before
+     * the orphan DELETE, so re-saving a still-routed edge would collide with the
+     * {@code (diagram_id, edge_key)} unique constraint.
      */
     private void reconcileEdges(DiagramEntity diagram, DiagramLayoutDto layout) {
         Map<String, DiagramEdgeEntity> existing = new HashMap<>();

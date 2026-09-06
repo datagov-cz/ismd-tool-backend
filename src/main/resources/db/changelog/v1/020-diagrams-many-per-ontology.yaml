@@ -168,12 +168,16 @@ databaseChangeLog:
       rollback: [ ]
 
   # Orphans: a staged edit for an ontology that never had a diagram. NOT NULL cannot be applied while
-  # they exist, and they have no canvas to belong to.
+  # they exist, and they have no canvas to belong to. Gated to postgresql like the backfill above: on
+  # any other engine the backfill is skipped, so every row still reads NULL and this would empty the
+  # table rather than drop orphans.
   - changeSet:
       id: 020-pending-edits-drop-orphans
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
         - columnExists:
             schemaName: ismd_schema
             tableName: diagram_pending_edits
@@ -224,6 +228,9 @@ databaseChangeLog:
   # conflict between them was not representable; under the new one each canvas stages independently.
   # `ontology_metadata_id` is deliberately KEPT — it is the cheap scope check and the join key for the
   # conflict query, which looks for the same concept staged on SIBLING diagrams of one ontology.
+  # Not hashed, unlike 017's edge_key: that column is TEXT and concatenates two IRIs, so it can exceed
+  # Postgres's ~2704-byte btree row limit. concept_iri is VARCHAR(1024), which caps the value at ~1345
+  # bytes even when every character is a two-byte Czech accent, so a plain index is always in range.
   - changeSet:
       id: 020-pending-edits-rekey-to-diagram
       author: richard.koubek

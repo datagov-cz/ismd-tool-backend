@@ -14,9 +14,8 @@ import java.util.Map;
 /**
  * Fat, render-ready diagram read model: layout rows already joined to live concept content with each
  * node's overlay applied and edges projected from {@code live ⊕ overlay}. The response of
- * {@code GET /api/diagram/{slug}} and every write endpoint. See {@code docs/DIAGRAM_LAYER_API.md}.
- *
- * <p>No {@code coverage} field — the FE derives "concepts not on the canvas" as a client-side set-diff.
+ * {@code GET /api/diagram/{slug}/{diagramId}/detail} and every write endpoint. See
+ * {@code docs/DIAGRAM_LAYER_API.md}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DiagramDto(
@@ -32,9 +31,8 @@ public record DiagramDto(
 ) {
 
     /**
-     * One staged overlay. Listed whether or not the canvas renders its concept, so a staged edit has one
-     * stable home; the {@code pendingEdit} on a node, edge or property row is a copy for the element that
-     * draws it. Identity is the concept IRI.
+     * One staged overlay, keyed by concept IRI. Listed whether or not the canvas renders its concept; the
+     * {@code pendingEdit} on a node, edge or property row is a copy for the element that draws it.
      */
     @Schema(name = "DiagramPendingEditEntry")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -49,13 +47,9 @@ public record DiagramDto(
     }
 
     /**
-     * A canvas node: layout from PG, {@code data} joined from live RDF ⊕ overlay.
-     *
-     * <p>{@code collapsed} completes the layout round-trip — the FE sends it on {@code PUT …/layout} and
-     * gets it back here, so a collapsed group survives a reload. A primitive, so it always serializes.
-     *
-     * <p>A node carries no version of its own: the version belongs to the enclosing {@link DiagramDto},
-     * and repeating it per node would imply a per-node lock that does not exist.
+     * A canvas node: layout from PG, {@code data} joined from live RDF ⊕ overlay. {@code collapsed}
+     * completes the layout round-trip, so a collapsed group survives a reload; it is a primitive and
+     * always serializes. Versioning belongs to the enclosing {@link DiagramDto}, never to a node.
      */
     @Schema(name = "DiagramNode")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -70,11 +64,9 @@ public record DiagramDto(
     }
 
     /**
-     * Merged live-content-plus-overlay payload the FE renders directly.
-     *
-     * <p>{@code properties} are the class's VLASTNOSTi, rendered as rows inside the node rather than as
-     * canvas objects of their own. Always present (empty, never null) and ordered by label so the rows do
-     * not reshuffle between reads.
+     * Merged live-content-plus-overlay payload the FE renders directly. {@code properties} are the class's
+     * VLASTNOSTi as rows inside the node — always present (empty, never null) and ordered by label so they
+     * do not reshuffle between reads.
      */
     @Schema(name = "DiagramNodeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -89,19 +81,16 @@ public record DiagramDto(
             @JsonInclude List<PropertyRow> properties,
             /*
              * This node's concept belongs to another ontology (or NKD). Drawn for context and never
-             * editable from here: the diagram may reference a foreign concept but never write one, so no
-             * overlay may target it.
+             * editable from here — no overlay may target it.
              */
             boolean readOnly
     ) {
     }
 
     /**
-     * One VLASTNOST, rendered as a row inside its {@code rdfs:domain} class. A property is never a node
-     * and never an edge: its range is a literal datatype, so there is no second concept to connect to.
-     *
-     * <p>A domainless property has no class to sit in and is simply absent from the canvas — it is placed
-     * by being dragged in from the ontology detail, which supplies the domain.
+     * One VLASTNOST, rendered as a row inside its {@code rdfs:domain} class — never a node and never an
+     * edge, since its range is a literal datatype. A domainless property is absent from the canvas until
+     * it is dragged in from the ontology detail, which supplies the domain.
      */
     @Schema(name = "DiagramPropertyRow")
     @JsonInclude(JsonInclude.Include.NON_NULL)

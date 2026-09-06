@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.diagram;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
@@ -331,11 +332,13 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     // ---- authorization --------------------------------------------------------------------------
 
     /**
-     * The ontology slug is authorized by the endpoint; the diagram id is not. Materializing another
-     * ontology's diagram through this slug must fail before anything is read or written.
+     * The ontology slug is authorized by the endpoint; the diagram id is not. Reaching another ontology's
+     * diagram through this slug must fail before anything is read or written — on EVERY id-bearing path,
+     * not just the one. They share {@code requireDiagramOf}, so covering only materialize would let the
+     * call be dropped from any of the other three undetected.
      */
     @Test
-    void materializingADiagramOfAnotherOntology_isRefused() {
+    void addressingADiagramOfAnotherOntology_isRefusedOnEveryIdBearingPath() {
         Long elsewhere = txTemplate.execute(tx -> {
             DiagramEntity d = new DiagramEntity();
             d.setOntologyMetadata(ontologyRepo.findBySlug(OTHER_SLUG).orElseThrow());
@@ -344,7 +347,22 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         });
 
         assertThatThrownBy(() -> diagramService.materialize(SLUG, elsewhere, null))
+                .as("materialize")
                 .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> diagramService.getDiagram(SLUG, elsewhere))
+                .as("detail")
+                .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, elsewhere,
+                new DiagramLayoutDto(0L, null, List.of(), null, null)))
+                .as("layout save")
+                .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> diagramService.deleteDiagram(SLUG, elsewhere))
+                .as("delete")
+                .isInstanceOf(EntityNotFoundException.class);
+
+        assertThat(diagramRepo.findById(elsewhere))
+                .as("the other ontology's diagram is untouched by any of the four attempts")
+                .isPresent();
     }
 
     // ---- fixtures -------------------------------------------------------------------------------
