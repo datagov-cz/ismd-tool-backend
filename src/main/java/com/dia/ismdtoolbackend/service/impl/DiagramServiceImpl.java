@@ -131,7 +131,7 @@ public class DiagramServiceImpl implements DiagramService {
     @Override
     public DiagramDto createDiagram(String ontologySlug, String name) {
         DiagramSnapshot snapshot = self.commitNewDiagram(ontologySlug, name);
-        return assemble(ontologySlug, snapshot, liveConcepts(snapshot.graphName()));
+        return assemble(ontologySlug, snapshot, withForeign(snapshot, liveConcepts(snapshot.graphName())));
     }
 
     @Transactional
@@ -186,7 +186,7 @@ public class DiagramServiceImpl implements DiagramService {
     public DiagramDto getDiagram(String ontologySlug, Long diagramId) {
         DiagramSnapshot snapshot = self.loadForRead(ontologySlug, diagramId);
         // A read has nothing committed to lose, so a Fuseki failure surfaces as its own error, not a readback.
-        return assemble(ontologySlug, snapshot, liveConcepts(snapshot.graphName()));
+        return assemble(ontologySlug, snapshot, withForeign(snapshot, liveConcepts(snapshot.graphName())));
     }
 
     @Transactional(readOnly = true)
@@ -238,10 +238,54 @@ public class DiagramServiceImpl implements DiagramService {
     /** Fetch live content for an ALREADY-COMMITTED write; a Fuseki failure here is a readback, not a rollback. */
     private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot) {
         try {
-            return liveConcepts(snapshot.graphName());
+            return withForeign(snapshot, liveConcepts(snapshot.graphName()));
         } catch (RuntimeException e) {
             throw new DiagramReadbackFailedException(snapshot.version(), e);
         }
+    }
+
+    /**
+     * Add the content of foreign nodes — concepts this canvas references from OTHER ontologies — to the
+     * own-graph map, so they render with a real label instead of a bare IRI.
+     *
+     * <p>Fetched one graph at a time, not one concept at a time: a canvas may reference many concepts
+     * from the same foreign slovník, and cold diagram reads are dominated by network round-trips.
+     *
+     * <p>Own-graph entries always win. A foreign graph is a whole ontology, so it carries concepts this
+     * diagram never referenced; only the IRIs actually placed as foreign nodes are merged in, and a
+     * clash could otherwise let another ontology's copy of an IRI mask ours.
+     *
+     * <p>A foreign graph that fails to load is skipped, not fatal — its nodes fall back to rendering
+     * stale. The canvas's own content is what the response is for.
+     */
+    private Map<String, ConceptDetailModel> withForeign(DiagramSnapshot snapshot,
+                                                        Map<String, ConceptDetailModel> own) {
+        if (snapshot.foreignGraphs().isEmpty()) {
+            return own;
+        }
+        Map<String, List<String>> irisByGraph = new HashMap<>();
+        for (Map.Entry<String, String> e : snapshot.foreignGraphs().entrySet()) {
+            irisByGraph.computeIfAbsent(e.getValue(), g -> new ArrayList<>()).add(e.getKey());
+        }
+
+        Map<String, ConceptDetailModel> merged = new HashMap<>(own);
+        for (Map.Entry<String, List<String>> e : irisByGraph.entrySet()) {
+            Map<String, ConceptDetailModel> foreign;
+            try {
+                foreign = liveConcepts(e.getKey());
+            } catch (RuntimeException ex) {
+                log.warn("Foreign graph {} could not be read for diagram {}; its nodes render as stale",
+                        e.getKey(), snapshot.diagramId(), ex);
+                continue;
+            }
+            for (String iri : e.getValue()) {
+                ConceptDetailModel detail = foreign.get(iri);
+                if (detail != null) {
+                    merged.putIfAbsent(iri, detail);
+                }
+            }
+        }
+        return merged;
     }
 
     /**
@@ -313,6 +357,11 @@ public class DiagramServiceImpl implements DiagramService {
             return ontology.getId();
         }
 
+        // The contested concepts — a subset of `staged`, being `staged` filtered against the siblings.
+        // Both resolutions delete by this list, never by `staged`: a resolution abandons what is
+        // actually in conflict, not whatever else the diagram happens to have staged. That distinction
+        // is load-bearing for DISCARD_MINE, where every staged concept has a row on this diagram and a
+        // wider delete would really take the user's uncontested work with it.
         List<String> conflictedIris = conflicting.stream()
                 .map(DiagramPendingEditEntity::getConceptIri)
                 .distinct()
@@ -386,7 +435,14 @@ public class DiagramServiceImpl implements DiagramService {
             Map<Long, String> nodeIriByRowId,
             Map<String, List<EdgeWaypoint>> edgeWaypoints,
             /* Staged edits by concept IRI. Independent of `nodes` — either may exist without the other. */
-            Map<String, DiagramPendingEdit> overlays
+            Map<String, DiagramPendingEdit> overlays,
+            /*
+             * Graph name per foreign node IRI — the concepts this canvas references from OTHER
+             * ontologies. Resolved in-transaction so the assembly can fetch them without a lazy load.
+             * A foreign IRI with no PG row (an NKD concept) maps to null: there is no local graph to
+             * read, and its content comes from the snapshot machinery instead.
+             */
+            Map<String, String> foreignGraphs
     ) {
 
         /** The snapshot node for a concept IRI, or null when the diagram has no such node. */
@@ -410,8 +466,37 @@ public class DiagramServiceImpl implements DiagramService {
         }
         return new DiagramSnapshot(diagram.getId(), diagram.getName(), graphName, diagram.getVersion(),
                 mapper.toViewport(diagram), nodes,
-                conceptTypes(graphName), conceptSlugs(graphName), nodeIriByRowId,
-                edgeWaypoints(diagram), overlays(diagram));
+                conceptTypes(graphName, nodes), conceptSlugs(graphName, nodes), nodeIriByRowId,
+                edgeWaypoints(diagram), overlays(diagram), foreignGraphs(nodes));
+    }
+
+    /**
+     * Graph name per foreign node IRI, in ONE query rather than a lookup per node.
+     *
+     * <p>An IRI with no PG row stays absent from the result: it is an NKD (or otherwise external)
+     * concept with no local graph to read, not an error.
+     */
+    private Map<String, String> foreignGraphs(List<DiagramNodeEntity> nodes) {
+        List<String> foreignIris = foreignIris(nodes);
+        if (foreignIris.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> byIri = new HashMap<>();
+        for (ConceptMetadataEntity c : conceptMetadataRepository.findByConceptIriIn(foreignIris)) {
+            if (c.getGraphName() != null) {
+                byIri.put(c.getConceptIri(), c.getGraphName());
+            }
+        }
+        return byIri;
+    }
+
+    private static List<String> foreignIris(List<DiagramNodeEntity> nodes) {
+        return nodes.stream()
+                .filter(DiagramNodeEntity::isForeign)
+                .map(DiagramNodeEntity::getConceptIri)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     /** Staged edits by concept IRI, read inside the transaction so assembly works on a detached snapshot. */
@@ -571,19 +656,38 @@ public class DiagramServiceImpl implements DiagramService {
         return byIri;
     }
 
-    private Map<String, ConceptType> conceptTypes(String graphName) {
+    /**
+     * Concept types by IRI: the whole own graph, plus the individually-named foreign nodes.
+     *
+     * <p>The foreign half matters for rendering — without a type a foreign class falls through
+     * {@link #isCanvasMember}'s unknown-type branch and is drawn as if its concept had been deleted.
+     */
+    private Map<String, ConceptType> conceptTypes(String graphName, List<DiagramNodeEntity> nodes) {
         Map<String, ConceptType> types = new HashMap<>();
         for (ConceptMetadataEntity c : conceptMetadataRepository.findByGraphName(graphName)) {
             types.put(c.getConceptIri(), c.getConceptType());
         }
+        for (ConceptMetadataEntity c : foreignMetadata(nodes)) {
+            types.putIfAbsent(c.getConceptIri(), c.getConceptType());
+        }
         return types;
     }
 
-    private Map<String, String> conceptSlugs(String graphName) {
+    /** Slugs by IRI — own graph plus foreign nodes, so a foreign node can still deep-link to detail. */
+    private Map<String, String> conceptSlugs(String graphName, List<DiagramNodeEntity> nodes) {
         Map<String, String> slugs = new HashMap<>();
         for (ConceptMetadataEntity c : conceptMetadataRepository.findByGraphName(graphName)) {
             slugs.put(c.getConceptIri(), c.getSlug());
         }
+        for (ConceptMetadataEntity c : foreignMetadata(nodes)) {
+            slugs.putIfAbsent(c.getConceptIri(), c.getSlug());
+        }
         return slugs;
+    }
+
+    /** PG rows for the foreign nodes, in one query. Empty for NKD IRIs, which have no local row. */
+    private List<ConceptMetadataEntity> foreignMetadata(List<DiagramNodeEntity> nodes) {
+        List<String> iris = foreignIris(nodes);
+        return iris.isEmpty() ? List.of() : conceptMetadataRepository.findByConceptIriIn(iris);
     }
 }
