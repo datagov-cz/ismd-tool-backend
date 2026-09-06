@@ -25,12 +25,31 @@ A relationship is one edge, not a node with a link to each endpoint — it conne
 
 Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiResponseDto<T>`. All paths are authenticated (each must be in the SecurityConfig allowlist). This controller touches *layout + the pending-edit overlay*; **Převzít** fans out in-process to the existing concept services.
 
-| Verb · Path | Purpose                                                                                                                                                                                                                      | Body → Response |
-|---|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
-| `GET /all` | Lightweight list of every diagram (identity + node count), e.g. for a diagram picker. Any authenticated user.                                                                                                                | → `List<DiagramSummaryDto>` |
-| `GET /{ontologySlug}/detail` | Load the canonical diagram, layout joined to live concept content with overlays applied. An ontology with no diagram yet reads as an empty canvas — **the read creates nothing**; the row is provisioned by the first write. | → `DiagramDto` (fat, render-ready) |
-| `PUT /{ontologySlug}/layout` | **Save the diagram — the only write endpoint.** Persists layout (positions, viewport, edge waypoints) *and* the staged structural overlays. **No RDF.**                                                                      | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
-| `POST /{ontologySlug}/materialize` | **Materialize.** Apply each staged change via the existing concept CRUD → outbox → RDF; multi-call changes all-or-nothing; per-change partial-ok.                                                                            | → `MaterializeResultDto` |
+| Verb · Path | Purpose | Body → Response |
+|---|---|---|
+| `GET /all` | Lightweight list of every diagram across all ontologies. Any authenticated user. | → `List<DiagramSummaryDto>` |
+| `GET /{ontologySlug}/list` | **The ontology's diagrams**, oldest first — identity and node count only. The navigation list: `diagramId` + `name` is the name-and-link pair. **Read-only; creates nothing.** | → `List<DiagramSummaryDto>` |
+| `POST /{ontologySlug}/create` | **Create a new empty canvas.** A blank/absent `name` takes a numbered default, so a create with no name never fails. | `DiagramCreateDto` → `DiagramDto` |
+| `GET /{ontologySlug}/{diagramId}/detail` | Load one diagram, layout joined to live concept content with overlays applied. An unknown id is a **404** — the read creates nothing. | → `DiagramDto` (fat, render-ready) |
+| `PUT /{ontologySlug}/{diagramId}/layout` | **Save the diagram — the only layout write.** Persists layout (positions, viewport, edge waypoints) *and* the staged structural overlays. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
+| `POST /{ontologySlug}/{diagramId}/materialize` | **Materialize.** Apply each staged change via the existing concept CRUD → outbox → RDF. Refuses with a conflict report when a sibling diagram stages the same concept — see below. | → `MaterializeResultDto` |
+| `DELETE /{ontologySlug}/{diagramId}` | Delete one diagram, its layout and its staged edits. **The ontology's concepts are untouched.** | → `null` |
+
+### Paths nest the diagram under its ontology
+
+`/{ontologySlug}/{diagramId}/…` rather than `/{diagramId}/…`, so every write keeps authorizing the slug through the existing `belongsToUserBySlug` — no new security expression, and no new path that could fall through the SecurityConfig allowlist to `denyAll`.
+
+The slug does **not** constrain the id travelling beside it, so the service additionally asserts that the diagram belongs to the named ontology. Addressing another ontology's diagram through your own slug is a **404** (not 403 — the response must not confirm that the id exists elsewhere).
+
+### ⚠ Breaking change: a diagram is created explicitly
+
+Previously `GET …/detail` returned an empty stand-in canvas for an ontology with no diagram, and the first `PUT …/layout` with `version: 0` brought the row into existence. Neither works now — there is no id to address.
+
+**The first-open flow is:** `GET /{slug}/list` → if empty, `POST /{slug}/create` → `GET /{slug}/{diagramId}/detail`.
+
+Reads stay strictly read-only, which is deliberate: a non-owner opening someone else's ontology must not be able to bring a `diagrams` row into existence.
+
+**Diagram names are unique within their ontology** (they are how a user tells two canvases apart, in the picker and in search). A clash on create returns **409** with `errorCode: "DIAGRAM_NAME_CONFLICT"` rather than a generic constraint error.
 
 **One write endpoint.** Layout and structural staging travel in the same call. There is no `PATCH …/nodes/overlay` — it was removed. The canvas holds its whole state client-side and already sends the full layout on every Save, so a separate per-edit round-trip bought nothing and created a second source of the version counter.
 
@@ -44,17 +63,19 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 
 Two ways to surface diagrams to the user:
 
-- **List:** `GET /api/diagram/all` → `List<DiagramSummaryDto>` (`ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`). Any authenticated user; lightweight (no live-content join).
-- **Search:** `GET /api/search?type=DIAGRAM` returns one `SearchResultDto` per ontology that has a diagram (matched on the ontology slug). On a default search (`type` omitted) diagram rows appear alongside `ONTOLOGY`/`CONCEPT` rows; NKD is skipped for `type=DIAGRAM`. `SearchResponseDto.totalDiagrams` carries the total.
+- **List:** `GET /api/diagram/{ontologySlug}/list` → `List<DiagramSummaryDto>` (`diagramId`, `name`, `ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`) for one ontology; `GET /api/diagram/all` for every ontology. Any authenticated user; lightweight (no live-content join).
+- **Search:** `GET /api/search?type=DIAGRAM` returns **one `SearchResultDto` per diagram** — an ontology with three canvases contributes three rows, matched on the ontology slug **or the diagram's own name**. On a default search (`type` omitted) diagram rows appear alongside `ONTOLOGY`/`CONCEPT` rows; NKD is skipped for `type=DIAGRAM`. `SearchResponseDto.totalDiagrams` carries the total.
 
 **Routing a DIAGRAM search result → diagram detail (bypassing ontology detail).** A DIAGRAM `SearchResultDto` is:
 
 | Field | Value | FE use |
 |---|---|---|
 | `type` | `DIAGRAM` | branch on this |
-| `slug` | the **ontology slug** | **the routing key** → `GET /api/diagram/{slug}/detail` |
-| `iri` | synthetic `{graphName}#diagram` | **dedup-only — do not link on it**; it exists so a `type=null` search doesn't collapse the DIAGRAM row into the ontology's `ONTOLOGY` row |
-| `id` | the diagram row id | not a concept id; not needed for routing |
+| `slug` | the **ontology slug** | half the routing key → `GET /api/diagram/{slug}/{diagramId}/detail` |
+| `diagramId` | the diagram's id | **the other half of the routing key** |
+| `label` | the **diagram's own name** | what distinguishes two canvases of one ontology in a result list |
+| `iri` | synthetic `{graphName}#diagram-{id}` | **dedup-only — do not link on it**; it keeps a DIAGRAM row from collapsing into the ontology's `ONTOLOGY` row on a `type=null` pass, and keeps an ontology's diagrams from collapsing into each other |
+| `id` | the diagram row id | same value as `diagramId`; not a concept id |
 | `ontologyIri` | the ontology graph IRI | if you need the ontology identity |
 | `isPublished` | the **ontology's** publish state | a diagram has none of its own — it is exactly as visible as its slovník |
 | `lastModified` | diagram `updatedAt` | |
@@ -64,15 +85,16 @@ diagrams of unpublished ontologies (and `totalDiagrams` counts only those); with
 (`source=ISMD`/`ALL`) diagrams come back regardless of publish state. There is no published-only
 source, and no way to publish a diagram independently of its ontology.
 
-So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `result.slug`. Never derive a link from `result.iri` for DIAGRAM rows.
+So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `result.slug` **and `result.diagramId`**. Never derive a link from `result.iri` for DIAGRAM rows.
 
 ## Authorization
 
 | Call | Owner | Other authenticated user | Anonymous |
 |---|---|---|---|
-| `GET …/all`, `GET …/detail` | 200 | **200** | 401 |
+| `GET …/all`, `GET …/list`, `GET …/detail` | 200 | **200** | 401 |
 | `PUT …/layout` | 200 | **403** | 401 |
 | `POST …/materialize` | 200 | **403** | 401 |
+| `POST …/create`, `DELETE …/{id}` | 200 | **403** | 401 |
 
 **Reads are deliberately open.** `canViewResource()` lets **any authenticated user** read any ontology's diagram, matching the codebase-wide read posture where every authenticated caller sees all graphs. Only the write paths are ownership-scoped via `belongsToUserBySlug`.
 
@@ -80,14 +102,16 @@ So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `resu
 
 **Reads never write.** `GET …/detail` is read-only: an ontology with no diagram is served from an unsaved in-memory stand-in, so a non-owner opening someone else's canvas cannot bring a `diagrams` row into existence. The row appears on the first successful write, and a diagram is listed by `GET /all` only once it has actually been saved. A diagram belongs to whoever owns its ontology; there is no separate diagram-owner field.
 
-## Read — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
+## Read — `GET /api/diagram/{ontologySlug}/{diagramId}/detail` → 200 · `DiagramDto`
 
 The backend has already joined layout rows to live concept content and applied each node's overlay.
 
 ```jsonc
 {
+  "diagramId": 4,
+  "name": "Pohled HR",            // unique within the ontology
   "ontologySlug": "pracovni-pomer",
-  "version": 7,                   // echo this in the next PUT …/layout (optimistic lock); null = no diagram row yet
+  "version": 7,                   // echo this in the next PUT …/layout (optimistic lock)
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
 
   // nodes are CLASSES only — a relationship is an edge, a property is a row below
@@ -105,6 +129,7 @@ The backend has already joined layout rows to live concept content and applied e
         "label": { "cs": "Zaměstnanec", "en": "Employee" },
         "stale": false,                              // true ⇒ referenced concept was deleted
         "hasPendingEdits": false,
+        "readOnly": false,                           // true ⇒ a FOREIGN concept: render non-editable
         // the class's VLASTNOSTi, rendered as rows inside the node. Always present (empty, never null)
         // and ordered by label, so rows do not reshuffle between reads.
         "properties": [
@@ -188,7 +213,7 @@ The backend has already joined layout rows to live concept content and applied e
 
 `DOMAIN` and `RANGE` do not exist — a relationship is one edge between its two classes, not a node with a link to each. `SUB_PROPERTY` and `SUB_RELATION` (`rdfs:subPropertyOf` between two properties or two relationships) are **not rendered on the canvas**: neither endpoint is a node, so the link has nothing to attach to, and the business semantics are undefined pending a requirement. The relation itself is unaffected — it stays fully supported in the normal concept editor.
 
-## Write — Save: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
+## Write — Save: `PUT /api/diagram/{ontologySlug}/{diagramId}/layout` · `DiagramLayoutDto`
 
 One call carries everything: layout **and** the structural overlays. Strip ReactFlow's transient fields (`selected`, `dragging`, `measured`) and send only what persists. The backend ignores node `data` content — structural intent travels in `overlays`, never in a node's `data`.
 
@@ -222,7 +247,10 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
       "properties": ["https://…/pojem/datum-narozeni"] },
     // parentId/collapsed are optional — omitted or null means no parent / not collapsed
     { "id": "iri:https://…/pojem/organizace",
-      "position": { "x": 720, "y": 80 }, "properties": [] }
+      "position": { "x": 720, "y": 80 }, "properties": [] },
+    // a concept from ANOTHER ontology, placed for context and rendered read-only
+    { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
+      "position": { "x": 1100, "y": 80 }, "properties": [], "isForeign": true }
   ],
   // waypoints only — echo the id you were given on read; endpoints are derived, never sent
   "edges": [
@@ -244,6 +272,12 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
 **`nodes[]` is authoritative for canvas membership.** A node present is kept (or **added** if its IRI is new to the canvas; the response hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched, and so is any edit staged on it). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
 **Classes only.** A VZTAH travels in `edges[]` and a VLASTNOST inside its class's `properties[]` — never as a node, in either direction.
+
+**`isForeign` — placing a concept from another ontology.** Set it on a node whose concept belongs to a *different* ontology (or to NKD), so the user can draw a relationship from a concept they own to one they do not. The node renders read-only (`data.readOnly: true`) with its label fetched from the graph that owns it.
+
+The server verifies the claim **both ways**: a foreign IRI without the flag is a 400 (the ordinary graph guard), and the flag on an own-ontology concept is also a 400 — a false claim would silently render an editable concept read-only.
+
+⚠️ **The flag permits placement only.** An `overlays[]` entry may never target a foreign concept: materializing it would write another ontology's RDF. That stays a 400 at save and `FOREIGN_CONCEPT` at materialize. A foreign concept can be *referenced* — as a VZTAH's `range`, a `broaderConcept`, an `exactMatch` staged on **your** concept — but never edited.
 
 ### `nodes[].properties` — the rows a class renders
 
@@ -303,7 +337,7 @@ The overlay is **structural-only** — there is no `label`/`name` here. Label ed
 
 **`version` is required — send back the one you rendered from.** Because membership is a full replace, a save built on a stale view would silently delete nodes another editor added. Echo the `version` from the `DiagramDto` this edit started from (the read, or the response of your own last save).
 
-Every successful save advances the version and returns the **post-increment** value, so you can chain saves without re-reading. A canvas with no diagram row yet sends `version: 0`. Omitting it is a **400** naming the field; it is declared required in the schema, so a generated client types it non-optional.
+Every successful save advances the version and returns the **post-increment** value, so you can chain saves without re-reading. A freshly created canvas carries `version: 0` — echo what `POST …/create` returned. Omitting it is a **400** naming the field; it is declared required in the schema, so a generated client types it non-optional.
 
 If another editor saved in the meantime the call returns **409** and **nothing is written** — staged overlays are left exactly as they were:
 
@@ -350,7 +384,7 @@ The consequence is a failure mode with no equivalent before: the write is **comm
 
 This is the one status where a `success: false` response still means the write landed, which is why it has its own code instead of a generic 500.
 
-## Materialize — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
+## Materialize — `POST /api/diagram/{ontologySlug}/{diagramId}/materialize` → `MaterializeResultDto`
 
 Applies every staged change. One entry per staged **change** (a change may span two concepts). Per-change partial-ok; a two-concept change (flip, rel→hierarchy) is all-or-nothing. Staged edits are deleted on success, so `pendingEdits[]` empties.
 
@@ -387,6 +421,35 @@ Applies every staged change. One entry per staged **change** (a change may span 
 - `error: "ERROR"` (HTTP 500) — an unexpected server-side failure; overlay retained. `message` is always the generic `"Nastala neočekávaná chyba."` — the underlying cause is server-logged, never returned, so the FE should show it as-is and not try to parse it.
 - `skippedStale` — the referenced concept no longer exists; offer remove-or-recreate.
 
+### `DIAGRAM_EDIT_CONFLICT` (HTTP 409) — another diagram stages the same concept
+
+Staged edits are **per diagram**, so two canvases of one ontology can hold competing intent for one concept. Materializing either would move that concept's `updatedAt` — the fingerprint the other's edit is pinned to — so the sibling would afterwards fail `STALE_BASE` one concept at a time. Materialize therefore checks first and refuses, **before writing anything**:
+
+```jsonc
+{ "success": false, "errorCode": "DIAGRAM_EDIT_CONFLICT",
+  "message": "Některé změny kolidují se změnami rozpracovanými v jiném diagramu.",
+  "data": { "conflicts": [
+      { "conceptIri": "https://…/pojem/je-zamestnan-u",
+        "label": { "cs": "je zaměstnán u" },
+        "mine":   { "range": "https://…/pojem/osoba" },
+        "theirs": [ { "diagramId": 4, "diagramName": "Pohled HR",
+                      "pendingEdit": { "range": "https://…/pojem/organizace" } } ] } ] } }
+```
+
+**A conflict is "the same concept staged on both", not "staged with different values."** Identical values still conflict, for the reason above — do not filter the report client-side by comparing them.
+
+**Nothing was written.** Both sides' staged work is exactly as it was, so the call is safe to repeat once the user chooses.
+
+**Resolving** — re-call naming a side:
+
+| `POST …/materialize?onConflict=` | Effect |
+|---|---|
+| *(omitted)* | Detect and refuse with the report above. The only safe default. |
+| `DISCARD_MINE` | Drop **this** diagram's conflicting edits, then materialize what remains. |
+| `DISCARD_THEIRS` | Drop the **sibling** diagrams' conflicting edits, then materialize. |
+
+Either way **only the contested concepts are discarded** — a sibling's unrelated staged work survives. Discarding on a sibling is allowed because both diagrams belong to the ontology the caller already owns.
+
 ### Recovering from `STALE_BASE` — discard, then re-stage
 
 > ⚠️ **Re-sending the same overlay values does not clear a `STALE_BASE`.** The stale-base fingerprint is stamped when an overlay **comes into existence** on a row and is never refreshed while it stays staged — that is what stops a concurrent concept edit from being silently absorbed. Re-sending identical values leaves the old fingerprint in place and 409s again.
@@ -409,6 +472,8 @@ A stale node still appears in reads with `"stale": true` and its overlay intact,
 
 `DiagramLayoutDto.required` is `["nodes", "version"]` — **`overlays` is optional**, so a generated client types it nullable and existing call sites keep compiling. `DiagramLayoutOverlay.required` is `["conceptIri"]`; `DiagramLayoutOverlayConvertToHierarchy.required` is `["addBroaderOn", "broader"]`.
 
+**Everything added for many-diagrams is optional in the schema, deliberately.** `DiagramLayoutNode.isForeign` and `DiagramCreateDto.name` carry no bean-validation constraint, so a generated client types them nullable and existing call sites keep compiling. (`required` is derived from bean validation alone — annotating a new field would make it non-optional in the generated client and break every current caller.) `DiagramDto.diagramId`/`name` and `SearchResultDto.diagramId` are response-side, so they never affect a request type.
+
 ---
 
-*ISMD Tool · diagram layer · FE / REST contract · one write endpoint · full-replace layout, additive overlays · structural-only overlay · per-change partial-ok materialize*
+*ISMD Tool · diagram layer · FE / REST contract · many diagrams per ontology · one write endpoint · full-replace layout, additive overlays · structural-only overlay, per diagram · foreign concepts referenced, never written · per-change partial-ok materialize*

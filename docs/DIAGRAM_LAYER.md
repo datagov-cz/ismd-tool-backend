@@ -1,11 +1,16 @@
 # The Diagram Layer: Architecture & Design
 
-> Status: **built and smoke-tested** — entity/migration, service, controller and security are implemented,
-> covered by the test suite, and verified end to end against local Postgres + Fuseki on 2026-08-25.
+> Status: **built, covered by the test suite** — entity/migration, service, controller and security are
+> implemented. The single-diagram core was verified end to end against local Postgres + Fuseki on
+> 2026-08-25; **many-diagrams-per-ontology, cross-diagram conflicts and foreign concepts are covered by
+> integration tests against real Postgres but have not yet had that same live smoke run.**
 > Czech version: [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md). FE/REST contract:
 > [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md).
+>
+> ⚠ **Breaking FE change.** Every diagram path now carries a diagram id, and a diagram is created
+> explicitly rather than appearing on first save. See the API contract's migration note.
 
-A ReactFlow-based canvas that renders and edits an ISMD ontology visually — one canonical diagram per ontology — with a persistence model designed so the diagram *can never* silently become a divergent copy of your concept data.
+A ReactFlow-based canvas that renders and edits an ISMD ontology visually — **many diagrams per ontology**, each a differently-scoped view of the same concepts — with a persistence model designed so a diagram *can never* silently become a divergent copy of your concept data.
 
 ## What problem this solves
 
@@ -103,19 +108,33 @@ Consequently **dragging an edge endpoint is a concept edit** (repointing an arro
 
 **Sub-property and sub-relation hierarchy is not rendered.** `rdfs:subPropertyOf` between two properties or two relationships would have to be drawn from a row to a row, or from a line to a line — neither endpoint is a node. Beyond the mechanics, what the user should see or do there is an open business question, so the diagram neither renders nor stages it; the relation stays fully supported in the normal concept editor. See `.planning/diagram-edge-model-REDESIGN.md`.
 
+## Foreign concepts — referenced, never written
+
+A canvas may place a concept from **another ISMD ontology, or from NKD**, so the user can draw a relationship from a concept they own to one they do not. Such a node is marked `is_foreign` and rendered read-only.
+
+**The rule that makes this safe: every link the canvas can draw has its origin on a concept we own.** The triple is written in our graph and the foreign resource is never written. A VZTAH we own carries `rdfs:range` pointing at the foreign class; `rdfs:subClassOf` is written on our child; `skos:exactMatch` is asserted from our side. (`exactMatch` is symmetric in SKOS, so the converse is *entailed* — we assert our half and never write theirs.)
+
+**The flag exempts placement only.** An overlay may never target a foreign concept, because materializing it would write another ontology's RDF. That is enforced at ingress and re-asserted at materialize (`FOREIGN_CONCEPT`), and it is what keeps the cross-tenant write guarantee intact. The flag is also a claim the server verifies both ways: a foreign IRI is accepted only on a node that sets it, and setting it on an own-graph concept is a 400.
+
+**Reads fetch the foreign graphs too**, grouped one fetch per graph rather than per node — without that a foreign node renders label-less and `stale`, indistinguishable from a concept someone deleted. A foreign graph that fails to load degrades its nodes to `stale` rather than failing the whole read.
+
+**Pointing `rdfs:range` at a *published NKD* concept is permitted for a VZTAH only**, and the target is snapshotted as a local copy (`RANGE_TARGET`) exactly like the other NKD links. `rdfs:domain` naming a published concept stays invalid for every type, and a VLASTNOST's `range` stays invalid because it names an XSD datatype, not a concept. See [`NKD_LOCAL_COPY_SNAPSHOT.md`](./NKD_LOCAL_COPY_SNAPSHOT.md).
+
 ## The PG entity model
 
 Four entities, mirroring the `CommentEntity` pattern (FK to `ontologies.id`, pure PG, no outbox). Layout and the pending-edit overlay both live entirely in Postgres, in **separate tables with separate lifecycles**.
 
-**`diagrams`** — one canonical diagram per ontology (`@OneToOne` unique FK → `OntologyMetadataEntity`, ON DELETE CASCADE), viewport pan/zoom, a `@Version` optimistic-lock column, and `@OneToMany` node/edge collections (cascade ALL, orphanRemoval). Aggregate helpers `addNode`/`addEdge`/`removeNode` keep callers on managed instances; `touch()` forces the `@Version` bump on node/edge-only changes. There is no diagram-owner column — ownership is the ontology's, one join away.
+**`diagrams`** — one row per canvas, **many per ontology** (`@ManyToOne` FK → `OntologyMetadataEntity`, ON DELETE CASCADE), a `name` unique within its ontology, viewport pan/zoom, a `@Version` optimistic-lock column, and `@OneToMany` node/edge collections (cascade ALL, orphanRemoval). Aggregate helpers `addNode`/`addEdge`/`removeNode` keep callers on managed instances; `touch()` forces the `@Version` bump on node/edge-only changes. There is no diagram-owner column — ownership is the ontology's, one join away.
 
 **`diagram_nodes`** — **layout only.** Every row references a materialized concept: `concept_iri` **NOT NULL**, `backing` (single-valued `ISMD_CONCEPT`, kept for forward-compat), position, `collapsed`, `parent_node_id`, `visible_properties_json`. An entity `@PrePersist`/`@PreUpdate` guard and a Postgres CHECK enforce `concept_iri` always present, and a unique index covers `(diagram_id, concept_iri)`.
 
 A row means exactly one thing: **this concept is a box on the canvas.** Classes only — a VZTAH renders as an edge and a VLASTNOST as a row inside its class, so neither ever has a layout row.
 
-**`diagram_pending_edits`** — **staged RDF intent, and nothing visual.** `pending_edit_json` (**NOT NULL** — a row exists only while there is an edit, so discarding deletes it rather than blanking it), `base_updated_at`, unique on `(ontology_metadata_id, concept_iri)`. **No position columns.**
+**`diagram_pending_edits`** — **staged RDF intent, and nothing visual.** `pending_edit_json` (**NOT NULL** — a row exists only while there is an edit, so discarding deletes it rather than blanking it), `base_updated_at`, unique on `(diagram_id, concept_iri)`. **No position columns.**
 
-Scoped to the **ontology, not the diagram**: the ontology is the authority for its own content and a diagram only ever visualises it. That also survives Diagrams 1.1, where one ontology gains many diagrams — a staged edit belongs to the concept, not to whichever canvas staged it.
+Scoped to the **diagram**, with `ontology_metadata_id` kept alongside it. Each canvas stages independently, so two diagrams of one ontology may hold competing edits on the same concept — which is exactly the state [cross-diagram conflict detection](#cross-diagram-conflicts) exists to report. Scoping to the ontology instead would make that collision unrepresentable: the two would share a single row and one save would silently overwrite the other. The denormalized ontology id is what lets the conflict query find *sibling* diagrams cheaply.
+
+> **This reverses an earlier decision.** While there was one diagram per ontology, staging was deliberately ontology-scoped — "a staged edit belongs to the concept, not to whichever canvas staged it" — and that was recorded as forward-compatible with many diagrams. It is not: the moment two canvases can stage, the shared row *is* the conflict, silently resolved by whoever saves last.
 
 > **Why these are two tables.** They were once one row, and because canvas membership is "which node rows exist", that made staging an edit pin its concept to the canvas: removing a node — a purely visual act — was blocked by a purely semantic one. A concept with no box of its own had to fabricate a position (the layout columns are NOT NULL) and got anchored at the origin. Splitting them removes the origin fiction, lets the reap be a plain full replace, and makes "the diagram is a subset view" true in the schema rather than only in intent.
 
@@ -159,6 +178,20 @@ Materialize fans out **in-process** to the existing concept services (not via HT
 
 **Granularity:** per-change, partial-ok. A change spanning two concept-CRUD calls (op 6) is all-or-nothing — the second call is gated on the first, and the overlay is cleared only on full success; a failure leaves the whole change staged and reported. A flip (op 2) is two independent single-concept edits, reported separately.
 
+## Cross-diagram conflicts
+
+Because staging is per-diagram, two canvases of one ontology can hold competing intent for the same concept. Materialize therefore checks for that **before** applying anything.
+
+**Why it cannot be left to STALE_BASE.** Applying one side moves the concept's `updatedAt` — the very fingerprint the other side's staged edit was stamped against — so the sibling would afterwards fail `STALE_BASE`, one concept at a time, with nothing in the response explaining what moved underneath it. Recovering would mean discard-then-restage per concept. Detecting the collision up front turns that into one decision.
+
+**A conflict is "the same concept staged on two diagrams", not "staged with different values."** Equal values still collide, for the reason above: the first materialize bumps the fingerprint the second is pinned to. Comparing values would let an apparently-harmless pair through and produce a confusing 409 later instead of a clear one now.
+
+**Detection runs before the per-change loop.** The changes are applied in their own `REQUIRES_NEW` transactions, so a check inside that loop would already have committed RDF for everything ahead of the collision. It runs in one transaction of its own, first; a refusal means nothing was written and both sides' staged work is untouched.
+
+**Resolution is the user's, and explicit.** `POST …/materialize` with no `onConflict` reports the conflict and refuses (409). The client re-calls naming a side: `DISCARD_MINE` drops this diagram's conflicting edits, `DISCARD_THEIRS` drops the siblings'. Either way **only the contested concepts are discarded** — never a whole canvas's staged work, which is a far larger act than the user agreed to.
+
+Discarding on a sibling is authorized because both diagrams belong to the one ontology the caller was already authorized against; the sibling rows are still re-read through that ontology scope rather than trusted from the request.
+
 ## Versioning
 
 Because the diagram holds no *standalone* concept content, "diagram versioning" stays small. **Layout history** is a pure-PG concern (snapshot layout rows) — deferred; ship a single current layout first. **Staged edits** are transient by design and need no version history. **Concept/ontology versioning** already lives in the existing model (RDF, published-vs-draft, deviations) and the diagram inherits it for free by reading live content.
@@ -187,4 +220,4 @@ PNG/SVG export is a **frontend** concern (`html-to-image` `toPng`/`toSvg` agains
 
 ---
 
-*ISMD Tool · diagram layer · every node is a materialized concept · staged structural edits as a keyed transient overlay · one write endpoint: full-replace layout, additive overlays · Save (PG) vs. Převzít (RDF) · no third store*
+*ISMD Tool · diagram layer · many diagrams per ontology · every node is a materialized concept · staged structural edits as a keyed transient overlay, per diagram · foreign concepts referenced, never written · one write endpoint: full-replace layout, additive overlays · Save (PG) vs. Převzít (RDF) · no third store*

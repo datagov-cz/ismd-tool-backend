@@ -1,11 +1,16 @@
 # Diagramová vrstva: architektura a návrh
 
-> Stav: **hotovo a ověřeno smoke testem** — entitní vrstva/migrace, služby, controller i zabezpečení jsou
-> implementovány, pokryty testy a 2026-08-25 ověřeny end-to-end proti lokálnímu Postgresu + Fuseki.
+> Stav: **hotovo, pokryto testovací sadou** — entitní vrstva/migrace, služby, controller i zabezpečení
+> jsou implementovány. Jádro s jedním diagramem bylo 2026-08-25 ověřeno end-to-end proti lokálnímu
+> Postgresu + Fuseki; **více diagramů na ontologii, kolize mezi diagramy a cizí pojmy jsou pokryty
+> integračními testy proti reálnému Postgresu, ale stejným živým smoke testem zatím neprošly.**
 > Anglická verze: [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md). FE/REST kontrakt:
 > [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md).
+>
+> ⚠ **Zásadní změna pro FE.** Každá cesta diagramu nyní nese id diagramu a diagram se zakládá
+> explicitně, místo aby vznikl při prvním uložení. Viz poznámku o migraci v API kontraktu.
 
-Plátno založené na ReactFlow, které vizuálně zobrazuje a edituje ISMD ontologii — jeden kanonický diagram na ontologii — s modelem perzistence navrženým tak, aby se diagram *nikdy* nemohl tiše stát rozcházející se kopií dat pojmů.
+Plátno založené na ReactFlow, které vizuálně zobrazuje a edituje ISMD ontologii — **více diagramů na ontologii**, každý jinak zaměřený pohled na tytéž pojmy — s modelem perzistence navrženým tak, aby se diagram *nikdy* nemohl tiše stát rozcházející se kopií dat pojmů.
 
 ## Jaký problém řešíme
 
@@ -103,19 +108,33 @@ Z toho plyne, že **tažení konce hrany je editace pojmu** (přesměrování š
 
 **Hierarchie sub-property a sub-relation se nevykresluje.** `rdfs:subPropertyOf` mezi dvěma vlastnostmi nebo dvěma vztahy by se musela kreslit z řádku do řádku nebo z čáry do čáry — ani jeden konec není uzel. Nad rámec mechaniky je otevřenou byznysovou otázkou, co by tam měl uživatel vidět a dělat, takže diagram tento vztah nevykresluje ani nenasazuje; v běžném editoru pojmů zůstává plně podporován. Viz `.planning/diagram-edge-model-REDESIGN.md`.
 
+## Cizí pojmy — pouze odkazované, nikdy zapisované
+
+Plátno může umístit pojem z **jiné ISMD ontologie nebo z NKD**, aby uživatel mohl nakreslit vztah od pojmu, který vlastní, k pojmu, který nevlastní. Takový uzel je označen `is_foreign` a vykresluje se jen ke čtení.
+
+**Pravidlo, které to činí bezpečným: každý odkaz, který plátno umí nakreslit, má původ na pojmu, který vlastníme.** Trojice se zapisuje do našeho grafu a cizí zdroj se nikdy nezapisuje. VZTAH, který vlastníme, nese `rdfs:range` mířící na cizí třídu; `rdfs:subClassOf` se zapisuje na našeho potomka; `skos:exactMatch` se tvrdí z naší strany. (`exactMatch` je v SKOS symetrický, takže opačná trojice *plyne* z odvození — tvrdíme svou polovinu a jejich nikdy nezapisujeme.)
+
+**Příznak povoluje pouze umístění.** Overlay nikdy nesmí mířit na cizí pojem, protože jeho materializace by zapsala RDF jiné ontologie. To je vynuceno na vstupu a znovu ověřeno při materializaci (`FOREIGN_CONCEPT`) a je to právě to, co zachovává záruku proti zápisům napříč vlastníky. Příznak je zároveň tvrzení, které server ověřuje oběma směry: cizí IRI je přijato jen na uzlu, který ho nastaví, a nastavení na vlastním pojmu je 400.
+
+**Čtení načítá i cizí grafy**, seskupeně po jednom načtení na graf, ne na uzel — bez toho se cizí uzel vykreslí bez názvu a jako `stale`, k nerozeznání od pojmu, který někdo smazal. Cizí graf, který se nepodaří načíst, degraduje své uzly na `stale`, místo aby shodil celé čtení.
+
+**Nasměrování `rdfs:range` na *publikovaný NKD* pojem je povoleno pouze pro VZTAH** a cíl se snímkuje jako lokální kopie (`RANGE_TARGET`) stejně jako ostatní NKD odkazy. `rdfs:domain` mířící na publikovaný pojem zůstává neplatný pro každý typ a `range` u VLASTNOSTI zůstává neplatný, protože pojmenovává XSD datový typ, ne pojem. Viz [`NKD_LOCAL_COPY_SNAPSHOT.md`](./NKD_LOCAL_COPY_SNAPSHOT.md).
+
 ## Entitní model v PG
 
 Čtyři entity, po vzoru `CommentEntity` (FK na `ontologies.id`, čisté PG, bez outboxu). Rozvržení i overlay rozpracovaných úprav žijí celé v Postgresu, v **oddělených tabulkách s oddělenými životními cykly**.
 
-**`diagrams`** — jeden kanonický diagram na ontologii (`@OneToOne` unikátní FK → `OntologyMetadataEntity`, ON DELETE CASCADE), posun/přiblížení viewportu, sloupec optimistického zámku `@Version` a `@OneToMany` kolekce uzlů/hran (cascade ALL, orphanRemoval). Agregátní pomocníci `addNode`/`addEdge`/`removeNode` drží volající na spravovaných instancích; `touch()` vynutí posun `@Version` i při změnách jen v uzlech/hranách. Sloupec vlastníka diagramu neexistuje — vlastnictví patří ontologii, o jeden join dál.
+**`diagrams`** — jeden řádek na plátno, **více na ontologii** (`@ManyToOne` FK → `OntologyMetadataEntity`, ON DELETE CASCADE), `name` unikátní v rámci své ontologie, posun/přiblížení viewportu, sloupec optimistického zámku `@Version` a `@OneToMany` kolekce uzlů/hran (cascade ALL, orphanRemoval). Agregátní pomocníci `addNode`/`addEdge`/`removeNode` drží volající na spravovaných instancích; `touch()` vynutí posun `@Version` i při změnách jen v uzlech/hranách. Sloupec vlastníka diagramu neexistuje — vlastnictví patří ontologii, o jeden join dál.
 
 **`diagram_nodes`** — **jen rozvržení.** Každý řádek odkazuje na materializovaný pojem: `concept_iri` **NOT NULL**, `backing` (jednohodnotové `ISMD_CONCEPT`, ponecháno pro budoucí rozšíření), pozice, `collapsed`, `parent_node_id`, `visible_properties_json`. Entitní strážce `@PrePersist`/`@PreUpdate` a CHECK v Postgresu vynucují, že `concept_iri` je vždy přítomné, a unikátní index pokrývá `(diagram_id, concept_iri)`.
 
 Řádek znamená přesně jednu věc: **tento pojem je box na plátně.** Pouze třídy — VZTAH se vykresluje jako hrana a VLASTNOST jako řádek uvnitř své třídy, takže ani jeden nemá řádek rozvržení.
 
-**`diagram_pending_edits`** — **nasazený RDF záměr, nic vizuálního.** `pending_edit_json` (**NOT NULL** — řádek existuje jen po dobu, kdy je co aplikovat, takže zahození ho maže, ne vyprazdňuje), `base_updated_at`, unikát na `(ontology_metadata_id, concept_iri)`. **Žádné sloupce pozice.**
+**`diagram_pending_edits`** — **nasazený RDF záměr, nic vizuálního.** `pending_edit_json` (**NOT NULL** — řádek existuje jen po dobu, kdy je co aplikovat, takže zahození ho maže, ne vyprazdňuje), `base_updated_at`, unikát na `(diagram_id, concept_iri)`. **Žádné sloupce pozice.**
 
-Vázáno na **ontologii, ne na diagram**: ontologie je autoritou nad svým obsahem a diagram ho jen zobrazuje. To zároveň přežije Diagramy 1.1, kde jedna ontologie dostane více diagramů — nasazená úprava patří pojmu, ne tomu plátnu, které ji nasadilo.
+Vázáno na **diagram**, s `ontology_metadata_id` ponechaným vedle. Každé plátno nasazuje nezávisle, takže dva diagramy jedné ontologie mohou držet protichůdné úpravy téhož pojmu — což je přesně stav, který má [detekce kolizí mezi diagramy](#kolize-mezi-diagramy) hlásit. Vázání na ontologii by tuto kolizi učinilo nezobrazitelnou: oba by sdílely jediný řádek a jedno uložení by tiše přepsalo druhé. Denormalizované id ontologie je to, co dovoluje dotazu na kolize levně najít *sourozenecké* diagramy.
+
+> **Toto obrací dřívější rozhodnutí.** Dokud byl na ontologii jeden diagram, nasazování bylo záměrně vázáno na ontologii — „nasazená úprava patří pojmu, ne tomu plátnu, které ji nasadilo" — a bylo zaznamenáno jako dopředu kompatibilní s více diagramy. Není: jakmile mohou nasazovat dvě plátna, sdílený řádek *je* ta kolize, tiše rozhodnutá tím, kdo uloží jako poslední.
 
 > **Proč jsou to dvě tabulky.** Kdysi to byl jeden řádek, a protože členství na plátně je „které řádky uzlů existují", nasazení úpravy tím připnulo její pojem na plátno: odebrání uzlu — čistě vizuální úkon — bylo blokováno úkonem čistě sémantickým. Pojem bez vlastního boxu si musel vymyslet pozici (sloupce rozvržení jsou NOT NULL) a skončil ukotvený v počátku. Rozdělení tuto fikci odstraňuje, dovoluje sklizni být prostou úplnou náhradou a dělá z „diagram je pohled na podmnožinu" pravdu ve schématu, ne jen v záměru.
 
@@ -158,6 +177,20 @@ Materializace se rozvětvuje **in-process** na stávající služby pojmů (ne p
 4. Sestavit **polem omezenou** editaci nesoucí jen změněné predikáty a aplikovat ji. Omezení na pole (ne úplný snímek) je nutné, protože zobrazovací model čtení nevystavuje boolean `isPublic` a editační cesta klasifikaci veřejný/neveřejný odstraní a podmíněně znovu přidá — úplný snímek s nulovým `isPublic` by ji tiše zahodil. (Jediný editační pomocník, který v tomto není null-safe, je odpovídajícím způsobem zpevněn.)
 
 **Granularita:** po jednotlivých změnách, částečný úspěch povolen. Změna zahrnující dvě volání CRUD pojmu (op 6) je vše nebo nic — druhé volání je podmíněno prvním a overlay se maže až při úplném úspěchu; selhání ponechá celou změnu nasazenou a ohlásí ji. Otočení (op 2) jsou dvě nezávislé jednopojmové editace, hlášené zvlášť.
+
+## Kolize mezi diagramy
+
+Protože nasazování je po diagramech, dvě plátna jedné ontologie mohou držet protichůdný záměr pro tentýž pojem. Materializace to proto kontroluje **dřív**, než cokoli aplikuje.
+
+**Proč to nelze nechat na STALE_BASE.** Aplikace jedné strany posune `updatedAt` pojmu — právě ten otisk, proti kterému byla nasazená úprava druhé strany orazítkována — takže sourozenec by následně selhal na `STALE_BASE`, po jednom pojmu, aniž by z odpovědi šlo poznat, co se pod ním pohnulo. Náprava by znamenala zahodit a znovu nasadit každý pojem zvlášť. Detekce kolize předem z toho dělá jedno rozhodnutí.
+
+**Kolize je „tentýž pojem nasazený na dvou diagramech", ne „nasazený s jinými hodnotami."** Shodné hodnoty kolidují také, ze stejného důvodu: první materializace posune otisk, na který je připnutá druhá. Porovnávání hodnot by pustilo zdánlivě neškodnou dvojici dál a vyrobilo matoucí 409 později místo jasného teď.
+
+**Detekce běží před smyčkou po jednotlivých změnách.** Změny se aplikují ve vlastních `REQUIRES_NEW` transakcích, takže kontrola uvnitř té smyčky by už měla zapsané RDF za vše, co kolizi předchází. Běží ve vlastní transakci, jako první; odmítnutí znamená, že se nic nezapsalo a nasazená práce obou stran zůstala nedotčená.
+
+**Rozhodnutí je uživatelovo a explicitní.** `POST …/materialize` bez `onConflict` kolizi ohlásí a odmítne (409). Klient zavolá znovu a pojmenuje stranu: `DISCARD_MINE` zahodí kolidující úpravy tohoto diagramu, `DISCARD_THEIRS` úpravy sourozenců. V obou případech se **zahodí pouze sporné pojmy** — nikdy celá nasazená práce plátna, což by byl mnohem větší úkon, než k jakému dal uživatel souhlas.
+
+Zahazování u sourozence je autorizované, protože oba diagramy patří té jedné ontologii, proti které byl volající už autorizován; řádky sourozence se přesto načítají znovu skrz onen rozsah ontologie, místo aby se věřilo požadavku.
 
 ## Verzování
 

@@ -210,14 +210,15 @@
 
 ### 5. `diagrams`
 
-**Purpose**: One ReactFlow canvas per ontology — presentation data only (viewport + the node/edge children). Never stores concept content; nodes reference concepts by IRI and are joined to live PG/RDF on read.
+**Purpose**: A ReactFlow canvas — presentation data only (viewport + the node/edge children). **An ontology may have many**, each a differently-scoped view. Never stores concept content; nodes reference concepts by IRI and are joined to live PG/RDF on read.
 
 **Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramEntity`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | `id` | BIGINT | PK, AUTO_INCREMENT | Unique identifier |
-| `ontology_metadata_id` | BIGINT | NOT NULL, FK → `ontologies(id)` ON DELETE CASCADE, UNIQUE | The ontology this canvas visualizes — also its **only ownership record** |
+| `ontology_metadata_id` | BIGINT | NOT NULL, FK → `ontologies(id)` ON DELETE CASCADE | The ontology this canvas visualizes — also its **only ownership record** |
+| `name` | VARCHAR(255) | NOT NULL | User-facing name; unique within the ontology |
 | `viewport_x` | DOUBLE PRECISION | | Saved pan X; null until first save |
 | `viewport_y` | DOUBLE PRECISION | | Saved pan Y |
 | `viewport_zoom` | DOUBLE PRECISION | | Saved zoom |
@@ -227,11 +228,13 @@
 
 **Indexes / Constraints**:
 - Primary key on `id`
-- `uq_diagrams_ontology_metadata` UNIQUE on `ontology_metadata_id` — one canonical diagram per ontology
+- `uq_diagrams_ontology_name` UNIQUE on `(ontology_metadata_id, name)` — names identify a canvas to the user, so they must be distinguishable within an ontology (but two ontologies may each have a "Hlavní diagram")
+- `idx_diagrams_ontology_metadata` on `ontology_metadata_id`
+- ⚠ `uq_diagrams_ontology_metadata` (UNIQUE on `ontology_metadata_id`) was **dropped** by changeset `020` — that constraint *was* the one-diagram-per-ontology rule
 
 **Notes**:
 - **No owner column.** A diagram belongs to whoever owns its ontology, reached through the NOT NULL FK; write paths authorize with `belongsToUserBySlug` against the ontology. A denormalized `user_id` existed until changeset `014` dropped it as unused.
-- The row is created by the **first write**, never by a read — `GET …/detail` is read-only and serves an unsaved in-memory stand-in for an ontology with no diagram.
+- The row is created **only by an explicit `POST …/create`**, never by a read. Both read paths (`GET …/list`, `GET …/{id}/detail`) are strictly read-only, so a non-owner opening someone else's ontology cannot bring one into existence.
 - `@Version` only bumps when a `diagrams` column changes, so the save path must call `touch()` (or take `OPTIMISTIC_FORCE_INCREMENT`) when only child nodes/edges changed.
 
 **Repository**: `DiagramRepository`
@@ -240,7 +243,7 @@
 
 ### 6. `diagram_nodes`
 
-**Purpose**: One node on the canvas — its position and, optionally, a staged structural edit ("overlay") not yet applied to RDF.
+**Purpose**: One node on the canvas — **layout only**. Staged structural edits live in their own table (§8); a node row says nothing but "this concept is a box here".
 
 **Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramNodeEntity`
 
@@ -252,15 +255,18 @@
 | `concept_iri` | VARCHAR(1024) | NOT NULL | The concept this node renders |
 | `pos_x` / `pos_y` | DOUBLE PRECISION | NOT NULL | Canvas position |
 | `collapsed` | BOOLEAN | NOT NULL | Group collapse state |
-| `hidden` | BOOLEAN | NOT NULL | Visibility |
 | `parent_node_id` | BIGINT | | Grouping parent (nullable) |
-| `pending_edit_json` | VARCHAR (unbounded) | | Staged structural overlay, serialized `DiagramPendingEdit`; null when nothing is staged. Entity declares `columnDefinition = "text"` — the same type in Postgres |
+| `visible_properties_json` | TEXT | | Serialized IRI list: the VLASTNOST rows this class cell renders (curated, never derived) |
+| `is_foreign` | BOOLEAN | NOT NULL, DEFAULT FALSE | This node references a concept **outside** the diagram's ontology graph — placed for context and rendered read-only. Verified both ways on write: a foreign IRI is accepted only with this set, and setting it on an own-graph concept is a 400 |
 
 **Indexes / Constraints**:
 - Primary key on `id`
 - `idx_diagram_nodes_diagram_id` on `diagram_id`
 - `uq_diagram_nodes_diagram_concept` UNIQUE on (`diagram_id`, `concept_iri`) — plain, not partial (changeset `013`)
 - `ck_diagram_nodes_backing_content` CHECK — `backing = 'ISMD_CONCEPT' AND concept_iri IS NOT NULL`
+
+**Notes**:
+- `hidden` was dropped by changeset `015`; `pending_edit_json` by changeset `019` (its contents moved to `diagram_pending_edits`, §8).
 
 **Repository**: `DiagramNodeRepository`
 
@@ -286,6 +292,36 @@
 **Orphan rows are harmless by design.** Deleting a node does not cascade to waypoints — there are no endpoint FKs to match on. A row whose edge no longer projects simply finds no match on read and is cleared by the next Save, which full-replaces the set.
 
 **Repository**: `DiagramEdgeRepository`
+
+---
+
+### 8. `diagram_pending_edits`
+
+**Purpose**: One staged, uncommitted structural edit to a real concept — **staged RDF intent, nothing visual**. Applied to RDF by Převzít, which then deletes the row. Split out of `diagram_nodes` by changeset `019` so that staging an edit no longer pins its concept to the canvas.
+
+**Entity Class**: `com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | BIGINT | PK, AUTO_INCREMENT | Unique identifier |
+| `diagram_id` | BIGINT | NOT NULL, FK → `diagrams(id)` ON DELETE CASCADE | The canvas that staged this edit |
+| `ontology_metadata_id` | BIGINT | NOT NULL, FK → `ontologies(id)` ON DELETE CASCADE | The diagram's ontology, denormalized — the scope check and the sibling-conflict join key |
+| `concept_iri` | VARCHAR(1024) | NOT NULL | The concept being staged (need not be on the canvas) |
+| `pending_edit_json` | VARCHAR (unbounded) | NOT NULL | Serialized `DiagramPendingEdit`. NOT NULL: a row exists only while there is an edit, so discarding deletes it rather than blanking it |
+| `base_updated_at` | TIMESTAMP | | The target concept's `updated_at` at stage time — the STALE_BASE fingerprint. Server-stamped, never accepted on write |
+| `created_at` | TIMESTAMP | NOT NULL | Creation time |
+| `updated_at` | TIMESTAMP | | Last modification |
+
+**Indexes / Constraints**:
+- Primary key on `id`
+- `uq_diagram_pending_edits_diagram_concept` UNIQUE on (`diagram_id`, `concept_iri`) — one staged edit per concept **per diagram**
+- `idx_diagram_pending_edits_ontology`, `idx_diagram_pending_edits_diagram`
+
+**Notes**:
+- **Scoped to the diagram, not the ontology.** Each canvas stages independently, so two diagrams of one ontology may hold competing edits on the same concept — the state cross-diagram conflict detection reports at Převzít. An ontology-scoped key (changeset `019`, superseded by `020`) made that collision unrepresentable: the two shared a row and one save silently overwrote the other.
+- **No position columns.** A staged edit is independent of canvas membership; the concept it targets need never be drawn.
+
+**Repository**: `DiagramPendingEditRepository`
 
 **Related docs**: [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md) (architecture), [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md) (REST contract).
 

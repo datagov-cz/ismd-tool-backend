@@ -33,6 +33,11 @@ public class NkdLinkDetector {
      * The allowed external link-targets (broaderClass / superProperty / superRelation /
      * exactMatch) of {@code conceptIri} in {@code model}. These are the snapshot candidates.
      *
+     * <p>A <strong>VZTAH</strong> additionally contributes its external {@code rdfs:range} as a
+     * {@link SnapshotLinkType#RANGE_TARGET}: a relationship's range is a class, so pointing it at a
+     * published NKD concept is a legitimate cross-vocabulary link, and snapshotting it is what gives the
+     * diagram a local label to draw and wires the target into the upstream-deletion cascade.
+     *
      * @param conceptType drives the hierarchy relation's meaning (TRIDA→broaderClass via subClassOf,
      *                    VLASTNOST→superProperty / VZTAH→superRelation via subPropertyOf). May be null.
      * @param graphScheme the owner graph's scheme; objects prefixed by it are owned, not external.
@@ -49,19 +54,34 @@ public class NkdLinkDetector {
             collectExternalObjects(concept, hierarchyPred, graphScheme, hierarchyType, out);
         }
         collectExternalObjects(concept, SKOS.exactMatch, graphScheme, SnapshotLinkType.EXACT_MATCH, out);
+        if (conceptType == ConceptType.VZTAH) {
+            collectExternalObjects(concept, RDFS.range, graphScheme, SnapshotLinkType.RANGE_TARGET, out);
+        }
         return out;
     }
 
     /**
-     * The external {@code rdfs:domain} / {@code rdfs:range} target IRIs of {@code conceptIri}. A
-     * domain/range pointing at a published NKD concept is an invalid input the edit hook rejects
-     * — these are never snapshot candidates, only reject candidates.
+     * The external {@code rdfs:domain} / {@code rdfs:range} target IRIs the edit hook must reject when
+     * they resolve to a published NKD concept. These are reject candidates, never snapshot candidates.
+     *
+     * <p><strong>{@code rdfs:domain} is collected for every type</strong> — a domain pointing at a
+     * published concept is invalid input whatever the subject is.
+     *
+     * <p><strong>{@code rdfs:range} is collected for every type EXCEPT VZTAH.</strong> A VLASTNOST's
+     * range is an XSD datatype, so a concept there is malformed; a VZTAH's range is a class, and
+     * pointing it at a published NKD concept is a supported cross-vocabulary link — snapshotted as
+     * {@link SnapshotLinkType#RANGE_TARGET} by {@link #allowedTargets} instead of rejected here.
+     *
+     * @param conceptType the subject's type; null is treated conservatively (range still collected).
      */
-    public List<String> forbiddenDomainRangeTargets(String conceptIri, String graphScheme, Model model) {
+    public List<String> forbiddenDomainRangeTargets(String conceptIri, ConceptType conceptType,
+                                                    String graphScheme, Model model) {
         Resource concept = model.getResource(conceptIri);
         List<String> out = new ArrayList<>();
         collectExternalObjectIris(concept, RDFS.domain, graphScheme, out);
-        collectExternalObjectIris(concept, RDFS.range, graphScheme, out);
+        if (conceptType != ConceptType.VZTAH) {
+            collectExternalObjectIris(concept, RDFS.range, graphScheme, out);
+        }
         return out;
     }
 

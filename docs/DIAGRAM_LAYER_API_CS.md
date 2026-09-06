@@ -27,10 +27,29 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 
 | Sloveso · Cesta | Účel | Tělo → Odpověď |
 |---|---|---|
-| `GET /all` | Odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. Libovolný přihlášený uživatel. | → `List<DiagramSummaryDto>` |
-| `GET /{ontologySlug}/detail` | Načíst kanonický diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Slovník, který zatím diagram nemá, se načte jako prázdné plátno — **čtení nic nevytváří**; řádek vznikne až prvním zápisem. | → `DiagramDto` (tučný, připravený k vykreslení) |
-| `PUT /{ontologySlug}/layout` | **Uložit diagram — jediný zápisový endpoint.** Uloží rozvržení (pozice, viewport, body lomu hran) *a* nasazené strukturální overlays. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
-| `POST /{ontologySlug}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF; vícevolání vše-nebo-nic; per-změna částečně-OK. | → `MaterializeResultDto` |
+| `GET /all` | Odlehčený seznam všech diagramů napříč slovníky. Libovolný přihlášený uživatel. | → `List<DiagramSummaryDto>` |
+| `GET /{ontologySlug}/list` | **Diagramy jednoho slovníku**, od nejstaršího — jen identita a počet uzlů. Navigační seznam: dvojice `diagramId` + `name` je název a odkaz. **Jen pro čtení; nic nevytváří.** | → `List<DiagramSummaryDto>` |
+| `POST /{ontologySlug}/create` | **Vytvořit nové prázdné plátno.** Prázdný/chybějící `name` dostane číslovaný výchozí, takže vytvoření bez názvu nikdy neselže. | `DiagramCreateDto` → `DiagramDto` |
+| `GET /{ontologySlug}/{diagramId}/detail` | Načíst jeden diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Neznámé id je **404** — čtení nic nevytváří. | → `DiagramDto` (tučný, připravený k vykreslení) |
+| `PUT /{ontologySlug}/{diagramId}/layout` | **Uložit diagram — jediný zápis rozvržení.** Uloží rozvržení (pozice, viewport, body lomu hran) *a* nasazené strukturální overlays. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
+| `POST /{ontologySlug}/{diagramId}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF. Odmítne s přehledem kolizí, pokud tentýž pojem nasazuje i sourozenecký diagram — viz níže. | → `MaterializeResultDto` |
+| `DELETE /{ontologySlug}/{diagramId}` | Smazat jeden diagram, jeho rozvržení a nasazené úpravy. **Pojmů slovníku se to nedotkne.** | → `null` |
+
+### Cesty vnořují diagram pod jeho slovník
+
+`/{ontologySlug}/{diagramId}/…` místo `/{diagramId}/…`, takže každý zápis dál autorizuje slug přes stávající `belongsToUserBySlug` — žádný nový bezpečnostní výraz a žádná nová cesta, která by mohla propadnout allowlistem SecurityConfig až k `denyAll`.
+
+Slug **neomezuje** id, které cestuje vedle něj, takže služba navíc ověřuje, že diagram patří pojmenovanému slovníku. Adresovat diagram jiného slovníku přes svůj slug je **404** (ne 403 — odpověď nesmí potvrdit, že to id existuje jinde).
+
+### ⚠ Zásadní změna: diagram se zakládá explicitně
+
+Dříve `GET …/detail` vrátil prázdné náhradní plátno pro slovník bez diagramu a první `PUT …/layout` s `version: 0` řádek vytvořil. Ani jedno už neplatí — není žádné id, které by šlo adresovat.
+
+**Postup při prvním otevření je:** `GET /{slug}/list` → pokud je prázdný, `POST /{slug}/create` → `GET /{slug}/{diagramId}/detail`.
+
+Čtení zůstává striktně bez zápisu, což je záměr: uživatel, který není vlastníkem, nesmí otevřením cizího slovníku způsobit vznik řádku v `diagrams`.
+
+**Názvy diagramů jsou unikátní v rámci svého slovníku** (jsou tím, čím uživatel dvě plátna rozliší — ve výběru i ve vyhledávání). Kolize při vytvoření vrací **409** s `errorCode: "DIAGRAM_NAME_CONFLICT"`, ne obecnou chybu omezení.
 
 **Jediný zápisový endpoint.** Rozvržení i strukturální nasazování cestují ve stejném volání. `PATCH …/nodes/overlay` neexistuje — byl odstraněn. Plátno drží celý svůj stav na klientu a při každém Uložit už stejně posílá kompletní rozvržení, takže samostatné kolečko na každou úpravu nic nepřinášelo a vytvářelo druhý zdroj čítače verze.
 
@@ -44,17 +63,19 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 
 Dvě cesty, jak diagramy uživateli nabídnout:
 
-- **Seznam:** `GET /api/diagram/all` → `List<DiagramSummaryDto>` (`ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`). Libovolný přihlášený uživatel; odlehčené (bez spojení s živým obsahem).
-- **Hledání:** `GET /api/search?type=DIAGRAM` vrací jeden `SearchResultDto` na každý slovník, který má diagram (shoda na slugu slovníku). Při výchozím hledání (`type` vynecháno) se řádky diagramů objeví vedle řádků `ONTOLOGY`/`CONCEPT`; pro `type=DIAGRAM` se NKD přeskakuje. Celkový počet nese `SearchResponseDto.totalDiagrams`.
+- **Seznam:** `GET /api/diagram/{ontologySlug}/list` → `List<DiagramSummaryDto>` (`diagramId`, `name`, `ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`) pro jeden slovník; `GET /api/diagram/all` pro všechny. Libovolný přihlášený uživatel; odlehčené (bez spojení s živým obsahem).
+- **Hledání:** `GET /api/search?type=DIAGRAM` vrací **jeden `SearchResultDto` na každý diagram** — slovník se třemi plátny přispěje třemi řádky, se shodou na slugu slovníku **nebo na názvu diagramu**. Při výchozím hledání (`type` vynecháno) se řádky diagramů objeví vedle řádků `ONTOLOGY`/`CONCEPT`; pro `type=DIAGRAM` se NKD přeskakuje. Celkový počet nese `SearchResponseDto.totalDiagrams`.
 
 **Směrování výsledku hledání DIAGRAM → detail diagramu (s obejitím detailu slovníku).** `SearchResultDto` typu DIAGRAM je:
 
 | Pole | Hodnota | Použití ve FE |
 |---|---|---|
 | `type` | `DIAGRAM` | větvit podle toho |
-| `slug` | **slug slovníku** | **klíč pro směrování** → `GET /api/diagram/{slug}/detail` |
-| `iri` | syntetické `{graphName}#diagram` | **jen pro deduplikaci — neodkazovat přes něj**; existuje proto, aby hledání s `type=null` nesloučilo řádek DIAGRAM do řádku `ONTOLOGY` daného slovníku |
-| `id` | id řádku diagramu | není to id pojmu; pro směrování není potřeba |
+| `slug` | **slug slovníku** | polovina klíče pro směrování → `GET /api/diagram/{slug}/{diagramId}/detail` |
+| `diagramId` | id diagramu | **druhá polovina klíče pro směrování** |
+| `label` | **vlastní název diagramu** | to, čím uživatel odliší dvě plátna téhož slovníku ve výsledcích |
+| `iri` | syntetické `{graphName}#diagram-{id}` | **jen pro deduplikaci — neodkazovat přes něj**; brání sloučení řádku DIAGRAM do řádku `ONTOLOGY` při `type=null` i sloučení diagramů téhož slovníku mezi sebou |
+| `id` | id řádku diagramu | tatáž hodnota jako `diagramId`; není to id pojmu |
 | `ontologyIri` | IRI grafu slovníku | pokud potřebujete identitu slovníku |
 | `isPublished` | stav publikace **slovníku** | diagram žádný vlastní nemá — je přesně tak viditelný jako jeho slovník |
 | `lastModified` | `updatedAt` diagramu | |
@@ -64,30 +85,33 @@ diagramy nepublikovaných slovníků (a `totalDiagrams` počítá jen ty); bez f
 (`source=ISMD`/`ALL`) se diagramy vracejí bez ohledu na stav publikace. Neexistuje zdroj „jen
 publikované" ani způsob, jak publikovat diagram nezávisle na jeho slovníku.
 
-Tedy: při `result.type === 'DIAGRAM'` navigujte rovnou na diagram pomocí `result.slug`. U řádků DIAGRAM nikdy neodvozujte odkaz z `result.iri`.
+Tedy: při `result.type === 'DIAGRAM'` navigujte rovnou na diagram pomocí `result.slug` **a `result.diagramId`**. U řádků DIAGRAM nikdy neodvozujte odkaz z `result.iri`.
 
 ## Autorizace
 
 | Volání | Vlastník | Jiný přihlášený uživatel | Nepřihlášený |
 |---|---|---|---|
-| `GET …/all`, `GET …/detail` | 200 | **200** | 401 |
+| `GET …/all`, `GET …/list`, `GET …/detail` | 200 | **200** | 401 |
 | `PUT …/layout` | 200 | **403** | 401 |
 | `POST …/materialize` | 200 | **403** | 401 |
+| `POST …/create`, `DELETE …/{id}` | 200 | **403** | 401 |
 
 **Čtení je záměrně otevřené.** `canViewResource()` dovoluje **libovolnému přihlášenému uživateli** číst diagram kteréhokoli slovníku, v souladu s celokódovým přístupem ke čtení, kde každý přihlášený volající vidí všechny grafy. Pouze zápisové cesty jsou omezené na vlastnictví přes `belongsToUserBySlug`.
 
 **Autorizace zápisu omezuje slug *i* IRI.** `belongsToUserBySlug` autorizuje slovník v cestě, ale každé IRI pojmu cestuje uvnitř těla požadavku, takže zápisová cesta navíc vyžaduje, aby každý odkazovaný pojem patřil do vlastního grafu slovníku daného diagramu — IRI uzlů, `conceptIri` overlayů i `addBroaderOn` / `broader` v op 6. Cizí IRI selže s **400** a nic neuloží; táž kontrola běží znovu při materializaci (`FOREIGN_CONCEPT`), takže řádek zapsaný ještě před vznikem této pojistky nelze aplikovat. Pojem, jehož řádek prostě *chybí*, odmítnut není — to je smazaný pojem, hlášený jako `skippedStale`.
 
-**Čtení nikdy nezapisuje.** `GET …/detail` je jen pro čtení: slovník bez diagramu se obslouží z neuloženého zástupce v paměti, takže nevlastník, který otevře cizí plátno, nemůže řádek v `diagrams` přivést na svět. Řádek vznikne až prvním úspěšným zápisem a diagram se v `GET /all` objeví teprve poté, co byl skutečně uložen. Diagram patří tomu, kdo vlastní jeho slovník; samostatné pole vlastníka diagramu neexistuje.
+**Čtení nikdy nezapisuje.** `GET …/list` i `GET …/{diagramId}/detail` jsou jen pro čtení: slovník bez diagramu vrátí prázdný seznam a neznámé id vrátí 404, takže nevlastník, který otevře cizí plátno, nemůže řádek v `diagrams` přivést na svět. Řádek vznikne výhradně explicitním `POST …/create`. Diagram patří tomu, kdo vlastní jeho slovník; samostatné pole vlastníka diagramu neexistuje.
 
-## Čtení — `GET /api/diagram/{ontologySlug}/detail` → 200 · `DiagramDto`
+## Čtení — `GET /api/diagram/{ontologySlug}/{diagramId}/detail` → 200 · `DiagramDto`
 
 Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval overlay každého uzlu.
 
 ```jsonc
 {
+  "diagramId": 4,
+  "name": "Pohled HR",            // unikátní v rámci slovníku
   "ontologySlug": "pracovni-pomer",
-  "version": 7,                   // pošlete zpět v dalším PUT …/layout (optimistický zámek); null = řádek diagramu zatím neexistuje
+  "version": 7,                   // pošlete zpět v dalším PUT …/layout (optimistický zámek)
   "viewport": { "x": -120, "y": 40, "zoom": 0.85 },
 
   // uzly jsou POUZE TŘÍDY — vztah je hrana, vlastnost je řádek níže
@@ -105,6 +129,7 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
         "label": { "cs": "Zaměstnanec", "en": "Employee" },
         "stale": false,                              // true ⇒ odkazovaný pojem byl smazán
         "hasPendingEdits": false,
+        "readOnly": false,                           // true ⇒ CIZÍ pojem: vykreslit needitovatelně
         // VLASTNOSTi dané třídy, vykreslené jako řádky uvnitř uzlu. Vždy přítomné (prázdné, nikdy null)
         // a seřazené podle labelu, aby se řádky mezi čteními nepřeskupovaly.
         "properties": [
@@ -188,7 +213,7 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
 
 `DOMAIN` a `RANGE` neexistují — vztah je jedna hrana mezi svými dvěma třídami, ne uzel s odkazem na každou. `SUB_PROPERTY` a `SUB_RELATION` (`rdfs:subPropertyOf` mezi dvěma vlastnostmi nebo dvěma vztahy) se **na plátně nevykreslují**: ani jeden konec není uzel, takže odkaz nemá k čemu přiléhat, a byznysová sémantika je do vzniku požadavku nedefinovaná. Samotný vztah to neovlivňuje — v běžném editoru pojmů zůstává plně podporován.
 
-## Zápis — Uložit: `PUT /api/diagram/{ontologySlug}/layout` · `DiagramLayoutDto`
+## Zápis — Uložit: `PUT /api/diagram/{ontologySlug}/{diagramId}/layout` · `DiagramLayoutDto`
 
 Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte přechodná pole ReactFlow (`selected`, `dragging`, `measured`) a posílejte jen to, co se ukládá. Backend ignoruje obsah `data` u uzlu — strukturální záměr cestuje v `overlays`, nikdy v `data` uzlu.
 
@@ -222,7 +247,10 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
       "properties": ["https://…/pojem/datum-narozeni"] },
     // parentId/collapsed jsou volitelné — vynechané nebo null znamená bez rodiče / nesbaleno
     { "id": "iri:https://…/pojem/organizace",
-      "position": { "x": 720, "y": 80 }, "properties": [] }
+      "position": { "x": 720, "y": 80 }, "properties": [] },
+    // pojem z JINÉHO slovníku, umístěný pro kontext a vykreslený jen ke čtení
+    { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
+      "position": { "x": 1100, "y": 80 }, "properties": [], "isForeign": true }
   ],
   // jen body lomu — pošlete zpět id, které jste dostali při čtení; konce se odvozují, neposílají
   "edges": [
@@ -244,6 +272,12 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
 **`nodes[]` je autoritativní pro členství na plátně.** Přítomný uzel zůstává (nebo je **přidán**, je-li jeho IRI na plátně nové; odpověď doplní jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen, a stejně tak jakákoli úprava na něm nasazená). K přidání uzlu stačí `{id, position}`; zbytek backend doplní z živého RDF.
 
 **Pouze třídy.** VZTAH cestuje v `edges[]` a VLASTNOST uvnitř `properties[]` své třídy — nikdy jako uzel, v žádném směru.
+
+**`isForeign` — umístění pojmu z jiného slovníku.** Nastavte na uzlu, jehož pojem patří *jinému* slovníku (nebo NKD), aby uživatel mohl nakreslit vztah od pojmu, který vlastní, k pojmu, který nevlastní. Uzel se vykreslí jen ke čtení (`data.readOnly: true`) s názvem načteným z grafu, který ho vlastní.
+
+Server tvrzení ověřuje **oběma směry**: cizí IRI bez příznaku je 400 (běžná kontrola grafu) a příznak na vlastním pojmu je také 400 — nepravdivé tvrzení by tiše vykreslilo editovatelný pojem jen ke čtení.
+
+⚠️ **Příznak povoluje pouze umístění.** Položka `overlays[]` nikdy nesmí mířit na cizí pojem: jeho materializace by zapsala RDF jiného slovníku. To zůstává 400 při uložení a `FOREIGN_CONCEPT` při materializaci. Cizí pojem lze *odkazovat* — jako `range` VZTAHu, jako `broaderConcept` či `exactMatch` nasazený na **vašem** pojmu — ale nikdy editovat.
 
 ### `nodes[].properties` — řádky, které třída vykresluje
 
@@ -303,7 +337,7 @@ Overlay je **čistě strukturální** — žádný `label`/`name` zde není. Edi
 
 **`version` je povinná — pošlete zpět tu, ze které jste vykreslovali.** Protože členství je úplná náhrada, uložení postavené nad zastaralým pohledem by tiše smazalo uzly, které mezitím přidal jiný editor. Pošlete `version` z `DiagramDto`, od kterého tato editace začala (z čtení, nebo z odpovědi vašeho vlastního posledního uložení).
 
-Každé úspěšné uložení posune verzi a vrátí hodnotu **po inkrementu**, takže lze řetězit uložení bez opětovného čtení. Plátno bez řádku diagramu posílá `version: 0`. Vynechání je **400** se jménem pole; ve schématu je deklarována jako povinná, takže generovaný klient ji typuje jako nevolitelnou.
+Každé úspěšné uložení posune verzi a vrátí hodnotu **po inkrementu**, takže lze řetězit uložení bez opětovného čtení. Čerstvě vytvořené plátno nese `version: 0` — pošlete zpět to, co vrátil `POST …/create`. Vynechání je **400** se jménem pole; ve schématu je deklarována jako povinná, takže generovaný klient ji typuje jako nevolitelnou.
 
 Pokud mezitím uložil jiný editor, volání vrátí **409** a **nic se nezapíše** — nasazené overlays zůstanou přesně tak, jak byly:
 
@@ -350,7 +384,7 @@ Důsledkem je režim selhání, který dříve neměl obdobu: zápis je **commit
 
 Toto je jediný stav, kdy odpověď se `success: false` přesto znamená, že zápis proběhl, a proto má vlastní kód místo obecné 500.
 
-## Materializace — `POST /api/diagram/{ontologySlug}/materialize` → `MaterializeResultDto`
+## Materializace — `POST /api/diagram/{ontologySlug}/{diagramId}/materialize` → `MaterializeResultDto`
 
 Aplikuje každou nasazenou změnu. Jeden záznam na nasazenou **změnu** (změna může zasahovat dva pojmy). Per-změna částečně-OK; dvoupojmová změna (otočení, vztah→hierarchie) je vše-nebo-nic. Nasazené úpravy se při úspěchu mažou, takže `pendingEdits[]` se vyprázdní.
 
@@ -387,6 +421,35 @@ Aplikuje každou nasazenou změnu. Jeden záznam na nasazenou **změnu** (změna
 - `error: "ERROR"` (HTTP 500) — neočekávané selhání na straně serveru; overlay zůstává. `message` je vždy obecné `"Nastala neočekávaná chyba."` — skutečná příčina se loguje na serveru a nikdy nevrací, takže FE ji má zobrazit tak, jak je, a nepokoušet se ji parsovat.
 - `skippedStale` — odkazovaný pojem už neexistuje; nabídnout odebrání nebo znovuvytvoření.
 
+### `DIAGRAM_EDIT_CONFLICT` (HTTP 409) — tentýž pojem nasazuje jiný diagram
+
+Nasazené úpravy jsou **po diagramech**, takže dvě plátna jednoho slovníku mohou držet protichůdný záměr pro jeden pojem. Materializace kterékoli strany by posunula `updatedAt` toho pojmu — otisk, na který je připnutá úprava té druhé — takže sourozenec by následně selhal na `STALE_BASE`, po jednom pojmu. Materializace proto kontroluje nejdřív a odmítne, **než cokoli zapíše**:
+
+```jsonc
+{ "success": false, "errorCode": "DIAGRAM_EDIT_CONFLICT",
+  "message": "Některé změny kolidují se změnami rozpracovanými v jiném diagramu.",
+  "data": { "conflicts": [
+      { "conceptIri": "https://…/pojem/je-zamestnan-u",
+        "label": { "cs": "je zaměstnán u" },
+        "mine":   { "range": "https://…/pojem/osoba" },
+        "theirs": [ { "diagramId": 4, "diagramName": "Pohled HR",
+                      "pendingEdit": { "range": "https://…/pojem/organizace" } } ] } ] } }
+```
+
+**Kolize je „nasazeno na obou", ne „nasazeno s jinými hodnotami."** Shodné hodnoty kolidují také, ze stejného důvodu — nefiltrujte přehled na klientu jejich porovnáním.
+
+**Nic se nezapsalo.** Nasazená práce obou stran zůstala přesně taková, jaká byla, takže volání lze bezpečně zopakovat, jakmile se uživatel rozhodne.
+
+**Řešení** — zavolejte znovu a pojmenujte stranu:
+
+| `POST …/materialize?onConflict=` | Účinek |
+|---|---|
+| *(vynecháno)* | Detekovat a odmítnout s přehledem výše. Jediné bezpečné výchozí chování. |
+| `DISCARD_MINE` | Zahodit kolidující úpravy **tohoto** diagramu a materializovat zbytek. |
+| `DISCARD_THEIRS` | Zahodit kolidující úpravy **sourozeneckých** diagramů a materializovat. |
+
+V obou případech se **zahodí pouze sporné pojmy** — nesouvisející nasazená práce sourozence přežije. Zahazování u sourozence je povolené, protože oba diagramy patří slovníku, který volající už vlastní.
+
 ### Náprava `STALE_BASE` — zahodit, pak nasadit znovu
 
 > ⚠️ **Opětovné poslání týchž hodnot overlaye `STALE_BASE` nevyčistí.** Otisk zastaralého základu se razítkuje, když overlay na řádku **vznikne**, a dokud zůstává nasazený, už se neobnovuje — právě to brání tomu, aby se souběžná editace pojmu tiše pohltila. Poslání týchž hodnot ponechá starý otisk na místě a znovu vrátí 409.
@@ -409,6 +472,8 @@ Zastaralý uzel se ve čtení dál objevuje s `"stale": true` a nedotčeným ove
 
 `DiagramLayoutDto.required` je `["nodes", "version"]` — **`overlays` jsou volitelné**, takže generovaný klient je typuje jako nullable a stávající místa volání se dál překládají. `DiagramLayoutOverlay.required` je `["conceptIri"]`; `DiagramLayoutOverlayConvertToHierarchy.required` je `["addBroaderOn", "broader"]`.
 
+**Vše přidané kvůli více diagramům je ve schématu záměrně volitelné.** `DiagramLayoutNode.isForeign` ani `DiagramCreateDto.name` nenesou žádné omezení bean validace, takže je generovaný klient typuje jako nullable a stávající místa volání se dál překládají. (`required` se odvozuje výhradně z bean validace — anotování nového pole by ho v generovaném klientu udělalo nevolitelným a rozbilo každého současného volajícího.) `DiagramDto.diagramId`/`name` a `SearchResultDto.diagramId` jsou na straně odpovědi, takže typ požadavku neovlivňují.
+
 ---
 
-*ISMD Tool · diagramová vrstva · FE / REST kontrakt · jediný zápisový endpoint · úplná náhrada rozvržení, přírůstkové overlays · čistě strukturální overlay · materializace per-změna částečně-OK*
+*ISMD Tool · diagramová vrstva · FE / REST kontrakt · více diagramů na ontologii · jediný zápisový endpoint · úplná náhrada rozvržení, přírůstkové overlays · čistě strukturální overlay, po diagramech · cizí pojmy pouze odkazované, nikdy zapisované · materializace per-změna částečně-OK*

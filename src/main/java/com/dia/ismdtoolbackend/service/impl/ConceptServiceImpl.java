@@ -814,7 +814,8 @@ public class ConceptServiceImpl implements ConceptService {
         OwnerChangeSet ownerChangeSet = new OwnerChangeSet();
 
         List<String> domainRangeTargets =
-                nkdLinkDetector.forbiddenDomainRangeTargets(ownerIri, graphScheme, model);
+                nkdLinkDetector.forbiddenDomainRangeTargets(
+                        ownerIri, owner.getConceptType(), graphScheme, model);
         List<NkdLinkDetector.LinkTarget> detectedTargets =
                 nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
 
