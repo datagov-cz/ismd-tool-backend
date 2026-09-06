@@ -195,7 +195,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         save(List.of(CLASS_A, CLASS_B));
         save(List.of(CLASS_A));
 
-        DiagramDto fetched = diagramService.getDiagram(SLUG);
+        DiagramDto fetched = diagramService.getDiagram(SLUG, diagramId());
 
         assertThat(nodeIds(fetched))
                 .as("a later GET must not resurrect the removed class")
@@ -226,7 +226,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         assertThat(propertyIris(after, CLASS_A))
                 .as("a placed property renders as a row in its class cell")
                 .containsExactly(PROP);
-        assertThat(propertyIris(diagramService.getDiagram(SLUG), CLASS_A))
+        assertThat(propertyIris(diagramService.getDiagram(SLUG, diagramId()), CLASS_A))
                 .as("and survives a fresh GET")
                 .containsExactly(PROP);
     }
@@ -247,7 +247,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
                 ConceptDetailModel.builder().iri(created).name(Map.of("cs", "nová vlastnost"))
                         .domain(CLASS_A).build());
 
-        assertThat(propertyIris(diagramService.getDiagram(SLUG), CLASS_A))
+        assertThat(propertyIris(diagramService.getDiagram(SLUG, diagramId()), CLASS_A))
                 .as("a property created elsewhere stays off the canvas until placed")
                 .containsExactly(PROP);
     }
@@ -341,7 +341,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
 
     /** Read inside a transaction — the class runs NOT_SUPPORTED, so {@code nodes} is lazy out here. */
     private boolean rowExists(String conceptIri) {
-        return Boolean.TRUE.equals(txTemplate.execute(tx -> diagramRepo.findByOntologyMetadataSlug(SLUG)
+        return Boolean.TRUE.equals(txTemplate.execute(tx -> diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst()
                 .map(d -> d.getNodes().stream().anyMatch(n -> conceptIri.equals(n.getConceptIri())))
                 .orElse(false)));
     }
@@ -349,8 +349,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
     /** Whether the concept currently carries a staged edit. */
     private boolean isStaged(String conceptIri) {
         return Boolean.TRUE.equals(txTemplate.execute(tx -> pendingEditRepo
-                .findByOntologyMetadataIdAndConceptIri(
-                        ontologyRepo.findBySlug(SLUG).orElseThrow().getId(), conceptIri)
+                .findByDiagramIdAndConceptIri(diagramId(), conceptIri)
                 .isPresent()));
     }
 
@@ -374,10 +373,10 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         for (String iri : classes) {
             nodes.add(new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri,
                     new PositionDto(x, 0.0), null, false,
-                    propertiesByClass.getOrDefault(iri, List.of())));
+                    propertiesByClass.getOrDefault(iri, List.of()), false));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
                 storedVersion(), null, nodes, List.of(), null));
     }
 
@@ -397,11 +396,11 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y),
-                null, false, List.of());
+                null, false, List.of(), false);
     }
 
     private Long storedVersion() {
-        return diagramRepo.findByOntologyMetadataSlug(SLUG).map(DiagramEntity::getVersion).orElse(null);
+        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().map(DiagramEntity::getVersion).orElse(null);
     }
 
     /** Save with exactly these classes on the canvas, carrying these overlays. */
@@ -412,7 +411,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
             nodes.add(node(iri, x, 0));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
                 storedVersion(), null, nodes, List.of(),
                 overlays.length == 0 ? null : List.of(overlays)));
     }
@@ -447,5 +446,22 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
                     mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
+    }
+
+    private Long ontologyId() {
+        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
+    }
+
+    /** The ontology's diagram, created on first use — every write is now addressed by diagram id. */
+    private Long diagramId() {
+        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
+                .findFirst()
+                .map(DiagramEntity::getId)
+                .orElseGet(() -> txTemplate.execute(tx -> {
+                    DiagramEntity d = new DiagramEntity();
+                    d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
+                    d.setName("Test diagram");
+                    return diagramRepo.saveAndFlush(d).getId();
+                }));
     }
 }

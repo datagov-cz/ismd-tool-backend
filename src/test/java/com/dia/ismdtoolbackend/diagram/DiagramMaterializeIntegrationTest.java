@@ -261,6 +261,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     private void stageNode(String conceptIri, DiagramPendingEdit overlay) {
         txTemplate.executeWithoutResult(tx -> {
             DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+            row.setDiagram(diagramRepo.findById(diagramId()).orElseThrow());
             row.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
             row.setConceptIri(conceptIri);
             overlay.setBaseUpdatedAt(conceptRepo.findByConceptIri(conceptIri)
@@ -274,9 +275,10 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     private void restage(String conceptIri, DiagramPendingEdit overlay) {
         txTemplate.executeWithoutResult(tx -> {
             DiagramPendingEditEntity row = pendingEditRepo
-                    .findByOntologyMetadataIdAndConceptIri(ontologyId(), conceptIri)
+                    .findByDiagramIdAndConceptIri(diagramId(), conceptIri)
                     .orElseGet(() -> {
                         DiagramPendingEditEntity fresh = new DiagramPendingEditEntity();
+                        fresh.setDiagram(diagramRepo.findById(diagramId()).orElseThrow());
                         fresh.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
                         fresh.setConceptIri(conceptIri);
                         return fresh;
@@ -288,13 +290,26 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
     /** The staged edit for a concept, or null when nothing is staged. */
     private DiagramPendingEdit stagedEdit(String conceptIri) {
-        return pendingEditRepo.findByOntologyMetadataIdAndConceptIri(ontologyId(), conceptIri)
+        return pendingEditRepo.findByDiagramIdAndConceptIri(diagramId(), conceptIri)
                 .map(DiagramPendingEditEntity::getPendingEdit)
                 .orElse(null);
     }
 
     private Long ontologyId() {
         return ontologyRepo.findBySlug("g-ontology").orElseThrow().getId();
+    }
+
+    /** The g-ontology's diagram, created on first use — staged edits now hang off a diagram. */
+    private Long diagramId() {
+        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
+                .findFirst()
+                .map(DiagramEntity::getId)
+                .orElseGet(() -> txTemplate.execute(tx -> {
+                    DiagramEntity d = new DiagramEntity();
+                    d.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
+                    d.setName("Test diagram");
+                    return diagramRepo.saveAndFlush(d).getId();
+                }));
     }
 
     private Model graph() {
@@ -328,7 +343,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setRange(b.getConceptIri());
         stageNode(relIri, overlay);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.materialized()).hasSize(1);
         assertThat(result.materialized().get(0).op()).isEqualTo(DiagramOp.SWAP_DIRECTION);
@@ -363,7 +378,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
             restage(a.getConceptIri(), staged);
         });
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
@@ -378,7 +393,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setBroaderConcept(List.of("https://x/pojem/whatever"));
         stageNode("https://slovnik.gov.cz/g/pojem/ghost", overlay);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.skippedStale()).hasSize(1);
         assertThat(result.materialized()).isEmpty();
@@ -411,7 +426,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         aOverlay.setExactMatch(List.of(b.getConceptIri()));
         stageNode(a.getConceptIri(), aOverlay);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         // Fix asserted: NO stale-base failure — A's own change is not collided by the op-6 bump.
         assertThat(result.failed())
@@ -443,7 +458,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.failed()).hasSize(1);
         assertThat(result.failed().get(0).error()).isEqualTo("CASCADE_CONFLICT");
@@ -482,7 +497,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        assertThat(materializeService.materialize(ontologyId()).materialized()).hasSize(1);
+        assertThat(materializeService.materialize(diagramId(), ontologyId()).materialized()).hasSize(1);
 
         assertThat(broaderOf(a.getConceptIri()))
                 .as("op-6 adds its broader and keeps the class's existing hierarchy")
@@ -510,7 +525,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        assertThat(materializeService.materialize(ontologyId()).materialized()).hasSize(1);
+        assertThat(materializeService.materialize(diagramId(), ontologyId()).materialized()).hasSize(1);
 
         assertThat(broaderOf(a.getConceptIri())).containsExactly(parent.getConceptIri());
     }
@@ -532,7 +547,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         stageNode(v.getConceptIri(), convert);
 
         // First materialize: succeeds, deletes V, clears the overlay.
-        assertThat(materializeService.materialize(ontologyId()).materialized()).hasSize(1);
+        assertThat(materializeService.materialize(diagramId(), ontologyId()).materialized()).hasSize(1);
         assertThat(graph().containsResource(graph().getResource(v.getConceptIri()))).isFalse();
 
         // Re-stage the same convert on the now-deleted concept and materialize again.
@@ -543,7 +558,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         again.setConvertToHierarchy(m2);
         restage(v.getConceptIri(), again);
 
-        MaterializeResultDto retry = materializeService.materialize(ontologyId());
+        MaterializeResultDto retry = materializeService.materialize(diagramId(), ontologyId());
 
         // The concept row is gone (delete removed it) → the retry resolves to skippedStale, not an error.
         assertThat(retry.skippedStale()).hasSize(1);
@@ -572,7 +587,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         badOverlay.setConvertToHierarchy(marker);
         stageNode(bad.getConceptIri(), badOverlay);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.materialized())
                 .anyMatch(m -> good.getConceptIri().equals(m.conceptIri()));
@@ -599,7 +614,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
             conceptRepo.saveAndFlush(row);
         });
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.failed()).hasSize(1);
         MaterializeResultDto.Failed failure = result.failed().get(0);
@@ -633,7 +648,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setBroaderConcept(List.of(localTarget.getConceptIri()));
         stageNode(victimConcept.getConceptIri(), overlay);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.materialized())
                 .as("a foreign concept must never be materialized").isEmpty();
@@ -667,7 +682,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
@@ -696,7 +711,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.failed()).hasSize(1);
         assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");

@@ -60,8 +60,13 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramEntity diagramFor(OntologyMetadataEntity ontology) {
+        return diagramFor(ontology, "Hlavní diagram");
+    }
+
+    private DiagramEntity diagramFor(OntologyMetadataEntity ontology, String name) {
         DiagramEntity d = new DiagramEntity();
         d.setOntologyMetadata(ontology);
+        d.setName(name);
         d.setViewportX(-120.0);
         d.setViewportY(40.0);
         d.setViewportZoom(0.85);
@@ -86,19 +91,21 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         assertThat(found.getViewportZoom()).isEqualTo(0.85);
         assertThat(found.getVersion()).isNotNull();          // @Version seeded
         assertThat(found.getCreatedAt()).isNotNull();
-        assertThat(diagramRepository.findByOntologyMetadataSlug("pracovni-pomer")).isPresent();
+        assertThat(diagramRepository.findByOntologyMetadataIdOrderByIdAsc(
+                found.getOntologyMetadata().getId())).isNotEmpty();
     }
 
     // A staged edit round-trips through its own table, keyed by (ontology, concept IRI).
     @Test
-    void pendingEditRoundTripsAndIsKeyedByOntologyAndConcept() {
+    void pendingEditRoundTripsAndIsKeyedByDiagramAndConcept() {
         OntologyMetadataEntity ontology = ontology("overlay-carrier");
+        DiagramEntity diagram = diagramFor(ontology);
 
         DiagramPendingEdit edit = new DiagramPendingEdit();
         edit.setRange("https://x/pojem/organizace");
         edit.setExactMatch(List.of("https://x/pojem/pracuje-u"));
         Long id = pendingEditRepository.save(
-                pendingEdit(ontology, "https://x/pojem/je-zamestnan-u", edit)).getId();
+                pendingEdit(diagram, "https://x/pojem/je-zamestnan-u", edit)).getId();
 
         em.flush();
         em.clear();
@@ -110,40 +117,72 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         assertThat(back.getRange()).isEqualTo("https://x/pojem/organizace");
         assertThat(back.getExactMatch()).containsExactly("https://x/pojem/pracuje-u");
 
-        assertThat(pendingEditRepository.findByOntologyMetadataIdAndConceptIri(
-                ontology.getId(), "https://x/pojem/je-zamestnan-u")).isPresent();
+        assertThat(pendingEditRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/je-zamestnan-u")).isPresent();
     }
 
     // A staged edit needs no canvas node: the concept it targets may be off-canvas, or never on it.
     @Test
     void pendingEditNeedsNoLayoutRow() {
         OntologyMetadataEntity ontology = ontology("staged-off-canvas");
+        DiagramEntity diagram = diagramFor(ontology);
         DiagramPendingEdit edit = new DiagramPendingEdit();
         edit.setDomain("https://x/pojem/osoba");
-        pendingEditRepository.save(pendingEdit(ontology, "https://x/pojem/vlastnost", edit));
+        pendingEditRepository.save(pendingEdit(diagram, "https://x/pojem/vlastnost", edit));
 
         em.flush();
         em.clear();
 
-        assertThat(pendingEditRepository.findByOntologyMetadataId(ontology.getId())).hasSize(1);
+        assertThat(pendingEditRepository.findByDiagramId(diagram.getId())).hasSize(1);
         assertThat(nodeRepository.findAll())
                 .as("staging provisions no layout row — membership is nodes[] alone")
                 .noneMatch(n -> "https://x/pojem/vlastnost".equals(n.getConceptIri()));
     }
 
-    // One staged edit per concept per ontology; re-staging updates rather than duplicating.
+    // One staged edit per concept per DIAGRAM; re-staging on the same canvas updates rather than duplicating.
     @Test
     void secondPendingEditForTheSameConcept_violatesTheUniqueConstraint() {
         OntologyMetadataEntity ontology = ontology("dup-staged");
+        DiagramEntity diagram = diagramFor(ontology);
         DiagramPendingEdit edit = new DiagramPendingEdit();
         edit.setRange("https://x/pojem/a");
-        pendingEditRepository.saveAndFlush(pendingEdit(ontology, "https://x/pojem/rel", edit));
+        pendingEditRepository.saveAndFlush(pendingEdit(diagram, "https://x/pojem/rel", edit));
 
         DiagramPendingEdit other = new DiagramPendingEdit();
         other.setRange("https://x/pojem/b");
         assertThatThrownBy(() -> pendingEditRepository.saveAndFlush(
-                pendingEdit(ontology, "https://x/pojem/rel", other)))
+                pendingEdit(diagram, "https://x/pojem/rel", other)))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * The key is (diagram, concept) — NOT (ontology, concept). Two diagrams of one ontology may each
+     * stage their own edit on the same concept; that is precisely the state cross-diagram conflict
+     * detection exists to report, so the schema must be able to represent it.
+     */
+    @Test
+    void sameConceptStagedOnTwoDiagramsOfOneOntology_isAllowed() {
+        OntologyMetadataEntity ontology = ontology("two-canvases");
+        DiagramEntity first = diagramFor(ontology, "Hlavní diagram");
+        DiagramEntity second = diagramFor(ontology, "Pohled HR");
+
+        DiagramPendingEdit mine = new DiagramPendingEdit();
+        mine.setRange("https://x/pojem/a");
+        DiagramPendingEdit theirs = new DiagramPendingEdit();
+        theirs.setRange("https://x/pojem/b");
+
+        pendingEditRepository.saveAndFlush(pendingEdit(first, "https://x/pojem/rel", mine));
+        pendingEditRepository.saveAndFlush(pendingEdit(second, "https://x/pojem/rel", theirs));
+
+        em.flush();
+        em.clear();
+
+        assertThat(pendingEditRepository.findByDiagramId(first.getId())).hasSize(1);
+        assertThat(pendingEditRepository.findByDiagramId(second.getId())).hasSize(1);
+        assertThat(pendingEditRepository.findConflicting(
+                ontology.getId(), first.getId(), List.of("https://x/pojem/rel")))
+                .as("the sibling's staged edit is exactly what the conflict query must surface")
+                .hasSize(1);
     }
 
     // A layout row is layout only — nothing on it carries staged intent.
@@ -156,8 +195,8 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
 
         DiagramNodeEntity reloaded = nodeRepository.findById(id).orElseThrow();
         assertThat(reloaded.getConceptIri()).isEqualTo("https://x/pojem/plain");
-        assertThat(pendingEditRepository.findByOntologyMetadataIdAndConceptIri(
-                reloaded.getDiagram().getOntologyMetadata().getId(), "https://x/pojem/plain"))
+        assertThat(pendingEditRepository.findByDiagramIdAndConceptIri(
+                reloaded.getDiagram().getId(), "https://x/pojem/plain"))
                 .isEmpty();
     }
 
@@ -212,7 +251,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         ontologyRepository.flush();
         em.clear();
 
-        assertThat(diagramRepository.findByOntologyMetadataId(o.getId())).isEmpty();
+        assertThat(diagramRepository.findByOntologyMetadataIdOrderByIdAsc(o.getId())).isEmpty();
         assertThat(nodeRepository.findByDiagramId(diagram.getId())).isEmpty();
         assertThat(edgeRepository.findByDiagramId(diagram.getId())).isEmpty();
     }
@@ -410,10 +449,11 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .hasMessageContaining("discard deletes the row");
     }
 
-    private DiagramPendingEditEntity pendingEdit(OntologyMetadataEntity ontology, String conceptIri,
+    private DiagramPendingEditEntity pendingEdit(DiagramEntity diagram, String conceptIri,
                                                  DiagramPendingEdit edit) {
         DiagramPendingEditEntity row = new DiagramPendingEditEntity();
-        row.setOntologyMetadata(ontology);
+        row.setDiagram(diagram);
+        row.setOntologyMetadata(diagram.getOntologyMetadata());
         row.setConceptIri(conceptIri);
         row.setPendingEdit(edit);
         return row;

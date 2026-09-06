@@ -77,6 +77,7 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         ontologyRepository.save(o);
 
         DiagramEntity d = new DiagramEntity();
+        d.setName("Hlavní diagram");
         d.setOntologyMetadata(o);
         return diagramRepository.save(d);
     }
@@ -91,19 +92,19 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         return n;
     }
 
-    /** Stage an edit on a concept of this diagram's ontology, independently of any layout row. */
+    /** Stage an edit on a concept of this diagram, independently of any layout row. */
     private void stageEdit(DiagramEntity diagram, String iri, DiagramPendingEdit edit) {
         DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+        row.setDiagram(diagram);
         row.setOntologyMetadata(diagram.getOntologyMetadata());
         row.setConceptIri(iri);
         row.setPendingEdit(edit);
         pendingEditRepository.saveAndFlush(row);
     }
 
-    /** The staged edit for a concept of this diagram's ontology, or null when nothing is staged. */
+    /** The staged edit for a concept of this diagram, or null when nothing is staged. */
     private DiagramPendingEdit stagedEdit(DiagramEntity diagram, String iri) {
-        return pendingEditRepository.findByOntologyMetadataIdAndConceptIri(
-                        diagram.getOntologyMetadata().getId(), iri)
+        return pendingEditRepository.findByDiagramIdAndConceptIri(diagram.getId(), iri)
                 .map(DiagramPendingEditEntity::getPendingEdit)
                 .orElse(null);
     }
@@ -153,12 +154,12 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
-        return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y), null, false, List.of());
+        return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y), null, false, List.of(), false);
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y, String parentIri) {
         return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y),
-                parentIri != null ? "iri:" + parentIri : null, false, List.of());
+                parentIri != null ? "iri:" + parentIri : null, false, List.of(), false);
     }
 
     /** Run the two-step reconcile the way the service does: reconcile → flush → finalize → save. */

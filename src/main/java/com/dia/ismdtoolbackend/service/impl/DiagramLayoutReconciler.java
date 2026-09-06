@@ -62,7 +62,7 @@ public class DiagramLayoutReconciler {
         Map<String, DiagramNodeEntity> incoming = new HashMap<>();
         for (DiagramLayoutDto.Node in : layout.nodes()) {
             String iri = mapper.conceptIriFromNodeId(in.id());
-            requireSameGraph(diagramGraphName, iri);
+            requireNodeGraph(diagramGraphName, iri, in.isForeign());
             DiagramNodeEntity node = existing.get(iri);
             if (node == null) {
                 node = new DiagramNodeEntity();
@@ -74,7 +74,7 @@ public class DiagramLayoutReconciler {
             incoming.put(iri, node);
         }
 
-        applyOverlays(diagram.getOntologyMetadata(), layout, diagramGraphName);
+        applyOverlays(diagram, diagram.getOntologyMetadata(), layout, diagramGraphName);
 
         // Membership is a plain full replace: a row absent from nodes[] is off the canvas.
         List<DiagramNodeEntity> toRemove = diagram.getNodes().stream()
@@ -91,8 +91,8 @@ public class DiagramLayoutReconciler {
      *
      * <p>Writes {@code diagram_pending_edits} only, never layout.
      */
-    private void applyOverlays(OntologyMetadataEntity ontology, DiagramLayoutDto layout,
-                               String diagramGraphName) {
+    private void applyOverlays(DiagramEntity diagram, OntologyMetadataEntity ontology,
+                               DiagramLayoutDto layout, String diagramGraphName) {
         if (layout.overlays() == null) {
             return;
         }
@@ -109,7 +109,7 @@ public class DiagramLayoutReconciler {
 
             DiagramPendingEdit edit = mapper.toPendingEdit(in);
             DiagramPendingEditEntity existing = pendingEditRepository
-                    .findByOntologyMetadataIdAndConceptIri(ontology.getId(), iri)
+                    .findByDiagramIdAndConceptIri(diagram.getId(), iri)
                     .orElse(null);
 
             if (edit == null) {
@@ -126,6 +126,7 @@ public class DiagramLayoutReconciler {
             DiagramPendingEditEntity row = existing;
             if (row == null) {
                 row = new DiagramPendingEditEntity();
+                row.setDiagram(diagram);
                 row.setOntologyMetadata(ontology);
                 row.setConceptIri(iri);
                 row.setBaseUpdatedAt(baseUpdatedAt(iri));
@@ -156,6 +157,41 @@ public class DiagramLayoutReconciler {
         }
         requireSameGraph(diagramGraphName, marker.getAddBroaderOn());
         requireSameGraph(diagramGraphName, marker.getBroader());
+    }
+
+    /**
+     * A node's IRI must agree with what the node claims to be.
+     *
+     * <p>An ordinary node may only reference a concept in the diagram's own graph — Save authorizes the
+     * ontology slug, so persisting a foreign IRI unflagged would stage a write the caller was never
+     * authorized for. A node explicitly marked foreign is the deliberate exception: it is placed for
+     * context and rendered read-only, and it must genuinely resolve elsewhere, so a foreign flag on an
+     * own-graph concept is rejected too. The flag is a claim, and a false claim in either direction is a
+     * bug worth surfacing rather than silently normalizing.
+     *
+     * <p>This exemption covers node placement ONLY. Overlay targets stay strictly own-graph
+     * ({@link #requireSameGraph}), so a foreign concept can be referenced but never edited — which is what
+     * keeps the cross-tenant write fix intact.
+     */
+    private void requireNodeGraph(String diagramGraphName, String conceptIri, boolean claimsForeign) {
+        if (!claimsForeign) {
+            requireSameGraph(diagramGraphName, conceptIri);
+            return;
+        }
+        if (conceptIri == null) {
+            return;
+        }
+        String graphName = conceptMetadataRepository.findByConceptIri(conceptIri)
+                .map(ConceptMetadataEntity::getGraphName)
+                .orElse(null);
+        // A concept with no PG row is an NKD or otherwise external IRI — foreign by construction.
+        if (graphName != null && java.util.Objects.equals(diagramGraphName, graphName)) {
+            log.warn("Rejected node {} flagged foreign but owned by this diagram's graph {}",
+                    conceptIri, diagramGraphName);
+            throw new ConceptValidationException(
+                    "Pojem " + conceptIri + " patří do slovníku tohoto diagramu a nelze jej označit "
+                            + "jako cizí.");
+        }
     }
 
     /**
@@ -204,6 +240,7 @@ public class DiagramLayoutReconciler {
     }
 
     private void applyNodeLayout(DiagramNodeEntity node, DiagramLayoutDto.Node in) {
+        node.setForeign(in.isForeign());
         PositionDto pos = in.position();
         node.setPosX(pos.x());
         node.setPosY(pos.y());

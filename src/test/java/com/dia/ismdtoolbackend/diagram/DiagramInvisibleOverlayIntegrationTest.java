@@ -172,12 +172,12 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
-        return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of());
+        return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of(), false);
     }
 
     /** The version a fresh GET would report — null before the first save provisions the diagram row. */
     private Long storedVersion() {
-        return diagramRepo.findByOntologyMetadataSlug(SLUG).map(DiagramEntity::getVersion).orElse(null);
+        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().map(DiagramEntity::getVersion).orElse(null);
     }
 
     /** Save with exactly these classes on the canvas, carrying these overlays. */
@@ -188,7 +188,7 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
             nodes.add(node(iri, x, 0));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
                 storedVersion(), null, nodes, List.of(),
                 overlays.length == 0 ? null : List.of(overlays)));
     }
@@ -200,10 +200,10 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         double x = 0;
         for (String iri : canvasClasses) {
             nodes.add(new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, 0.0),
-                    null, false, iri.equals(hostClass) ? List.of(PROP) : List.of()));
+                    null, false, iri.equals(hostClass) ? List.of(PROP) : List.of(), false));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, new DiagramLayoutDto(
+        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
                 storedVersion(), null, nodes, List.of(),
                 overlays.length == 0 ? null : List.of(overlays)));
     }
@@ -510,5 +510,22 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
                     mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
+    }
+
+    private Long ontologyId() {
+        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
+    }
+
+    /** The ontology's diagram, created on first use — every write is now addressed by diagram id. */
+    private Long diagramId() {
+        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
+                .findFirst()
+                .map(DiagramEntity::getId)
+                .orElseGet(() -> txTemplate.execute(tx -> {
+                    DiagramEntity d = new DiagramEntity();
+                    d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
+                    d.setName("Test diagram");
+                    return diagramRepo.saveAndFlush(d).getId();
+                }));
     }
 }

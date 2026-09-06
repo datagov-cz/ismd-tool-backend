@@ -74,7 +74,12 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     private void diagramFor(OntologyMetadataEntity o) {
+        diagramFor(o, "Hlavní diagram");
+    }
+
+    private void diagramFor(OntologyMetadataEntity o, String name) {
         DiagramEntity d = new DiagramEntity();
+        d.setName(name);
         d.setOntologyMetadata(o);
         diagramRepository.save(d);
     }
@@ -137,7 +142,10 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(hits).hasSize(1);
         SearchResultDto dto = hits.get(0);
         // Each of these dereferences the LAZY ontologyMetadata association.
-        assertThat(dto.getIri()).isEqualTo("https://x/pracovni-pomer#diagram");
+        assertThat(dto.getIri()).isEqualTo("https://x/pracovni-pomer#diagram-" + dto.getId());
+        assertThat(dto.getDiagramId())
+                .as("the routing key: /api/diagram/{slug}/{diagramId}/detail")
+                .isEqualTo(dto.getId());
         assertThat(dto.getSlug()).isEqualTo("pracovni-pomer");
         assertThat(dto.getOntologyIri()).isEqualTo("https://x/pracovni-pomer");
         assertThat(dto.getType()).isEqualTo(SearchType.DIAGRAM);
@@ -151,7 +159,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         SearchResultDto dto = lookup.search("rejstrik", null).get(0);
 
         assertThat(dto.getIri()).isNotEqualTo(dto.getOntologyIri());
-        assertThat(dto.getIri()).endsWith("#diagram");
+        assertThat(dto.getIri()).contains("#diagram-");
     }
 
     /** A graphless ontology still yields a non-null dedup key. */
@@ -172,5 +180,26 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(lookup.count("pomer", null)).isEqualTo(2);
         assertThat(lookup.search("pomer", null)).hasSize(2);
+    }
+
+    /**
+     * Two canvases of one ontology are two destinations, so each is its own row — with an IRI that
+     * separates them (a shared one would dedup-collapse them) and its own name as the label.
+     */
+    @Test
+    void twoDiagramsOfOneOntology_areTwoDistinctRows() {
+        OntologyMetadataEntity o = ontology("pracovni-pomer", "https://x/pracovni-pomer");
+        diagramFor(o, "Hlavní diagram");
+        diagramFor(o, "Pohled HR");
+
+        List<SearchResultDto> hits = lookup.search("pomer", null);
+
+        assertThat(hits).hasSize(2);
+        assertThat(hits).extracting(SearchResultDto::getLabel)
+                .containsExactlyInAnyOrder("Hlavní diagram", "Pohled HR");
+        assertThat(hits).extracting(SearchResultDto::getIri)
+                .as("a shared synthetic IRI would collapse the two rows on a type=null pass")
+                .doesNotHaveDuplicates();
+        assertThat(lookup.count("pomer", null)).isEqualTo(2);
     }
 }

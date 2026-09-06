@@ -106,6 +106,7 @@ public class DiagramMapper {
                 stale,
                 hasPendingEdits,
                 overlay,
-                properties != null ? properties : List.of());
+                properties != null ? properties : List.of(),
+                node.isForeign());
     }
 }

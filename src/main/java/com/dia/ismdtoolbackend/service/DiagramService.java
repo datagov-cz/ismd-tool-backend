@@ -17,8 +17,17 @@ public interface DiagramService {
     /** Lightweight list of every diagram (identity + node count), for a diagram picker. */
     List<DiagramSummaryDto> listAll();
 
+    /** The ontology's diagrams, oldest first — identity and node count only. */
+    List<DiagramSummaryDto> listForOntology(String ontologySlug);
+
+    /** Create a new, empty canvas for an ontology. An ontology may hold many. */
+    DiagramDto createDiagram(String ontologySlug, String name);
+
+    /** Delete one diagram, its layout and its staged edits. The ontology's concepts are untouched. */
+    void deleteDiagram(String ontologySlug, Long diagramId);
+
     /** Fat read: layout joined to live concept content with each node's overlay applied, edges projected. */
-    DiagramDto getDiagram(String ontologySlug);
+    DiagramDto getDiagram(String ontologySlug, Long diagramId);
 
     /**
      * Save (PG only, no RDF) — the diagram's only write. Layout is a full replace: the node set is canvas
@@ -26,8 +35,21 @@ public interface DiagramService {
      * staged: a concept absent from {@code overlays} keeps its overlay, and an entry carrying only
      * {@code conceptIri} discards that one.
      */
-    DiagramDto saveLayout(String ontologySlug, DiagramLayoutDto layout);
+    DiagramDto saveLayout(String ontologySlug, Long diagramId, DiagramLayoutDto layout);
 
-    /** Převzít: apply every staged change via the concept CRUD → outbox → RDF, clearing each on success. */
-    MaterializeResultDto materialize(String ontologySlug);
+    /**
+     * Převzít: apply every staged change via the concept CRUD → outbox → RDF, clearing each on success.
+     *
+     * <p>Refuses with a conflict report when a sibling diagram of the same ontology stages an edit on
+     * one of the same concepts, unless {@code onConflict} says which side to discard.
+     */
+    MaterializeResultDto materialize(String ontologySlug, Long diagramId, ConflictResolution onConflict);
+
+    /** How to proceed when sibling diagrams stage edits on the same concept. */
+    enum ConflictResolution {
+        /** Discard the conflicting edits staged on THIS diagram, then materialize what remains. */
+        DISCARD_MINE,
+        /** Discard the conflicting edits staged on the SIBLING diagrams, then materialize. */
+        DISCARD_THEIRS
+    }
 }

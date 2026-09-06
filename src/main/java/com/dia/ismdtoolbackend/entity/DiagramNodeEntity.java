@@ -62,6 +62,15 @@ public class DiagramNodeEntity {
     @Column(name = "visible_properties_json", columnDefinition = "text")
     private String visiblePropertiesJson;
 
+    /**
+     * This node references a concept OUTSIDE the diagram's ontology graph — placed for context and
+     * rendered read-only. It is a claim the write path verifies: a foreign IRI is accepted only on a row
+     * that sets this, and a row that sets it must genuinely resolve to another graph. The diagram may
+     * reference such a concept, never edit it, so an overlay is never allowed to target one.
+     */
+    @Column(name = "is_foreign", nullable = false)
+    private boolean isForeign = false;
+
     @PrePersist
     @PreUpdate
     private void validateNodeInvariant() {

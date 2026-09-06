@@ -3,11 +3,14 @@ package com.dia.ismdtoolbackend.controller.dto.diagram;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
- * Lightweight diagram list entry for {@code GET /api/diagram/all} — identity plus a node count, without
- * the fat {@link DiagramDto} join to live content. See {@code docs/DIAGRAM_LAYER_API.md}.
+ * Lightweight diagram list entry — identity plus a node count, without the fat {@link DiagramDto} join
+ * to live content. An ontology may have many diagrams, so {@code diagramId} is the routing key.
+ * See {@code docs/DIAGRAM_LAYER_API.md}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DiagramSummaryDto(
+        Long diagramId,
+        String name,
         String ontologySlug,
         String ontologyName,
         String graphName,

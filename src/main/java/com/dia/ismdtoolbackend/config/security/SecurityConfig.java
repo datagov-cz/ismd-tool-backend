@@ -212,9 +212,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/diagram/all").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/diagram/*/detail").authenticated()
-                        .requestMatchers(HttpMethod.PUT,   "/api/diagram/*/layout").authenticated()
-                        .requestMatchers(HttpMethod.POST,  "/api/diagram/*/materialize").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/*/list").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/diagram/*/create").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/*/*/detail").authenticated()
+                        .requestMatchers(HttpMethod.PUT,   "/api/diagram/*/*/layout").authenticated()
+                        .requestMatchers(HttpMethod.POST,  "/api/diagram/*/*/materialize").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/diagram/*/*").authenticated()
                         .requestMatchers("/api/ai/**").authenticated()
                         // Admin-only PG↔TDB2 reconciler. Role check is enforced by
                         // @PreAuthorize("hasRole('ADMIN')") on the controller; this matcher

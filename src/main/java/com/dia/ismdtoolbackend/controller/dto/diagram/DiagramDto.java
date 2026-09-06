@@ -20,6 +20,8 @@ import java.util.Map;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record DiagramDto(
+        Long diagramId,
+        String name,
         String ontologySlug,
         Long version,
         ViewportDto viewport,
@@ -84,7 +86,13 @@ public record DiagramDto(
             boolean stale,
             boolean hasPendingEdits,
             DiagramPendingEdit pendingEdit,
-            @JsonInclude List<PropertyRow> properties
+            @JsonInclude List<PropertyRow> properties,
+            /*
+             * This node's concept belongs to another ontology (or NKD). Drawn for context and never
+             * editable from here: the diagram may reference a foreign concept but never write one, so no
+             * overlay may target it.
+             */
+            boolean readOnly
     ) {
     }
 

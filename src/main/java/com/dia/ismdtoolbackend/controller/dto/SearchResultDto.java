@@ -37,4 +37,10 @@ public class SearchResultDto {
     private String lastModified;
     /** Populated only for {@code type=ONTOLOGY} results. */
     private Integer conceptCount;
+    /**
+     * Populated only for {@code type=DIAGRAM} results — the routing key, used with {@code slug}:
+     * {@code GET /api/diagram/{slug}/{diagramId}/detail}. An ontology may hold many diagrams, so the
+     * slug alone no longer identifies one.
+     */
+    private Long diagramId;
 }

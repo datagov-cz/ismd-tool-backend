@@ -46,12 +46,21 @@ public record DiagramLayoutDto(
             String parentId,
             Boolean collapsed,
             /* The VLASTNOST rows this class cell renders — authoritative full-replace, like `position`.*/
-            List<String> properties
+            List<String> properties,
+            /*
+             * This node references a concept from ANOTHER ontology (or NKD), placed for context and
+             * rendered read-only. Optional; omitted means an ordinary own-ontology node. The server
+             * verifies the claim both ways — a foreign IRI is accepted only with this set, and setting it
+             * on an own-graph concept is a 400. It permits PLACEMENT only: an overlay may never target a
+             * foreign concept, so it can be referenced but never edited.
+             */
+            Boolean isForeign
     ) {
 
         public Node {
             collapsed = collapsed != null && collapsed;
             properties = properties != null ? List.copyOf(properties) : List.of();
+            isForeign = isForeign != null && isForeign;
         }
     }
 

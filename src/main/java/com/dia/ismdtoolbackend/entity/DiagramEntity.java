@@ -14,7 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The canonical visual layout of one ontology — a ReactFlow canvas. One diagram per ontology.
+ * One visual layout of an ontology — a ReactFlow canvas. An ontology may have MANY diagrams, each a
+ * differently-scoped view of the same concepts.
  *
  * <p>Holds only presentation data: node positions, edges the diagram owns, and the saved viewport. It
  * never owns concept content — real-concept nodes reference an IRI and are joined to live PG/RDF on read;
@@ -41,8 +42,8 @@ import java.util.List;
 @Table(
         name = "diagrams",
         uniqueConstraints = @UniqueConstraint(
-                name = "uq_diagrams_ontology_metadata",
-                columnNames = "ontology_metadata_id"))
+                name = "uq_diagrams_ontology_name",
+                columnNames = {"ontology_metadata_id", "name"}))
 @EntityListeners(AuditingEntityListener.class)
 @NoArgsConstructor
 @Getter
@@ -54,14 +55,24 @@ public class DiagramEntity {
     private Long id;
 
     /**
-     * The ontology this canvas visualizes. Unique — one canonical diagram per ontology. DB-cascade on
-     * ontology delete drops the diagram (and, via their own FKs, its nodes and edges).
+     * The ontology this canvas visualizes. Many diagrams may share one ontology. DB-cascade on ontology
+     * delete drops every diagram (and, via their own FKs, their nodes, edges and staged edits).
      *
-     * <p>Ownership is gated by diagram's ontology. Diagram carries no owner column of its own.
+     * <p>Ownership is gated by the diagram's ontology. A diagram carries no owner column of its own, so
+     * an endpoint that authorizes the ontology slug must still assert that the diagram it was handed
+     * belongs to that ontology — the slug alone does not constrain the id.
      */
-    @OneToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)
     private OntologyMetadataEntity ontologyMetadata;
+
+    /**
+     * User-facing name, distinguishing this canvas from the ontology's other diagrams. Unique within the
+     * ontology (not globally — two slovníky may each have a "Hlavní diagram"), because the name is how a
+     * user tells two canvases apart in a picker or a search result.
+     */
+    @Column(name = "name", nullable = false)
+    private String name;
 
     /** Saved pan/zoom, restored on load. Null until the canvas is first saved. */
     @Column(name = "viewport_x")

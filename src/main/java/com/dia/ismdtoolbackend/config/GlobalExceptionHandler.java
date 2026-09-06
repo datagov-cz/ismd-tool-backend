@@ -4,6 +4,7 @@ import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.DownloadBlockedByValidationDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramReadbackFailureDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.exception.*;
@@ -53,6 +54,28 @@ public class GlobalExceptionHandler {
             DiagramServiceImpl.DiagramVersionConflictException e) {
         log.warn("Diagram version conflict: {}", e.getMessage());
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.CONFLICT);
+    }
+
+    /** A diagram name is already taken within its ontology (names identify a canvas to the user). */
+    @ExceptionHandler(DiagramNameConflictException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramNameConflict(DiagramNameConflictException e) {
+        log.warn("Diagram name conflict: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResponseDto.error(null, e.getMessage(), DiagramNameConflictException.ERROR_CODE));
+    }
+
+    /**
+     * Sibling diagrams stage competing edits on the same concept and the caller named no resolution.
+     * 409 with the report: nothing was written, and the FE re-calls with {@code onConflict} once the
+     * user has chosen a side.
+     */
+    @ExceptionHandler(DiagramEditConflictException.class)
+    public ResponseEntity<ApiResponseDto<DiagramConflictDto>> handleDiagramEditConflict(
+            DiagramEditConflictException e) {
+        log.warn("Diagram materialize blocked by cross-diagram conflict: {} concept(s)",
+                e.getReport().conflicts().size());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
+                e.getReport(), e.getMessage(), DiagramEditConflictException.ERROR_CODE));
     }
 
     /**

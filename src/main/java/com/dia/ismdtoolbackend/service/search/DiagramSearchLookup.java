@@ -58,8 +58,13 @@ public class DiagramSearchLookup {
     }
 
     /**
-     * Synthetic IRI ({@code <graphName>#diagram}) so a diagram row never dedup-collides with its
-     * ontology's own ONTOLOGY row on a {@code type=null} pass.
+     * Synthetic IRI ({@code <graphName>#diagram-<id>}) so a diagram row never dedup-collides with its
+     * ontology's own ONTOLOGY row on a {@code type=null} pass — and, since an ontology may hold many
+     * diagrams, so that its diagrams do not collide with each other either.
+     *
+     * <p>{@code label} is the diagram's own name, which is what distinguishes two canvases of one
+     * ontology in a result list; {@code slug} stays the ontology's, and pairs with {@code diagramId}
+     * to route: {@code /api/diagram/{slug}/{diagramId}/detail}.
      *
      * <p>{@code isPublished} is the ontology's — a diagram has no publish state of its own.
      */
@@ -68,9 +73,10 @@ public class DiagramSearchLookup {
         String slug = d.getOntologyMetadata().getSlug();
         return SearchResultDto.builder()
                 .id(d.getId())
-                .iri(graphName != null ? graphName + "#diagram" : "diagram:" + d.getId())
+                .diagramId(d.getId())
+                .iri(graphName != null ? graphName + "#diagram-" + d.getId() : "diagram:" + d.getId())
                 .slug(slug)
-                .label(slug)
+                .label(d.getName() != null ? d.getName() : slug)
                 .type(SearchType.DIAGRAM)
                 .source(SearchSource.ISMD)
                 .ontologyIri(graphName)

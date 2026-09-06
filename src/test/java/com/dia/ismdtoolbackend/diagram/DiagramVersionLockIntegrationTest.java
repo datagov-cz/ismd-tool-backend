@@ -110,14 +110,14 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
 
     private DiagramLayoutDto layout(Long version, String... iris) {
         List<DiagramLayoutDto.Node> nodes = java.util.Arrays.stream(iris)
-                .map(iri -> new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(0.0, 0.0), null, false, List.of()))
+                .map(iri -> new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(0.0, 0.0), null, false, List.of(), false))
                 .toList();
         return new DiagramLayoutDto(version, null, nodes, List.of(), null);
     }
 
     private List<String> persistedIris() {
         return txTemplate.execute(tx ->
-                nodeRepository.findByDiagramId(diagramRepository.findByOntologyMetadataSlug(SLUG)
+                nodeRepository.findByDiagramId(diagramRepository.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst()
                                 .orElseThrow().getId()).stream()
                         .map(DiagramNodeEntity::getConceptIri)
                         .toList());
@@ -132,7 +132,7 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
     void firstSave_withZeroVersion_isAccepted() {
         String a = seedConcept("a");
 
-        DiagramDto saved = service.saveLayout(SLUG, layout(0L, a));
+        DiagramDto saved = service.saveLayout(SLUG, diagramId(), layout(0L, a));
 
         assertThat(saved.version()).isNotNull();
         assertThat(persistedIris()).containsExactly(a);
@@ -143,8 +143,8 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
     void saveResponse_carriesTheBumpedVersion() {
         String a = seedConcept("a");
 
-        DiagramDto first = service.saveLayout(SLUG, layout(null, a));
-        DiagramDto second = service.saveLayout(SLUG, layout(first.version(), a));
+        DiagramDto first = service.saveLayout(SLUG, diagramId(), layout(null, a));
+        DiagramDto second = service.saveLayout(SLUG, diagramId(), layout(first.version(), a));
 
         assertThat(second.version())
                 .as("version advances, so the echoed value is never stale on the next save")
@@ -161,10 +161,10 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
     void saveResponse_versionMatchesTheStoredRow() {
         String a = seedConcept("a");
 
-        DiagramDto saved = service.saveLayout(SLUG, layout(null, a));
+        DiagramDto saved = service.saveLayout(SLUG, diagramId(), layout(null, a));
 
         Long stored = txTemplate.execute(tx ->
-                diagramRepository.findByOntologyMetadataSlug(SLUG).orElseThrow().getVersion());
+                diagramRepository.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().orElseThrow().getVersion());
         assertThat(saved.version())
                 .as("response version must be the stored one, or the client's next save falsely conflicts")
                 .isEqualTo(stored);
@@ -180,15 +180,15 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         String a = seedConcept("a");
         String b = seedConcept("b");
 
-        DiagramDto loaded = service.saveLayout(SLUG, layout(null, a));
+        DiagramDto loaded = service.saveLayout(SLUG, diagramId(), layout(null, a));
         Long staleVersion = loaded.version();          // what BOTH editors are holding
 
         // Editor B saves first: canvas is now {a, b}.
-        service.saveLayout(SLUG, layout(staleVersion, a, b));
+        service.saveLayout(SLUG, diagramId(), layout(staleVersion, a, b));
         assertThat(persistedIris()).containsExactlyInAnyOrder(a, b);
 
         // Editor A saves its own view {a} using the now-stale version.
-        assertThatThrownBy(() -> service.saveLayout(SLUG, layout(staleVersion, a)))
+        assertThatThrownBy(() -> service.saveLayout(SLUG, diagramId(), layout(staleVersion, a)))
                 .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
 
         // B's node survives — the silent-delete this finding is about did not happen.
@@ -203,10 +203,10 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         String a = seedConcept("a");
         String b = seedConcept("b");
 
-        DiagramDto first = service.saveLayout(SLUG, layout(null, a));
-        service.saveLayout(SLUG, layout(first.version(), a, b));
+        DiagramDto first = service.saveLayout(SLUG, diagramId(), layout(null, a));
+        service.saveLayout(SLUG, diagramId(), layout(first.version(), a, b));
 
-        assertThatThrownBy(() -> service.saveLayout(SLUG, layout(null, a)))
+        assertThatThrownBy(() -> service.saveLayout(SLUG, diagramId(), layout(null, a)))
                 .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
         assertThat(persistedIris()).containsExactlyInAnyOrder(a, b);
     }
@@ -246,5 +246,22 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
                     mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
         }
+    }
+
+    private Long ontologyId() {
+        return ontologyRepository.findBySlug(SLUG).orElseThrow().getId();
+    }
+
+    /** The ontology's diagram, created on first use — every write is now addressed by diagram id. */
+    private Long diagramId() {
+        return diagramRepository.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
+                .findFirst()
+                .map(DiagramEntity::getId)
+                .orElseGet(() -> txTemplate.execute(tx -> {
+                    DiagramEntity d = new DiagramEntity();
+                    d.setOntologyMetadata(ontologyRepository.findBySlug(SLUG).orElseThrow());
+                    d.setName("Test diagram");
+                    return diagramRepository.saveAndFlush(d).getId();
+                }));
     }
 }

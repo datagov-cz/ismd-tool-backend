@@ -20,9 +20,16 @@ import java.time.LocalDateTime;
 /**
  * One staged, uncommitted structural edit to a real concept, applied to RDF by Převzít.
  *
- * <p>Scoped to the ontology and keyed by concept IRI — never to a diagram or a canvas node, so a staged
- * edit is independent of what the canvas shows. A row exists only while there is an edit: discarding
- * deletes it. See {@code docs/DIAGRAM_LAYER.md}.
+ * <p>Scoped to the DIAGRAM and keyed by concept IRI. Each canvas stages independently, so two diagrams
+ * of one ontology may hold competing edits on the same concept — that is what makes a cross-diagram
+ * conflict a detectable state instead of a shared row one save silently overwrites. It is still
+ * independent of canvas <em>membership</em>: a staged edit needs no node row and survives a node's
+ * removal.
+ *
+ * <p>{@code ontologyMetadata} is kept alongside {@code diagram} deliberately — it is the cheap scope
+ * check and the join key for the conflict query, which looks for one concept staged across SIBLING
+ * diagrams of the same ontology. A row exists only while there is an edit: discarding deletes it.
+ * See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Entity
 @Table(name = "diagram_pending_edits")
@@ -37,6 +44,12 @@ public class DiagramPendingEditEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** The canvas that staged this edit. Deleting the diagram discards its staged work (DB cascade). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "diagram_id", nullable = false)
+    private DiagramEntity diagram;
+
+    /** The diagram's ontology, denormalized: the scope check and the sibling-conflict join key. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)
     private OntologyMetadataEntity ontologyMetadata;

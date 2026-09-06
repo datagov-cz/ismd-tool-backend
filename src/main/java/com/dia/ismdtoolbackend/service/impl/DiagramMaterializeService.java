@@ -32,31 +32,31 @@ public class DiagramMaterializeService {
     private final DiagramChangeApplier changeApplier;
     private final DiagramPendingEditRepository pendingEditRepository;
 
-    /** Apply every staged edit on the ontology, each in its own transaction; aggregate the outcomes. */
-    public MaterializeResultDto materialize(Long ontologyId) {
+    /** Apply every staged edit on the diagram, each in its own transaction; aggregate the outcomes. */
+    public MaterializeResultDto materialize(Long diagramId, Long ontologyId) {
         List<MaterializeResultDto.Materialized> materialized = new ArrayList<>();
         List<MaterializeResultDto.Failed> failed = new ArrayList<>();
         List<MaterializeResultDto.SkippedStale> skippedStale = new ArrayList<>();
 
-        for (String conceptIri : orderedWorkList(ontologyId)) {
+        for (String conceptIri : orderedWorkList(diagramId)) {
             try {
-                Outcome outcome = changeApplier.applyChange(ontologyId, conceptIri);
+                Outcome outcome = changeApplier.applyChange(diagramId, ontologyId, conceptIri);
                 if (outcome.kind() == Outcome.Kind.SKIPPED_STALE) {
                     skippedStale.add(new MaterializeResultDto.SkippedStale(conceptIri));
                 } else {
                     materialized.add(new MaterializeResultDto.Materialized(conceptIri, outcome.op()));
                 }
             } catch (StaleBaseException e) {
-                failed.add(fail(ontologyId, conceptIri, "STALE_BASE", e.getMessage(), 409));
+                failed.add(fail(diagramId, conceptIri, "STALE_BASE", e.getMessage(), 409));
             } catch (CascadeConflictException e) {
-                failed.add(fail(ontologyId, conceptIri, "CASCADE_CONFLICT", e.getMessage(), 409));
+                failed.add(fail(diagramId, conceptIri, "CASCADE_CONFLICT", e.getMessage(), 409));
             } catch (ForeignConceptException e) {
-                failed.add(fail(ontologyId, conceptIri, "FOREIGN_CONCEPT", e.getMessage(), 400));
+                failed.add(fail(diagramId, conceptIri, "FOREIGN_CONCEPT", e.getMessage(), 400));
             } catch (ConceptValidationException | OntologyValidationException e) {
-                failed.add(fail(ontologyId, conceptIri, "VALIDATION", e.getMessage(), 400));
+                failed.add(fail(diagramId, conceptIri, "VALIDATION", e.getMessage(), 400));
             } catch (RuntimeException e) {
                 log.error("Materialize failed for concept {}", conceptIri, e);
-                failed.add(fail(ontologyId, conceptIri, "ERROR", "Nastala neočekávaná chyba.", 500));
+                failed.add(fail(diagramId, conceptIri, "ERROR", "Nastala neočekávaná chyba.", 500));
             }
         }
 
@@ -67,29 +67,29 @@ public class DiagramMaterializeService {
      * The staged work-list, ordered so every {@link DiagramOp#CONVERT_TO_HIERARCHY} applies LAST — it bumps
      * its target class's {@code updatedAt}, which would otherwise falsely stale that class's own edit.
      */
-    private List<String> orderedWorkList(Long ontologyId) {
-        List<String> iris = new ArrayList<>(pendingEditRepository.findStagedConceptIris(ontologyId));
+    private List<String> orderedWorkList(Long diagramId) {
+        List<String> iris = new ArrayList<>(pendingEditRepository.findStagedConceptIris(diagramId));
         iris.sort(java.util.Comparator.comparingInt(
-                iri -> isConvertToHierarchy(ontologyId, iri) ? 1 : 0));
+                iri -> isConvertToHierarchy(diagramId, iri) ? 1 : 0));
         return iris;
     }
 
     /** Classify a staged op without applying it (own read; the edit may have raced away → false). */
-    private boolean isConvertToHierarchy(Long ontologyId, String conceptIri) {
-        DiagramOp op = classifyStaged(ontologyId, conceptIri);
+    private boolean isConvertToHierarchy(Long diagramId, String conceptIri) {
+        DiagramOp op = classifyStaged(diagramId, conceptIri);
         return op == DiagramOp.CONVERT_TO_HIERARCHY;
     }
 
     /** Build a failure entry; the change rolled back, so the still-staged edit is re-read for its op. */
-    private MaterializeResultDto.Failed fail(Long ontologyId, String conceptIri, String error,
+    private MaterializeResultDto.Failed fail(Long diagramId, String conceptIri, String error,
                                              String message, int status) {
         return new MaterializeResultDto.Failed(
-                conceptIri, classifyStaged(ontologyId, conceptIri), error, message, status);
+                conceptIri, classifyStaged(diagramId, conceptIri), error, message, status);
     }
 
     /** The op a concept's staged edit would apply, or null when nothing is staged for it. */
-    private DiagramOp classifyStaged(Long ontologyId, String conceptIri) {
-        return pendingEditRepository.findByOntologyMetadataIdAndConceptIri(ontologyId, conceptIri)
+    private DiagramOp classifyStaged(Long diagramId, String conceptIri) {
+        return pendingEditRepository.findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .map(DiagramPendingEditEntity::getPendingEdit)
                 .map(changeApplier::classify)
                 .orElse(null);

@@ -71,7 +71,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void getAll_returnsDiagramSummaries() throws Exception {
         when(diagramService.listAll()).thenReturn(List.of(
-                new DiagramSummaryDto("pracovni-pomer", "pracovni-pomer",
+                new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer", "pracovni-pomer",
                         "https://x/pracovni-pomer", 7, "2026-07-21T10:00:00")));
 
         mockMvc.perform(get("/api/diagram/all"))
@@ -84,11 +84,11 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "not-the-owner")
     void getDetail_readableByNonOwner() throws Exception {
         TestOntologySecurityService.setAllowModify(false);   // not the owner → writes would 403
-        when(diagramService.getDiagram(eq("pracovni-pomer")))
-                .thenReturn(new DiagramDto("pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
+        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
 
         // canViewResource() (any authenticated) gates the read, NOT belongsToUserBySlug → still 200.
-        mockMvc.perform(get("/api/diagram/pracovni-pomer/detail"))
+        mockMvc.perform(get("/api/diagram/pracovni-pomer/5/detail"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.ontologySlug").value("pracovni-pomer"));
     }
@@ -99,17 +99,17 @@ class DiagramControllerTest {
     void materialize_forbiddenForNonOwner() throws Exception {
         TestOntologySecurityService.setAllowModify(false);   // belongsToUserBySlug → false
 
-        mockMvc.perform(post("/api/diagram/pracovni-pomer/materialize"))
+        mockMvc.perform(post("/api/diagram/pracovni-pomer/5/materialize"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
     void materialize_allowedForOwner() throws Exception {
-        when(diagramService.materialize(eq("pracovni-pomer")))
+        when(diagramService.materialize(eq("pracovni-pomer"), eq(5L), any()))
                 .thenReturn(new MaterializeResultDto(List.of(), List.of(), List.of()));
 
-        mockMvc.perform(post("/api/diagram/pracovni-pomer/materialize"))
+        mockMvc.perform(post("/api/diagram/pracovni-pomer/5/materialize"))
                 .andExpect(status().isOk());
     }
 
@@ -123,10 +123,10 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_overlayConceptIriWithSlashesTravelsInBody() throws Exception {
         String conceptIri = "iri:https://slovník.gov.cz/a124---datový-slovník-iskn/pojem/budova-je-umístěna-na-parcele";
-        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), List.of()));
+        when(diagramService.saveLayout(eq("pracovni-pomer"), eq(5L), any()))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 1L, null, List.of(), List.of(), List.of()));
 
-        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"version": 1, "nodes": [], "overlays": [
@@ -137,7 +137,7 @@ class DiagramControllerTest {
                 .andExpect(status().isOk());
 
         ArgumentCaptor<DiagramLayoutDto> captor = ArgumentCaptor.forClass(DiagramLayoutDto.class);
-        verify(diagramService).saveLayout(eq("pracovni-pomer"), captor.capture());
+        verify(diagramService).saveLayout(eq("pracovni-pomer"), eq(5L), captor.capture());
         assertThat(captor.getValue().overlays()).singleElement()
                 .satisfies(o -> assertThat(o.conceptIri()).isEqualTo(conceptIri));
     }
@@ -146,27 +146,27 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_overlayRejectsMissingConceptIri() throws Exception {
-        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\": 1, \"nodes\": [], \"overlays\": [{\"domain\": \"https://x/A\"}]}"))
                 .andExpect(status().isBadRequest());
-        verify(diagramService, never()).saveLayout(any(), any());
+        verify(diagramService, never()).saveLayout(any(), any(), any());
     }
 
     /** Omitting overlays entirely is the FE's ordinary autosave shape, and must bind without a 400. */
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_omittedOverlays_isAccepted() throws Exception {
-        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null, List.of(), List.of(), List.of()));
+        when(diagramService.saveLayout(eq("pracovni-pomer"), eq(5L), any()))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 1L, null, List.of(), List.of(), List.of()));
 
-        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\": 1, \"nodes\": []}"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<DiagramLayoutDto> captor = ArgumentCaptor.forClass(DiagramLayoutDto.class);
-        verify(diagramService).saveLayout(eq("pracovni-pomer"), captor.capture());
+        verify(diagramService).saveLayout(eq("pracovni-pomer"), eq(5L), captor.capture());
         assertThat(captor.getValue().overlays())
                 .as("an omitted overlays array reaches the service as null, meaning 'do not touch'")
                 .isNull();
@@ -176,10 +176,10 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_readbackFailure_returns502WithCodeAndVersion() throws Exception {
-        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
+        when(diagramService.saveLayout(eq("pracovni-pomer"), eq(5L), any()))
                 .thenThrow(new DiagramReadbackFailedException(4L, new RuntimeException("fuseki down")));
 
-        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\": 3, \"nodes\": [], \"edges\": []}"))
                 .andExpect(status().isBadGateway())
@@ -199,12 +199,12 @@ class DiagramControllerTest {
         String noNodes = "{\"version\": 3, \"edges\": []}";
 
         for (String body : List.of(noVersion, noNodes)) {
-            mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+            mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());
         }
-        verify(diagramService, never()).saveLayout(any(), any());
+        verify(diagramService, never()).saveLayout(any(), any(), any());
     }
 
     /**
@@ -217,8 +217,8 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_acceptsTheFatReadEdgeShape_ignoringDerivedFields() throws Exception {
-        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), List.of()));
+        when(diagramService.saveLayout(eq("pracovni-pomer"), eq(5L), any()))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 4L, null, List.of(), List.of(), List.of()));
 
         String fatEdge = """
                 {"version": 3, "nodes": [],
@@ -233,13 +233,13 @@ class DiagramControllerTest {
                  }]}
                 """;
 
-        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(fatEdge))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<DiagramLayoutDto> captor = ArgumentCaptor.forClass(DiagramLayoutDto.class);
-        verify(diagramService).saveLayout(eq("pracovni-pomer"), captor.capture());
+        verify(diagramService).saveLayout(eq("pracovni-pomer"), eq(5L), captor.capture());
         assertThat(captor.getValue().edges()).singleElement().satisfies(e -> {
             assertThat(e.id()).isEqualTo("https://x/pojem/rel");
             assertThat(e.segments()).containsExactly(new EdgeWaypoint(12.5, -4));
@@ -253,10 +253,10 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_omittedEdges_isAccepted() throws Exception {
-        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 4L, null, List.of(), List.of(), List.of()));
+        when(diagramService.saveLayout(eq("pracovni-pomer"), eq(5L), any()))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 4L, null, List.of(), List.of(), List.of()));
 
-        mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+        mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\": 3, \"nodes\": []}"))
                 .andExpect(status().isOk());
@@ -279,12 +279,12 @@ class DiagramControllerTest {
                 """;
 
         for (String body : List.of(noBroader, noTarget)) {
-            mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+            mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());
         }
-        verify(diagramService, never()).saveLayout(any(), any());
+        verify(diagramService, never()).saveLayout(any(), any(), any());
     }
 
     /**
@@ -295,8 +295,8 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void saveLayout_nodeFlagsAbsentOrNull_bindWithoutParseError() throws Exception {
-        when(diagramService.saveLayout(eq("pracovni-pomer"), any()))
-                .thenReturn(new DiagramDto("pracovni-pomer", 1L, null,
+        when(diagramService.saveLayout(eq("pracovni-pomer"), eq(5L), any()))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 1L, null,
                         List.of(), List.of(), List.of()));
 
         String absent = """
@@ -311,7 +311,7 @@ class DiagramControllerTest {
                 """;
 
         for (String body : List.of(absent, explicitNull)) {
-            mockMvc.perform(put("/api/diagram/pracovni-pomer/layout")
+            mockMvc.perform(put("/api/diagram/pracovni-pomer/5/layout")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isOk());
@@ -328,10 +328,10 @@ class DiagramControllerTest {
     void getDetail_nodesOmitVersion_diagramCarriesIt() throws Exception {
         DiagramDto.Node node = new DiagramDto.Node("iri:https://x/pojem/a", "classNode",
                 new PositionDto(0.0, 0.0), null, true, null);     // in-diagram form: no version
-        when(diagramService.getDiagram(eq("pracovni-pomer")))
-                .thenReturn(new DiagramDto("pracovni-pomer", 7L, null, List.of(node), List.of(), List.of()));
+        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
+                .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 7L, null, List.of(node), List.of(), List.of()));
 
-        String body = mockMvc.perform(get("/api/diagram/pracovni-pomer/detail"))
+        String body = mockMvc.perform(get("/api/diagram/pracovni-pomer/5/detail"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.version").value(7))
                 .andExpect(jsonPath("$.data.nodes[0].id").value("iri:https://x/pojem/a"))

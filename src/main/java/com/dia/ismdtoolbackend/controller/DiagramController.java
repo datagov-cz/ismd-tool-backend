@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramCreateDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
@@ -18,6 +19,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * The diagram layer's REST surface.
+ *
+ * <p>Paths nest the diagram under its ontology ({@code /{ontologySlug}/{diagramId}/…}) so every write
+ * keeps authorizing the slug through {@code belongsToUserBySlug}. That check does NOT constrain the
+ * diagram id travelling beside it, so the service additionally asserts the diagram belongs to the named
+ * ontology — see {@code DiagramServiceImpl.requireDiagramOf}.
+ */
 @RestController
 @RequestMapping("/api/diagram")
 @RequiredArgsConstructor
@@ -43,19 +52,75 @@ public class DiagramController {
     }
 
     @Operation(
-            summary = "Načtení diagramu slovníku",
-            description = "Vrací render-ready diagram slovníku — rozvržení spojené s živým obsahem pojmů, s aplikovanými "
-                    + "overlayi (pending edits) a projektovanými hranami. Vyžaduje oprávnění přihlášeného uživatele."
+            summary = "Seznam diagramů slovníku",
+            description = "Vrací diagramy jednoho slovníku (identita + počet uzlů), od nejstaršího. "
+                    + "Slovník jich může mít více. Vyžaduje oprávnění přihlášeného uživatele."
     )
-    @GetMapping("/{ontologySlug}/detail")
+    @GetMapping("/{ontologySlug}/list")
     @PreAuthorize("@ontologySecurityService.canViewResource()")
-    public ResponseEntity<ApiResponseDto<DiagramDto>> getDiagram(
+    public ResponseEntity<ApiResponseDto<List<DiagramSummaryDto>>> listForOntology(
             @PathVariable String ontologySlug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Diagram read requested, ontologySlug: {}, userId: {}", ontologySlug, securityUser.getUserId());
+        log.info("Diagram list requested for ontology {}, userId: {}", ontologySlug, securityUser.getUserId());
 
-        DiagramDto diagram = diagramService.getDiagram(ontologySlug);
+        List<DiagramSummaryDto> diagrams = diagramService.listForOntology(ontologySlug);
+        return ResponseEntity.ok().body(ApiResponseDto.success(diagrams, "Seznam diagramů byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Vytvoření diagramu",
+            description = "Vytvoří nový prázdný diagram slovníku. Slovník může mít více diagramů. "
+                    + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @PostMapping("/{ontologySlug}/create")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
+    public ResponseEntity<ApiResponseDto<DiagramDto>> createDiagram(
+            @PathVariable String ontologySlug,
+            @Valid @RequestBody DiagramCreateDto request,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Diagram create requested, ontologySlug: {}, userId: {}", ontologySlug, securityUser.getUserId());
+
+        DiagramDto diagram = diagramService.createDiagram(ontologySlug, request.name());
+        return ResponseEntity.ok().body(ApiResponseDto.success(diagram, "Diagram byl úspěšně vytvořen."));
+    }
+
+    @Operation(
+            summary = "Smazání diagramu",
+            description = "Smaže diagram včetně jeho rozvržení a rozpracovaných změn. Pojmy slovníku zůstávají "
+                    + "nedotčeny. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @DeleteMapping("/{ontologySlug}/{diagramId}")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
+    public ResponseEntity<ApiResponseDto<Void>> deleteDiagram(
+            @PathVariable String ontologySlug,
+            @PathVariable Long diagramId,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Diagram delete requested, ontologySlug: {}, diagramId: {}, userId: {}",
+                ontologySlug, diagramId, securityUser.getUserId());
+
+        diagramService.deleteDiagram(ontologySlug, diagramId);
+        return ResponseEntity.ok().body(ApiResponseDto.success(null, "Diagram byl úspěšně smazán."));
+    }
+
+    @Operation(
+            summary = "Načtení diagramu",
+            description = "Vrací render-ready diagram — rozvržení spojené s živým obsahem pojmů, s aplikovanými "
+                    + "overlayi (pending edits) a projektovanými hranami. Vyžaduje oprávnění přihlášeného uživatele."
+    )
+    @GetMapping("/{ontologySlug}/{diagramId}/detail")
+    @PreAuthorize("@ontologySecurityService.canViewResource()")
+    public ResponseEntity<ApiResponseDto<DiagramDto>> getDiagram(
+            @PathVariable String ontologySlug,
+            @PathVariable Long diagramId,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Diagram read requested, ontologySlug: {}, diagramId: {}, userId: {}",
+                ontologySlug, diagramId, securityUser.getUserId());
+
+        DiagramDto diagram = diagramService.getDiagram(ontologySlug, diagramId);
         return ResponseEntity.ok().body(ApiResponseDto.success(diagram, "Diagram byl úspěšně načten."));
     }
 
@@ -67,16 +132,18 @@ public class DiagramController {
                     + "položka pouze s `conceptIri` overlay zahodí. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
-    @PutMapping("/{ontologySlug}/layout")
+    @PutMapping("/{ontologySlug}/{diagramId}/layout")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
     public ResponseEntity<ApiResponseDto<DiagramDto>> saveLayout(
             @PathVariable String ontologySlug,
+            @PathVariable Long diagramId,
             @Valid @RequestBody DiagramLayoutDto layout,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Diagram layout save requested, ontologySlug: {}, userId: {}", ontologySlug, securityUser.getUserId());
+        log.info("Diagram layout save requested, ontologySlug: {}, diagramId: {}, userId: {}",
+                ontologySlug, diagramId, securityUser.getUserId());
 
-        DiagramDto diagram = diagramService.saveLayout(ontologySlug, layout);
+        DiagramDto diagram = diagramService.saveLayout(ontologySlug, diagramId, layout);
         return ResponseEntity.ok().body(ApiResponseDto.success(diagram, "Rozvržení diagramu bylo úspěšně uloženo."));
     }
 
@@ -84,17 +151,22 @@ public class DiagramController {
             summary = "Převzetí (materializace) změn diagramu",
             description = "Aplikuje všechny čekající (pending) změny přes existující CRUD pojmů → outbox → RDF a po úspěchu vyčistí "
                     + "jednotlivé overlaye. Vrací výsledek po jednotlivých změnách (materializované, neúspěšné, zastaralé). "
+                    + "Pokud má na stejném pojmu rozpracovanou změnu i jiný diagram téhož slovníku, vrací 409 s přehledem "
+                    + "kolizí; parametr `onConflict` určuje, která strana se zahodí. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
-    @PostMapping("/{ontologySlug}/materialize")
+    @PostMapping("/{ontologySlug}/{diagramId}/materialize")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
     public ResponseEntity<ApiResponseDto<MaterializeResultDto>> materialize(
             @PathVariable String ontologySlug,
+            @PathVariable Long diagramId,
+            @RequestParam(required = false) DiagramService.ConflictResolution onConflict,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Diagram materialize requested, ontologySlug: {}, userId: {}", ontologySlug, securityUser.getUserId());
+        log.info("Diagram materialize requested, ontologySlug: {}, diagramId: {}, onConflict: {}, userId: {}",
+                ontologySlug, diagramId, onConflict, securityUser.getUserId());
 
-        MaterializeResultDto result = diagramService.materialize(ontologySlug);
+        MaterializeResultDto result = diagramService.materialize(ontologySlug, diagramId, onConflict);
         return ResponseEntity.ok().body(ApiResponseDto.success(result, "Změny diagramu byly převzaty."));
     }
 }

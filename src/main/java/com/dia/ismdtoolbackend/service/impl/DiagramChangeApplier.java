@@ -59,12 +59,13 @@ public class DiagramChangeApplier {
      * row managed in this transaction (the caller's instance is from another persistence context). Throws
      * on any failure — the caller (non-transactional) records it as {@code failed}.
      *
-     * <p>Addressed by {@code (ontology, conceptIri)} — a staged edit need not have a canvas node.
+     * <p>Addressed by {@code (diagram, conceptIri)} — a staged edit need not have a canvas node.
+     * {@code ontologyId} is passed for logging/scope symmetry; the staged row carries its own ontology.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Outcome applyChange(Long ontologyId, String conceptIri) {
+    public Outcome applyChange(Long diagramId, Long ontologyId, String conceptIri) {
         DiagramPendingEditEntity staged = pendingEditRepository
-                .findByOntologyMetadataIdAndConceptIri(ontologyId, conceptIri)
+                .findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .orElse(null);
         if (staged == null || staged.getPendingEdit() == null) {
             // Raced away since the caller snapshotted — nothing to do.
