@@ -226,7 +226,8 @@ One call carries everything: layout **and** the structural overlays. Strip React
 | `version` | **400** — always required | — |
 | `nodes` | **400** — always required | canvas emptied (staged edits are untouched — a separate table) |
 | `nodes[].properties` | that class renders **no** property rows | same |
-| `edges` | all waypoints revert to default routing | same |
+| `edges` | **edge membership untouched** | every edge removed from the canvas |
+| `edges[].segments` | that edge's stored routing **kept** | routing cleared to default |
 | **`overlays`** | **staged edits untouched** | **staged edits untouched** |
 
 A concept absent from `overlays` keeps whatever is staged on it. The **only** way to discard an overlay is an entry carrying `conceptIri` and nothing else.
@@ -287,13 +288,23 @@ The server verifies the claim **both ways**: a foreign IRI without the flag is a
 
 **Adding** a row = include its IRI; **removing** = omit it and resend the rest. **Moving a property to another class needs both**: list it under the new host *and* stage `{"domain": "<new class>"}` on its overlay. The overlay alone renders nothing — placement and structure are separate instructions.
 
-### Edges — waypoints only
+### Edges — explicit canvas membership
 
 **An edge persists exactly two things: `id` and `segments`.** Its existence, endpoints and kind are re-derived from `live ⊕ overlay` on every read, so `source`, `target` and `edgeKind` are **not accepted on write** — sending them is ignored. This is deliberate: a stored endpoint could silently contradict the projection it duplicates, which is precisely the drift the diagram layer is built to prevent. To change where a relationship points, stage `{domain, range}` on its overlay; the edge follows.
 
-**Waypoints are a full replace — echo back every edge whose routing you want kept.** A Save replaces the whole persisted waypoint set, so an edge omitted from `edges` reverts to default routing. The edge itself still renders (it is re-projected from RDF). Repointing an endpoint likewise drops the waypoints by design: geometry drawn for the old target would not fit the new one.
+**`edges` is canvas membership, exactly like `nodes` — echo back every edge you want to keep drawn.** An edge present is on the canvas; an edge omitted from a present `edges` array is taken off it. Removing an edge this way is **pure presentation**: the triple is untouched, so the edge stays projectable and can be re-added later.
 
-`segments` is optional — omit it, or send `[]`, for an edge using default routing; both store as "no waypoints", and neither writes a row at all. Waypoints are pure presentation: they shape how a link is drawn and carry no meaning for the concepts it connects, so nothing derives them from RDF and nothing validates them against it.
+**A projectable edge that was never placed is not drawn.** Like a class that exists in the ontology but has not been dragged onto the canvas, it waits in the sidebar until the user adds it. This is what lets two classes sit on a canvas *without* the relationship between them — impossible while edges were drawn purely by projection.
+
+**Projection still governs what CAN be drawn, so an edge is never orphaned on one end.** If an endpoint class leaves the canvas, or an overlay repoints the relationship, the edge stops projecting and is not drawn whatever its membership says. Membership can hide a projectable edge; it can never resurrect an unprojectable one.
+
+`segments` is three-way, and independent of membership:
+
+- **omitted / `null`** — keeps the stored routing. The entry is a membership statement and says nothing about geometry, so a client that does not manage routing cannot discard it by accident.
+- **`[]`** — explicitly clears the routing to default.
+- **a list** — sets the waypoints.
+
+Repointing an endpoint drops the waypoints by design: the edge id embeds its endpoints, so geometry drawn for the old target cannot follow it to the new one. Waypoints are pure presentation — nothing derives them from RDF and nothing validates them against it.
 
 ### Overlays — staged structural edits
 

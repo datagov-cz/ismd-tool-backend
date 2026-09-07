@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.diagram;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
@@ -17,6 +18,7 @@ import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.outbox.InMemoryTdb2;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxEntry;
@@ -27,6 +29,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
@@ -105,6 +108,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     @Autowired private OutboxEntryRepository outboxRepo;
     @Autowired private DiagramRepository diagramRepo;
     @Autowired private DiagramNodeRepository nodeRepo;
+    @Autowired private DiagramEdgeRepository edgeRepo;
     @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private ConceptServiceImpl conceptService;
@@ -397,6 +401,72 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(result.skippedStale()).hasSize(1);
         assertThat(result.materialized()).isEmpty();
+    }
+
+    // SMOKE FINDING #1 (Phase 4.5) — a hierarchy edge's id embeds its endpoints, so materializing a repoint
+    // changes the edge's identity. Without re-keying, the membership row stays on the OLD id, stops matching
+    // the projection, and the edge silently leaves the canvas after Převzít — taking its waypoints with it.
+    @Test
+    void materializeRepointedHierarchy_movesMembershipToTheNewEdgeId() {
+        ConceptMetadataEntity child = create(classModel("Rekey Child", true));
+        ConceptMetadataEntity oldBroader = create(classModel("Rekey Old Broader", true));
+        ConceptMetadataEntity newBroader = create(classModel("Rekey New Broader", true));
+
+        // The child already subclasses oldBroader in RDF...
+        DiagramPendingEdit seed = new DiagramPendingEdit();
+        seed.setBroaderConcept(List.of(oldBroader.getConceptIri()));
+        stageNode(child.getConceptIri(), seed);
+        materializeService.materialize(diagramId(), ontologyId());
+
+        // ...and the user placed that edge on the canvas, with waypoints.
+        String oldKey = "edge|SUBCLASS_OF|" + child.getConceptIri() + "|" + oldBroader.getConceptIri();
+        String newKey = "edge|SUBCLASS_OF|" + child.getConceptIri() + "|" + newBroader.getConceptIri();
+        placeEdge(oldKey, List.of(new EdgeWaypoint(40, 80)));
+
+        // Now repoint it to newBroader and take the change.
+        DiagramPendingEdit repoint = new DiagramPendingEdit();
+        repoint.setBroaderConcept(List.of(newBroader.getConceptIri()));
+        restage(child.getConceptIri(), repoint);
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.failed()).isEmpty();
+        List<DiagramEdgeEntity> rows = edgeRepo.findByDiagramId(diagramId());
+        assertThat(rows).as("membership follows the edge to its new identity").singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getEdgeKey()).isEqualTo(newKey);
+                    assertThat(row.getSegments()).containsExactly(new EdgeWaypoint(40, 80));
+                });
+    }
+
+    /** An unplaced repoint writes no membership — re-keying must not invent a row. */
+    @Test
+    void materializeRepointedHierarchy_withNoMembership_writesNone() {
+        ConceptMetadataEntity child = create(classModel("Bare Child", true));
+        ConceptMetadataEntity oldBroader = create(classModel("Bare Old", true));
+        ConceptMetadataEntity newBroader = create(classModel("Bare New", true));
+
+        DiagramPendingEdit seed = new DiagramPendingEdit();
+        seed.setBroaderConcept(List.of(oldBroader.getConceptIri()));
+        stageNode(child.getConceptIri(), seed);
+        materializeService.materialize(diagramId(), ontologyId());
+
+        DiagramPendingEdit repoint = new DiagramPendingEdit();
+        repoint.setBroaderConcept(List.of(newBroader.getConceptIri()));
+        restage(child.getConceptIri(), repoint);
+        materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(edgeRepo.findByDiagramId(diagramId())).isEmpty();
+    }
+
+    /** Place an edge on the canvas: a membership row, optionally routed. */
+    private void placeEdge(String edgeKey, List<EdgeWaypoint> segments) {
+        txTemplate.executeWithoutResult(tx -> {
+            DiagramEdgeEntity row = new DiagramEdgeEntity();
+            row.setDiagram(diagramRepo.findById(diagramId()).orElseThrow());
+            row.setEdgeKey(edgeKey);
+            row.setSegments(segments);
+            edgeRepo.saveAndFlush(row);
+        });
     }
 
     // ADVERSARIAL REVIEW FINDING #3 — op-6 / stale-base collision, now FIXED (op-6 ordered last).
@@ -845,8 +915,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
         @Bean DiagramChangeApplier diagramChangeApplier(
                 ConceptServiceImpl conceptService, ConceptMetadataRepository conceptRepo,
-                DiagramPendingEditRepository pendingEditRepo, InMemoryTdb2 tdb2) {
-            return new DiagramChangeApplier(conceptService, conceptRepo, pendingEditRepo, tdb2);
+                DiagramPendingEditRepository pendingEditRepo, DiagramEdgeRepository edgeRepo,
+                InMemoryTdb2 tdb2) {
+            return new DiagramChangeApplier(conceptService, conceptRepo, pendingEditRepo, edgeRepo, tdb2);
         }
 
         @Bean DiagramMaterializeService diagramMaterializeService(

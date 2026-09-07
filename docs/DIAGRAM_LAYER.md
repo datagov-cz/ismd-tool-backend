@@ -50,7 +50,7 @@ Within that single Save, the two halves of the payload have deliberately differe
 | Payload | Semantics | Omitted / `[]` |
 |---|---|---|
 | `nodes` | **full replace** — the array *is* canvas membership | canvas emptied (`nodes` itself is mandatory) |
-| `edges` | **full replace** of the persisted waypoint set | all edges revert to default routing |
+| `edges` | **full replace** — the array *is* edge membership | omitted: untouched; `[]`: every edge off the canvas |
 | `overlays` | **additive** — an entry stages or updates one concept | **staged edits untouched** |
 
 **Why overlays cannot be a full replace.** Full replace requires that everything the client must echo back is visible in what a read returns. For overlays it is not:
@@ -100,7 +100,9 @@ Crucially, this is a **rendering** decision, not an ownership one. All three rem
 
 Consequently **dragging an edge endpoint is a concept edit** (repointing an arrow updates the VZTAH's `range` overlay; dragging a property row to another class updates the VLASTNOST's `domain`), and **drawing a new relationship line is creating a VZTAH concept**. Edges never accumulate their own pending state; on read they are re-projected from `live ⊕ overlay`. The concept overlay is the single source of truth for domain/range/hierarchy.
 
-**An edge persists nothing but its waypoints.** Existence, endpoints and kind are all derived, so `diagram_edges` stores only `(edge_key, segments_json)`. Storing endpoints would duplicate a projection and could silently contradict it — repoint a range and a saved endpoint still names the old class. That is the drift class this whole layer is built to prevent, so the columns do not exist.
+**An edge persists its membership and its waypoints, nothing more.** Existence, endpoints and kind are all derived, so `diagram_edges` stores only `(edge_key, segments_json)`: the row's existence says the edge is on the canvas, and `segments_json` says how it is routed. Storing endpoints would duplicate a projection and could silently contradict it — repoint a range and a saved endpoint still names the old class. That is the drift class this whole layer is built to prevent, so the columns do not exist.
+
+**Membership and projection are separate questions.** Projection answers *can* this edge be drawn (both endpoints on canvas, the triple present); membership answers *should* it be. An edge the user has never placed is not drawn even though it projects — the same state as a class that exists in the ontology but has not been dragged onto the canvas. This is what lets two classes sit on a canvas without the relationship between them. Membership can only ever hide a projectable edge, never resurrect an unprojectable one, so **an edge is never orphaned on one end**: losing an endpoint un-draws it whatever its row says.
 
 **Incomplete concepts live off-canvas.** A VZTAH missing an endpoint, or a domainless VLASTNOST, is simply not drawn — there is nothing to attach it to. This costs nothing, because placement *is* completion: such a concept reaches the canvas by being dragged in from the ontology detail, and the drop supplies the missing endpoint. The edge/row model therefore never has to represent a half-built concept, which is the one thing the older node-per-concept model could express and this one cannot.
 
@@ -140,16 +142,17 @@ Scoped to the **diagram**, with `ontology_metadata_id` kept alongside it. Each c
 
 > **Why these are two tables.** They were once one row, and because canvas membership is "which node rows exist", that made staging an edit pin its concept to the canvas: removing a node — a purely visual act — was blocked by a purely semantic one. A concept with no box of its own had to fabricate a position (the layout columns are NOT NULL) and got anchored at the origin. Splitting them removes the origin fiction, lets the reap be a plain full replace, and makes "the diagram is a subset view" true in the schema rather than only in intent.
 
-**`diagram_edges`** — `edge_key` (the projected edge id these waypoints belong to: a VZTAH's concept IRI, or the composite `edge|KIND|source|target` of a hierarchy link) and `segments_json`, unique per `(diagram_id, edge_key)`. **Waypoints only** — no endpoints, no kind, no content. A row whose edge no longer projects finds no match on read and is cleared by the next Save; nothing has to hunt down orphans.
+**`diagram_edges`** — `edge_key` (the projected edge id this row belongs to: a VZTAH's concept IRI, or the composite `edge|KIND|source|target` of a hierarchy link) and `segments_json`, unique per `(diagram_id, edge_key)`. **Membership plus waypoints** — no endpoints, no kind, no content. A row whose edge no longer projects finds no match on read and is cleared by the next Save; nothing has to hunt down orphans.
 
 The overlay content model (`DiagramPendingEdit`) is **structural-only**: `domain`, `range`, `broaderConcept` (`subClassOf`, TRIDA), `exactMatch`, a `convertToHierarchy` marker for op 6, and `baseUpdatedAt` (the stale-base fingerprint, server-stamped, never accepted on write). It deliberately excludes **label/name editing** — a name change renames the concept's IRI (relocating all its triples), which would strand the diagram node's IRI reference. Label editing stays in the normal concept editor, outside the diagram.
 
 ## Save-time reconciliation
 
-`DiagramLayoutReconciler` applies one Save as **two independent halves**:
+`DiagramLayoutReconciler` applies one Save as **three independent halves**:
 
 1. **`nodes[]` → `diagram_nodes`** — update matching rows in place, insert rows for new IRIs, then reap: any persisted row absent from the incoming set is removed. A plain full replace, no carve-outs.
-2. **`overlays[]` → `diagram_pending_edits`** — for each entry, graph-check the concept, then upsert its staged edit, or delete the row for a discard (an entry carrying only `conceptIri`).
+2. **`edges[]` → `diagram_edges`** — upsert a row per entry and reap any row absent from the incoming set, the same full replace as nodes. A null `edges` skips the half entirely, so a client that does not manage edges cannot clear them by omission. Per entry, `segments` omitted keeps the stored routing and `[]` clears it — the entry is a membership statement and says nothing about geometry unless it carries some.
+3. **`overlays[]` → `diagram_pending_edits`** — for each entry, graph-check the concept, then upsert its staged edit, or delete the row for a discard (an entry carrying only `conceptIri`).
 
 **Neither half constrains the other.** They share no row, so their order does not matter and neither can undo the other: a class can leave the canvas while keeping its staged edit, and staging an edit never puts a concept on the canvas. Removing a node carries no RDF intent — discarding is a separate, explicit instruction.
 

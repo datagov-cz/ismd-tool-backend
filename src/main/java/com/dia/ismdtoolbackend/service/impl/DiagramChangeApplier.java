@@ -1,9 +1,11 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
@@ -12,6 +14,7 @@ import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
@@ -19,10 +22,12 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDFS;
+import org.apache.jena.vocabulary.SKOS;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +51,7 @@ public class DiagramChangeApplier {
     private final ConceptService conceptService;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final DiagramPendingEditRepository pendingEditRepository;
+    private final DiagramEdgeRepository diagramEdgeRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
 
     /** The classified op plus the outcome, so the caller can report it without re-deriving the op. */
@@ -82,14 +88,108 @@ public class DiagramChangeApplier {
             throw new StaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
         }
 
+        // Captured BEFORE the edit: a triple edge's id embeds its endpoints, so once RDF moves them the
+        // old ids are unrecoverable and any membership row would be stranded on a key nothing projects.
+        List<EdgeRekey> rekeys = plannedEdgeRekeys(diagramId, concept, overlay);
+
         if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
             applyConvertToHierarchy(overlay, concept, ontologyGraphName);
         } else {
             conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
         }
+        applyEdgeRekeys(rekeys);
         // Applied to RDF; the staged row has served its purpose.
         pendingEditRepository.delete(staged);
         return new Outcome(op, Outcome.Kind.MATERIALIZED);
+    }
+
+    /** One membership row moving from the id it was placed under to the one the edit projects. */
+    private record EdgeRekey(DiagramEdgeEntity row, String newKey) {
+    }
+
+    /**
+     * Plan the membership moves this edit forces. A {@code SUBCLASS_OF}/{@code EXACT_MATCH} edge is keyed
+     * {@code edge|KIND|source|target}, so repointing it changes the edge's identity: without this the row
+     * keeps the old key, stops matching the projection and the edge silently leaves the canvas — taking
+     * the user's waypoints with it. A VZTAH needs nothing here; its key is its own concept IRI.
+     *
+     * <p>Targets are matched by position: the n-th staged target replaces the n-th live one, which is how
+     * a repoint of a single link reads. A target the overlay merely keeps is left alone, and an added one
+     * has no row to move.
+     */
+    private List<EdgeRekey> plannedEdgeRekeys(Long diagramId, ConceptMetadataEntity concept,
+                                              DiagramPendingEdit overlay) {
+        List<EdgeRekey> rekeys = new ArrayList<>();
+        if (overlay.getBroaderConcept() == null && overlay.getExactMatch() == null) {
+            return rekeys;
+        }
+        List<DiagramEdgeEntity> rows = diagramEdgeRepository.findByDiagramId(diagramId);
+        if (rows.isEmpty()) {
+            return rekeys;
+        }
+        String source = concept.getConceptIri();
+        Model graph = jenaTDB2Repository.fetchGraph(concept.getGraphName());
+        Resource conceptRes = graph.getResource(source);
+
+        collectRekeys(rekeys, rows, source, uriObjects(conceptRes, RDFS.subClassOf),
+                overlay.getBroaderConcept(), DiagramEdgeKind.SUBCLASS_OF);
+        collectRekeys(rekeys, rows, source, uriObjects(conceptRes, SKOS.exactMatch),
+                overlay.getExactMatch(), DiagramEdgeKind.EXACT_MATCH);
+        return rekeys;
+    }
+
+    /** The URI objects of one predicate, in graph order — the live targets an edge id is built from. */
+    private List<String> uriObjects(Resource subject, Property predicate) {
+        List<String> uris = new ArrayList<>();
+        StmtIterator it = subject.listProperties(predicate);
+        while (it.hasNext()) {
+            RDFNode object = it.next().getObject();
+            if (object.isURIResource() && !uris.contains(object.asResource().getURI())) {
+                uris.add(object.asResource().getURI());
+            }
+        }
+        return uris;
+    }
+
+    private void collectRekeys(List<EdgeRekey> rekeys, List<DiagramEdgeEntity> rows, String source,
+                               List<String> liveTargets, List<String> stagedTargets,
+                               DiagramEdgeKind kind) {
+        if (stagedTargets == null || liveTargets == null) {
+            return;
+        }
+        for (int i = 0; i < liveTargets.size() && i < stagedTargets.size(); i++) {
+            String oldTarget = liveTargets.get(i);
+            String newTarget = stagedTargets.get(i);
+            if (oldTarget == null || newTarget == null || oldTarget.equals(newTarget)) {
+                continue;
+            }
+            String oldKey = EdgeProjector.projectedEdgeId(kind, source, oldTarget);
+            String newKey = EdgeProjector.projectedEdgeId(kind, source, newTarget);
+            rows.stream()
+                    .filter(r -> oldKey.equals(r.getEdgeKey()))
+                    .findFirst()
+                    .ifPresent(row -> rekeys.add(new EdgeRekey(row, newKey)));
+        }
+    }
+
+    /**
+     * Move each planned row onto its new key. A row already sitting on the destination key means the user
+     * had both links placed; the moved row would collide on {@code (diagram_id, edge_key)}, so it is
+     * dropped in favour of the one already there.
+     */
+    private void applyEdgeRekeys(List<EdgeRekey> rekeys) {
+        for (EdgeRekey rekey : rekeys) {
+            boolean taken = diagramEdgeRepository.findByDiagramId(rekey.row().getDiagram().getId())
+                    .stream()
+                    .anyMatch(r -> !r.getId().equals(rekey.row().getId())
+                            && rekey.newKey().equals(r.getEdgeKey()));
+            if (taken) {
+                diagramEdgeRepository.delete(rekey.row());
+                continue;
+            }
+            rekey.row().setEdgeKey(rekey.newKey());
+            diagramEdgeRepository.save(rekey.row());
+        }
     }
 
     /**

@@ -226,7 +226,8 @@ Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte 
 | `version` | **400** — vždy povinné | — |
 | `nodes` | **400** — vždy povinné | plátno vyprázdněno (nasazené úpravy nedotčeny — jsou v jiné tabulce) |
 | `nodes[].properties` | daná třída nevykreslí **žádné** řádky vlastností | totéž |
-| `edges` | všechny body lomu se vrátí k výchozímu vedení | totéž |
+| `edges` | **členství hran nedotčeno** | všechny hrany odebrány z plátna |
+| `edges[].segments` | uložené vedení dané hrany **zachováno** | vedení vyčištěno na výchozí |
 | **`overlays`** | **nasazené úpravy nedotčeny** | **nasazené úpravy nedotčeny** |
 
 Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný** způsob, jak overlay zahodit, je položka nesoucí `conceptIri` a nic jiného.
@@ -287,13 +288,23 @@ Server tvrzení ověřuje **oběma směry**: cizí IRI bez příznaku je 400 (b�
 
 **Přidání** řádku = zahrnout jeho IRI; **odebrání** = vynechat ho a zbytek poslat znovu. **Přesun vlastnosti k jiné třídě vyžaduje obojí**: uvést ji u nové hostitelské třídy *a* nasadit `{"domain": "<nová třída>"}` na její overlay. Samotný overlay nevykreslí nic — umístění a struktura jsou oddělené pokyny.
 
-### Hrany — jen body lomu
+### Hrany — explicitní členství na plátně
 
 **Hrana ukládá právě dvě věci: `id` a `segments`.** Její existence, konce i druh se při každém čtení znovu odvozují z `živý ⊕ overlay`, takže `source`, `target` ani `edgeKind` **se na zápisu nepřijímají** — poslat je znamená, že se ignorují. Je to záměrné: uložený konec by mohl tiše odporovat projekci, kterou duplikuje, a přesně proti tomuto rozcházení je diagramová vrstva postavena. Chcete-li změnit, kam vztah míří, nasaďte `{domain, range}` na jeho overlay; hrana se přizpůsobí.
 
-**Body lomu jsou úplná náhrada — pošlete zpět každou hranu, jejíž vedení chcete zachovat.** Uložení nahradí celou uloženou sadu bodů lomu, takže hrana vynechaná z `edges` se vrátí k výchozímu vedení. Sama hrana se dál vykresluje (znovu se projektuje z RDF). Přesměrování konce body lomu rovněž záměrně zahodí: geometrie nakreslená pro starý cíl by na nový neseděla.
+**`edges` je členství na plátně, stejně jako `nodes` — pošlete zpět každou hranu, kterou chcete mít nakreslenou.** Uvedená hrana je na plátně; hrana vynechaná z přítomného pole `edges` se z něj odebere. Takové odebrání je **čistá prezentace**: trojice v RDF zůstává nedotčená, takže hrana je dál projektovatelná a lze ji později přidat zpět.
 
-`segments` jsou volitelné — vynechte je nebo pošlete `[]` u hrany s výchozím vedením; obojí se uloží jako „bez bodů lomu" a ani jedno nezapíše řádek. Body lomu jsou čistá prezentace: určují, jak se odkaz kreslí, a nenesou žádný význam pro spojované pojmy, takže je nic neodvozuje z RDF a nic je proti němu nevaliduje.
+**Projektovatelná hrana, kterou uživatel nikdy neumístil, se nekreslí.** Stejně jako třída, která ve slovníku existuje, ale nebyla přetažena na plátno, čeká v postranním panelu, dokud ji uživatel nepřidá. Právě díky tomu mohou na plátně být dvě třídy *bez* vztahu mezi nimi — což při kreslení hran čistě z projekce nešlo vyjádřit.
+
+**Co se kreslit MŮŽE, dál řídí projekce, takže hrana nikdy nezůstane viset na jednom konci.** Pokud koncová třída opustí plátno nebo overlay vztah přesměruje, hrana se přestane projektovat a nekreslí se, ať už členství říká cokoli. Členství může projektovatelnou hranu skrýt; neprojektovatelnou nikdy neoživí.
+
+`segments` jsou trojhodnotové a na členství nezávislé:
+
+- **vynecháno / `null`** — uložené vedení se zachová. Položka je výrok o členství a o geometrii neříká nic, takže klient, který vedení nespravuje, je nemůže omylem zahodit.
+- **`[]`** — vedení se explicitně vyčistí na výchozí.
+- **seznam** — nastaví body lomu.
+
+Přesměrování konce body lomu záměrně zahodí: id hrany v sobě nese její konce, takže geometrie nakreslená pro starý cíl nemůže přejít na nový. Body lomu jsou čistá prezentace — nic je neodvozuje z RDF a nic je proti němu nevaliduje.
 
 ### Overlays — nasazené strukturální úpravy
 

@@ -20,8 +20,11 @@ public record DiagramLayoutDto(
         @NotNull Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
-        /* Optional full-replace of the saved waypoints; null and [] both mean "no hand-routed edges".
-         * An omitted edge still renders — it is re-projected, and reverts to default routing. */
+        /* Authoritative canvas membership for edges, exactly like `nodes` — an edge present is on the
+         * canvas, an edge omitted is taken off it. A projectable edge the user has never added simply is
+         * not drawn: like a new class, it exists in the ontology and waits in the sidebar until the user
+         * places it. Null/absent is the one exception, a NO-OP that leaves the edge set untouched, so a
+         * client that never edits edges need not echo them. */
         @Valid List<Edge> edges,
         /* Optional, and ADDITIVE — unlike `edges` above. An entry stages or updates that concept's
          * overlay; a concept absent from the array keeps whatever is already staged, so null and [] both
@@ -58,12 +61,18 @@ public record DiagramLayoutDto(
     }
 
     /**
-     * A projected edge's persisted waypoints, and nothing else. {@code id} is the projected edge id from
+     * One edge on the canvas: its identity, plus optional routing. {@code id} is the projected edge id from
      * the last read — a VZTAH's concept IRI, or the composite {@code edge|KIND|source|target} of a
-     * hierarchy/equivalence link. {@code segments} is optional; omitted or null means default routing.
+     * hierarchy/equivalence link.
+     *
+     * <p>The entry's presence is what puts the edge on the canvas; {@code segments} only says how it is
+     * drawn, and is three-way: omitted/null KEEPS the stored waypoints (so a client that does not manage
+     * routing cannot silently discard it), {@code []} clears them to default routing, and a list sets them.
      *
      * <p>Endpoints and kind are absent: they are re-derived from {@code rdfs:domain}/{@code rdfs:range}
-     * ⊕ overlay on every read. Structural changes go through {@code overlays}.
+     * ⊕ overlay on every read, so membership can never contradict RDF — an edge whose endpoint leaves the
+     * canvas stops projecting and is not drawn, whatever its row says. Structural changes go through
+     * {@code overlays}.
      */
     @Schema(name = "DiagramLayoutEdge")
     public record Edge(

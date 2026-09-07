@@ -32,11 +32,30 @@ class EdgeProjectorTest {
     private static final String C = "https://x/pojem/c";
     private static final String PROP = "https://x/pojem/prop";
 
-    private final EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of());
+    /**
+     * Membership that accepts every edge, so these tests isolate PROJECTION — which edges derive from
+     * {@code live ⊕ overlay}. Whether a projected edge is actually placed on a canvas is separate, and is
+     * covered by {@code DiagramLayoutReconcilerTest} and {@code DiagramEdgeMembershipIntegrationTest}.
+     */
+    private static final Set<String> ALL_PLACED = new java.util.AbstractSet<>() {
+        @Override public boolean contains(Object o) {
+            return true;
+        }
+        @Override public java.util.Iterator<String> iterator() {
+            throw new UnsupportedOperationException();
+        }
+        @Override public int size() {
+            throw new UnsupportedOperationException();
+        }
+    };
+
+    private final EdgeProjector projector =
+            new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(), ALL_PLACED);
 
     /** A projector whose staged edits are the given (conceptIri -> overlay) pairs; no waypoints. */
     private EdgeProjector projectorStaging(String conceptIri, DiagramPendingEdit overlay) {
-        return new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(conceptIri, overlay), Set.of());
+        return new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(conceptIri, overlay), Set.of(),
+                ALL_PLACED);
     }
 
     private DiagramNodeEntity node(String iri) {
@@ -167,7 +186,7 @@ class EdgeProjectorTest {
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
         live.put(B, concept(B));
 
-        List<DiagramDto.Edge> edges = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(A))
+        List<DiagramDto.Edge> edges = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(A), ALL_PLACED)
                 .project(List.of(node(A), node(B)), live, types(Map.of()), Map.of());
 
         assertThat(edges).isEmpty();
@@ -180,7 +199,7 @@ class EdgeProjectorTest {
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
         live.put(B, concept(B));
 
-        List<DiagramDto.Edge> edges = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(B))
+        List<DiagramDto.Edge> edges = new EdgeProjector(new DiagramMapper(), Map.of(), Map.of(), Set.of(B), ALL_PLACED)
                 .project(List.of(node(A), node(B)), live, types(Map.of()), Map.of());
 
         assertThat(edges).singleElement()
@@ -212,7 +231,7 @@ class EdgeProjectorTest {
     @Test
     void persistedWaypointsAreJoinedOntoTheProjectedEdge() {
         EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
-                Map.of(REL, List.of(new EdgeWaypoint(40, 80))), Map.of(), Set.of());
+                Map.of(REL, List.of(new EdgeWaypoint(40, 80))), Map.of(), Set.of(), ALL_PLACED);
 
         List<DiagramDto.Edge> edges = withGeometry.project(
                 List.of(node(A), node(B)), live(A, B),
@@ -229,7 +248,7 @@ class EdgeProjectorTest {
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of(C));                 // repointed from B to C
         EdgeProjector withGeometry = new EdgeProjector(new DiagramMapper(),
-                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))), Map.of(A, overlay), Set.of());
+                Map.of(staleKey, List.of(new EdgeWaypoint(40, 80))), Map.of(A, overlay), Set.of(), ALL_PLACED);
 
         Map<String, ConceptDetailModel> live = new HashMap<>();
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
@@ -244,6 +263,53 @@ class EdgeProjectorTest {
             assertThat(e.data().pending()).isTrue();
             assertThat(e.segments()).isNull();
         });
+    }
+
+    /**
+     * A repoint changes a triple edge's id, but the membership row still carries the id the user placed it
+     * under. Honouring only the new id made the edge vanish the moment an overlay was staged — the canvas
+     * lost it mid-edit, with no warning. Smoke Phase 4.5.
+     */
+    @Test
+    void repointedHierarchyEdge_staysOnCanvasUnderItsPreOverlayMembership() {
+        // Placed while it still pointed at B; the overlay moves it to C.
+        Set<String> placedUnderOldId =
+                Set.of(EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B));
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(C));
+        EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of(),
+                Map.of(A, overlay), Set.of(), placedUnderOldId);
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+
+        List<DiagramDto.Edge> edges = projector.project(
+                List.of(node(A), node(B), node(C)), live, types(Map.of()), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.id()).isEqualTo(EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
+            assertThat(e.target()).isEqualTo("iri:" + C);
+            assertThat(e.data().pending()).isTrue();
+        });
+    }
+
+    /** The carry-over is scoped to the repoint: an unplaced link stays off the canvas. */
+    @Test
+    void repointDoesNotDrawAHierarchyEdgeThatWasNeverPlaced() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(C));
+        EdgeProjector projector = new EdgeProjector(new DiagramMapper(), Map.of(),
+                Map.of(A, overlay), Set.of(), Set.of());
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+
+        assertThat(projector.project(List.of(node(A), node(B), node(C)), live, types(Map.of()), Map.of()))
+                .isEmpty();
     }
 
     // ---- VLASTNOST as a row inside its class ----------------------------------------------------

@@ -322,9 +322,24 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
                 new PositionDto(x, y), null, false, List.of(), foreign);
     }
 
+    /**
+     * Save with every hierarchy edge these fixtures could project already placed on the canvas, so the
+     * assertions test PROJECTION (is this edge ours to draw?) and not membership. Placing an edge that
+     * never projects is harmless — the row simply matches nothing — but omitting one would make
+     * "not drawn" vacuously true and hide a projection regression.
+     */
+    /** The projector's composite key for a hierarchy edge; EdgeProjector itself is package-private. */
+    private static String subclassEdgeId(String source, String target) {
+        return "edge|SUBCLASS_OF|" + source + "|" + target;
+    }
+
     private DiagramDto save(DiagramLayoutDto.Node... nodes) {
+        List<DiagramLayoutDto.Edge> placed = List.of(
+                new DiagramLayoutDto.Edge(subclassEdgeId(MY_CLASS, FOREIGN_CLASS), null),
+                new DiagramLayoutDto.Edge(subclassEdgeId(FOREIGN_CLASS, MY_CLASS), null),
+                new DiagramLayoutDto.Edge(subclassEdgeId(FOREIGN_CLASS, FOREIGN_PARENT), null));
         return diagramService.saveLayout(SLUG, diagramId(),
-                new DiagramLayoutDto(storedVersion(), null, List.of(nodes), List.of(), null));
+                new DiagramLayoutDto(storedVersion(), null, List.of(nodes), placed, null));
     }
 
     private DiagramDto.Node nodeFor(DiagramDto diagram, String conceptIri) {

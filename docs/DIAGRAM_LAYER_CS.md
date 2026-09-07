@@ -50,7 +50,7 @@ Uvnitř tohoto jediného Uložit mají obě části payloadu záměrně odlišno
 | Payload | Sémantika | Vynecháno / `[]` |
 |---|---|---|
 | `nodes` | **úplná náhrada** — pole *je* členství na plátně | plátno vyprázdněno (`nodes` samo je povinné) |
-| `edges` | **úplná náhrada** uložené sady zlomových bodů | všechny hrany se vrátí k výchozímu vedení |
+| `edges` | **úplná náhrada** — pole *je* členství hran | vynecháno: nedotčeno; `[]`: všechny hrany mimo plátno |
 | `overlays` | **přírůstkové** — položka nasadí nebo aktualizuje jeden pojem | **nasazené úpravy zůstávají nedotčeny** |
 
 **Proč overlays nemohou být úplná náhrada.** Úplná náhrada vyžaduje, aby vše, co klient musí poslat zpět, bylo vidět v tom, co vrací čtení. U overlayů to neplatí:
@@ -100,7 +100,9 @@ Zásadní je, že jde o rozhodnutí o **vykreslení**, ne o vlastnictví. Všech
 
 Z toho plyne, že **tažení konce hrany je editace pojmu** (přesměrování šipky mění overlay `range` u VZTAHu; přetažení řádku vlastnosti do jiné třídy mění `domain` u VLASTNOSTi) a **nakreslení nové čáry vztahu je vytvoření pojmu VZTAH**. Hrany nikdy neakumulují vlastní rozpracovaný stav; při čtení se znovu projektují z `živý ⊕ overlay`. Overlay pojmu je jediným zdrojem pravdy pro domain/range/hierarchii.
 
-**Hrana neukládá nic než své zlomové body.** Existence, konce i druh se odvozují, takže `diagram_edges` ukládá pouze `(edge_key, segments_json)`. Ukládat konce by duplikovalo projekci a mohlo by jí tiše odporovat — přesměrujete range a uložený konec dál jmenuje starou třídu. Přesně proti této třídě rozcházení je celá tato vrstva postavena, takže ty sloupce neexistují.
+**Hrana ukládá své členství a své zlomové body, nic víc.** Existence, konce i druh se odvozují, takže `diagram_edges` ukládá pouze `(edge_key, segments_json)`: existence řádku říká, že hrana je na plátně, a `segments_json` říká, jak je vedená. Ukládat konce by duplikovalo projekci a mohlo by jí tiše odporovat — přesměrujete range a uložený konec dál jmenuje starou třídu. Přesně proti této třídě rozcházení je celá tato vrstva postavena, takže ty sloupce neexistují.
+
+**Členství a projekce jsou dvě různé otázky.** Projekce odpovídá, zda hrana *může* být nakreslena (oba konce na plátně, trojice v RDF); členství odpovídá, zda *má*. Hrana, kterou uživatel nikdy neumístil, se nekreslí, i když se projektuje — je to tentýž stav jako třída, která ve slovníku existuje, ale nebyla přetažena na plátno. Právě díky tomu mohou na plátně být dvě třídy bez vztahu mezi nimi. Členství může projektovatelnou hranu jen skrýt, nikdy neoživí neprojektovatelnou, takže **hrana nikdy nezůstane viset na jednom konci**: ztráta konce ji přestane kreslit, ať už její řádek říká cokoli.
 
 **Nekompletní pojmy žijí mimo plátno.** VZTAH bez jednoho konce nebo VLASTNOST bez domény se prostě nekreslí — není k čemu je připojit. Nic to nestojí, protože umístění *je* dokončení: takový pojem se na plátno dostane přetažením z detailu slovníku a to přetažení chybějící konec doplní. Model hran a řádků tak nikdy nemusí reprezentovat rozestavěný pojem, což je jediná věc, kterou starší model „uzel na pojem" uměl vyjádřit a tento neumí.
 
@@ -140,7 +142,7 @@ Vázáno na **diagram**, s `ontology_metadata_id` ponechaným vedle. Každé pl�
 
 > **Proč jsou to dvě tabulky.** Kdysi to byl jeden řádek, a protože členství na plátně je „které řádky uzlů existují", nasazení úpravy tím připnulo její pojem na plátno: odebrání uzlu — čistě vizuální úkon — bylo blokováno úkonem čistě sémantickým. Pojem bez vlastního boxu si musel vymyslet pozici (sloupce rozvržení jsou NOT NULL) a skončil ukotvený v počátku. Rozdělení tuto fikci odstraňuje, dovoluje sklizni být prostou úplnou náhradou a dělá z „diagram je pohled na podmnožinu" pravdu ve schématu, ne jen v záměru.
 
-**`diagram_edges`** — `edge_key` (id projektované hrany, ke které tyto zlomové body patří: IRI pojmu VZTAH, nebo složené `edge|KIND|source|target` u hierarchického odkazu) a `segments_json`, unikátní na `(diagram_id, edge_key)`. **Jen zlomové body** — žádné konce, žádný druh, žádný obsah. Řádek, jehož hrana se už neprojektuje, při čtení nenajde protějšek a příští Uložit ho smaže; nic nemusí dohledávat sirotky.
+**`diagram_edges`** — `edge_key` (id projektované hrany, ke které tento řádek patří: IRI pojmu VZTAH, nebo složené `edge|KIND|source|target` u hierarchického odkazu) a `segments_json`, unikátní na `(diagram_id, edge_key)`. **Členství plus zlomové body** — žádné konce, žádný druh, žádný obsah. Řádek, jehož hrana se už neprojektuje, při čtení nenajde protějšek a příští Uložit ho smaže; nic nemusí dohledávat sirotky.
 
 Obsahový model overlaye (`DiagramPendingEdit`) je **čistě strukturální**: `domain`, `range`, `broaderConcept` (`subClassOf`, TRIDA), `exactMatch`, marker `convertToHierarchy` pro op 6 a `baseUpdatedAt` (otisk pro detekci zastaralého základu, razítkuje server, na zápisu se nikdy nepřijímá). Záměrně vynechává **editaci názvu/labelu** — změna názvu přejmenuje IRI pojmu (přesune všechny jeho triples), což by osiřelo IRI odkaz uzlu diagramu. Editace labelu zůstává v běžném editoru pojmů, mimo diagram.
 
@@ -149,9 +151,10 @@ Obsahový model overlaye (`DiagramPendingEdit`) je **čistě strukturální**: `
 `DiagramLayoutReconciler` aplikuje jedno Uložit v pevném pořadí a to pořadí je nosné:
 
 1. **`nodes[]` → `diagram_nodes`** — aktualizovat odpovídající řádky na místě, vložit řádky pro nová IRI, pak sklidit: každý uložený řádek chybějící v příchozí množině se odstraní. Prostá úplná náhrada, bez výjimek.
-2. **`overlays[]` → `diagram_pending_edits`** — u každé položky zkontrolovat graf pojmu, pak nasadit či aktualizovat jeho úpravu, nebo řádek smazat při zahození (položka nesoucí jen `conceptIri`).
+2. **`edges[]` → `diagram_edges`** — vložit či aktualizovat řádek pro každou položku a sklidit každý řádek chybějící v příchozí množině; stejná úplná náhrada jako u uzlů. `edges` rovné `null` tuto polovinu přeskočí celou, takže klient, který hrany nespravuje, je nemůže vynecháním smazat. U položky vynechané `segments` ponechají uložené vedení a `[]` je vyčistí — položka je výrok o členství a o geometrii neříká nic, pokud ji sama nenese.
+3. **`overlays[]` → `diagram_pending_edits`** — u každé položky zkontrolovat graf pojmu, pak nasadit či aktualizovat jeho úpravu, nebo řádek smazat při zahození (položka nesoucí jen `conceptIri`).
 
-**Ani jedna polovina neomezuje druhou.** Nesdílejí řádek, takže na jejich pořadí nezáleží a žádná nemůže zrušit tu druhou: třída může opustit plátno a přitom si ponechat nasazenou úpravu, a nasazení úpravy nikdy nedostane pojem na plátno. Odebrání uzlu nenese žádný RDF záměr — zahození je samostatný, explicitní pokyn.
+**Žádná z polovin neomezuje ostatní.** Nesdílejí řádek, takže na jejich pořadí nezáleží a žádná nemůže zrušit tu druhou: třída může opustit plátno a přitom si ponechat nasazenou úpravu, a nasazení úpravy nikdy nedostane pojem na plátno. Odebrání uzlu nenese žádný RDF záměr — zahození je samostatný, explicitní pokyn.
 
 **Zřizovat z uložené množiny, ne z příchozí.** `diagram_nodes` má prostý unikát na `(diagram_id, concept_iri)` a kolekce je `orphanRemoval`, takže kdyby jedno Uložit kdy vyprodukovalo odstranění řádku a vložení pro totéž IRI, Hibernate by vydal INSERT před DELETE a omezení by spadlo. Je to totéž riziko, proti kterému už byl zpevněn rekonciliátor hran.
 

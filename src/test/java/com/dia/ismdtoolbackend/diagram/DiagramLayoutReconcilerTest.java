@@ -421,9 +421,13 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 .containsExactly("https://x/no-row/pojem/deleted");
     }
 
-    /** An edge with no waypoints stores no row: there is nothing to remember about default routing. */
+    /**
+     * A row IS the edge's canvas membership, so an unrouted edge still persists one — the row says "drawn",
+     * and {@code segments_json} merely stays null for default routing. Storing nothing here would make the
+     * edge indistinguishable from one the user removed, and it would vanish on the next read.
+     */
     @Test
-    void edgeWithoutWaypoints_persistsNoRow() {
+    void edgeWithoutWaypoints_persistsAMembershipRow() {
         DiagramEntity diagram = newDiagram("edges");
         diagramRepository.saveAndFlush(diagram);
         em.clear();
@@ -435,7 +439,99 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", null)), null);
         DiagramEntity saved = save(managed, layout);
 
-        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.getEdgeKey()).isEqualTo("https://x/pojem/rel");
+                    assertThat(e.getSegments()).as("membership without routing").isNull();
+                });
+    }
+
+    /**
+     * Omitting {@code segments} on an entry must not discard geometry the user already drew: the entry is
+     * about membership, and says nothing about routing. This was a silent data loss — every save that
+     * echoed edges back without their waypoints wiped them.
+     */
+    @Test
+    void omittedSegments_keepTheStoredWaypoints() {
+        DiagramEntity diagram = newDiagram("keep-segments");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
+                        List.of(new EdgeWaypoint(12.5, -4)))), null));
+        em.clear();
+
+        // Second save: the same edge, membership only — no segments field.
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(again, new DiagramLayoutDto(again.getVersion(), null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", null)), null));
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getSegments())
+                        .as("routing survives a membership-only save")
+                        .containsExactly(new EdgeWaypoint(12.5, -4)));
+    }
+
+    /**
+     * A null {@code edges} is a no-op, not "remove every edge". A client that does not manage edges at all
+     * must not clear the canvas's edges by omitting the field.
+     */
+    @Test
+    void nullEdges_leaveMembershipUntouched() {
+        DiagramEntity diagram = newDiagram("null-edges");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", null)), null));
+        em.clear();
+
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(again, new DiagramLayoutDto(again.getVersion(), null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                null, null));
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .as("the edge is still on the canvas")
+                .hasSize(1);
+    }
+
+    /**
+     * The removal path: a present {@code edges} is authoritative, so an edge omitted from it leaves the
+     * canvas. This is the only way to take an edge off a diagram whose endpoint classes both stay.
+     */
+    @Test
+    void omittingAnEdgeFromAPresentArray_removesItFromTheCanvas() {
+        DiagramEntity diagram = newDiagram("remove-edge");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
+                        List.of(new EdgeWaypoint(12.5, -4)))), null));
+        em.clear();
+
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(again, new DiagramLayoutDto(again.getVersion(), null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(), null));
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .as("an empty array is a real statement: no edges on this canvas")
+                .isEmpty();
     }
 
     /** Waypoints are FE-only geometry, so PG is their sole owner — they must survive the round-trip intact. */
@@ -463,22 +559,34 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 });
     }
 
-    /** An explicitly-empty waypoint list means default routing — same as omitting it: no row. */
+    /**
+     * An explicitly-empty waypoint list CLEARS the routing — distinct from omitting the field, which keeps
+     * it. The edge stays on the canvas either way; only its geometry differs.
+     */
     @Test
-    void emptySegments_persistNoRow() {
+    void emptySegments_clearRoutingButKeepTheEdge() {
         DiagramEntity diagram = newDiagram("no-segments");
         diagramRepository.saveAndFlush(diagram);
         em.clear();
 
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
-        DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
-                List.of(node("https://x/pojem/prop", 0, 0),
-                        node("https://x/pojem/cls", 100, 0)),
-                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", List.of())), null);
-        DiagramEntity saved = save(managed, layout);
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel",
+                        List.of(new EdgeWaypoint(12.5, -4)))), null));
         em.clear();
 
-        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges()).isEmpty();
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramEntity saved = save(again, new DiagramLayoutDto(again.getVersion(), null,
+                List.of(node("https://x/pojem/prop", 0, 0), node("https://x/pojem/cls", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/rel", List.of())), null));
+        em.clear();
+
+        assertThat(diagramRepository.findById(saved.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getSegments())
+                        .as("[] is an explicit clear, unlike an omitted field")
+                        .isNull());
     }
 
     /**

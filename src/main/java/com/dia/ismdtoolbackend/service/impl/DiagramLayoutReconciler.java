@@ -250,35 +250,44 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Full-replace the persisted waypoint rows; read always re-projects the edges themselves. An edge
-     * carrying no waypoints stores nothing.
+     * Reconcile edge membership: a row means "this edge is on the canvas", and {@code segments_json} is
+     * that row's optional routing. Authoritative like {@code nodes[]} — an edge omitted from a present
+     * {@code edges[]} leaves the canvas and its waypoints go with it. A null {@code edges[]} is a no-op,
+     * so a client that never touches edges cannot clear them by omission.
+     *
+     * <p>{@code segments} is three-way per entry: null/omitted KEEPS what is stored (the entry is about
+     * membership, not routing), {@code []} clears to default routing, a list sets it. Omitting it used to
+     * delete the row, which silently discarded a user's hand-drawn geometry on every save that did not
+     * echo it back.
      *
      * <p>Reconciled <em>in place</em>, never cleared-and-reinserted: Hibernate flushes the INSERT before
-     * the orphan DELETE, so re-saving a still-routed edge would collide with the
+     * the orphan DELETE, so re-saving a surviving edge would collide with the
      * {@code (diagram_id, edge_key)} unique constraint.
      */
     private void reconcileEdges(DiagramEntity diagram, DiagramLayoutDto layout) {
+        if (layout.edges() == null) {
+            return;
+        }
+
         Map<String, DiagramEdgeEntity> existing = new HashMap<>();
         for (DiagramEdgeEntity e : diagram.getEdges()) {
             existing.put(e.getEdgeKey(), e);
         }
 
         Set<String> incoming = new HashSet<>();
-        if (layout.edges() != null) {
-            for (DiagramLayoutDto.Edge in : layout.edges()) {
-                if (in.segments() == null || in.segments().isEmpty()) {
-                    continue;
-                }
-                if (!incoming.add(in.id())) {
-                    log.warn("Ignoring duplicate waypoints for diagram edge {}", in.id());
-                    continue;
-                }
-                DiagramEdgeEntity edge = existing.get(in.id());
-                if (edge == null) {
-                    edge = new DiagramEdgeEntity();
-                    edge.setEdgeKey(in.id());
-                    diagram.addEdge(edge);
-                }
+        for (DiagramLayoutDto.Edge in : layout.edges()) {
+            if (!incoming.add(in.id())) {
+                log.warn("Ignoring duplicate entry for diagram edge {}", in.id());
+                continue;
+            }
+            DiagramEdgeEntity edge = existing.get(in.id());
+            if (edge == null) {
+                edge = new DiagramEdgeEntity();
+                edge.setEdgeKey(in.id());
+                diagram.addEdge(edge);
+            }
+            // Null means "not saying anything about routing" — keep whatever this row already holds.
+            if (in.segments() != null) {
                 edge.setSegments(in.segments());
             }
         }

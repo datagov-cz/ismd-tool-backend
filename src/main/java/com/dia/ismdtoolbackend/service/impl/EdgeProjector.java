@@ -49,13 +49,25 @@ class EdgeProjector {
     private final Map<String, DiagramPendingEdit> overlays;
     /** Foreign node IRIs — valid edge targets, never edge sources. */
     private final Set<String> foreignIris;
+    /**
+     * Edge membership: the projected edge ids the user has placed on this canvas. Projection decides an
+     * edge's endpoints, kind and validity; this decides whether it is drawn at all.
+     */
+    private final Set<String> onCanvasEdges;
 
     EdgeProjector(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints,
-                  Map<String, DiagramPendingEdit> overlays, Set<String> foreignIris) {
+                  Map<String, DiagramPendingEdit> overlays, Set<String> foreignIris,
+                  Set<String> onCanvasEdges) {
         this.mapper = mapper;
         this.waypoints = waypoints != null ? waypoints : Map.of();
         this.overlays = overlays != null ? overlays : Map.of();
         this.foreignIris = foreignIris != null ? foreignIris : Set.of();
+        this.onCanvasEdges = onCanvasEdges != null ? onCanvasEdges : Set.of();
+    }
+
+    /** True when the user has placed this edge on the canvas. */
+    private boolean placed(String edgeId) {
+        return onCanvasEdges.contains(edgeId);
     }
 
     /**
@@ -143,6 +155,10 @@ class EdgeProjector {
         if (drawable(domain, onCanvas) || drawable(range, onCanvas)) {
             return;
         }
+        // A VZTAH edge is keyed by its own concept IRI.
+        if (!placed(iri)) {
+            return;
+        }
         edges.add(new DiagramDto.Edge(
                 iri,
                 mapper.nodeId(domain),
@@ -227,26 +243,39 @@ class EdgeProjector {
                                   DiagramPendingEdit overlay, Set<String> onCanvas) {
         boolean pending = overlay != null && overlay.getBroaderConcept() != null;
         List<String> broader = pending ? overlay.getBroaderConcept() : detail.getBroaderClasses();
-        addTripleEdges(edges, iri, broader, DiagramEdgeKind.SUBCLASS_OF, pending, onCanvas);
+        addTripleEdges(edges, iri, broader, detail.getBroaderClasses(),
+                DiagramEdgeKind.SUBCLASS_OF, pending, onCanvas);
     }
 
     private void projectExactMatch(List<DiagramDto.Edge> edges, String iri, ConceptDetailModel detail,
                                    DiagramPendingEdit overlay, Set<String> onCanvas) {
         boolean pending = overlay != null && overlay.getExactMatch() != null;
         List<String> matches = pending ? overlay.getExactMatch() : detail.getExactMatches();
-        addTripleEdges(edges, iri, matches, DiagramEdgeKind.EXACT_MATCH, pending, onCanvas);
+        addTripleEdges(edges, iri, matches, detail.getExactMatches(),
+                DiagramEdgeKind.EXACT_MATCH, pending, onCanvas);
     }
 
+    /**
+     * @param targets    what to draw — overlay targets when this predicate is staged, else the live ones
+     * @param liveTargets the pre-overlay targets, which is what any membership row is still keyed by
+     */
     private void addTripleEdges(List<DiagramDto.Edge> edges, String source, List<String> targets,
-                                DiagramEdgeKind kind, boolean pending, Set<String> onCanvas) {
+                                List<String> liveTargets, DiagramEdgeKind kind, boolean pending,
+                                Set<String> onCanvas) {
         if (targets == null) {
             return;
         }
+        boolean repointed = pending && placedUnderLiveId(source, liveTargets, kind);
         for (String target : targets) {
             if (drawable(target, onCanvas)) {
                 continue;
             }
             String id = projectedEdgeId(kind, source, target);
+            // A repoint moves the endpoints the id is built from, so the row still carries the OLD id.
+            // Honour membership under either, or staging an overlay would silently drop the edge.
+            if (!placed(id) && !repointed) {
+                continue;
+            }
             edges.add(new DiagramDto.Edge(
                     id,
                     mapper.nodeId(source),
@@ -255,6 +284,23 @@ class EdgeProjector {
                     waypoints.get(id),
                     new DiagramDto.EdgeData(kind, pending)));
         }
+    }
+
+    /**
+     * True when this (kind, source) had a placed edge before the overlay repointed it. Membership means
+     * "this link from this class is on the canvas", so it survives a change of target — the id is derived
+     * from the endpoints and cannot be, on its own, the thing that carries the user's placement.
+     */
+    private boolean placedUnderLiveId(String source, List<String> liveTargets, DiagramEdgeKind kind) {
+        if (liveTargets == null) {
+            return false;
+        }
+        for (String liveTarget : liveTargets) {
+            if (liveTarget != null && placed(projectedEdgeId(kind, source, liveTarget))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean drawable(String iri, Set<String> onCanvas) {

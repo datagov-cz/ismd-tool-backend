@@ -44,6 +44,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The diagram layer's core service: fat read (layout ⋈ live content, overlays applied, edges projected) and
@@ -517,6 +518,8 @@ public class DiagramServiceImpl implements DiagramService {
             Map<String, String> slugs,
             Map<Long, String> nodeIriByRowId,
             Map<String, List<EdgeWaypoint>> edgeWaypoints,
+            /* Edge membership: the projected edge ids placed on this canvas. */
+            Set<String> onCanvasEdges,
             /* Staged edits by concept IRI. Independent of `nodes` — either may exist without the other. */
             Map<String, DiagramPendingEdit> overlays,
             /*
@@ -557,7 +560,19 @@ public class DiagramServiceImpl implements DiagramService {
         return new DiagramSnapshot(diagram.getId(), diagram.getName(), graphName, diagram.getVersion(),
                 mapper.toViewport(diagram), nodes,
                 conceptTypes(ownConcepts, foreignConcepts), conceptSlugs(ownConcepts, foreignConcepts),
-                nodeIriByRowId, edgeWaypoints(diagram), overlays(diagram), foreignGraphs(foreignConcepts));
+                nodeIriByRowId, edgeWaypoints(diagram), onCanvasEdges(diagram), overlays(diagram),
+                foreignGraphs(foreignConcepts));
+    }
+
+    /** The projected edge ids on this canvas — one row per edge the user has placed. */
+    private Set<String> onCanvasEdges(DiagramEntity diagram) {
+        Set<String> keys = new java.util.HashSet<>();
+        for (DiagramEdgeEntity edge : diagram.getEdges()) {
+            if (edge.getEdgeKey() != null) {
+                keys.add(edge.getEdgeKey());
+            }
+        }
+        return keys;
     }
 
     /** Graph name per foreign node IRI. An external IRI with no PG row stays absent. */
@@ -617,7 +632,8 @@ public class DiagramServiceImpl implements DiagramService {
     private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot,
                                 Map<String, ConceptDetailModel> live) {
         EdgeProjector projector = new EdgeProjector(mapper, snapshot.edgeWaypoints(),
-                snapshot.overlays(), new java.util.HashSet<>(foreignIris(snapshot.nodes())));
+                snapshot.overlays(), new java.util.HashSet<>(foreignIris(snapshot.nodes())),
+                snapshot.onCanvasEdges());
         Map<String, List<DiagramDto.PropertyRow>> rows =
                 projector.propertyRows(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
 

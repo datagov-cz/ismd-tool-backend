@@ -189,7 +189,7 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
             x += 100;
         }
         return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null, nodes, List.of(),
+                storedVersion(), null, nodes, PLACED_EDGES,
                 overlays.length == 0 ? null : List.of(overlays)));
     }
 
@@ -204,9 +204,17 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
             x += 100;
         }
         return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null, nodes, List.of(),
+                storedVersion(), null, nodes, PLACED_EDGES,
                 overlays.length == 0 ? null : List.of(overlays)));
     }
+
+    /**
+     * Edge membership for these fixtures: REL is placed on the canvas, so the tests below exercise overlay
+     * VISIBILITY rather than edge membership. An edge absent from edges[] is simply not on the canvas, which
+     * would make every assertion here vacuously pass.
+     */
+    private static final List<DiagramLayoutDto.Edge> PLACED_EDGES =
+            List.of(new DiagramLayoutDto.Edge(REL, null));
 
     private DiagramDto.Edge edgeFor(DiagramDto diagram, String conceptIri) {
         return diagram.edges().stream()
