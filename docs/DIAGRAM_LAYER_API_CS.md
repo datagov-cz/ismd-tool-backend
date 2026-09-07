@@ -440,15 +440,21 @@ Nasazené úpravy jsou **po diagramech**, takže dvě plátna jednoho slovníku 
 
 **Nic se nezapsalo.** Nasazená práce obou stran zůstala přesně taková, jaká byla, takže volání lze bezpečně zopakovat, jakmile se uživatel rozhodne.
 
-**Řešení** — zavolejte znovu a pojmenujte stranu:
+**Řešení** — zavolejte znovu a pojmenujte **vítěze**:
 
 | `POST …/materialize?onConflict=` | Účinek |
 |---|---|
 | *(vynecháno)* | Detekovat a odmítnout s přehledem výše. Jediné bezpečné výchozí chování. |
-| `DISCARD_MINE` | Zahodit kolidující úpravy **tohoto** diagramu a materializovat zbytek. |
-| `DISCARD_THEIRS` | Zahodit kolidující úpravy **sourozeneckých** diagramů a materializovat. |
+| `ACCEPT_MINE` | Vítězí **tento** diagram: zahodit kolidující úpravy všech ostatních diagramů a materializovat tento. |
+| `ACCEPT_THEIRS` + `winnerDiagramId=<id>` | Vítězí **uvedený** diagram: zahodit kolidující úpravy zde i na všech ostatních diagramech a materializovat vítěze. |
 
-V obou případech se **zahodí pouze sporné pojmy** — nesouvisející nasazená práce sourozence přežije. Zahazování u sourozence je povolené, protože oba diagramy patří slovníku, který volající už vlastní.
+Rozhodnutí pojmenuje jednoho vítěze, nikdy stranu k zahození — kolize může zasáhnout víc než dvě plátna a „zahodit jejich" nemá jediný význam, jakmile tentýž pojem nasadí tři diagramy. Všichni poražení se vyčistí v jednom průchodu, včetně pláten, která volající nepojmenoval, takže jedno rozhodnutí vyřeší celou kolizi místo jednoho kola na každého sourozence.
+
+**`ACCEPT_THEIRS` materializuje vítěze, ne diagram v cestě.** Ponechat zvolenou úpravu jen nasazenou by kolizi přesunulo na plátno, ke kterému se uživatel už nemusí vrátit.
+
+`winnerDiagramId` je pro `ACCEPT_THEIRS` povinné a s `ACCEPT_MINE` odmítnuté. Musí pojmenovat diagram, který je v přehledu kolizí; cokoli jiného je **400**, protože opětovné poslání téhož nemůže uspět. Zásah do jiného plátna je povolený, protože každý diagram v kolizní množině patří slovníku, který volající už vlastní — a množina se načítá znovu na serveru, nikdy se nevěří požadavku.
+
+**Zahodí se pouze sporné pojmy** — nesouvisející nasazená práce každého plátna přežije.
 
 ### Náprava `STALE_BASE` — zahodit, pak nasadit znovu
 

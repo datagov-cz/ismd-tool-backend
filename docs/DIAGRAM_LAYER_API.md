@@ -440,15 +440,21 @@ Staged edits are **per diagram**, so two canvases of one ontology can hold compe
 
 **Nothing was written.** Both sides' staged work is exactly as it was, so the call is safe to repeat once the user chooses.
 
-**Resolving** — re-call naming a side:
+**Resolving** — re-call naming the **winner**:
 
 | `POST …/materialize?onConflict=` | Effect |
 |---|---|
 | *(omitted)* | Detect and refuse with the report above. The only safe default. |
-| `DISCARD_MINE` | Drop **this** diagram's conflicting edits, then materialize what remains. |
-| `DISCARD_THEIRS` | Drop the **sibling** diagrams' conflicting edits, then materialize. |
+| `ACCEPT_MINE` | **This** diagram wins: drop every other diagram's conflicting edits, then materialize this one. |
+| `ACCEPT_THEIRS` + `winnerDiagramId=<id>` | The **named** diagram wins: drop the conflicting edits here and on every other diagram, then materialize the winner. |
 
-Either way **only the contested concepts are discarded** — a sibling's unrelated staged work survives. Discarding on a sibling is allowed because both diagrams belong to the ontology the caller already owns.
+A resolution names one winner, never a side to discard — a conflict can span more than two canvases, and "discard theirs" has no single meaning once three diagrams stage the same concept. Every loser is cleared in the same pass, including canvases the caller never named, so one decision settles the whole collision rather than one round trip per sibling.
+
+**`ACCEPT_THEIRS` materializes the winner, not the diagram in the path.** Leaving the chosen edit merely staged would push the conflict onto a canvas the user may never return to.
+
+`winnerDiagramId` is required by `ACCEPT_THEIRS` and rejected with `ACCEPT_MINE`. It must name a diagram that appears in the conflict report; anything else is **400**, since re-sending it cannot succeed. Reaching another canvas is allowed because every diagram in the conflict set belongs to the ontology the caller already owns — and the set is re-read server-side, never trusted from the request.
+
+**Only the contested concepts are discarded** — every canvas's unrelated staged work survives.
 
 ### Recovering from `STALE_BASE` — discard, then re-stage
 

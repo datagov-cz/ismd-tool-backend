@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -188,7 +189,10 @@ public class DiagramController {
             description = "Aplikuje všechny čekající (pending) změny přes existující CRUD pojmů → outbox → RDF a po úspěchu vyčistí "
                     + "jednotlivé overlaye. Vrací výsledek po jednotlivých změnách (materializované, neúspěšné, zastaralé). "
                     + "Pokud má na stejném pojmu rozpracovanou změnu i jiný diagram téhož slovníku, vrací 409 s přehledem "
-                    + "kolizí; parametr `onConflict` určuje, která strana se zahodí. "
+                    + "kolizí. Parametr `onConflict` pojmenuje jedinou vítěznou stranu: `ACCEPT_MINE` převezme změny tohoto "
+                    + "diagramu, `ACCEPT_THEIRS` spolu s `winnerDiagramId` změny uvedeného diagramu. Kolidující změny všech "
+                    + "ostatních diagramů se zahodí — jedno rozhodnutí vyřeší kolizi napříč libovolným počtem diagramů. "
+                    + "U `ACCEPT_THEIRS` se materializuje vítězný diagram, nikoli diagram v cestě. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
     @ApiResponses({
@@ -207,12 +211,16 @@ public class DiagramController {
             @PathVariable String ontologySlug,
             @PathVariable Long diagramId,
             @RequestParam(required = false) DiagramService.ConflictResolution onConflict,
+            @Parameter(description = "Diagram, jehož změny se převezmou. Povinné pro onConflict=ACCEPT_THEIRS.")
+            @RequestParam(required = false) Long winnerDiagramId,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Diagram materialize requested, ontologySlug: {}, diagramId: {}, onConflict: {}, userId: {}",
-                ontologySlug, diagramId, onConflict, securityUser.getUserId());
+        log.info("Diagram materialize requested, ontologySlug: {}, diagramId: {}, onConflict: {}, "
+                        + "winnerDiagramId: {}, userId: {}",
+                ontologySlug, diagramId, onConflict, winnerDiagramId, securityUser.getUserId());
 
-        MaterializeResultDto result = diagramService.materialize(ontologySlug, diagramId, onConflict);
+        MaterializeResultDto result =
+                diagramService.materialize(ontologySlug, diagramId, onConflict, winnerDiagramId);
         return ResponseEntity.ok().body(ApiResponseDto.success(result, "Změny diagramu byly převzaty."));
     }
 }

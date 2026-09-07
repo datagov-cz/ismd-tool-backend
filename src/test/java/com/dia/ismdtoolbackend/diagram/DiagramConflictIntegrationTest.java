@@ -130,7 +130,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
-        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null))
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
                 .isInstanceOf(DiagramEditConflictException.class)
                 .satisfies(e -> {
                     DiagramConflictDto report = ((DiagramEditConflictException) e).getReport();
@@ -163,7 +163,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
-        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null))
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
                 .isInstanceOf(DiagramEditConflictException.class);
 
         assertThat(pendingEditRepo.findByDiagramId(mine)).hasSize(1);
@@ -183,7 +183,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_A));   // the SAME value
 
-        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null))
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
                 .as("a conflict is 'staged on both', not 'staged differently'")
                 .isInstanceOf(DiagramEditConflictException.class);
     }
@@ -196,7 +196,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         stage(mine, CLASS_A, exactMatch(CLASS_B));
         stage(theirs, CLASS_B, exactMatch(CLASS_A));
 
-        diagramService.materialize(SLUG, mine, null);
+        diagramService.materialize(SLUG, mine, null, null);
 
         verify(materializeService).materialize(eq(mine), eq(ontologyId()));
     }
@@ -207,7 +207,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         Long only = diagram("Hlavní diagram");
         stage(only, REL, range(CLASS_A));
 
-        diagramService.materialize(SLUG, only, null);
+        diagramService.materialize(SLUG, only, null, null);
 
         verify(materializeService).materialize(eq(only), eq(ontologyId()));
     }
@@ -229,7 +229,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         });
         stageOn(elsewhere, OTHER_SLUG, REL, range(CLASS_A));
 
-        diagramService.materialize(SLUG, mine, null);
+        diagramService.materialize(SLUG, mine, null, null);
 
         verify(materializeService)
                 .materialize(eq(mine), eq(ontologyId()));
@@ -237,54 +237,65 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
 
     // ---- resolution -----------------------------------------------------------------------------
 
-    /** DISCARD_THEIRS clears the sibling's edit and lets this diagram proceed. */
+    /** ACCEPT_MINE clears the sibling's edit and lets this diagram proceed. */
     @Test
-    void discardTheirs_removesTheSiblingsEditAndProceeds() {
+    void acceptMine_removesTheSiblingsEditAndProceeds() {
         Long mine = diagram("Hlavní diagram");
         Long theirs = diagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
-        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_THEIRS);
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_MINE, null);
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, REL))
                 .as("the sibling's competing edit is gone")
                 .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("my edit is the one kept — that is what ACCEPT_MINE means")
+                .isPresent();
+        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
     }
 
-    /** DISCARD_MINE drops this diagram's own edit, leaving the sibling's intact. */
+    /**
+     * ACCEPT_THEIRS drops this diagram's own edit and applies the named diagram's instead. The winner is
+     * what materializes: a resolution that only discarded the loser would leave the user's chosen edit
+     * staged on a canvas they may not go back to, and the conflict would simply resurface there.
+     */
     @Test
-    void discardMine_removesOwnEditAndLeavesTheSibling() {
+    void acceptTheirs_removesOwnEditAndMaterializesTheNamedDiagram() {
         Long mine = diagram("Hlavní diagram");
         Long theirs = diagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));
         stage(theirs, REL, range(CLASS_B));
 
-        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_MINE);
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs);
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
                 .as("this diagram's conflicting edit is abandoned")
                 .isEmpty();
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, REL))
-                .as("the sibling's is untouched — the user chose to keep it")
+                .as("the winner's is untouched — the user chose to keep it")
                 .isPresent();
+        // The WINNER materializes, not the diagram in the path.
+        verify(materializeService).materialize(eq(theirs), eq(ontologyId()));
+        verify(materializeService, never()).materialize(eq(mine), any());
     }
 
     /**
-     * The mirror of the test below, on the discarding side: choosing to abandon MY conflicting edit
-     * abandons only that one. A resolution scoped to everything this diagram staged would throw away
-     * uncontested work the user never offered up — and unlike the sibling case, every concept in that
-     * set does have a row here, so the over-wide delete would really land.
+     * The mirror of the test below, on the losing side: yielding to another canvas abandons only MY
+     * contested edit. A resolution scoped to everything this diagram staged would throw away uncontested
+     * work the user never offered up — and unlike the sibling case, every concept in that set does have a
+     * row here, so the over-wide delete would really land.
      */
     @Test
-    void discardMine_leavesOwnNonConflictingEdits() {
+    void acceptTheirs_leavesOwnNonConflictingEdits() {
         Long mine = diagram("Hlavní diagram");
         Long theirs = diagram("Pohled HR");
         stage(mine, REL, range(CLASS_A));            // contested
         stage(mine, CLASS_A, exactMatch(CLASS_B));   // mine alone — nobody contests it
         stage(theirs, REL, range(CLASS_B));
 
-        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_MINE);
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs);
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
                 .as("the contested edit is the one abandoned")
@@ -295,12 +306,12 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     /**
-     * Resolution touches ONLY the concepts actually in conflict. A sibling's unrelated staged work is
+     * Resolution touches ONLY the concepts actually in conflict. A loser's unrelated staged work is
      * not collateral — discarding a whole canvas's edits would be a much larger act than the user
      * agreed to.
      */
     @Test
-    void discardTheirs_leavesTheSiblingsNonConflictingEdits() {
+    void acceptMine_leavesTheSiblingsNonConflictingEdits() {
         Long mine = diagram("Hlavní diagram");
         Long theirs = diagram("Pohled HR");
 
@@ -318,7 +329,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
                 pendingEditRepo.deleteByDiagramIdAndConceptIri(theirs, CLASS_B));
         stage(theirs, CLASS_A, exactMatch(CLASS_B)); // uncontested: mine never stages CLASS_A
 
-        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_THEIRS);
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_MINE, null);
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, REL))
                 .as("the contested concept is discarded")
@@ -330,14 +341,14 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     /**
-     * Three canvases staging the same concept. The conflict set is "every OTHER diagram of this
-     * ontology", not "the other diagram" — so one DISCARD_THEIRS clears BOTH siblings in a single pass.
-     * A resolution that addressed one sibling at a time (which the report's {@code theirs()} list invites,
-     * since it names each diagram separately) would leave the second collision standing, and
-     * {@code requireNoRemainingConflict} would then re-throw a 409 the user has already answered.
+     * Three canvases staging the same concept. ONE decision settles the whole collision: ACCEPT_MINE
+     * clears BOTH siblings in a single pass. A resolution that addressed one sibling at a time (which the
+     * report's {@code theirs()} list invites, since it names each diagram separately) would leave the
+     * second collision standing, and {@code requireNoRemainingConflict} would then re-throw a 409 the user
+     * has already answered.
      */
     @Test
-    void discardTheirs_clearsEverySiblingStagingTheSameConcept() {
+    void acceptMine_clearsEverySiblingStagingTheSameConcept() {
         Long mine = diagram("Hlavní diagram");
         Long theirsOne = diagram("Pohled HR");
         Long theirsTwo = diagram("Pohled Finance");
@@ -346,7 +357,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         stage(theirsTwo, REL, range(CLASS_A));
         stage(theirsTwo, CLASS_A, exactMatch(CLASS_B)); // uncontested: mine never stages CLASS_A
 
-        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_THEIRS);
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_MINE, null);
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsOne, REL))
                 .as("the first sibling's competing edit is gone")
@@ -358,43 +369,126 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
                 .as("still scoped to the conflict set, however many siblings it spans")
                 .isPresent();
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
-                .as("my edit is the one kept — that is what DISCARD_THEIRS means")
+                .as("my edit is the one kept — that is what ACCEPT_MINE means")
                 .isPresent();
         verify(materializeService).materialize(eq(mine), eq(ontologyId()));
     }
 
     /**
-     * The same three canvases, resolved the other way. DISCARD_MINE gives up only MY edit; both siblings
-     * keep theirs and neither is materialized — materialize reads its work-list per diagram id, so the
-     * siblings' staged work stays staged for whoever owns those canvases to apply themselves.
+     * The reason the resolution names a WINNER rather than a side to discard: with three canvases in
+     * conflict, "discard theirs" is ambiguous and "discard mine" settles nothing — the two survivors
+     * still collide. Naming one winner clears every other canvas's contested edit in the same pass,
+     * including the third party the caller never mentioned.
      */
     @Test
-    void discardMine_leavesEverySiblingStagedAndMaterializesOnlyThisDiagram() {
+    void acceptTheirs_clearsEveryLoserIncludingThisDiagram() {
         Long mine = diagram("Hlavní diagram");
-        Long theirsOne = diagram("Pohled HR");
-        Long theirsTwo = diagram("Pohled Finance");
+        Long winner = diagram("Pohled HR");
+        Long alsoLoses = diagram("Pohled Finance");
         stage(mine, REL, range(CLASS_A));
-        stage(mine, CLASS_B, exactMatch(CLASS_A)); // mine alone — nobody contests it
-        stage(theirsOne, REL, range(CLASS_B));
-        stage(theirsTwo, REL, range(CLASS_A));
+        stage(mine, CLASS_B, exactMatch(CLASS_A));      // mine alone — nobody contests it
+        stage(winner, REL, range(CLASS_B));
+        stage(alsoLoses, REL, range(CLASS_A));
+        stage(alsoLoses, CLASS_A, exactMatch(CLASS_B)); // uncontested on the third canvas
 
-        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_MINE);
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, winner);
 
         assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
-                .as("only my own contested edit is abandoned")
+                .as("I lose too — my contested edit goes with every other loser's")
                 .isEmpty();
-        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, CLASS_B))
-                .as("my uncontested work survives")
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(alsoLoses, REL))
+                .as("the third canvas loses as well, though the caller named only the winner; leaving it "
+                        + "would strand a collision the user believes they just resolved")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(winner, REL))
+                .as("the winner's edit stands")
                 .isPresent();
-        assertThat(pendingEditRepo.findByDiagramId(theirsOne))
-                .as("the first sibling keeps its edit — DISCARD_MINE must not reach across canvases")
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, CLASS_B))
+                .as("uncontested work survives on a loser")
+                .isPresent();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(alsoLoses, CLASS_A))
+                .as("and on the third canvas")
+                .isPresent();
+        verify(materializeService).materialize(eq(winner), eq(ontologyId()));
+        verify(materializeService, never()).materialize(eq(mine), any());
+        verify(materializeService, never()).materialize(eq(alsoLoses), any());
+    }
+
+    // ---- resolution input validation --------------------------------------------------------------
+
+    /**
+     * ACCEPT_THEIRS with no winner is refused rather than guessed at. With more than one sibling in
+     * conflict there is no defensible default, and picking one would silently discard a canvas the user
+     * never chose against.
+     */
+    @Test
+    void acceptTheirs_withoutAWinner_isRejected() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+
+        assertThatThrownBy(() ->
+                diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, null))
+                .isInstanceOf(DiagramServiceImpl.DiagramConflictResolutionException.class);
+
+        assertThat(pendingEditRepo.findByDiagramId(mine)).as("nothing discarded").hasSize(1);
+        assertThat(pendingEditRepo.findByDiagramId(theirs)).as("nothing discarded").hasSize(1);
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /**
+     * The winner id is authorized by being IN the conflict set, not by the request asserting it. Only the
+     * slug is checked by the endpoint, and ACCEPT_THEIRS makes this call write a canvas other than the one
+     * in the path — so an arbitrary id must not be able to trigger a materialize of someone else's work.
+     */
+    @Test
+    void acceptTheirs_namingADiagramNotInTheConflictSet_isRejected() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        Long uninvolved = diagram("Pohled Finance");   // same ontology, but stages nothing contested
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+        stage(uninvolved, CLASS_A, exactMatch(CLASS_B));
+
+        assertThatThrownBy(() ->
+                diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, uninvolved))
+                .isInstanceOf(DiagramServiceImpl.DiagramConflictResolutionException.class);
+
+        assertThat(pendingEditRepo.findByDiagramId(theirs))
+                .as("the real conflict is left exactly as it was, for the user to answer again")
                 .hasSize(1);
-        assertThat(pendingEditRepo.findByDiagramId(theirsTwo))
-                .as("and so does the second")
-                .hasSize(1);
-        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
-        verify(materializeService, never()).materialize(eq(theirsOne), any());
-        verify(materializeService, never()).materialize(eq(theirsTwo), any());
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /**
+     * ACCEPT_THEIRS when nothing collides is refused, not silently honoured. There is no conflict for it
+     * to resolve, so obeying it would materialize a canvas the caller only named as a winner — a write
+     * nobody asked for on a diagram that is not in the path.
+     */
+    @Test
+    void acceptTheirs_withNoConflictAtAll_isRejected() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, CLASS_A, exactMatch(CLASS_B));   // different concept — no collision
+
+        assertThatThrownBy(() ->
+                diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs))
+                .isInstanceOf(DiagramServiceImpl.DiagramConflictResolutionException.class);
+
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /** ACCEPT_MINE with no conflict is a plain materialize — the resolution simply has nothing to do. */
+    @Test
+    void acceptMine_withNoConflict_materializesNormally() {
+        Long only = diagram("Hlavní diagram");
+        stage(only, REL, range(CLASS_A));
+
+        diagramService.materialize(SLUG, only, ConflictResolution.ACCEPT_MINE, null);
+
+        verify(materializeService).materialize(eq(only), eq(ontologyId()));
     }
 
     // ---- authorization --------------------------------------------------------------------------
@@ -414,7 +508,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
             return diagramRepo.saveAndFlush(d).getId();
         });
 
-        assertThatThrownBy(() -> diagramService.materialize(SLUG, elsewhere, null))
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, elsewhere, null, null))
                 .as("materialize")
                 .isInstanceOf(EntityNotFoundException.class);
         assertThatThrownBy(() -> diagramService.getDiagram(SLUG, elsewhere))

@@ -190,9 +190,11 @@ Because staging is per-diagram, two canvases of one ontology can hold competing 
 
 **Detection runs before the per-change loop.** The changes are applied in their own `REQUIRES_NEW` transactions, so a check inside that loop would already have committed RDF for everything ahead of the collision. It runs in one transaction of its own, first; a refusal means nothing was written and both sides' staged work is untouched.
 
-**Resolution is the user's, and explicit.** `POST …/materialize` with no `onConflict` reports the conflict and refuses (409). The client re-calls naming a side: `DISCARD_MINE` drops this diagram's conflicting edits, `DISCARD_THEIRS` drops the siblings'. Either way **only the contested concepts are discarded** — never a whole canvas's staged work, which is a far larger act than the user agreed to.
+**Resolution is the user's, and explicit.** `POST …/materialize` with no `onConflict` reports the conflict and refuses (409). The client re-calls naming the **winner**: `ACCEPT_MINE` for this diagram, or `ACCEPT_THEIRS` with `winnerDiagramId` for a named one. **Only the contested concepts are discarded** — never a whole canvas's staged work, which is a far larger act than the user agreed to.
 
-Discarding on a sibling is authorized because both diagrams belong to the one ontology the caller was already authorized against; the sibling rows are still re-read through that ontology scope rather than trusted from the request.
+**One winner, not a side to discard.** A conflict can span more than two canvases, and there "discard theirs" is ambiguous while "discard mine" settles nothing — the remaining diagrams still collide. Naming a winner clears every loser in the same pass, including canvases the caller never mentioned, so a three-way conflict costs one decision rather than one round trip per sibling. `ACCEPT_THEIRS` then materializes the **winner**, not the diagram in the path: leaving the chosen edit merely staged would push the collision onto a canvas the user may never return to.
+
+Reaching another canvas is authorized because every diagram in the conflict set belongs to the one ontology the caller was already authorized against — and the winner must appear in that set, which is re-read through the ontology scope rather than trusted from the request. A winner outside it is a 400, not a 409: re-sending it cannot succeed.
 
 ## Versioning
 

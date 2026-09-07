@@ -190,9 +190,11 @@ Protože nasazování je po diagramech, dvě plátna jedné ontologie mohou drž
 
 **Detekce běží před smyčkou po jednotlivých změnách.** Změny se aplikují ve vlastních `REQUIRES_NEW` transakcích, takže kontrola uvnitř té smyčky by už měla zapsané RDF za vše, co kolizi předchází. Běží ve vlastní transakci, jako první; odmítnutí znamená, že se nic nezapsalo a nasazená práce obou stran zůstala nedotčená.
 
-**Rozhodnutí je uživatelovo a explicitní.** `POST …/materialize` bez `onConflict` kolizi ohlásí a odmítne (409). Klient zavolá znovu a pojmenuje stranu: `DISCARD_MINE` zahodí kolidující úpravy tohoto diagramu, `DISCARD_THEIRS` úpravy sourozenců. V obou případech se **zahodí pouze sporné pojmy** — nikdy celá nasazená práce plátna, což by byl mnohem větší úkon, než k jakému dal uživatel souhlas.
+**Rozhodnutí je uživatelovo a explicitní.** `POST …/materialize` bez `onConflict` kolizi ohlásí a odmítne (409). Klient zavolá znovu a pojmenuje **vítěze**: `ACCEPT_MINE` pro tento diagram, nebo `ACCEPT_THEIRS` s `winnerDiagramId` pro uvedený. **Zahodí se pouze sporné pojmy** — nikdy celá nasazená práce plátna, což by byl mnohem větší úkon, než k jakému dal uživatel souhlas.
 
-Zahazování u sourozence je autorizované, protože oba diagramy patří té jedné ontologii, proti které byl volající už autorizován; řádky sourozence se přesto načítají znovu skrz onen rozsah ontologie, místo aby se věřilo požadavku.
+**Jeden vítěz, ne strana k zahození.** Kolize může zasáhnout víc než dvě plátna a tam je „zahodit jejich" nejednoznačné, zatímco „zahodit moje" nevyřeší nic — zbylé diagramy spolu stále kolidují. Pojmenování vítěze vyčistí všechny poražené v jednom průchodu, včetně pláten, která volající nezmínil, takže trojstranná kolize stojí jedno rozhodnutí místo jednoho kola na každého sourozence. `ACCEPT_THEIRS` pak materializuje **vítěze**, ne diagram v cestě: ponechat zvolenou úpravu jen nasazenou by kolizi přesunulo na plátno, ke kterému se uživatel už nemusí vrátit.
+
+Zásah do jiného plátna je autorizovaný, protože každý diagram v kolizní množině patří té jedné ontologii, proti které byl volající už autorizován — a vítěz v té množině být musí; načítá se znovu skrz onen rozsah ontologie, místo aby se věřilo požadavku. Vítěz mimo ni je 400, ne 409: opětovné poslání téhož nemůže uspět.
 
 ## Verzování
 

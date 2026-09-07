@@ -50,15 +50,28 @@ public interface DiagramService {
      * Převzít: apply every staged change via the concept CRUD → outbox → RDF, clearing each on success.
      *
      * <p>Refuses with a conflict report when a sibling diagram of the same ontology stages an edit on
-     * one of the same concepts, unless {@code onConflict} says which side to discard.
+     * one of the same concepts, unless {@code onConflict} names the winning side.
+     *
+     * @param winnerDiagramId the diagram whose edits win, required by {@link ConflictResolution#ACCEPT_THEIRS}
+     *                        and rejected by every other value
      */
-    MaterializeResultDto materialize(String ontologySlug, Long diagramId, ConflictResolution onConflict);
+    MaterializeResultDto materialize(String ontologySlug, Long diagramId,
+                                     ConflictResolution onConflict, Long winnerDiagramId);
 
-    /** How to proceed when sibling diagrams stage edits on the same concept. */
+    /**
+     * Which side wins when sibling diagrams stage edits on the same concept.
+     *
+     * <p>A resolution always names exactly ONE winner, however many canvases are in conflict: every loser's
+     * contested edits are discarded in the same pass. Naming a side to discard instead would leave the
+     * remaining siblings' collisions standing, so a three-way conflict would need one round trip per canvas.
+     */
     enum ConflictResolution {
-        /** Discard the conflicting edits staged on THIS diagram, then materialize what remains. */
-        DISCARD_MINE,
-        /** Discard the conflicting edits staged on the SIBLING diagrams, then materialize. */
-        DISCARD_THEIRS
+        /** This diagram wins: discard every sibling's conflicting edits, then materialize this diagram. */
+        ACCEPT_MINE,
+        /**
+         * A named sibling wins: discard the conflicting edits on this diagram and on every OTHER sibling,
+         * then materialize the winner. Requires {@code winnerDiagramId}.
+         */
+        ACCEPT_THEIRS
     }
 }

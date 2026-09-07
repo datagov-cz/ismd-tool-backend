@@ -148,11 +148,32 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void materialize_allowedForOwner() throws Exception {
-        when(diagramService.materialize(eq("pracovni-pomer"), eq(5L), any()))
+        when(diagramService.materialize(eq("pracovni-pomer"), eq(5L), any(), any()))
                 .thenReturn(new MaterializeResultDto(List.of(), List.of(), List.of()));
 
         mockMvc.perform(post("/api/diagram/pracovni-pomer/5/materialize"))
                 .andExpect(status().isOk());
+    }
+
+    /**
+     * The resolution reaches the service as a (winner, id) pair. ACCEPT_THEIRS is meaningless without the
+     * id — it names WHICH diagram wins — so a binding that dropped the parameter would turn every
+     * three-way resolution into a 400 with nothing in the request to explain it.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void materialize_bindsAcceptTheirsWithItsWinnerDiagramId() throws Exception {
+        when(diagramService.materialize(eq("pracovni-pomer"), eq(5L),
+                eq(DiagramService.ConflictResolution.ACCEPT_THEIRS), eq(9L)))
+                .thenReturn(new MaterializeResultDto(List.of(), List.of(), List.of()));
+
+        mockMvc.perform(post("/api/diagram/pracovni-pomer/5/materialize")
+                        .param("onConflict", "ACCEPT_THEIRS")
+                        .param("winnerDiagramId", "9"))
+                .andExpect(status().isOk());
+
+        verify(diagramService).materialize("pracovni-pomer", 5L,
+                DiagramService.ConflictResolution.ACCEPT_THEIRS, 9L);
     }
 
     /**

@@ -65,6 +65,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * The resolution itself is unusable — {@code ACCEPT_THEIRS} with no {@code winnerDiagramId}, or one
+     * naming a diagram that is not in the conflict set. 400, not 409: re-sending the same request cannot
+     * succeed, so the FE must correct it rather than let the user choose again.
+     */
+    @ExceptionHandler(DiagramServiceImpl.DiagramConflictResolutionException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramConflictResolution(
+            DiagramServiceImpl.DiagramConflictResolutionException e) {
+        log.warn("Invalid diagram conflict resolution: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(e.getMessage()));
+    }
+
+    /**
      * Sibling diagrams stage competing edits on the same concept and the caller named no resolution.
      * 409 with the report: nothing was written, and the FE re-calls with {@code onConflict} once the
      * user has chosen a side.

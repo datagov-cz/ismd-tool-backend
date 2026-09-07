@@ -43,20 +43,16 @@ public interface DiagramPendingEditRepository extends JpaRepository<DiagramPendi
                                                    @Param("diagramId") Long diagramId,
                                                    @Param("conceptIris") Collection<String> conceptIris);
 
-    /** Discard the named concepts' staged edits across every OTHER diagram of this ontology. */
+    /**
+     * Discard the named concepts' staged edits on every diagram of this ontology EXCEPT the winner — one
+     * resolution covering however many canvases the conflict spans, in a single pass.
+     */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from DiagramPendingEditEntity e "
             + "where e.ontologyMetadata.id = :ontologyId "
-            + "and e.diagram.id <> :diagramId "
+            + "and e.diagram.id <> :winnerDiagramId "
             + "and e.conceptIri in :conceptIris")
-    int deleteConflictingOnSiblings(@Param("ontologyId") Long ontologyId,
-                                    @Param("diagramId") Long diagramId,
-                                    @Param("conceptIris") Collection<String> conceptIris);
-
-    /** Discard the named concepts' staged edits on THIS diagram. */
-    @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("delete from DiagramPendingEditEntity e "
-            + "where e.diagram.id = :diagramId and e.conceptIri in :conceptIris")
-    int deleteOnDiagram(@Param("diagramId") Long diagramId,
-                        @Param("conceptIris") Collection<String> conceptIris);
+    int deleteConflictingExceptWinner(@Param("ontologyId") Long ontologyId,
+                                      @Param("winnerDiagramId") Long winnerDiagramId,
+                                      @Param("conceptIris") Collection<String> conceptIris);
 }

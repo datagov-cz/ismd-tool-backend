@@ -339,75 +339,131 @@ public class DiagramServiceImpl implements DiagramService {
     // failure cannot roll back earlier successes.
     @Override
     public MaterializeResultDto materialize(String ontologySlug, Long diagramId,
-                                            ConflictResolution onConflict) {
+                                            ConflictResolution onConflict, Long winnerDiagramId) {
         // Conflict detection and any resolution commit first, before the per-change loop writes any RDF.
-        Long ontologyId = self.resolveConflicts(ontologySlug, diagramId, onConflict);
-        return materializeService.materialize(diagramId, ontologyId);
+        Resolved resolved = self.resolveConflicts(ontologySlug, diagramId, onConflict, winnerDiagramId);
+        return materializeService.materialize(resolved.winnerDiagramId(), resolved.ontologyId());
+    }
+
+    /** What the resolution settled: which ontology, and whose staged edits are the ones to apply. */
+    public record Resolved(Long ontologyId, Long winnerDiagramId) {
     }
 
     /**
-     * Refuse, or clear, edits this diagram stages on concepts a sibling diagram also stages. Sibling rows
+     * Refuse, or resolve, edits this diagram stages on concepts a sibling diagram also stages. Sibling rows
      * are always re-read through the ontology scope, never trusted from the request.
      *
-     * @return the ontology id, resolved here so the caller needs no second lookup
+     * <p>A resolution names the ONE winner and discards every loser's contested edits in a single pass —
+     * so a conflict spanning three canvases is settled by one decision, not one per sibling. The winner is
+     * then the diagram that materializes, which for {@code ACCEPT_THEIRS} is not the diagram in the path.
+     *
+     * @return the ontology id and the diagram to materialize, so the caller needs no second lookup
      */
     @Transactional
-    public Long resolveConflicts(String ontologySlug, Long diagramId, ConflictResolution onConflict) {
+    public Resolved resolveConflicts(String ontologySlug, Long diagramId,
+                                     ConflictResolution onConflict, Long winnerDiagramId) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         requireDiagramOf(ontology, ontologySlug, diagramId);
 
         List<String> staged = pendingEditRepository.findStagedConceptIris(diagramId);
         if (staged.isEmpty()) {
-            return ontology.getId();
+            return noConflict(ontology, diagramId, onConflict);
         }
 
         List<DiagramPendingEditEntity> conflicting =
                 pendingEditRepository.findConflicting(ontology.getId(), diagramId, staged);
         if (conflicting.isEmpty()) {
-            return ontology.getId();
+            return noConflict(ontology, diagramId, onConflict);
         }
 
-        // Both resolutions delete by the contested IRIs, never by `staged` — a resolution abandons only
-        // what is in conflict, leaving the diagram's uncontested staged work intact.
+        if (onConflict == null) {
+            throw new DiagramEditConflictException(buildConflictReport(diagramId, conflicting));
+        }
+
+        Long winner = requireWinner(diagramId, onConflict, winnerDiagramId, conflicting);
+
+        // The delete is keyed on the contested IRIs, never on `staged` — a resolution abandons only what is
+        // in conflict, leaving every canvas's uncontested staged work intact.
         List<String> conflictedIris = conflicting.stream()
                 .map(DiagramPendingEditEntity::getConceptIri)
                 .distinct()
                 .toList();
 
-        if (onConflict == ConflictResolution.DISCARD_THEIRS) {
-            int removed = pendingEditRepository.deleteConflictingOnSiblings(
-                    ontology.getId(), diagramId, conflictedIris);
-            log.info("Materialize on diagram {}: discarded {} conflicting staged edit(s) on sibling diagrams",
-                    diagramId, removed);
-            requireNoRemainingConflict(ontology.getId(), diagramId);
-            return ontology.getId();
-        }
-        if (onConflict == ConflictResolution.DISCARD_MINE) {
-            int removed = pendingEditRepository.deleteOnDiagram(diagramId, conflictedIris);
-            log.info("Materialize on diagram {}: discarded {} of its own conflicting staged edit(s)",
-                    diagramId, removed);
-            requireNoRemainingConflict(ontology.getId(), diagramId);
-            return ontology.getId();
-        }
+        int removed = pendingEditRepository.deleteConflictingExceptWinner(
+                ontology.getId(), winner, conflictedIris);
+        log.info("Materialize on diagram {}: {} wins, discarded {} conflicting staged edit(s) on the "
+                + "other diagram(s)", diagramId, winner, removed);
 
-        throw new DiagramEditConflictException(buildConflictReport(diagramId, conflicting));
+        requireNoRemainingConflict(ontology.getId(), winner);
+        return new Resolved(ontology.getId(), winner);
     }
 
     /**
-     * Re-detect after a resolution, in the same transaction that applied it. Never trips on a single
-     * request — the first pass already covered every staged IRI — but a save committed by another
-     * request between the two queries stages a conflict the resolution never named, and materializing
-     * that would reintroduce the collision the caller just resolved.
+     * Nothing collides, so there is nothing for a resolution to decide. A stray {@code ACCEPT_THEIRS} is
+     * still refused rather than silently materializing the named diagram: with no conflict its edits were
+     * never offered up here, and applying them would write a canvas the caller only named as a winner.
      */
-    private void requireNoRemainingConflict(Long ontologyId, Long diagramId) {
-        List<String> staged = pendingEditRepository.findStagedConceptIris(diagramId);
+    private Resolved noConflict(OntologyMetadataEntity ontology, Long diagramId,
+                                ConflictResolution onConflict) {
+        if (onConflict == ConflictResolution.ACCEPT_THEIRS) {
+            throw new DiagramConflictResolutionException(
+                    "Žádná kolize s jiným diagramem neexistuje; převzetí změn jiného diagramu nelze použít.");
+        }
+        return new Resolved(ontology.getId(), diagramId);
+    }
+
+    /**
+     * The winning diagram id, validated against the conflict set rather than taken on trust. {@code
+     * ACCEPT_THEIRS} makes this call materialize a canvas other than the one in the path, and only the slug
+     * is authorized by the endpoint — so the winner must be a diagram that actually appears in this
+     * ontology's conflict set, which the report just named to the user.
+     */
+    private Long requireWinner(Long diagramId, ConflictResolution onConflict, Long winnerDiagramId,
+                               List<DiagramPendingEditEntity> conflicting) {
+        if (onConflict == ConflictResolution.ACCEPT_MINE) {
+            if (winnerDiagramId != null && !winnerDiagramId.equals(diagramId)) {
+                throw new DiagramConflictResolutionException(
+                        "Parametr winnerDiagramId lze použít pouze s onConflict=ACCEPT_THEIRS.");
+            }
+            return diagramId;
+        }
+
+        if (winnerDiagramId == null) {
+            throw new DiagramConflictResolutionException(
+                    "Pro onConflict=ACCEPT_THEIRS je nutné uvést winnerDiagramId — diagram, jehož změny "
+                            + "se převezmou.");
+        }
+        boolean inConflictSet = conflicting.stream()
+                .anyMatch(row -> winnerDiagramId.equals(row.getDiagram().getId()));
+        if (!inConflictSet) {
+            throw new DiagramConflictResolutionException(
+                    "Diagram " + winnerDiagramId + " není mezi kolidujícími diagramy.");
+        }
+        return winnerDiagramId;
+    }
+
+    /** A resolution the request could not settle: a missing, self-addressed or non-conflicting winner (400). */
+    public static class DiagramConflictResolutionException extends RuntimeException {
+        public DiagramConflictResolutionException(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Re-detect from the WINNER's side after a resolution, in the same transaction that applied it. Never
+     * trips on a single request — the first pass already covered every staged IRI — but a save committed by
+     * another request between the two queries stages a conflict the resolution never named, and
+     * materializing that would reintroduce the collision the caller just resolved.
+     */
+    private void requireNoRemainingConflict(Long ontologyId, Long winnerDiagramId) {
+        List<String> staged = pendingEditRepository.findStagedConceptIris(winnerDiagramId);
         if (staged.isEmpty()) {
             return;
         }
         List<DiagramPendingEditEntity> remaining =
-                pendingEditRepository.findConflicting(ontologyId, diagramId, staged);
+                pendingEditRepository.findConflicting(ontologyId, winnerDiagramId, staged);
         if (!remaining.isEmpty()) {
-            throw new DiagramEditConflictException(buildConflictReport(diagramId, remaining));
+            throw new DiagramEditConflictException(buildConflictReport(winnerDiagramId, remaining));
         }
     }
 
