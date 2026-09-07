@@ -329,6 +329,74 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
                 .isPresent();
     }
 
+    /**
+     * Three canvases staging the same concept. The conflict set is "every OTHER diagram of this
+     * ontology", not "the other diagram" — so one DISCARD_THEIRS clears BOTH siblings in a single pass.
+     * A resolution that addressed one sibling at a time (which the report's {@code theirs()} list invites,
+     * since it names each diagram separately) would leave the second collision standing, and
+     * {@code requireNoRemainingConflict} would then re-throw a 409 the user has already answered.
+     */
+    @Test
+    void discardTheirs_clearsEverySiblingStagingTheSameConcept() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirsOne = diagram("Pohled HR");
+        Long theirsTwo = diagram("Pohled Finance");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirsOne, REL, range(CLASS_B));
+        stage(theirsTwo, REL, range(CLASS_A));
+        stage(theirsTwo, CLASS_A, exactMatch(CLASS_B)); // uncontested: mine never stages CLASS_A
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_THEIRS);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsOne, REL))
+                .as("the first sibling's competing edit is gone")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsTwo, REL))
+                .as("so is the second's — resolving against one sibling at a time would strand this one")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsTwo, CLASS_A))
+                .as("still scoped to the conflict set, however many siblings it spans")
+                .isPresent();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("my edit is the one kept — that is what DISCARD_THEIRS means")
+                .isPresent();
+        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
+    }
+
+    /**
+     * The same three canvases, resolved the other way. DISCARD_MINE gives up only MY edit; both siblings
+     * keep theirs and neither is materialized — materialize reads its work-list per diagram id, so the
+     * siblings' staged work stays staged for whoever owns those canvases to apply themselves.
+     */
+    @Test
+    void discardMine_leavesEverySiblingStagedAndMaterializesOnlyThisDiagram() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirsOne = diagram("Pohled HR");
+        Long theirsTwo = diagram("Pohled Finance");
+        stage(mine, REL, range(CLASS_A));
+        stage(mine, CLASS_B, exactMatch(CLASS_A)); // mine alone — nobody contests it
+        stage(theirsOne, REL, range(CLASS_B));
+        stage(theirsTwo, REL, range(CLASS_A));
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.DISCARD_MINE);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("only my own contested edit is abandoned")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, CLASS_B))
+                .as("my uncontested work survives")
+                .isPresent();
+        assertThat(pendingEditRepo.findByDiagramId(theirsOne))
+                .as("the first sibling keeps its edit — DISCARD_MINE must not reach across canvases")
+                .hasSize(1);
+        assertThat(pendingEditRepo.findByDiagramId(theirsTwo))
+                .as("and so does the second")
+                .hasSize(1);
+        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
+        verify(materializeService, never()).materialize(eq(theirsOne), any());
+        verify(materializeService, never()).materialize(eq(theirsTwo), any());
+    }
+
     // ---- authorization --------------------------------------------------------------------------
 
     /**
