@@ -54,6 +54,12 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
     boolean existsByOntologyMetadataIdAndName(Long ontologyMetadataId, String name);
 
     /**
+     * The same check for a rename, excluding the diagram being renamed — otherwise a diagram collides
+     * with its own current name and no rename could ever be saved.
+     */
+    boolean existsByOntologyMetadataIdAndNameAndIdNot(Long ontologyMetadataId, String name, Long id);
+
+    /**
      * Diagrams whose ontology slug or own name matches the query (accent-insensitive). Backs
      * {@code type=DIAGRAM} results in ISMD search, one row per diagram — each canvas is its own
      * destination.

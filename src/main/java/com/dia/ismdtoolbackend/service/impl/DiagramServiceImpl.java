@@ -144,6 +144,53 @@ public class DiagramServiceImpl implements DiagramService {
         }
     }
 
+    /**
+     * Rename one canvas — PG only, no graph read, so it cannot fail after committing the way
+     * {@link #saveLayout} can. Renaming to the name it already has is a no-op rather than a self-collision.
+     */
+    @Override
+    @Transactional
+    public DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name) {
+        OntologyMetadataEntity ontology = requireOntology(ontologySlug);
+        DiagramEntity diagram = requireDiagramOf(ontology, ontologySlug, diagramId);
+
+        // @NotBlank covers the DTO, but the service is also called directly — and a name of only spaces
+        // passes @NotBlank's trim-aware check yet must not be stored as-is.
+        String resolved = name == null ? "" : name.trim();
+        if (resolved.isEmpty()) {
+            throw new IllegalArgumentException("Název diagramu nesmí být prázdný.");
+        }
+        if (resolved.equals(diagram.getName())) {
+            return summaryOf(diagram, ontology);
+        }
+        // Excludes this diagram, so an unchanged name never collides with itself. The unique constraint
+        // uq_diagrams_ontology_name stays the real guarantee.
+        if (diagramRepository.existsByOntologyMetadataIdAndNameAndIdNot(
+                ontology.getId(), resolved, diagram.getId())) {
+            throw new DiagramNameConflictException(resolved);
+        }
+
+        diagram.setName(resolved);
+        try {
+            return summaryOf(diagramRepository.saveAndFlush(diagram), ontology);
+        } catch (DataIntegrityViolationException e) {
+            // Lost a concurrent rename race for the same name.
+            throw new DiagramNameConflictException(resolved);
+        }
+    }
+
+    /** Summary for a single managed diagram — the node count comes off the loaded collection, no query. */
+    private DiagramSummaryDto summaryOf(DiagramEntity diagram, OntologyMetadataEntity ontology) {
+        return new DiagramSummaryDto(
+                diagram.getId(),
+                diagram.getName(),
+                ontology.getSlug(),
+                ontology.getSlug(),
+                ontology.getGraphName(),
+                diagram.getNodes().size(),
+                diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
+    }
+
     /** "Nový diagram", numbered when that is taken — a create with no name never fails on the name. */
     private String defaultName(OntologyMetadataEntity ontology) {
         String base = "Nový diagram";

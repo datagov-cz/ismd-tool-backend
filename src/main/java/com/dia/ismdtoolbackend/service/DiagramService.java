@@ -26,11 +26,20 @@ public interface DiagramService {
     /** Delete one diagram, its layout and its staged edits. The ontology's concepts are untouched. */
     void deleteDiagram(String ontologySlug, Long diagramId);
 
+    /**
+     * Rename one canvas. Deliberately separate from {@link #saveLayout}: that path reads live concept
+     * content back and can fail with a 502 AFTER its write commits, which would report a successful
+     * rename as an error. This touches PG only and cannot.
+     *
+     * @return the renamed diagram's summary — identity only, no graph read
+     */
+    DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name);
+
     /** Fat read: layout joined to live concept content with each node's overlay applied, edges projected. */
     DiagramDto getDiagram(String ontologySlug, Long diagramId);
 
     /**
-     * Save (PG only, no RDF) — the diagram's only write. Layout is a full replace: the node set is canvas
+     * Save (PG only, no RDF) — the diagram's only layout write. Layout is a full replace: the node set is canvas
      * membership, and the edge set is the persisted waypoints. Overlays are additive over what is already
      * staged: a concept absent from {@code overlays} keeps its overlay, and an entry carrying only
      * {@code conceptIri} discards that one.

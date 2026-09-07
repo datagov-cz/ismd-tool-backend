@@ -198,6 +198,7 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("POST", "/api/diagram/test/create"),
                 Arguments.of("GET", "/api/diagram/test/5/detail"),
                 Arguments.of("PUT", "/api/diagram/test/5/layout"),
+                Arguments.of("PATCH", "/api/diagram/test/5/rename"),
                 Arguments.of("POST", "/api/diagram/test/5/materialize"),
                 Arguments.of("DELETE", "/api/diagram/test/5"),
                 Arguments.of("POST", "/api/ai/accept-suggestion")
@@ -234,6 +235,7 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("POST", "/api/diagram/test/create"),
                 Arguments.of("GET", "/api/diagram/test/5/detail"),
                 Arguments.of("PUT", "/api/diagram/test/5/layout"),
+                Arguments.of("PATCH", "/api/diagram/test/5/rename"),
                 Arguments.of("POST", "/api/diagram/test/5/materialize"),
                 Arguments.of("DELETE", "/api/diagram/test/5")
         );

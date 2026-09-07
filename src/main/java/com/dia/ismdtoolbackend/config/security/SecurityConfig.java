@@ -216,6 +216,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/diagram/*/create").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/diagram/*/*/detail").authenticated()
                         .requestMatchers(HttpMethod.PUT,   "/api/diagram/*/*/layout").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/diagram/*/*/rename").authenticated()
                         .requestMatchers(HttpMethod.POST,  "/api/diagram/*/*/materialize").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/diagram/*/*").authenticated()
                         .requestMatchers("/api/ai/**").authenticated()

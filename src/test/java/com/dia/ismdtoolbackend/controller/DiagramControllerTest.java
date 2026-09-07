@@ -93,6 +93,48 @@ class DiagramControllerTest {
                 .andExpect(jsonPath("$.data.ontologySlug").value("pracovni-pomer"));
     }
 
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void rename_passesTheNewNameThrough() throws Exception {
+        when(diagramService.renameDiagram(eq("pracovni-pomer"), eq(5L), eq("Pohled HR")))
+                .thenReturn(new DiagramSummaryDto(5L, "Pohled HR", "pracovni-pomer", "pracovni-pomer",
+                        "https://x/g", 3, null));
+
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Pohled HR\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Pohled HR"));
+    }
+
+    /**
+     * {@code @NotBlank} must actually be enforced — rename has no default to fall back on, so a blank
+     * name has to be refused at the edge rather than reaching the service.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void rename_rejectsABlankName() throws Exception {
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(diagramService, never()).renameDiagram(any(), any(), any());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "not-the-owner")
+    void rename_forbiddenForNonOwner() throws Exception {
+        TestOntologySecurityService.setAllowModify(false);   // belongsToUserBySlug → false
+
+        mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Pohled HR\"}"))
+                .andExpect(status().isForbidden());
+
+        verify(diagramService, never()).renameDiagram(any(), any(), any());
+    }
+
     // Writes are ownership-gated — a non-owner is denied before the handler runs.
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")

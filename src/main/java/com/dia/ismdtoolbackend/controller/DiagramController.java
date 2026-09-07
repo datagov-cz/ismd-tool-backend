@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictResponseDto
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramCreateDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramRenameDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
@@ -108,6 +109,36 @@ public class DiagramController {
 
         diagramService.deleteDiagram(ontologySlug, diagramId);
         return ResponseEntity.ok().body(ApiResponseDto.success(null, "Diagram byl úspěšně smazán."));
+    }
+
+    @Operation(
+            summary = "Přejmenování diagramu",
+            description = "Změní název diagramu. Název musí být neprázdný a v rámci slovníku jedinečný; "
+                    + "přejmenování na stávající název je bez efektu. Nesahá na rozvržení ani na rozpracované "
+                    + "změny. Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Diagram byl přejmenován."),
+            // Same springdoc gap as materialize's 409: the body comes from GlobalExceptionHandler, so
+            // without this the FE cannot generate a type for the name clash.
+            @ApiResponse(responseCode = "409",
+                    description = "Diagram s tímto názvem už ve slovníku existuje.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = ApiResponseDto.class)))
+    })
+    @PatchMapping("/{ontologySlug}/{diagramId}/rename")
+    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
+    public ResponseEntity<ApiResponseDto<DiagramSummaryDto>> renameDiagram(
+            @PathVariable String ontologySlug,
+            @PathVariable Long diagramId,
+            @Valid @RequestBody DiagramRenameDto request,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Diagram rename requested, ontologySlug: {}, diagramId: {}, userId: {}",
+                ontologySlug, diagramId, securityUser.getUserId());
+
+        DiagramSummaryDto renamed = diagramService.renameDiagram(ontologySlug, diagramId, request.name());
+        return ResponseEntity.ok().body(ApiResponseDto.success(renamed, "Diagram byl úspěšně přejmenován."));
     }
 
     @Operation(
