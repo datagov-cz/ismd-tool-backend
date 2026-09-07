@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramCreateDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
@@ -9,6 +10,10 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -155,6 +160,16 @@ public class DiagramController {
                     + "kolizí; parametr `onConflict` určuje, která strana se zahodí. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Změny diagramu byly převzaty."),
+            // The 409 body is produced by GlobalExceptionHandler, which springdoc does not walk — without
+            // this the conflict types are absent from the schema and the FE cannot generate them.
+            @ApiResponse(responseCode = "409",
+                    description = "Na některém pojmu má rozpracovanou změnu i jiný diagram téhož slovníku. "
+                            + "Nic nebylo zapsáno; tělo obsahuje přehled kolizí.",
+                    content = @Content(mediaType = "application/json",
+                            schema = @Schema(implementation = DiagramConflictResponseDto.class)))
+    })
     @PostMapping("/{ontologySlug}/{diagramId}/materialize")
     @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#ontologySlug)")
     public ResponseEntity<ApiResponseDto<MaterializeResultDto>> materialize(
