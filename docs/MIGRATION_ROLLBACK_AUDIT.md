@@ -98,7 +98,8 @@ past that release is a restore-from-backup operation, not an image swap.
 
 Enforced mechanically by `.github/scripts/check-migration-compat.sh`, wired into the PR workflow —
 not left to review discipline. It inspects **only lines added by the PR**, so existing history never
-re-trips it, and flags three classes:
+re-trips it, and flags three classes — but only against **tables that already exist on the base
+branch** (see "Table provenance" below):
 
 1. Destructive structural change types (`dropColumn`, `dropTable`, `renameColumn`,
    `modifyDataType`, `addNotNullConstraint`, …).
@@ -122,6 +123,33 @@ Run locally against the base branch:
 ```bash
 .github/scripts/check-migration-compat.sh origin/dev
 ```
+
+### Table provenance — why greenfield features are exempt
+
+Only a table that **already exists on the base branch** can break the previous app version. The old
+code has no knowledge of a table introduced by the PR under review, so dropping a column from it is
+harmless. Without this rule, any new feature that iterates on its own schema across several
+changelogs is flagged as destructive, and a gate that fires on every greenfield feature gets
+switched off.
+
+The rule is scoped by **table**, not deferred in time. Both halves hold in the same run:
+
+- A PR touching a pre-existing table **fails pre-merge**. Verified: `010-comments-metadata-fk` still
+  fails on `comments` (from `004`), while `009-create-nkd-concept-snapshots` is exempt for
+  `nkd_concept_snapshots`, which that same PR created.
+- The exemption **expires on its own at merge**. Once a feature lands, its tables are on the base
+  branch, so the next PR to drop one of their columns is flagged like any other. Verified by
+  replaying the identical `dropColumn` on `diagram_nodes` with the merged branch as base: exempt
+  before, ❌ after.
+
+Nothing here is retrospective — the check always runs pre-merge on the PR's own diff.
+
+Verified on `feat/diagrams-req-44` (10 changelogs building the diagram feature): **46 findings → 0**,
+with all 46 reclassified as exemptions on `diagrams`, `diagram_nodes`, `diagram_edges`, and
+`diagram_pending_edits` — every one a table that branch creates. No pre-existing table was exempted.
+
+A destructive change whose target table cannot be determined is treated as pre-existing, so an
+unparseable changelog fails closed rather than slipping through.
 
 ## Fixed: `includeAll` ordering / duplicate `009-` prefix
 
