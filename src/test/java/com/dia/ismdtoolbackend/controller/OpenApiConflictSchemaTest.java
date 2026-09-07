@@ -33,6 +33,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @ActiveProfiles("junit")
 @TestPropertySource(properties = {
         "springdoc.api-docs.enabled=true",
+        // Own H2 instance, per the convention in CorsConfig*Test: the junit profile's shared
+        // `testdb` is migrated by whichever context boots first, and a second Liquibase run
+        // against it fails on the existing DATABASECHANGELOG table.
+        "spring.datasource.url=jdbc:h2:mem:testdb-openapi-conflict;MODE=PostgreSQL;"
+                + "DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
+        "spring.datasource.username=sa",
+        "spring.datasource.password=password",
+        "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.jpa.database=h2",
+        "spring.liquibase.liquibase-schema=PUBLIC",
         "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
         "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
         "spring.security.oauth2.client.registration.keycloak.provider=keycloak-test",
