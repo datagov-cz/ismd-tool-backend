@@ -12,6 +12,12 @@ databaseChangeLog:
   #
   # Add new changelogs to the END of this list. A file missing from it NEVER runs; CI enforces that
   # (.github/scripts/check-migration-compat.sh).
+  # sort, which made ordering incidental — two files share the 009- prefix. Listing files pins the
+  # order by declaration. Filenames are unchanged on purpose: Liquibase identifies an applied
+  # changeset by id + author + filename, so renaming a file already applied on dev/test would make
+  # it look new and re-run.
+  #
+  # Add new changelogs to the END of this list.
   - include:
       file: db/changelog/v1/001-create-schema.yaml
   - include:
@@ -38,10 +44,6 @@ databaseChangeLog:
       file: db/changelog/v1/010-comments-metadata-fk.yaml
   - include:
       file: db/changelog/v1/011-graph-name-indexes.yaml
-  # The diagram layer. Renumbered to a gap-free 012-022 while still unreleased — these changelogs
-  # exist only on this branch, so no database has them recorded under the old names and nothing
-  # re-runs. Once merged, these filenames are frozen like every other: renaming an applied changelog
-  # makes Liquibase treat it as new (identity is id + author + filename) and re-run it.
   - include:
       file: db/changelog/v1/012-create-diagrams.yaml
   - include:
