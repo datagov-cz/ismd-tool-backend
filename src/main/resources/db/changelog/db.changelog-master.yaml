@@ -1,3 +1,34 @@
 databaseChangeLog:
-  - includeAll:
-      path: db/changelog/v1/
+  # Explicit include list rather than includeAll: includeAll derives execution order from filename
+  # sort, which made ordering incidental — two files share the 009- prefix. Listing files pins the
+  # order by declaration. Filenames are unchanged on purpose: Liquibase identifies an applied
+  # changeset by id + author + filename, so renaming a file already applied on dev/test would make
+  # it look new and re-run.
+  #
+  # Add new changelogs to the END of this list.
+  - include:
+      file: db/changelog/v1/001-create-schema.yaml
+  - include:
+      file: db/changelog/v1/002-create-ontologies.yaml
+  - include:
+      file: db/changelog/v1/003-create-concepts.yaml
+  - include:
+      file: db/changelog/v1/004-create-comments.yaml
+  - include:
+      file: db/changelog/v1/005-create-validation-reports.yaml
+  - include:
+      file: db/changelog/v1/006-add-unaccent-extension.yaml
+  - include:
+      file: db/changelog/v1/007-create-outbox.yaml
+  - include:
+      file: db/changelog/v1/008-outbox-aggregate-index.yaml
+  # The two 009- files are independent: this one adds columns to `ontologies`, the next creates
+  # `nkd_concept_snapshots`. Order between them does not matter, but is now fixed rather than implied.
+  - include:
+      file: db/changelog/v1/009-add-ontology-validation-status.yaml
+  - include:
+      file: db/changelog/v1/009-create-nkd-concept-snapshots.yaml
+  - include:
+      file: db/changelog/v1/010-comments-metadata-fk.yaml
+  - include:
+      file: db/changelog/v1/011-graph-name-indexes.yaml
