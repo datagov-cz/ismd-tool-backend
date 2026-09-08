@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramCreateDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
@@ -10,6 +11,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramRenameDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.service.DiagramService;
+import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -42,6 +44,13 @@ public class DiagramController {
 
     private final DiagramService diagramService;
 
+    /**
+     * Injected directly rather than routed through {@link DiagramService}: the usage read is
+     * concept-addressed and shares none of that service's diagram-addressed machinery, so widening its
+     * constructor would only push an unused dependency into every caller.
+     */
+    private final DiagramConceptUsageService conceptUsageService;
+
     @Operation(
             summary = "Seznam diagramů",
             description = "Vrací odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. "
@@ -73,6 +82,29 @@ public class DiagramController {
 
         List<DiagramSummaryDto> diagrams = diagramService.listForOntology(ontologySlug);
         return ResponseEntity.ok().body(ApiResponseDto.success(diagrams, "Seznam diagramů byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Výskyt pojmu na diagramech",
+            description = "Vrací diagramy, na jejichž plátně se pojem nachází, s odkazem (slug slovníku + id diagramu) "
+                    + "a se strukturou pojmu tak, jak ji daný diagram zobrazuje — definiční obor, obor hodnot a "
+                    + "hierarchie, vše resolvované. Pokrývá všechny tři podoby: třída jako uzel, vztah jako hrana, "
+                    + "vlastnost jako řádek uvnitř své třídy. Pokud má diagram na pojmu rozpracovanou změnu, je "
+                    + "zohledněna a diagram je označen `pending`. Prázdný seznam znamená, že pojem není na žádném "
+                    + "plátně. Vyžaduje oprávnění přihlášeného uživatele."
+    )
+    @GetMapping("/usage/concept/{conceptSlug}")
+    @PreAuthorize("@ontologySecurityService.canViewResource()")
+    public ResponseEntity<ApiResponseDto<DiagramConceptUsageDto>> getConceptUsage(
+            @PathVariable String conceptSlug,
+            @AuthenticationPrincipal SecurityUser securityUser
+    ) {
+        log.info("Diagram concept usage requested, conceptSlug: {}, userId: {}",
+                conceptSlug, securityUser.getUserId());
+
+        DiagramConceptUsageDto usage = conceptUsageService.usageForSlug(conceptSlug);
+        return ResponseEntity.ok().body(
+                ApiResponseDto.success(usage, "Výskyt pojmu na diagramech byl úspěšně načten."));
     }
 
     @Operation(

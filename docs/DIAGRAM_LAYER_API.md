@@ -31,6 +31,7 @@ Controller `DiagramController`, base `/api/diagram`. All responses wrap in `ApiR
 | `GET /{ontologySlug}/list` | **The ontology's diagrams**, oldest first — identity and node count only. The navigation list: `diagramId` + `name` is the name-and-link pair. **Read-only; creates nothing.** | → `List<DiagramSummaryDto>` |
 | `POST /{ontologySlug}/create` | **Create a new empty canvas.** A blank/absent `name` takes a numbered default, so a create with no name never fails. | `DiagramCreateDto` → `DiagramDto` |
 | `GET /{ontologySlug}/{diagramId}/detail` | Load one diagram, layout joined to live concept content with overlays applied. An unknown id is a **404** — the read creates nothing. | → `DiagramDto` (fat, render-ready) |
+| `GET /usage/concept/{conceptSlug}` | **Where is this concept drawn?** Every diagram whose canvas shows it, with a link and the structure that canvas displays. For the concept detail page. Any authenticated user. | → `DiagramConceptUsageDto` |
 | `PUT /{ontologySlug}/{diagramId}/layout` | **Save the diagram — the only layout write.** Persists layout (positions, viewport, edge waypoints) *and* the staged structural overlays. **No RDF.** | `DiagramLayoutDto` → `DiagramDto` (fat, hydrated) |
 | `POST /{ontologySlug}/{diagramId}/materialize` | **Materialize.** Apply each staged change via the existing concept CRUD → outbox → RDF. Refuses with a conflict report when a sibling diagram stages the same concept — see below. | → `MaterializeResultDto` |
 | `DELETE /{ontologySlug}/{diagramId}` | Delete one diagram, its layout and its staged edits. **The ontology's concepts are untouched.** | → `null` |
@@ -91,14 +92,14 @@ So: on `result.type === 'DIAGRAM'`, navigate straight to the diagram using `resu
 
 | Call | Owner | Other authenticated user | Anonymous |
 |---|---|---|---|
-| `GET …/all`, `GET …/list`, `GET …/detail` | 200 | **200** | 401 |
+| `GET …/all`, `GET …/list`, `GET …/detail`, `GET /usage/concept/…` | 200 | **200** | 401 |
 | `PUT …/layout` | 200 | **403** | 401 |
 | `POST …/materialize` | 200 | **403** | 401 |
 | `POST …/create`, `DELETE …/{id}` | 200 | **403** | 401 |
 
 **Reads are deliberately open.** `canViewResource()` lets **any authenticated user** read any ontology's diagram, matching the codebase-wide read posture where every authenticated caller sees all graphs. Only the write paths are ownership-scoped via `belongsToUserBySlug`.
 
-**Write authorization scopes the slug *and* the IRIs.** `belongsToUserBySlug` authorizes the ontology in the path, but every concept IRI travels inside the request body, so the write path additionally requires each referenced concept to belong to the diagram's own ontology graph — node IRIs, overlay `conceptIri`s, and op 6's `addBroaderOn` / `broader` alike. A foreign IRI fails with **400** and persists nothing; the same check re-runs at materialize (`FOREIGN_CONCEPT`) so a row written before this guard existed still cannot be applied. A concept row that is simply *missing* is not rejected — that is a deleted concept, reported as `skippedStale`.
+**Write authorization scopes the slug *and* the IRIs.** `belongsToUserBySlug` authorizes the ontology in the path, but every concept IRI travels inside the request body, so the write path additionally requires each concept the edit **writes** to belong to the diagram's own ontology graph — the overlay's `conceptIri`, its `domain`, and op 6's `addBroaderOn`. A foreign IRI there fails with **400** and persists nothing; the same check re-runs at materialize (`FOREIGN_CONCEPT`). Endpoints that are only **referenced** (`range`, `broaderConcept`, `exactMatch`, op 6's `broader`) and node placement itself may be foreign — see *Nodes — membership*. A concept row that is simply *missing* is not rejected — that is a deleted concept, reported as `skippedStale`.
 
 **Reads never write.** `GET …/detail` is read-only: an ontology with no diagram is served from an unsaved in-memory stand-in, so a non-owner opening someone else's canvas cannot bring a `diagrams` row into existence. The row appears on the first successful write, and a diagram is listed by `GET /all` only once it has actually been saved. A diagram belongs to whoever owns its ontology; there is no separate diagram-owner field.
 
@@ -212,6 +213,53 @@ The backend has already joined layout rows to live concept content and applied e
 `edgeKind` (read-side only) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
 
 `DOMAIN` and `RANGE` do not exist — a relationship is one edge between its two classes, not a node with a link to each. `SUB_PROPERTY` and `SUB_RELATION` (`rdfs:subPropertyOf` between two properties or two relationships) are **not rendered on the canvas**: neither endpoint is a node, so the link has nothing to attach to, and the business semantics are undefined pending a requirement. The relation itself is unaffected — it stays fully supported in the normal concept editor.
+
+## Concept → diagrams — `GET /api/diagram/usage/concept/{conceptSlug}` → 200 · `DiagramConceptUsageDto`
+
+The inverse of the read above, for the **concept detail page**: given a concept, which canvases draw it? Returns one `placements[]` entry per diagram, each carrying the name-and-link pair (`ontologySlug` + `diagramId`) plus the structure that canvas shows.
+
+```jsonc
+{
+  "conceptIri": "https://…/pojem/je-zamestnan-u",
+  "conceptName": { "cs": "je zaměstnán u" },
+  "conceptSlug": "je-zamestnan-u",
+  "placements": [
+    { "diagramId": 5, "diagramName": "Hlavní diagram", "ontologySlug": "pracovni-pomer",
+      "kind": "EDGE",
+      "domain": { "iri": "https://…/pojem/zamestnanec", "conceptSlug": "zamestnanec",
+                  "conceptName": { "cs": "Zaměstnanec" } },
+      "range":  { "iri": "https://…/pojem/organizace",  "conceptSlug": "organizace",
+                  "conceptName": { "cs": "Organizace" } },
+      "broader": [], "exactMatch": [], "pending": false }
+  ]
+}
+```
+
+**An empty `placements[]` is a normal answer**, not a 404 — the concept exists but no canvas draws it. A 404 means the *slug* is unknown.
+
+### `kind` — three ways to be "on the canvas"
+
+The question sounds like one lookup but is three, because membership is recorded in three different places. `kind` tells the FE what it is looking for, and is **not** a synonym for the concept's type:
+
+| `kind` | Drawn as | Membership lives in |
+|---|---|---|
+| `NODE` | a class cell | a `diagram_nodes` row |
+| `EDGE` | a relationship line | a `diagram_edges` row keyed by the VZTAH's own IRI |
+| `PROPERTY_ROW` | a row **inside** its class's cell | that node's `visible_properties_json` |
+
+For `PROPERTY_ROW`, `hostClass` names the class whose cell renders the row — without it the user is told "it is on this diagram" with no way to find it. It is absent for the other kinds.
+
+A property is reported only when its host class actually **lists** it. An uncurated class shows no rows, so a node that merely exists is not enough.
+
+### Structure is per diagram, `pending` says why
+
+`domain` / `range` / `broader` / `exactMatch` are resolved (`{iri, conceptName, conceptSlug, …}`), not bare IRIs, and they are reported **as that diagram currently shows them**: live RDF with that diagram's own staged overlay layered on top, field by field. So two placements of the same concept can legitimately disagree — that disagreement is the point, and `pending: true` marks the canvas whose staged edit causes it.
+
+`domain`/`range` are null for a class, which has neither. `broader`/`exactMatch` are `[]` rather than null when there are none.
+
+### Performance
+
+One PG query for all three membership shapes, one for the overlays, one hierarchy `SELECT`, and one batched (per-IRI cached) resolve for every IRI any placement mentions — **regardless of how many diagrams come back**. It deliberately does *not* reuse `GET …/detail`, which fetches an entire ontology graph per diagram; answering this that way would cost a whole-graph fetch per listed diagram. A concept on no canvas short-circuits in Postgres and never touches Fuseki at all.
 
 ## Write — Save: `PUT /api/diagram/{ontologySlug}/{diagramId}/layout` · `DiagramLayoutDto`
 

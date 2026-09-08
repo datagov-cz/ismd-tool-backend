@@ -26,6 +26,32 @@ public interface DiagramPendingEditRepository extends JpaRepository<DiagramPendi
     int deleteByDiagramIdAndConceptIri(@Param("diagramId") Long diagramId,
                                        @Param("conceptIri") String conceptIri);
 
+    /**
+     * A staged overlay paired with the diagram holding it. Carries the raw JSON rather than a
+     * {@code DiagramPendingEdit} because the overlay is not a JPA field — it is a text column with a
+     * hand-rolled accessor, so JPQL cannot project the deserialized form.
+     */
+    interface ConceptOverlayRow {
+        Long getDiagramId();
+        String getPendingEditJson();
+    }
+
+    /**
+     * One concept's staged edits across the named diagrams — the usage read's overlay join. Inverts the
+     * usual direction (one diagram, many concepts), so the diagrams are given and the concept is fixed;
+     * fetching them one diagram at a time would be a query per placement.
+     *
+     * <p>Projects {@code diagram.id} rather than returning entities: the caller runs outside a
+     * transaction (its Fuseki calls must not hold a connection), where touching the lazy {@code diagram}
+     * association would fail.
+     */
+    @Query("select e.diagram.id as diagramId, e.pendingEditJson as pendingEditJson "
+            + "from DiagramPendingEditEntity e "
+            + "where e.conceptIri = :conceptIri and e.diagram.id in :diagramIds")
+    List<ConceptOverlayRow> findByConceptIriAcrossDiagrams(
+            @Param("conceptIri") String conceptIri,
+            @Param("diagramIds") Collection<Long> diagramIds);
+
     /** The concept IRIs carrying a staged edit — the Převzít work-list, resolved without a live session. */
     @Query("select e.conceptIri from DiagramPendingEditEntity e where e.diagram.id = :diagramId")
     List<String> findStagedConceptIris(@Param("diagramId") Long diagramId);

@@ -231,6 +231,7 @@ public class DiagramServiceImpl implements DiagramService {
         return snapshot(requireDiagramOf(ontology, ontologySlug, diagramId), ontology);
     }
 
+
     /**
      * Write then read: the PG write commits in {@link #commitLayout}, and only then is the graph fetched —
      * the two never share a transaction, so a slow Fuseki holds no Hikari connection. A fetch failure

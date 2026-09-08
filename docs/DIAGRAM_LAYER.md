@@ -128,6 +128,18 @@ A canvas may place a concept from **another ISMD ontology, or from NKD**, so the
 
 **Pointing `rdfs:range` at a *published NKD* concept is permitted for a VZTAH only**, and the target is snapshotted as a local copy (`RANGE_TARGET`) exactly like the other NKD links. `rdfs:domain` naming a published concept stays invalid for every type, and a VLASTNOST's `range` stays invalid because it names an XSD datatype, not a concept. See [`NKD_LOCAL_COPY_SNAPSHOT.md`](./NKD_LOCAL_COPY_SNAPSHOT.md).
 
+## The inverse lookup — "which diagrams draw this concept?"
+
+The concept detail page asks the diagram layer the mirror image of its usual question. It is worth its own section because the obvious implementation is the wrong one twice over.
+
+**Membership is stored in three different places, so the question is three queries, not one.** This falls straight out of "each concept type is drawn as the shape it *is*": a TŘÍDA's membership is a `diagram_nodes` row, a VZTAH's is a `diagram_edges` row keyed by its own concept IRI, and a VLASTNOST's is an entry inside its host class's `visible_properties_json`. A single-table lookup silently answers "nowhere" for two thirds of the concepts it is asked about — the failure is invisible, because an empty result is also a legitimate answer.
+
+**Every index the layer had ran the wrong way.** `uq_diagram_nodes_diagram_concept` leads with `diagram_id`, which serves *diagram → concepts* and cannot answer *concept → diagrams*. The inverse direction needed its own indexes: `concept_iri` alone, `md5(edge_key)` (the key is TEXT holding up to two IRIs, which can exceed the ~2704-byte btree limit), and a **partial GIN** index over `visible_properties_json::jsonb`. That last one's predicate must be a pure text test (`LIKE '[%'`), never a cast: a predicate that casts evaluates it on every row to decide membership, so one malformed row fails the whole `CREATE INDEX`. Queries must repeat the same `LIKE` or the planner cannot match the partial index.
+
+**It must not reuse the fat read.** `getDiagram` fetches an entire ontology graph and extracts every concept in it. Answering "which diagrams?" that way would cost one whole-graph fetch *per listed diagram* to report a handful of IRIs — quadratic in exactly the case that matters, a hub concept on many canvases. Instead `DiagramConceptUsageService` resolves structure with `ReferencedConceptResolutionEngine.resolveAll`, which is batched and per-IRI cached and needs no graph, plus one narrow hierarchy `SELECT` for the links that resolver does not carry.
+
+**Structure is per diagram, but resolved once.** Each placement reports live RDF ⊕ *that diagram's* overlay, field by field, so two canvases can legitimately disagree about the same concept — that disagreement is the answer, not a bug to smooth over. The overlay values of every placement go into the *same* resolve batch as the live values, so an extra diagram adds map entries rather than a round trip. A concept on no canvas short-circuits in Postgres and never touches Fuseki.
+
 ## The PG entity model
 
 Four entities, mirroring the `CommentEntity` pattern (FK to `ontologies.id`, pure PG, no outbox). Layout and the pending-edit overlay both live entirely in Postgres, in **separate tables with separate lifecycles**.

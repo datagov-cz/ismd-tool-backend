@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.service.DiagramService;
+import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,6 +62,7 @@ class DiagramControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private DiagramService diagramService;
+    @MockitoBean private DiagramConceptUsageService conceptUsageService;
 
     @BeforeEach
     void setUp() {

@@ -213,6 +213,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/diagram/all").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/diagram/*/list").authenticated()
+                        // Concept-addressed rather than diagram-addressed. Nested under /usage/ so it
+                        // cannot be ambiguous with the {ontologySlug}/{diagramId} routes even if some
+                        // ontology were slugged "usage" — nothing else lives at this depth.
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/usage/concept/*").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/diagram/*/create").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/diagram/*/*/detail").authenticated()
                         .requestMatchers(HttpMethod.PUT,   "/api/diagram/*/*/layout").authenticated()

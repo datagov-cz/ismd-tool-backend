@@ -47,6 +47,67 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
      */
     Optional<DiagramEntity> findByIdAndOntologyMetadataId(Long id, Long ontologyMetadataId);
 
+    /** One diagram that draws a concept, and the shape it draws it as. */
+    interface ConceptUsageRow {
+        Long getDiagramId();
+        String getDiagramName();
+        String getOntologySlug();
+        /** {@code NODE}, {@code EDGE} or {@code PROPERTY_ROW} — see {@code DiagramConceptUsageKind}. */
+        String getKind();
+        /** For {@code PROPERTY_ROW}, the class whose cell renders the row; null otherwise. */
+        String getHostClassIri();
+    }
+
+    /**
+     * Every diagram whose canvas draws this concept, in one round trip. Native because canvas membership
+     * is recorded in three different places depending on the concept's type, and one of them is a JSON
+     * containment test that JPQL cannot express:
+     *
+     * <ul>
+     *   <li><b>TŘÍDA</b> — a {@code diagram_nodes} row (served by {@code idx_diagram_nodes_concept_iri}).</li>
+     *   <li><b>VZTAH</b> — a {@code diagram_edges} row whose {@code edge_key} is the VZTAH's own IRI. The
+     *       composite {@code edge|KIND|src|tgt} keys of hierarchy edges never equal a bare IRI, so
+     *       equality alone distinguishes them. Served by {@code idx_diagram_edges_edge_key} on md5.</li>
+     *   <li><b>VLASTNOST</b> — an entry in some node's {@code visible_properties_json}, reported with
+     *       that node's class as {@code hostClassIri}.</li>
+     * </ul>
+     *
+     * <p>The {@code LIKE '[%'} test is not redundant with the containment operator: it is the partial
+     * index's predicate, and omitting it stops the planner matching
+     * {@code idx_diagram_nodes_visible_properties}. It also guards the cast, which throws on a malformed
+     * row rather than returning false.
+     *
+     * <p>A concept could in principle be drawn on one diagram in two ways; each is its own row, which is
+     * why the caller keys placements by {@code (diagramId, kind)} rather than by diagram alone.
+     */
+    @Query(nativeQuery = true, value = """
+            select n.diagram_id   as diagramId,
+                   d.name         as diagramName,
+                   o.slug         as ontologySlug,
+                   'NODE'         as kind,
+                   cast(null as varchar) as hostClassIri
+            from ismd_schema.diagram_nodes n
+            join ismd_schema.diagrams d on d.id = n.diagram_id
+            join ismd_schema.ontologies o on o.id = d.ontology_metadata_id
+            where n.concept_iri = :conceptIri
+            union all
+            select e.diagram_id, d.name, o.slug, 'EDGE', cast(null as varchar)
+            from ismd_schema.diagram_edges e
+            join ismd_schema.diagrams d on d.id = e.diagram_id
+            join ismd_schema.ontologies o on o.id = d.ontology_metadata_id
+            where e.edge_key = :conceptIri
+            union all
+            select n.diagram_id, d.name, o.slug, 'PROPERTY_ROW', n.concept_iri
+            from ismd_schema.diagram_nodes n
+            join ismd_schema.diagrams d on d.id = n.diagram_id
+            join ismd_schema.ontologies o on o.id = d.ontology_metadata_id
+            where n.visible_properties_json like '[%'
+              and n.visible_properties_json::jsonb @> cast(:conceptIriJson as jsonb)
+            order by diagramId asc
+            """)
+    List<ConceptUsageRow> findConceptUsage(@Param("conceptIri") String conceptIri,
+                                           @Param("conceptIriJson") String conceptIriJson);
+
     /** Whether an ontology has any diagram at all. */
     boolean existsByOntologyMetadataId(Long ontologyMetadataId);
 

@@ -31,6 +31,7 @@ Controller `DiagramController`, základ `/api/diagram`. Všechny odpovědi jsou 
 | `GET /{ontologySlug}/list` | **Diagramy jednoho slovníku**, od nejstaršího — jen identita a počet uzlů. Navigační seznam: dvojice `diagramId` + `name` je název a odkaz. **Jen pro čtení; nic nevytváří.** | → `List<DiagramSummaryDto>` |
 | `POST /{ontologySlug}/create` | **Vytvořit nové prázdné plátno.** Prázdný/chybějící `name` dostane číslovaný výchozí, takže vytvoření bez názvu nikdy neselže. | `DiagramCreateDto` → `DiagramDto` |
 | `GET /{ontologySlug}/{diagramId}/detail` | Načíst jeden diagram, rozvržení spojené s živým obsahem pojmů s aplikovanými overlayi. Neznámé id je **404** — čtení nic nevytváří. | → `DiagramDto` (tučný, připravený k vykreslení) |
+| `GET /usage/concept/{conceptSlug}` | **Kde je tento pojem nakreslen?** Všechny diagramy, na jejichž plátně se pojem nachází, s odkazem a se strukturou, kterou dané plátno zobrazuje. Pro detail pojmu. Libovolný přihlášený uživatel. | → `DiagramConceptUsageDto` |
 | `PUT /{ontologySlug}/{diagramId}/layout` | **Uložit diagram — jediný zápis rozvržení.** Uloží rozvržení (pozice, viewport, body lomu hran) *a* nasazené strukturální overlays. **Žádné RDF.** | `DiagramLayoutDto` → `DiagramDto` (tučný, hydratovaný) |
 | `POST /{ontologySlug}/{diagramId}/materialize` | **Převzít.** Aplikovat každou nasazenou změnu přes stávající CRUD pojmů → outbox → RDF. Odmítne s přehledem kolizí, pokud tentýž pojem nasazuje i sourozenecký diagram — viz níže. | → `MaterializeResultDto` |
 | `DELETE /{ontologySlug}/{diagramId}` | Smazat jeden diagram, jeho rozvržení a nasazené úpravy. **Pojmů slovníku se to nedotkne.** | → `null` |
@@ -91,14 +92,14 @@ Tedy: při `result.type === 'DIAGRAM'` navigujte rovnou na diagram pomocí `resu
 
 | Volání | Vlastník | Jiný přihlášený uživatel | Nepřihlášený |
 |---|---|---|---|
-| `GET …/all`, `GET …/list`, `GET …/detail` | 200 | **200** | 401 |
+| `GET …/all`, `GET …/list`, `GET …/detail`, `GET /usage/concept/…` | 200 | **200** | 401 |
 | `PUT …/layout` | 200 | **403** | 401 |
 | `POST …/materialize` | 200 | **403** | 401 |
 | `POST …/create`, `DELETE …/{id}` | 200 | **403** | 401 |
 
 **Čtení je záměrně otevřené.** `canViewResource()` dovoluje **libovolnému přihlášenému uživateli** číst diagram kteréhokoli slovníku, v souladu s celokódovým přístupem ke čtení, kde každý přihlášený volající vidí všechny grafy. Pouze zápisové cesty jsou omezené na vlastnictví přes `belongsToUserBySlug`.
 
-**Autorizace zápisu omezuje slug *i* IRI.** `belongsToUserBySlug` autorizuje slovník v cestě, ale každé IRI pojmu cestuje uvnitř těla požadavku, takže zápisová cesta navíc vyžaduje, aby každý odkazovaný pojem patřil do vlastního grafu slovníku daného diagramu — IRI uzlů, `conceptIri` overlayů i `addBroaderOn` / `broader` v op 6. Cizí IRI selže s **400** a nic neuloží; táž kontrola běží znovu při materializaci (`FOREIGN_CONCEPT`), takže řádek zapsaný ještě před vznikem této pojistky nelze aplikovat. Pojem, jehož řádek prostě *chybí*, odmítnut není — to je smazaný pojem, hlášený jako `skippedStale`.
+**Autorizace zápisu omezuje slug *i* IRI.** `belongsToUserBySlug` autorizuje slovník v cestě, ale každé IRI pojmu cestuje uvnitř těla požadavku, takže zápisová cesta navíc vyžaduje, aby každý pojem, který úprava **zapisuje**, patřil do vlastního grafu slovníku daného diagramu — `conceptIri` overlaye, jeho `domain` a `addBroaderOn` v op 6. Cizí IRI na těchto místech selže s **400** a nic neuloží; táž kontrola běží znovu při materializaci (`FOREIGN_CONCEPT`). Konce, které jsou pouze **odkazované** (`range`, `broaderConcept`, `exactMatch`, `broader` v op 6), i samotné umístění uzlu cizí být smějí — viz *Uzly — členství*. Pojem, jehož řádek prostě *chybí*, odmítnut není — to je smazaný pojem, hlášený jako `skippedStale`.
 
 **Čtení nikdy nezapisuje.** `GET …/list` i `GET …/{diagramId}/detail` jsou jen pro čtení: slovník bez diagramu vrátí prázdný seznam a neznámé id vrátí 404, takže nevlastník, který otevře cizí plátno, nemůže řádek v `diagrams` přivést na svět. Řádek vznikne výhradně explicitním `POST …/create`. Diagram patří tomu, kdo vlastní jeho slovník; samostatné pole vlastníka diagramu neexistuje.
 
@@ -212,6 +213,53 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
 `edgeKind` (jen na straně čtení) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
 
 `DOMAIN` a `RANGE` neexistují — vztah je jedna hrana mezi svými dvěma třídami, ne uzel s odkazem na každou. `SUB_PROPERTY` a `SUB_RELATION` (`rdfs:subPropertyOf` mezi dvěma vlastnostmi nebo dvěma vztahy) se **na plátně nevykreslují**: ani jeden konec není uzel, takže odkaz nemá k čemu přiléhat, a byznysová sémantika je do vzniku požadavku nedefinovaná. Samotný vztah to neovlivňuje — v běžném editoru pojmů zůstává plně podporován.
+
+## Pojem → diagramy — `GET /api/diagram/usage/concept/{conceptSlug}` → 200 · `DiagramConceptUsageDto`
+
+Obrácení čtení výše, pro **detail pojmu**: je dán pojem — na kterých plátnech je nakreslen? Vrací jednu položku `placements[]` na každý diagram, každou s dvojicí název-a-odkaz (`ontologySlug` + `diagramId`) a se strukturou, kterou dané plátno zobrazuje.
+
+```jsonc
+{
+  "conceptIri": "https://…/pojem/je-zamestnan-u",
+  "conceptName": { "cs": "je zaměstnán u" },
+  "conceptSlug": "je-zamestnan-u",
+  "placements": [
+    { "diagramId": 5, "diagramName": "Hlavní diagram", "ontologySlug": "pracovni-pomer",
+      "kind": "EDGE",
+      "domain": { "iri": "https://…/pojem/zamestnanec", "conceptSlug": "zamestnanec",
+                  "conceptName": { "cs": "Zaměstnanec" } },
+      "range":  { "iri": "https://…/pojem/organizace",  "conceptSlug": "organizace",
+                  "conceptName": { "cs": "Organizace" } },
+      "broader": [], "exactMatch": [], "pending": false }
+  ]
+}
+```
+
+**Prázdné `placements[]` je normální odpověď**, ne 404 — pojem existuje, ale žádné plátno ho nekreslí. 404 znamená neznámý *slug*.
+
+### `kind` — tři způsoby, jak být „na plátně"
+
+Otázka zní jako jedno vyhledání, ale jsou to tři, protože členství se eviduje na třech různých místech. `kind` říká FE, co má hledat, a **není** synonymem typu pojmu:
+
+| `kind` | Vykreslen jako | Členství žije v |
+|---|---|---|
+| `NODE` | buňka třídy | řádku `diagram_nodes` |
+| `EDGE` | čára vztahu | řádku `diagram_edges` klíčovaném vlastním IRI vztahu |
+| `PROPERTY_ROW` | řádek **uvnitř** buňky své třídy | `visible_properties_json` daného uzlu |
+
+U `PROPERTY_ROW` pojmenovává `hostClass` třídu, v jejíž buňce se řádek vykresluje — bez toho se uživatel dozví „je na tomto diagramu", ale nemá jak ho najít. U ostatních tvarů chybí.
+
+Vlastnost je hlášena jen tehdy, když ji její hostitelská třída skutečně **uvádí**. Nekurátorovaná třída nezobrazuje žádné řádky, takže pouhá existence uzlu nestačí.
+
+### Struktura je per diagram, `pending` říká proč
+
+`domain` / `range` / `broader` / `exactMatch` jsou resolvované (`{iri, conceptName, conceptSlug, …}`), ne holá IRI, a jsou hlášené **tak, jak je daný diagram zobrazuje**: živé RDF s navrstveným vlastním overlayem daného diagramu, pole po poli. Dvě umístění téhož pojmu se tedy mohou legitimně lišit — ten rozdíl je smyslem věci a `pending: true` označuje plátno, jehož nasazená změna ho způsobuje.
+
+`domain`/`range` jsou u třídy null — třída ani jedno nemá. `broader`/`exactMatch` jsou `[]`, ne null, když žádné nejsou.
+
+### Výkon
+
+Jeden PG dotaz na všechny tři tvary členství, jeden na overlaye, jeden `SELECT` na hierarchii a jedno dávkové (per-IRI cachované) resolvování všech IRI, která kterékoli umístění zmiňuje — **bez ohledu na počet vrácených diagramů**. Záměrně nevyužívá `GET …/detail`, který načítá celý graf slovníku pro každý diagram; odpovědět takto by stálo načtení celého grafu na každý vypsaný diagram. Pojem, který není na žádném plátně, se zkratuje v Postgresu a Fuseki se vůbec nedotkne.
 
 ## Zápis — Uložit: `PUT /api/diagram/{ontologySlug}/{diagramId}/layout` · `DiagramLayoutDto`
 

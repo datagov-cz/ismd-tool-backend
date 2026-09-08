@@ -1,0 +1,264 @@
+package com.dia.ismdtoolbackend.service.impl;
+
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageKind;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * "Which diagrams draw this concept?" — the concept detail page's canvas cross-reference.
+ *
+ * <p>Deliberately NOT built on {@link DiagramServiceImpl#getDiagram}. That read fetches the whole
+ * ontology graph and extracts every concept in it, per diagram; answering this question that way would
+ * cost one whole-graph fetch per listed diagram to report a handful of IRIs. This path instead does:
+ *
+ * <ol>
+ *   <li>one PG query for placements across all three membership shapes,</li>
+ *   <li>one PG query for the staged overlays on those diagrams,</li>
+ *   <li>one hierarchy SELECT scoped to the concept's own graph, and</li>
+ *   <li>one batched, per-IRI-cached {@code resolveAll} for every IRI mentioned by any of the above.</li>
+ * </ol>
+ *
+ * <p>That last step is the reason structure is resolved once for the whole response rather than per
+ * diagram: the overlay values of every placement are resolved in the SAME batch as the live values, so
+ * adding a diagram adds rows to a map, not a round trip. See {@code docs/DIAGRAM_LAYER_API.md}.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DiagramConceptUsageService {
+
+    /** Mirrors the entity's own mapper: overlays are written by it, so they must be read the same way. */
+    private static final ObjectMapper OVERLAY_MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    private final DiagramRepository diagramRepository;
+    private final DiagramPendingEditRepository pendingEditRepository;
+    private final ConceptMetadataRepository conceptMetadataRepository;
+    private final JenaTDB2Repository jenaTDB2Repository;
+    private final ReferencedConceptResolutionEngine resolutionEngine;
+
+    /**
+     * Every canvas placement of one concept, addressed by the concept's slug (what the detail page has).
+     *
+     * <p>Read-only and short: the transaction covers the two PG queries, while the Fuseki calls that
+     * follow are made outside it — the same split {@code getConceptDetail} uses, so a slow external
+     * store never holds a database connection.
+     */
+    public DiagramConceptUsageDto usageForSlug(String conceptSlug) {
+        ConceptMetadataEntity concept = conceptMetadataRepository.findBySlug(conceptSlug)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Pojem se slugem " + conceptSlug + " nebyl nalezen."));
+
+        String conceptIri = concept.getConceptIri();
+        List<DiagramRepository.ConceptUsageRow> rows = placements(conceptIri);
+        if (rows.isEmpty()) {
+            // Still identify the concept: "on no diagram" is a real answer the page renders.
+            return new DiagramConceptUsageDto(conceptIri, label(concept), concept.getSlug(), List.of());
+        }
+
+        List<Long> diagramIds = rows.stream().map(DiagramRepository.ConceptUsageRow::getDiagramId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, DiagramPendingEdit> overlays = overlays(conceptIri, diagramIds);
+
+        // Live structure, fetched once — every placement starts from this and layers its own overlay.
+        JenaTDB2Repository.ConceptHierarchyLinks live =
+                jenaTDB2Repository.fetchConceptHierarchy(conceptIri, concept.getGraphName());
+
+        Map<String, ResolvedConceptDto> resolved =
+                resolveEverything(conceptIri, rows, overlays, live);
+        ResolvedConceptDto self = resolved.get(conceptIri);
+
+        List<DiagramConceptUsageDto.Placement> placements = new ArrayList<>();
+        for (DiagramRepository.ConceptUsageRow row : rows) {
+            placements.add(placement(row, overlays.get(row.getDiagramId()), self, live, resolved));
+        }
+
+        return new DiagramConceptUsageDto(conceptIri, label(concept), concept.getSlug(), placements);
+    }
+
+    /** Every diagram drawing the concept, across all three membership shapes. */
+    private List<DiagramRepository.ConceptUsageRow> placements(String conceptIri) {
+        return diagramRepository.findConceptUsage(conceptIri, jsonArrayOf(conceptIri));
+    }
+
+    /**
+     * The staged edit each of those diagrams holds on this concept, if any.
+     *
+     * <p>A malformed overlay is skipped rather than failing the read: the concept detail page's job is
+     * to report where the concept is drawn, and one unreadable staged edit must not cost the user the
+     * whole answer. It matches how the entity's own accessor treats bad JSON.
+     */
+    private Map<Long, DiagramPendingEdit> overlays(String conceptIri, Collection<Long> diagramIds) {
+        Map<Long, DiagramPendingEdit> byDiagram = new HashMap<>();
+        for (DiagramPendingEditRepository.ConceptOverlayRow row
+                : pendingEditRepository.findByConceptIriAcrossDiagrams(conceptIri, diagramIds)) {
+            DiagramPendingEdit edit = deserialize(row);
+            if (edit != null) {
+                byDiagram.put(row.getDiagramId(), edit);
+            }
+        }
+        return byDiagram;
+    }
+
+    private DiagramPendingEdit deserialize(DiagramPendingEditRepository.ConceptOverlayRow row) {
+        String json = row.getPendingEditJson();
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return OVERLAY_MAPPER.readValue(json, DiagramPendingEdit.class);
+        } catch (JsonProcessingException e) {
+            log.error("Skipping malformed pending-edit JSON on diagram {}", row.getDiagramId(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Resolve every IRI any placement could name, in ONE batch — the concept itself, its live hierarchy,
+     * each host class, and the overlay values of every diagram. Resolving per placement instead would
+     * turn a multi-diagram response into a round trip per diagram, which is exactly what this endpoint
+     * exists to avoid.
+     */
+    private Map<String, ResolvedConceptDto> resolveEverything(
+            String conceptIri,
+            List<DiagramRepository.ConceptUsageRow> rows,
+            Map<Long, DiagramPendingEdit> overlays,
+            JenaTDB2Repository.ConceptHierarchyLinks live) {
+
+        Set<String> iris = new LinkedHashSet<>();
+        iris.add(conceptIri);
+        iris.addAll(live.broader());
+        iris.addAll(live.exactMatch());
+        rows.forEach(r -> addIfPresent(iris, r.getHostClassIri()));
+
+        for (DiagramPendingEdit overlay : overlays.values()) {
+            addIfPresent(iris, overlay.getDomain());
+            addIfPresent(iris, overlay.getRange());
+            addAll(iris, overlay.getBroaderConcept());
+            addAll(iris, overlay.getExactMatch());
+        }
+        return resolutionEngine.resolveAll(List.copyOf(iris));
+    }
+
+    /**
+     * One placement's view: live structure with that diagram's overlay layered over it, field by field.
+     *
+     * <p>Only a non-null overlay field overrides — a staged {@code range} does not blank the live
+     * {@code domain}. Domain and range come from the concept's own resolution, which already carries
+     * them ({@code resolvedDomain}/{@code resolvedRange}), so a class simply has none and reports null.
+     */
+    private DiagramConceptUsageDto.Placement placement(
+            DiagramRepository.ConceptUsageRow row,
+            DiagramPendingEdit overlay,
+            ResolvedConceptDto self,
+            JenaTDB2Repository.ConceptHierarchyLinks live,
+            Map<String, ResolvedConceptDto> resolved) {
+
+        ResolvedConceptDto domain = self != null ? self.resolvedDomain() : null;
+        ResolvedConceptDto range = self != null ? self.resolvedRange() : null;
+        List<String> broader = live.broader();
+        List<String> exactMatch = live.exactMatch();
+
+        if (overlay != null) {
+            if (overlay.getDomain() != null) {
+                domain = resolved.get(overlay.getDomain());
+            }
+            if (overlay.getRange() != null) {
+                range = resolved.get(overlay.getRange());
+            }
+            // An explicitly-empty list is a real staged value ("clear this predicate"), not "unset".
+            if (overlay.getBroaderConcept() != null) {
+                broader = overlay.getBroaderConcept();
+            }
+            if (overlay.getExactMatch() != null) {
+                exactMatch = overlay.getExactMatch();
+            }
+        }
+
+        return new DiagramConceptUsageDto.Placement(
+                row.getDiagramId(),
+                row.getDiagramName(),
+                row.getOntologySlug(),
+                kindOf(row),
+                resolved.get(row.getHostClassIri()),
+                domain,
+                range,
+                resolveList(broader, resolved),
+                resolveList(exactMatch, resolved),
+                overlay != null);
+    }
+
+    /** Drop IRIs that resolved to nothing rather than emitting nulls the FE would have to filter. */
+    private List<ResolvedConceptDto> resolveList(List<String> iris,
+                                                 Map<String, ResolvedConceptDto> resolved) {
+        if (iris == null || iris.isEmpty()) {
+            return List.of();
+        }
+        return iris.stream().map(resolved::get).filter(Objects::nonNull).toList();
+    }
+
+    /** An unrecognised kind is a bug in the query, not user input — fail loudly rather than guess. */
+    private DiagramConceptUsageKind kindOf(DiagramRepository.ConceptUsageRow row) {
+        return DiagramConceptUsageKind.valueOf(row.getKind());
+    }
+
+    /** PG holds a single Czech name; the multilingual label lives in RDF and is not worth a fetch here. */
+    private Map<String, String> label(ConceptMetadataEntity concept) {
+        return concept.getConceptName() == null ? Map.of() : Map.of("cs", concept.getConceptName());
+    }
+
+    /**
+     * The concept IRI as a one-element JSON array, the right-hand side of the {@code @>} containment
+     * test. Built with Jackson-equivalent escaping rather than concatenation so an IRI containing a
+     * quote or backslash cannot produce malformed JSON — a broken cast would fail the whole query.
+     */
+    private String jsonArrayOf(String conceptIri) {
+        StringBuilder sb = new StringBuilder("[\"");
+        for (int i = 0; i < conceptIri.length(); i++) {
+            char c = conceptIri.charAt(i);
+            if (c == '"' || c == '\\') {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        return sb.append("\"]").toString();
+    }
+
+    private static void addIfPresent(Set<String> target, String iri) {
+        if (iri != null && !iri.isBlank()) {
+            target.add(iri);
+        }
+    }
+
+    private static void addAll(Set<String> target, List<String> iris) {
+        if (iris != null) {
+            iris.forEach(iri -> addIfPresent(target, iri));
+        }
+    }
+}
