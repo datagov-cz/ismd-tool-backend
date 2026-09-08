@@ -1,9 +1,13 @@
 package com.dia.ismdtoolbackend.controller;
 
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyRegenerationRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
@@ -172,6 +176,70 @@ public class AiSuggestionController {
             @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
     ) {
         return ResponseEntity.ok(aiSuggestionService.getRelationshipSuggestions(jwt.getTokenValue(), jobIds));
+    }
+
+    @Operation(
+            summary = "Spustí propojený návrh celého slovníku z právního aktu",
+            description = """
+                    Předá jeden požadavek agregovanému endpointu ISMD AI a vrátí jobId pro polling.
+                    Volitelně lze zadat počty tříd, vlastností a vztahů, části předpisu, kontext a přímo
+                    známý konceptuální model. Vynechané počty použijí výchozí hodnoty AI služby.
+                    Nevytváří slovník ani finální IRI nových pojmů. Vyžaduje autentizaci.
+                    """
+    )
+    @PostMapping("/legal-acts/{year}/{number}/{date}/vocabulary-suggestions")
+    public ResponseEntity<AiJobStartResponseDto> startVocabularySuggestions(
+            @PathVariable int year,
+            @PathVariable int number,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @Valid @RequestBody AiVocabularySuggestionRequestDto request,
+            @Parameter(hidden = true)
+            @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
+    ) {
+        return ResponseEntity.accepted().body(aiSuggestionService.startVocabularySuggestions(
+                jwt.getTokenValue(), year, number, date, request));
+    }
+
+    @Operation(summary = "Vygeneruje další třídy, vlastnosti nebo vztahy pro rozpracovaný návrh",
+            description = "Pošlete aktuální knownConceptualModel, kind a u vlastností/vztahů selectedClassId. Výsledek obsahuje jen přírůstek s novými refs. Použijte existující vocabulary GET.")
+    @PostMapping("/legal-acts/{year}/{number}/{date}/vocabulary-suggestions/expand")
+    public ResponseEntity<AiJobStartResponseDto> expandVocabulary(
+            @PathVariable int year, @PathVariable int number,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @Valid @RequestBody AiVocabularyExpansionRequestDto request,
+            @Parameter(hidden = true)
+            @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt) {
+        return ResponseEntity.accepted().body(aiSuggestionService.expandVocabulary(jwt.getTokenValue(), year, number, date, request));
+    }
+
+    @Operation(summary = "Přegeneruje texty konkrétního neuloženého pojmu",
+            description = "Pošlete aktuální knownConceptualModel a conceptRef. Ref, typ pojmu a všechny vazby zůstávají zachovány. Výsledek obsahuje nanejvýš jednu náhradu. Použijte existující vocabulary GET.")
+    @PostMapping("/legal-acts/{year}/{number}/{date}/vocabulary-suggestions/regenerate")
+    public ResponseEntity<AiJobStartResponseDto> regenerateVocabularyConcept(
+            @PathVariable int year, @PathVariable int number,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @Valid @RequestBody AiVocabularyRegenerationRequestDto request,
+            @Parameter(hidden = true)
+            @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt) {
+        return ResponseEntity.accepted().body(aiSuggestionService.regenerateVocabularyConcept(jwt.getTokenValue(), year, number, date, request));
+    }
+
+    @Operation(
+            summary = "Vrátí průběh a propojený návrh slovníku",
+            description = """
+                    Jedním voláním načte stav úloh z ISMD AI. Použijte opakovaný query parametr jobIds.
+                    Vrací třídy, vlastnosti, vztahy a jejich ref/iri reference beze změny hodnot.
+                    Při selhání zachovává částečný návrh; úplný výsledek má status completed.
+                    Backend neprovádí interní polling. Vyžaduje autentizaci.
+                    """
+    )
+    @GetMapping("/legal-acts/vocabulary-suggestions-jobs")
+    public ResponseEntity<List<AiVocabularySuggestionsJobResponseDto>> getVocabularySuggestions(
+            @RequestParam("jobIds") @NotEmpty List<UUID> jobIds,
+            @Parameter(hidden = true)
+            @CurrentSecurityContext(expression = "authentication.credentials", errorOnInvalidType = true) Jwt jwt
+    ) {
+        return ResponseEntity.ok(aiSuggestionService.getVocabularySuggestions(jwt.getTokenValue(), jobIds));
     }
 
     @Operation(

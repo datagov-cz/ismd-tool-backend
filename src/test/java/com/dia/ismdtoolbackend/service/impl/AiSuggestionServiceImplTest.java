@@ -8,6 +8,8 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDt
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiIdReferenceDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.enums.AiJobStatus;
@@ -296,6 +298,29 @@ class AiSuggestionServiceImplTest {
                 )
         );
         verifyNoInteractions(aiClient);
+    }
+
+    @Test
+    void vocabularyStartForwardsRequestWithoutCreatingOrLoadingOntologies() {
+        var input = new AiVocabularySuggestionRequestDto(2, 0, 1, null, "Vozidla", knownModelDto());
+        var expected = jobResponse();
+        when(aiClient.startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input)).thenReturn(expected);
+        assertSame(expected, service.startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input));
+        verify(aiClient).startVocabularySuggestions(BEARER_TOKEN, YEAR, NUMBER, DATE, input);
+        verifyNoInteractions(ontologyService, knownConceptualModelMapper);
+    }
+
+    @Test
+    void vocabularyPollingEnforcesExistingJobIdLimit() {
+        config.setMaxJobIds(1);
+        var ids = List.of(UUID.randomUUID());
+        List<AiVocabularySuggestionsJobResponseDto> expected = List.of();
+        when(aiClient.getVocabularySuggestions(BEARER_TOKEN, ids)).thenReturn(expected);
+        assertSame(expected, service.getVocabularySuggestions(BEARER_TOKEN, ids));
+        assertThrows(IllegalArgumentException.class, () -> service.getVocabularySuggestions(
+                BEARER_TOKEN, List.of(UUID.randomUUID(), UUID.randomUUID())));
+        verify(aiClient).getVocabularySuggestions(BEARER_TOKEN, ids);
+        verifyNoInteractions(ontologyService, knownConceptualModelMapper);
     }
 
     private IsmdAiSelectedClassJobRequest expectedSelectedRequest(
