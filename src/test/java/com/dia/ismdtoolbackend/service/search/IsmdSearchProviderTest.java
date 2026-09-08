@@ -5,7 +5,6 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.*;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import org.apache.jena.rdf.model.Model;
@@ -35,16 +34,13 @@ class IsmdSearchProviderTest {
     private JenaTDB2Repository jenaTDB2Repository;
 
     @Mock
-    private DiagramRepository diagramRepository;
-
-    @Mock
     private DiagramSearchLookup diagramSearchLookup;
 
     private IsmdSearchProvider createProvider() {
         Executor directExecutor = Runnable::run;
         return new IsmdSearchProvider(
                 ontologyMetadataRepository, conceptMetadataRepository,
-                jenaTDB2Repository, diagramRepository, diagramSearchLookup,
+                jenaTDB2Repository, diagramSearchLookup,
                 directExecutor, 10_000L, 10_000L);
     }
 

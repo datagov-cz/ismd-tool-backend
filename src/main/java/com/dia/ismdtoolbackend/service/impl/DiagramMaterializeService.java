@@ -32,7 +32,11 @@ public class DiagramMaterializeService {
     private final DiagramChangeApplier changeApplier;
     private final DiagramPendingEditRepository pendingEditRepository;
 
-    /** Applies every staged edit on the diagram, each in its own transaction, and aggregates the outcomes. */
+    /**
+     * Applies every staged edit on the diagram, each in its own transaction, and aggregates the outcomes.
+     * {@code ontologyId} records the scope the caller resolved the winner under; the applier re-derives the
+     * graph from each staged row, so nothing here reads it.
+     */
     public MaterializeResultDto materialize(Long diagramId, Long ontologyId) {
         List<MaterializeResultDto.Materialized> materialized = new ArrayList<>();
         List<MaterializeResultDto.Failed> failed = new ArrayList<>();
@@ -40,7 +44,7 @@ public class DiagramMaterializeService {
 
         for (String conceptIri : orderedWorkList(diagramId)) {
             try {
-                Outcome outcome = changeApplier.applyChange(diagramId, ontologyId, conceptIri);
+                Outcome outcome = changeApplier.applyChange(diagramId, conceptIri);
                 if (outcome.kind() == Outcome.Kind.SKIPPED_STALE) {
                     skippedStale.add(new MaterializeResultDto.SkippedStale(conceptIri));
                 } else {

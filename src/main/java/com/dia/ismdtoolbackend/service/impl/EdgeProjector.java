@@ -147,7 +147,7 @@ class EdgeProjector {
         String domain = domainPending ? overlay.getDomain() : detail.getDomain();
         String range = rangePending ? overlay.getRange() : detail.getRange();
 
-        if (drawable(domain, onCanvas) || drawable(range, onCanvas)) {
+        if (notOnCanvas(domain, onCanvas) || notOnCanvas(range, onCanvas)) {
             return;
         }
         // A VZTAH edge is keyed by its own concept IRI.
@@ -199,7 +199,7 @@ class EdgeProjector {
             String domain = overlay != null && overlay.getDomain() != null
                     ? overlay.getDomain()
                     : detail.getDomain();
-            if (drawable(domain, onCanvas)) {
+            if (notOnCanvas(domain, onCanvas)) {
                 continue;
             }
             if (!curated.getOrDefault(domain, Set.of()).contains(iri)) {
@@ -262,7 +262,7 @@ class EdgeProjector {
         }
         boolean repointed = pending && placedUnderLiveId(source, liveTargets, kind);
         for (String target : targets) {
-            if (drawable(target, onCanvas)) {
+            if (notOnCanvas(target, onCanvas)) {
                 continue;
             }
             String id = projectedEdgeId(kind, source, target);
@@ -297,7 +297,8 @@ class EdgeProjector {
         return false;
     }
 
-    private boolean drawable(String iri, Set<String> onCanvas) {
+    /** True when this endpoint cannot anchor an edge: absent, or not a node on the canvas. */
+    private boolean notOnCanvas(String iri, Set<String> onCanvas) {
         return iri == null || iri.isBlank() || !onCanvas.contains(iri);
     }
 

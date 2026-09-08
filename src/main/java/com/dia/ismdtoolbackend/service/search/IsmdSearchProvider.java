@@ -9,9 +9,7 @@ import com.dia.ismdtoolbackend.enums.RelationType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.enums.SearchSourceStatus;
 import com.dia.ismdtoolbackend.enums.SearchType;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +63,6 @@ public class IsmdSearchProvider implements SearchProvider {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
-    private final DiagramRepository diagramRepository;
     private final DiagramSearchLookup diagramSearchLookup;
     private final Executor searchExecutor;
     private final long fusekiTimeoutMs;
@@ -74,7 +71,6 @@ public class IsmdSearchProvider implements SearchProvider {
     public IsmdSearchProvider(OntologyMetadataRepository ontologyMetadataRepository,
                               ConceptMetadataRepository conceptMetadataRepository,
                               JenaTDB2Repository jenaTDB2Repository,
-                              DiagramRepository diagramRepository,
                               DiagramSearchLookup diagramSearchLookup,
                               @Qualifier("searchExecutor") Executor searchExecutor,
                               @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
@@ -82,7 +78,6 @@ public class IsmdSearchProvider implements SearchProvider {
         this.ontologyMetadataRepository = ontologyMetadataRepository;
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
-        this.diagramRepository = diagramRepository;
         this.diagramSearchLookup = diagramSearchLookup;
         this.searchExecutor = searchExecutor;
         this.fusekiTimeoutMs = fusekiTimeoutMs;

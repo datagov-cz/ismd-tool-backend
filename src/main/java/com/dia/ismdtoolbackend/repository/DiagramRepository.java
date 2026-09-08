@@ -107,9 +107,6 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
     List<ConceptUsageRow> findConceptUsage(@Param("conceptIri") String conceptIri,
                                            @Param("conceptIriJson") String conceptIriJson);
 
-    /** Whether an ontology has any diagram at all. */
-    boolean existsByOntologyMetadataId(Long ontologyMetadataId);
-
     /** Names identify a canvas to the user, so they are unique within one ontology. */
     boolean existsByOntologyMetadataIdAndName(Long ontologyMetadataId, String name);
 

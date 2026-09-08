@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
@@ -18,7 +17,6 @@ import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.ConceptService;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
@@ -64,7 +62,7 @@ public class DiagramChangeApplier {
      * staged edit need not have a node.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Outcome applyChange(Long diagramId, Long ontologyId, String conceptIri) {
+    public Outcome applyChange(Long diagramId, String conceptIri) {
         DiagramPendingEditEntity staged = pendingEditRepository
                 .findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .orElse(null);

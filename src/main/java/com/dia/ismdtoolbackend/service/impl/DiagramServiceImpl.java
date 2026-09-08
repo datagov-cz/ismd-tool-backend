@@ -92,7 +92,6 @@ public class DiagramServiceImpl implements DiagramService {
 
     @Override
     @Transactional(readOnly = true)
-    // TODO: never used, remove?
     public List<DiagramSummaryDto> listAll() {
         return diagramRepository.findSummaries(null).stream()
                 .map(this::toSummary)
@@ -504,14 +503,6 @@ public class DiagramServiceImpl implements DiagramService {
             /* Graph name per foreign node IRI. An NKD IRI has no PG row, so no entry. */
             Map<String, String> foreignGraphs
     ) {
-
-        /** The node for a concept IRI, or null when the diagram has none. */
-        DiagramNodeEntity node(String conceptIri) {
-            return nodes.stream()
-                    .filter(n -> conceptIri.equals(n.getConceptIri()))
-                    .findFirst()
-                    .orElse(null);
-        }
     }
 
     /**
