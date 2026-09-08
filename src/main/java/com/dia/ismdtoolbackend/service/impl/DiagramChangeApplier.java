@@ -53,7 +53,13 @@ public class DiagramChangeApplier {
 
     /** The classified op and the outcome, so the caller reports it without re-deriving the op. */
     public record Outcome(DiagramOp op, Kind kind) {
-        public enum Kind { MATERIALIZED, SKIPPED_STALE }
+
+        /**
+         * {@code NOTHING_STAGED} is not the outcome of applying anything: the staged row was gone before
+         * this transaction read it, so no RDF was written and there is nothing to report. Distinct from
+         * {@code MATERIALIZED}, which would otherwise claim a change that never happened.
+         */
+        public enum Kind { MATERIALIZED, SKIPPED_STALE, NOTHING_STAGED }
     }
 
     /**
@@ -67,8 +73,9 @@ public class DiagramChangeApplier {
                 .findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .orElse(null);
         if (staged == null || staged.getPendingEdit() == null) {
-            // Raced away since the caller snapshotted.
-            return new Outcome(null, Outcome.Kind.MATERIALIZED);
+            // Raced away between the work-list read and this transaction — a retried Převzít, a concurrent
+            // discard, or op 6 deleting the concept. Nothing was applied, so it is not a materialization.
+            return new Outcome(null, Outcome.Kind.NOTHING_STAGED);
         }
         DiagramPendingEdit overlay = staged.getPendingEdit();
         DiagramOp op = classify(overlay);

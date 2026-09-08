@@ -25,9 +25,13 @@ public record DiagramLayoutDto(
          * sidebar like a new class. Null is the exception, a no-op that leaves the edge set untouched, so a
          * client that never edits edges need not echo them. */
         @Valid List<Edge> edges,
-        /* Optional and additive, unlike `edges` above. An entry stages or updates that concept's overlay;
-         * a concept absent from the array keeps what is already staged, so null and [] both mean "not
-         * touching overlays". Discarding is explicit: an entry carrying only conceptIri. */
+        /* Optional and additive ACROSS concepts, unlike `edges` above: a concept absent from the array keeps
+         * what is already staged, so null and [] both mean "not touching overlays", and discarding is
+         * explicit (an entry carrying only conceptIri).
+         *
+         * WITHIN one concept an entry is the whole overlay, not a per-field delta — it REPLACES that
+         * concept's staged edit, so a field the entry omits is dropped. Send a concept's full staged intent
+         * every time. */
         @Valid List<Overlay> overlays
 ) {
 
@@ -83,9 +87,10 @@ public record DiagramLayoutDto(
      * {@code iri:}-prefixed: a VZTAH renders as an edge and a VLASTNOST as a row, and both are staged here
      * by their own IRI.
      *
-     * <p>An entry carrying every overlay field null discards that concept's overlay, {@code conceptIri}
-     * being addressing rather than content. An explicitly-empty list ({@code "broaderConcept": []}) is not
-     * empty — it stages "clear this predicate".
+     * <p>An entry is that concept's <em>whole</em> overlay and replaces whatever is staged for it; a field
+     * the entry omits is dropped, so there is no per-field delta. An entry carrying every overlay field
+     * null discards the overlay outright, {@code conceptIri} being addressing rather than content. An
+     * explicitly-empty list ({@code "broaderConcept": []}) is not empty — it stages "clear this predicate".
      *
      * <p>{@code baseUpdatedAt} is absent from the wire: the service captures the stale-base fingerprint
      * itself, so a client cannot forge the value the STALE_BASE guard compares against.

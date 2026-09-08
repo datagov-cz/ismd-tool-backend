@@ -350,15 +350,31 @@ public class DiagramServiceImpl implements DiagramService {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         requireDiagramOf(ontology, ontologySlug, diagramId);
 
+        // Serializes concurrent materializes of one ontology. Detection is a read-modify-write over
+        // diagram_pending_edits, so without this lock two requests can each read the other as
+        // non-conflicting and both go on to write RDF. No concept row is locked here, so this takes no
+        // part in the concept → ontology lock order.
+        ontologyMetadataRepository.findWithLockById(ontology.getId());
+
+        Long winner = decideWinner(ontology, diagramId, onConflict, winnerDiagramId);
+        // Re-detect from the WINNER's side on every path, not just the resolved one: a sibling save that
+        // commits between the first query and this point stages a collision the resolution never saw.
+        requireNoRemainingConflict(ontology.getId(), winner);
+        return new Resolved(ontology.getId(), winner);
+    }
+
+    /** Whose staged edits materialize: this diagram when nothing collides, else the resolution's winner. */
+    private Long decideWinner(OntologyMetadataEntity ontology, Long diagramId,
+                              ConflictResolution onConflict, Long winnerDiagramId) {
         List<String> staged = pendingEditRepository.findStagedConceptIris(diagramId);
         if (staged.isEmpty()) {
-            return noConflict(ontology, diagramId, onConflict);
+            return noConflict(diagramId, onConflict);
         }
 
         List<DiagramPendingEditEntity> conflicting =
                 pendingEditRepository.findConflicting(ontology.getId(), diagramId, staged);
         if (conflicting.isEmpty()) {
-            return noConflict(ontology, diagramId, onConflict);
+            return noConflict(diagramId, onConflict);
         }
 
         if (onConflict == null) {
@@ -378,21 +394,19 @@ public class DiagramServiceImpl implements DiagramService {
         log.info("Materialize on diagram {}: {} wins, discarded {} conflicting staged edit(s) on the "
                 + "other diagram(s)", diagramId, winner, removed);
 
-        requireNoRemainingConflict(ontology.getId(), winner);
-        return new Resolved(ontology.getId(), winner);
+        return winner;
     }
 
     /**
      * Nothing collides, so a resolution has nothing to decide. A stray {@code ACCEPT_THEIRS} is still
      * refused rather than materializing a diagram whose edits were never offered up here.
      */
-    private Resolved noConflict(OntologyMetadataEntity ontology, Long diagramId,
-                                ConflictResolution onConflict) {
+    private Long noConflict(Long diagramId, ConflictResolution onConflict) {
         if (onConflict == ConflictResolution.ACCEPT_THEIRS) {
             throw new DiagramConflictResolutionException(
                     "Žádná kolize s jiným diagramem neexistuje; převzetí změn jiného diagramu nelze použít.");
         }
-        return new Resolved(ontology.getId(), diagramId);
+        return diagramId;
     }
 
     /**
@@ -432,8 +446,9 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Re-detects from the winner's side after a resolution, in the transaction that applied it. Only trips
-     * when a concurrent save stages a conflict the resolution never named.
+     * The final gate before any RDF is written: re-detects from the winner's side, in the transaction that
+     * decided it. Runs on every path, so it catches both a collision a resolution left standing and one a
+     * sibling save staged after the first detection query.
      */
     private void requireNoRemainingConflict(Long ontologyId, Long winnerDiagramId) {
         List<String> staged = pendingEditRepository.findStagedConceptIris(winnerDiagramId);

@@ -16,6 +16,7 @@ import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
@@ -282,6 +283,29 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(after.pendingEdits().size())
                 .as("the REL's overlay survives a save that only mentions CLASS_A").isEqualTo(2);
         assertThat(nodeOf(after, CLASS_A).data().hasPendingEdits()).isTrue();
+    }
+
+    /**
+     * Additivity is ACROSS concepts, not WITHIN one: a second entry for the same concept REPLACES that
+     * concept's overlay wholesale, so a field the new entry omits is dropped. Pins the semantic — the FE
+     * must send a concept's full staged intent in every entry, never a per-field delta.
+     */
+    @Test
+    void asecondEntryForOneConcept_replacesThatConceptsOverlayWholesale() {
+        seedCanvas();
+        saveWithOverlays(broaderOverlay(CLASS_A, CLASS_B));
+
+        // Same concept again, this time naming only exactMatch.
+        DiagramDto after = saveWithOverlays(new DiagramLayoutDto.Overlay(
+                DiagramMapper.NODE_ID_PREFIX + CLASS_A, null, null, null, List.of(CLASS_B), null));
+
+        DiagramPendingEdit staged = after.pendingEdits().stream()
+                .filter(e -> CLASS_A.equals(e.iri()))
+                .findFirst().orElseThrow().pendingEdit();
+        assertThat(staged.getExactMatch()).as("the new entry's field is staged").containsExactly(CLASS_B);
+        assertThat(staged.getBroaderConcept())
+                .as("the omitted field is REPLACED away, not merged — an entry is a whole overlay")
+                .isNull();
     }
 
     /** Discard is explicit: an entry carrying only conceptIri clears that one overlay, and only that one. */

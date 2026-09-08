@@ -39,9 +39,9 @@ public interface DiagramService {
 
     /**
      * Save: the diagram's only layout write, PG only. Layout is a full replace — the node set is canvas
-     * membership and the edge set the persisted waypoints. Overlays are additive over what is staged: a
-     * concept absent from {@code overlays} keeps its overlay, and an entry carrying only
-     * {@code conceptIri} discards that one.
+     * membership and the edge set the persisted waypoints. Overlays are additive across concepts: one
+     * absent from {@code overlays} keeps its overlay, and an entry carrying only {@code conceptIri}
+     * discards that one. Within a concept an entry is the whole overlay and replaces what is staged.
      */
     DiagramDto saveLayout(String ontologySlug, Long diagramId, DiagramLayoutDto layout);
 

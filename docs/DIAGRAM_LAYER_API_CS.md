@@ -267,7 +267,7 @@ Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte 
 
 ### Jediné pravidlo, které je třeba si osvojit
 
-**`nodes` a `edges` jsou úplná náhrada. `overlays` jsou přírůstkové.**
+**`nodes` a `edges` jsou úplná náhrada. `overlays` jsou přírůstkové napříč pojmy — ale každá položka je úplnou náhradou overlaye jednoho pojmu.**
 
 | Pole | Vynecháno / `null` | `[]` |
 |---|---|---|
@@ -279,6 +279,16 @@ Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte 
 | **`overlays`** | **nasazené úpravy nedotčeny** | **nasazené úpravy nedotčeny** |
 
 Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný** způsob, jak overlay zahodit, je položka nesoucí `conceptIri` a nic jiného.
+
+**Přírůstkové napříč pojmy, náhrada uvnitř jednoho.** Položka je *celý* overlay daného pojmu, nikoli patch jednotlivých polí: nahradí nasazenou úpravu celou, takže jakékoli pole overlaye, které položka vynechá, zanikne. Chcete-li změnit jeden predikát a ostatní zachovat, pošlete celý nasazený záměr pojmu — čtení vám jej vrací v `pendingEdits[]`, takže stačí ten objekt poslat zpět se zapracovanou změnou.
+
+```jsonc
+// nasazeno: { "broaderConcept": ["…/trida-b"] }
+{ "conceptIri": "…/trida-a", "exactMatch": ["…/trida-c"] }
+// výsledek: { "exactMatch": ["…/trida-c"] }   ← broaderConcept ZANIKL, nesloučí se
+{ "conceptIri": "…/trida-a", "broaderConcept": ["…/trida-b"], "exactMatch": ["…/trida-c"] }
+// výsledek: obojí zachováno                    ← posílejte celý overlay
+```
 
 **Rozvržení a nasazené úpravy jsou nezávislé.** Žijí v oddělených tabulkách, takže odebrání uzlu z plátna nikdy nezahodí jeho nasazenou úpravu a nasazení úpravy nikdy nedostane pojem na plátno. Odebrání je čistá prezentace a nenese žádný RDF záměr; zahození je vlastní, explicitní pokyn.
 
@@ -492,6 +502,8 @@ Aplikuje každou nasazenou změnu. Jeden záznam na nasazenou **změnu** (změna
 - `error: "FOREIGN_CONCEPT"` (HTTP 400) — IRI pojmu ve změně patří do jiného slovníku než vlastního (buď samotný pojem, nebo `addBroaderOn` / `broader` v op 6). Diagram smí zapisovat jen pojmy vlastního slovníku; legitimní klient tohle nikdy nevyprodukuje.
 - `error: "ERROR"` (HTTP 500) — neočekávané selhání na straně serveru; overlay zůstává. `message` je vždy obecné `"Nastala neočekávaná chyba."` — skutečná příčina se loguje na serveru a nikdy nevrací, takže FE ji má zobrazit tak, jak je, a nepokoušet se ji parsovat.
 - `skippedStale` — odkazovaný pojem už neexistuje; nabídnout odebrání nebo znovuvytvoření.
+
+**Změna, jejíž overlay už zanikl, se nevykazuje nikde.** Zmizí-li nasazená úprava mezi načtením seznamu práce a její vlastní transakcí — opakované Převzít, souběžné Uložit, které ji zahodilo, nebo operace 6 mazající pojem — nic se nezapsalo, a pojem se proto neobjeví v *žádném* ze tří polí. Součet polí tak může mít méně položek, než měl `pendingEdits[]`; to je očekávaný tvar, nikoli ztracený výsledek. Nikdy se nevykazuje jako `materialized`, což by tvrdilo změnu, která se nestala.
 
 ### `DIAGRAM_EDIT_CONFLICT` (HTTP 409) — tentýž pojem nasazuje jiný diagram
 

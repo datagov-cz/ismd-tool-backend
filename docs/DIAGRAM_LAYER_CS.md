@@ -51,7 +51,7 @@ Uvnitř tohoto jediného Uložit mají obě části payloadu záměrně odlišno
 |---|---|---|
 | `nodes` | **úplná náhrada** — pole *je* členství na plátně | plátno vyprázdněno (`nodes` samo je povinné) |
 | `edges` | **úplná náhrada** — pole *je* členství hran | vynecháno: nedotčeno; `[]`: všechny hrany mimo plátno |
-| `overlays` | **přírůstkové** — položka nasadí nebo aktualizuje jeden pojem | **nasazené úpravy zůstávají nedotčeny** |
+| `overlays` | **přírůstkové napříč pojmy** — položka nasadí jeden pojem a je **úplnou náhradou overlaye tohoto pojmu** | **nasazené úpravy zůstávají nedotčeny** |
 
 **Proč overlays nemohou být úplná náhrada.** Úplná náhrada vyžaduje, aby vše, co klient musí poslat zpět, bylo vidět v tom, co vrací čtení. U overlayů to neplatí:
 

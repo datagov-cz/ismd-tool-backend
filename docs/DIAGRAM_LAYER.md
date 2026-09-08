@@ -51,7 +51,7 @@ Within that single Save, the two halves of the payload have deliberately differe
 |---|---|---|
 | `nodes` | **full replace** — the array *is* canvas membership | canvas emptied (`nodes` itself is mandatory) |
 | `edges` | **full replace** — the array *is* edge membership | omitted: untouched; `[]`: every edge off the canvas |
-| `overlays` | **additive** — an entry stages or updates one concept | **staged edits untouched** |
+| `overlays` | **additive across concepts** — an entry stages one concept, and is a **full replace of that concept's own overlay** | **staged edits untouched** |
 
 **Why overlays cannot be a full replace.** Full replace requires that everything the client must echo back is visible in what a read returns. For overlays it is not:
 

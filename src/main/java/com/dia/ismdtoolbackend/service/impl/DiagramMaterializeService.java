@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.CascadeConflictException;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.ForeignConceptException;
@@ -42,29 +43,36 @@ public class DiagramMaterializeService {
         List<MaterializeResultDto.Failed> failed = new ArrayList<>();
         List<MaterializeResultDto.SkippedStale> skippedStale = new ArrayList<>();
 
-        for (String conceptIri : orderedWorkList(diagramId)) {
+        for (StagedChange change : orderedWorkList(diagramId)) {
+            String conceptIri = change.conceptIri();
             try {
                 Outcome outcome = changeApplier.applyChange(diagramId, conceptIri);
-                if (outcome.kind() == Outcome.Kind.SKIPPED_STALE) {
-                    skippedStale.add(new MaterializeResultDto.SkippedStale(conceptIri));
-                } else {
-                    materialized.add(new MaterializeResultDto.Materialized(conceptIri, outcome.op()));
+                switch (outcome.kind()) {
+                    case SKIPPED_STALE ->
+                            skippedStale.add(new MaterializeResultDto.SkippedStale(conceptIri));
+                    // Nothing was staged by the time the change ran, so nothing is reported: claiming a
+                    // materialization here would report a change that never happened.
+                    case NOTHING_STAGED ->
+                            log.debug("Nothing staged for concept {} on diagram {} by the time it ran; "
+                                    + "omitted from the result", conceptIri, diagramId);
+                    case MATERIALIZED ->
+                            materialized.add(new MaterializeResultDto.Materialized(conceptIri, outcome.op()));
                 }
             } catch (StaleBaseException e) {
-                failed.add(fail(diagramId, conceptIri, "STALE_BASE", e.getMessage(), 409));
+                failed.add(fail(change, "STALE_BASE", e.getMessage(), 409));
             } catch (CascadeConflictException e) {
-                failed.add(fail(diagramId, conceptIri, "CASCADE_CONFLICT", e.getMessage(), 409));
+                failed.add(fail(change, "CASCADE_CONFLICT", e.getMessage(), 409));
             } catch (ForeignConceptException e) {
-                failed.add(fail(diagramId, conceptIri, "FOREIGN_CONCEPT", e.getMessage(), 400));
+                failed.add(fail(change, "FOREIGN_CONCEPT", e.getMessage(), 400));
             } catch (ConceptValidationException | OntologyValidationException e) {
-                failed.add(fail(diagramId, conceptIri, "VALIDATION", e.getMessage(), 400));
+                failed.add(fail(change, "VALIDATION", e.getMessage(), 400));
             } catch (AccessDeniedException e) {
                 // The caller owns the ontology but not this concept: a per-change 403, not a 500.
-                failed.add(fail(diagramId, conceptIri, "FORBIDDEN",
+                failed.add(fail(change, "FORBIDDEN",
                         "Nemáte oprávnění upravit tento pojem.", 403));
             } catch (RuntimeException e) {
                 log.error("Materialize failed for concept {}", conceptIri, e);
-                failed.add(fail(diagramId, conceptIri, "ERROR", "Nastala neočekávaná chyba.", 500));
+                failed.add(fail(change, "ERROR", "Nastala neočekávaná chyba.", 500));
             }
         }
 
@@ -74,32 +82,36 @@ public class DiagramMaterializeService {
     /**
      * The staged work-list, ordered so every {@link DiagramOp#CONVERT_TO_HIERARCHY} applies last: it bumps
      * its target class's {@code updatedAt}, which would otherwise falsely stale that class's own edit.
+     *
+     * <p>Classified in ONE query, then partitioned. Sorting on a comparator that classifies per comparison
+     * would re-read each row O(n log n) times, and a row racing away mid-sort would flip its own key and
+     * break the comparator's transitivity contract — which TimSort answers by throwing.
      */
-    private List<String> orderedWorkList(Long diagramId) {
-        List<String> iris = new ArrayList<>(pendingEditRepository.findStagedConceptIris(diagramId));
-        iris.sort(java.util.Comparator.comparingInt(
-                iri -> isConvertToHierarchy(diagramId, iri) ? 1 : 0));
-        return iris;
+    private List<StagedChange> orderedWorkList(Long diagramId) {
+        List<StagedChange> convertLast = new ArrayList<>();
+        List<StagedChange> rest = new ArrayList<>();
+        for (DiagramPendingEditEntity row : pendingEditRepository.findByDiagramId(diagramId)) {
+            DiagramPendingEdit edit = row.getPendingEdit();
+            DiagramOp op = edit != null ? changeApplier.classify(edit) : null;
+            StagedChange change = new StagedChange(row.getConceptIri(), op);
+            (op == DiagramOp.CONVERT_TO_HIERARCHY ? convertLast : rest).add(change);
+        }
+        rest.addAll(convertLast);
+        return rest;
     }
 
-    /** Classifies a staged op without applying it; an edit that raced away reads as false. */
-    private boolean isConvertToHierarchy(Long diagramId, String conceptIri) {
-        DiagramOp op = classifyStaged(diagramId, conceptIri);
-        return op == DiagramOp.CONVERT_TO_HIERARCHY;
+    /** One unit of work: the concept to apply, and the op its staged edit was classified as. */
+    private record StagedChange(String conceptIri, DiagramOp op) {
     }
 
-    /** Builds a failure entry, re-reading the still-staged edit for its op. */
-    private MaterializeResultDto.Failed fail(Long diagramId, String conceptIri, String error,
+    /**
+     * Builds a failure entry from the op classified when the work-list was read, not from a fresh lookup.
+     * A failing change rolls its own transaction back, but a re-read still races: the row can be gone by
+     * then (a concurrent discard, or an ambiguous failure at commit), which reported {@code op: null} on
+     * exactly the failures a client most needs to identify.
+     */
+    private MaterializeResultDto.Failed fail(StagedChange change, String error,
                                              String message, int status) {
-        return new MaterializeResultDto.Failed(
-                conceptIri, classifyStaged(diagramId, conceptIri), error, message, status);
-    }
-
-    /** The op a concept's staged edit would apply, or null when nothing is staged. */
-    private DiagramOp classifyStaged(Long diagramId, String conceptIri) {
-        return pendingEditRepository.findByDiagramIdAndConceptIri(diagramId, conceptIri)
-                .map(DiagramPendingEditEntity::getPendingEdit)
-                .map(changeApplier::classify)
-                .orElse(null);
+        return new MaterializeResultDto.Failed(change.conceptIri(), change.op(), error, message, status);
     }
 }

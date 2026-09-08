@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.diagram;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
@@ -37,17 +38,21 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -97,14 +102,15 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
     @Autowired private ConceptMetadataRepository conceptRepo;
     @Autowired private OntologyMetadataRepository ontologyRepo;
     @Autowired private DiagramRepository diagramRepo;
-    @Autowired private DiagramPendingEditRepository pendingEditRepo;
+    /** Spied so one test can stage a competing edit from inside the detection query itself. */
+    @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private DiagramMaterializeService materializeService;
 
     @BeforeEach
     void setUp() {
-        reset(materializeService);
+        reset(materializeService, pendingEditRepo);
         txTemplate.executeWithoutResult(tx -> {
             pendingEditRepo.deleteAllInBatch();
             diagramRepo.deleteAllInBatch();
@@ -199,6 +205,50 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
         diagramService.materialize(SLUG, mine, null, null);
 
         verify(materializeService).materialize(eq(mine), eq(ontologyId()));
+    }
+
+    /**
+     * The re-detect gate runs on EVERY path, not only after a resolution. A sibling staging a collision
+     * between the first detection query and the decision must still refuse, rather than let the RDF write
+     * proceed against a conflict the endpoint's 409 contract promises to catch.
+     *
+     * <p>The competing edit is staged from inside {@code findConflicting}, which is precisely the window
+     * between "this diagram's staged IRIs" and the decision that follows. Before the fix the early return
+     * for an empty conflict set skipped {@code requireNoRemainingConflict} entirely and this materialized.
+     */
+    @Test
+    void aSiblingStagingDuringDetection_isCaughtBeforeRdfIsWritten() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        // `theirs` stages nothing yet, so the first detection query sees a clean board.
+
+        // Only the FIRST detection query is intercepted: it stages the sibling's edit and reports a clean
+        // board, exactly as a save committing right after that read would look. Every later call — the
+        // re-detect gate included — runs for real against the now-conflicting rows.
+        // Only the FIRST detection query is intercepted: it stages the sibling's edit and reports a clean
+        // board, exactly as a save committing right after that read would look. Every later call — the
+        // re-detect gate included — is answered from the now-conflicting rows.
+        AtomicBoolean raced = new AtomicBoolean(false);
+        doAnswer(inv -> {
+            if (raced.compareAndSet(false, true)) {
+                stage(theirs, REL, range(CLASS_B));   // the concurrent save, mid-detection
+                return List.of();
+            }
+            Long ontologyId = inv.getArgument(0);
+            Long forDiagram = inv.getArgument(1);
+            Collection<String> iris = inv.getArgument(2);
+            return txTemplate.execute(tx -> pendingEditRepo.findAll().stream()
+                    .filter(r -> ontologyId.equals(r.getOntologyMetadata().getId()))
+                    .filter(r -> !forDiagram.equals(r.getDiagram().getId()))
+                    .filter(r -> iris.contains(r.getConceptIri()))
+                    .toList());
+        }).when(pendingEditRepo).findConflicting(any(), any(), any());
+
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
+                .as("a conflict staged during detection must refuse, not write RDF blind")
+                .isInstanceOf(DiagramEditConflictException.class);
+        verify(materializeService, never()).materialize(any(), any());
     }
 
     /** A lone diagram never conflicts with itself. */

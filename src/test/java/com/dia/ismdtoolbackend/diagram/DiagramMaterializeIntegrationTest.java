@@ -47,6 +47,7 @@ import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.sys.JenaSystem;
+import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,17 +64,25 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -109,7 +118,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     @Autowired private DiagramRepository diagramRepo;
     @Autowired private DiagramNodeRepository nodeRepo;
     @Autowired private DiagramEdgeRepository edgeRepo;
-    @Autowired private DiagramPendingEditRepository pendingEditRepo;
+    /** Spied so the work-list's read count can be asserted, not just its ordering. */
+    @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private ConceptServiceImpl conceptService;
     @Autowired private DiagramMaterializeService materializeService;
@@ -363,6 +373,31 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(stagedEdit(relIri)).isNull();
     }
 
+    // An overlay that names only exactMatch must not blank the VZTAH's domain/range: buildEdit leaves the
+    // unmentioned fields null, and the field updaters treat null as "unchanged" (empty clears).
+    @Test
+    void materializeExactMatchOnlyOverlay_keepsDomainAndRange() {
+        ConceptMetadataEntity a = create(classModel("EM Třída A", true));
+        ConceptMetadataEntity b = create(classModel("EM Třída B", true));
+        ConceptMetadataEntity rel = create(relModel("em vztah", a.getConceptIri(), b.getConceptIri()));
+        String relIri = rel.getConceptIri();
+
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/jiny"));
+        stageNode(relIri, overlay);
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.failed()).isEmpty();
+        assertThat(result.materialized()).hasSize(1);
+
+        Model g = graph();
+        assertThat(g.getResource(relIri).getProperty(RDFS.domain))
+                .as("an exactMatch-only overlay must not drop rdfs:domain").isNotNull();
+        assertThat(g.getResource(relIri).getProperty(RDFS.range))
+                .as("an exactMatch-only overlay must not drop rdfs:range").isNotNull();
+    }
+
     // Stale-base: the concept was edited (via normal /api/concept) after the overlay was staged → 409.
     @Test
     void materialize_staleBase_reports409() {
@@ -466,6 +501,98 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
             row.setEdgeKey(edgeKey);
             row.setSegments(segments);
             edgeRepo.saveAndFlush(row);
+        });
+    }
+
+    /**
+     * The work-list classifies every staged edit in ONE read, not one per comparison. The previous shape
+     * sorted on {@code Comparator.comparingInt(iri -> isConvertToHierarchy(diagramId, iri))}, and
+     * {@code List.sort} re-invokes a key extractor O(n log n) times — 10 staged edits cost 44 queries, 50
+     * cost 366 — all of it before a single change is applied. Worse, a row racing away mid-sort flips its
+     * own key, breaking the comparator's transitivity contract, which TimSort answers by throwing
+     * {@code IllegalArgumentException} and failing the whole materialize with a 500.
+     *
+     * <p>Pins the read count for the ordering step alone, so a return to a per-comparison classifier fails
+     * here rather than in production latency.
+     */
+    @Test
+    void orderedWorkList_classifiesInOneRead_notOnePerComparison() {
+        for (int i = 0; i < 10; i++) {
+            ConceptMetadataEntity c = create(classModel("Order " + i, true));
+            DiagramPendingEdit overlay = new DiagramPendingEdit();
+            overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/x" + i));
+            stageNode(c.getConceptIri(), overlay);
+        }
+
+        clearInvocations(pendingEditRepo);
+        materializeService.materialize(diagramId(), ontologyId());
+
+        // One findByDiagramId builds and classifies the whole work-list.
+        verify(pendingEditRepo, times(1)).findByDiagramId(diagramId());
+        // The old shape issued ~44 of these for 10 rows just to order them; now only the applier's own
+        // per-change lookup remains (one per staged edit).
+        verify(pendingEditRepo, atMost(10)).findByDiagramIdAndConceptIri(any(), any());
+    }
+
+    /**
+     * A change whose staged row vanishes between the work-list read and its own transaction is reported
+     * NOWHERE — not as materialized. It used to return {@code MATERIALIZED} with a null op, so a retried
+     * Převzít, a concurrent discard, or op 6 deleting the concept all surfaced as a successful change that
+     * never happened.
+     */
+    @Test
+    void aChangeWhoseOverlayRacedAway_isNotReportedAsMaterialized() {
+        ConceptMetadataEntity a = create(classModel("Raced A", true));
+        ConceptMetadataEntity b = create(classModel("Raced B", true));
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setExactMatch(List.of(b.getConceptIri()));
+        stageNode(a.getConceptIri(), overlay);
+
+        // The work-list as it really is right now; the stub hands this back after deleting the row, which
+        // is exactly the window between the work-list read and the change's own transaction.
+        List<DiagramPendingEditEntity> workList =
+                txTemplate.execute(tx -> new ArrayList<>(pendingEditRepo.findByDiagramId(diagramId())));
+        assertThat(workList).as("precondition: the edit is staged").hasSize(1);
+
+        doAnswer(inv -> {
+            txTemplate.executeWithoutResult(tx ->
+                    pendingEditRepo.deleteByDiagramIdAndConceptIri(diagramId(), a.getConceptIri()));
+            return workList;
+        }).when(pendingEditRepo).findByDiagramId(diagramId());
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.materialized())
+                .as("a change that never ran must not be reported as materialized").isEmpty();
+        assertThat(result.failed()).as("nothing failed — the edit was simply gone").isEmpty();
+        assertThat(result.skippedStale())
+                .as("the concept still exists, so this is not a stale reference").isEmpty();
+    }
+
+    /**
+     * A failed change reports the op it was classified as, never null. The op comes from the up-front
+     * work-list classification rather than a re-read, which could find the row already gone.
+     */
+    @Test
+    void aFailedChange_reportsItsOp() {
+        ConceptMetadataEntity a = create(classModel("Op A", true));
+        ConceptMetadataEntity b = create(classModel("Op B", true));
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setExactMatch(List.of(b.getConceptIri()));
+        stageNode(a.getConceptIri(), overlay);
+
+        // Force a failure inside the change's own transaction.
+        txTemplate.executeWithoutResult(tx -> {
+            DiagramPendingEdit staged = stagedEdit(a.getConceptIri());
+            staged.setBaseUpdatedAt(LocalDateTime.of(2000, 1, 1, 0, 0));
+            restage(a.getConceptIri(), staged);
+        });
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.failed()).singleElement().satisfies(f -> {
+            assertThat(f.error()).isEqualTo("STALE_BASE");
+            assertThat(f.op()).as("a failure must still name its op").isEqualTo(DiagramOp.CHANGE_HIERARCHY_TYPE);
         });
     }
 

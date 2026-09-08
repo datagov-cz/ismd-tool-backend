@@ -267,7 +267,7 @@ One call carries everything: layout **and** the structural overlays. Strip React
 
 ### The one rule to internalise
 
-**`nodes` and `edges` are a full replace. `overlays` is additive.**
+**`nodes` and `edges` are a full replace. `overlays` is additive across concepts — but each entry is a full replace of that one concept's overlay.**
 
 | Field | Omitted / `null` | `[]` |
 |---|---|---|
@@ -279,6 +279,16 @@ One call carries everything: layout **and** the structural overlays. Strip React
 | **`overlays`** | **staged edits untouched** | **staged edits untouched** |
 
 A concept absent from `overlays` keeps whatever is staged on it. The **only** way to discard an overlay is an entry carrying `conceptIri` and nothing else.
+
+**Additive across concepts, replace within one.** An entry is that concept's *whole* overlay, not a per-field patch: it replaces the staged edit outright, so any overlay field the entry omits is dropped. To change one predicate and keep the rest, send the concept's full staged intent — the read hands it back to you in `pendingEdits[]`, so re-send that object with your change applied.
+
+```jsonc
+// staged: { "broaderConcept": ["…/trida-b"] }
+{ "conceptIri": "…/trida-a", "exactMatch": ["…/trida-c"] }
+// result: { "exactMatch": ["…/trida-c"] }   ← broaderConcept is GONE, not merged
+{ "conceptIri": "…/trida-a", "broaderConcept": ["…/trida-b"], "exactMatch": ["…/trida-c"] }
+// result: both kept                          ← send the whole overlay
+```
 
 **Layout and staged edits are independent.** They live in separate tables, so removing a node from the canvas never discards its staged edit, and staging an edit never puts a concept on the canvas. Removal is pure presentation and carries no RDF intent; discarding is its own explicit instruction.
 
@@ -492,6 +502,8 @@ Applies every staged change. One entry per staged **change** (a change may span 
 - `error: "FOREIGN_CONCEPT"` (HTTP 400) — a concept IRI in the change belongs to a different ontology than the diagram's own (either the concept itself, or op 6's `addBroaderOn` / `broader`). The diagram may only write its own ontology's concepts; a legitimate client never produces this.
 - `error: "ERROR"` (HTTP 500) — an unexpected server-side failure; overlay retained. `message` is always the generic `"Nastala neočekávaná chyba."` — the underlying cause is server-logged, never returned, so the FE should show it as-is and not try to parse it.
 - `skippedStale` — the referenced concept no longer exists; offer remove-or-recreate.
+
+**A change whose overlay is already gone is reported nowhere.** If the staged edit vanishes between the work-list read and its own transaction — a retried Převzít, a concurrent Save that discarded it, or op 6 deleting the concept — nothing was written, so the concept appears in *none* of the three arrays. Sum the arrays and you may get fewer entries than `pendingEdits[]` held; that is the expected shape, not a lost result. It is never reported as `materialized`, which would claim a change that never happened.
 
 ### `DIAGRAM_EDIT_CONFLICT` (HTTP 409) — another diagram stages the same concept
 
