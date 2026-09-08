@@ -1,11 +1,17 @@
 databaseChangeLog:
   # Explicit include list rather than includeAll: includeAll derives execution order from filename
-  # sort, which made ordering incidental — two files share the 009- prefix. Listing files pins the
-  # order by declaration. Filenames are unchanged on purpose: Liquibase identifies an applied
-  # changeset by id + author + filename, so renaming a file already applied on dev/test would make
-  # it look new and re-run.
+  # sort, which made ordering incidental — two files still share the 009- prefix. Listing files pins
+  # the order by declaration.
   #
-  # Add new changelogs to the END of this list.
+  # A filename here is an identity, not a label. Liquibase identifies an applied changeset by
+  # id + author + filename, so renaming a changelog that has already run on dev/test/production makes
+  # it look new and re-run it against a schema it was already applied to — which fails in exactly the
+  # cases a precondition no longer catches (an index whose column a later changelog dropped). Rename
+  # only while a changelog is still unreleased everywhere; otherwise leave the numbering alone, gaps
+  # and duplicate prefixes included.
+  #
+  # Add new changelogs to the END of this list. A file missing from it NEVER runs; CI enforces that
+  # (.github/scripts/check-migration-compat.sh).
   - include:
       file: db/changelog/v1/001-create-schema.yaml
   - include:
@@ -32,3 +38,29 @@ databaseChangeLog:
       file: db/changelog/v1/010-comments-metadata-fk.yaml
   - include:
       file: db/changelog/v1/011-graph-name-indexes.yaml
+  # The diagram layer. Renumbered to a gap-free 012-022 while still unreleased — these changelogs
+  # exist only on this branch, so no database has them recorded under the old names and nothing
+  # re-runs. Once merged, these filenames are frozen like every other: renaming an applied changelog
+  # makes Liquibase treat it as new (identity is id + author + filename) and re-run it.
+  - include:
+      file: db/changelog/v1/012-create-diagrams.yaml
+  - include:
+      file: db/changelog/v1/013-diagram-integrity-indexes.yaml
+  - include:
+      file: db/changelog/v1/014-diagram-overlay.yaml
+  - include:
+      file: db/changelog/v1/015-diagrams-drop-user-id.yaml
+  - include:
+      file: db/changelog/v1/016-drop-diagram-node-hidden.yaml
+  - include:
+      file: db/changelog/v1/017-diagram-edge-segments.yaml
+  - include:
+      file: db/changelog/v1/018-diagram-edges-concept-backed.yaml
+  - include:
+      file: db/changelog/v1/019-diagram-node-visible-properties.yaml
+  - include:
+      file: db/changelog/v1/020-diagram-pending-edits.yaml
+  - include:
+      file: db/changelog/v1/021-diagrams-many-per-ontology.yaml
+  - include:
+      file: db/changelog/v1/022-diagram-concept-usage-indexes.yaml

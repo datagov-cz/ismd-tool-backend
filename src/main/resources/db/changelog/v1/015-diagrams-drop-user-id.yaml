@@ -3,7 +3,7 @@ databaseChangeLog:
   # ontology_metadata_id FK. The denormalized copy in diagrams.user_id is read by no code path.
 
   - changeSet:
-      id: 014-diagrams-drop-user-id
+      id: 015-diagrams-drop-user-id
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

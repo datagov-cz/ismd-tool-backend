@@ -1,7 +1,7 @@
 databaseChangeLog:
   # Partial unique index.
   - changeSet:
-      id: 012-diagram-nodes-unique-concept-per-diagram
+      id: 013-diagram-nodes-unique-concept-per-diagram
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -21,7 +21,7 @@ databaseChangeLog:
 
   # Index both edge endpoint FK columns.
   - changeSet:
-      id: 012-diagram-edges-endpoint-indexes
+      id: 013-diagram-edges-endpoint-indexes
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -47,7 +47,7 @@ databaseChangeLog:
 
   # DB CHECK for the backing <-> content invariant.
   - changeSet:
-      id: 012-diagram-nodes-backing-check
+      id: 013-diagram-nodes-backing-check
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

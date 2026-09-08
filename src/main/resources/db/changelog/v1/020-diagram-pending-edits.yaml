@@ -5,7 +5,7 @@ databaseChangeLog:
   # visual action (removing a node) was blocked by a purely semantic one.
 
   - changeSet:
-      id: 019-create-diagram-pending-edits
+      id: 020-create-diagram-pending-edits
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -81,7 +81,7 @@ databaseChangeLog:
   # Move every staged overlay across, resolving the ontology through the node's diagram. Runs before the
   # layout rows are pruned so nothing is read from a row that is about to disappear.
   - changeSet:
-      id: 019-migrate-pending-edits-from-nodes
+      id: 020-migrate-pending-edits-from-nodes
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -114,7 +114,7 @@ databaseChangeLog:
   # A row whose concept has no metadata (stale) is kept: it is still on the canvas
   # and the user needs to be able to remove it.
   - changeSet:
-      id: 019-prune-overlay-only-node-rows
+      id: 020-prune-overlay-only-node-rows
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -136,7 +136,7 @@ databaseChangeLog:
 
   # The column's contents now live in diagram_pending_edits.
   - changeSet:
-      id: 019-drop-pending-edit-json-from-nodes
+      id: 020-drop-pending-edit-json-from-nodes
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

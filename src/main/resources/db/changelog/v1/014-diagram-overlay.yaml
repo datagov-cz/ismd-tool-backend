@@ -3,7 +3,7 @@ databaseChangeLog:
   # Order: drop the old CHECK (references draft_json) BEFORE the column rename.
 
   - changeSet:
-      id: 013-drop-v1-backing-content-check
+      id: 014-drop-v1-backing-content-check
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -27,7 +27,7 @@ databaseChangeLog:
 
   # Rename draft_json -> pending_edit_json.
   - changeSet:
-      id: 013-rename-draft-json-to-pending-edit-json
+      id: 014-rename-draft-json-to-pending-edit-json
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -52,7 +52,7 @@ databaseChangeLog:
 
   # concept_iri is now always present.
   - changeSet:
-      id: 013-diagram-nodes-concept-iri-not-null
+      id: 014-diagram-nodes-concept-iri-not-null
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -78,7 +78,7 @@ databaseChangeLog:
 
   # Replace the partial-unique index with a plain unique.
   - changeSet:
-      id: 013-diagram-nodes-plain-unique-concept
+      id: 014-diagram-nodes-plain-unique-concept
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -108,7 +108,7 @@ databaseChangeLog:
 
   # New backing<->content CHECK: a node always references a concept.
   - changeSet:
-      id: 013-diagram-nodes-backing-check
+      id: 014-diagram-nodes-backing-check
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

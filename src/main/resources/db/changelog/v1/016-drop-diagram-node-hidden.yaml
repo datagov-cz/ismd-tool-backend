@@ -3,7 +3,7 @@ databaseChangeLog:
   # client could set or observe it. Preconditioned on the column existing so a fresh database (or a rerun)
   # marks the changeset ran instead of failing.
   - changeSet:
-      id: 015-drop-diagram-nodes-hidden
+      id: 016-drop-diagram-nodes-hidden
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

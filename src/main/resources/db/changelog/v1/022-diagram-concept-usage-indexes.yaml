@@ -4,7 +4,7 @@ databaseChangeLog:
   # concept_iri lookup — without this index the usage endpoint seq-scans diagram_nodes on every
   # concept detail view.
   - changeSet:
-      id: 021-diagram-nodes-concept-iri-index
+      id: 022-diagram-nodes-concept-iri-index
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -28,7 +28,7 @@ databaseChangeLog:
 
   # A VZTAH is never a node row — its canvas membership is an edge row keyed by its own concept IRI.
   - changeSet:
-      id: 021-diagram-edges-edge-key-index
+      id: 022-diagram-edges-edge-key-index
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -58,7 +58,7 @@ databaseChangeLog:
   # irreversible type change an ALTER would be, and without touching the entity's read/write path.
   # Matched with `visible_properties_json::jsonb @> '["<iri>"]'`, which this index serves.
   - changeSet:
-      id: 021-diagram-nodes-visible-properties-gin
+      id: 022-diagram-nodes-visible-properties-gin
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

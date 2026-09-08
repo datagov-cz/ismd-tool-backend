@@ -1,7 +1,7 @@
 databaseChangeLog:
   # Per-class curated property rows the canvas display.
   - changeSet:
-      id: 018-diagram-nodes-visible-properties
+      id: 019-diagram-nodes-visible-properties
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

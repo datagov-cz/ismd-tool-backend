@@ -8,7 +8,7 @@ databaseChangeLog:
   #      ontology's graph — placed for context and rendered read-only.
 
   - changeSet:
-      id: 020-diagrams-add-name
+      id: 021-diagrams-add-name
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -34,7 +34,7 @@ databaseChangeLog:
   # Name every pre-existing diagram before the NOT NULL lands. Each ontology has exactly one at this
   # point (the unique constraint below is still in force), so a single fixed name cannot collide.
   - changeSet:
-      id: 020-diagrams-backfill-name
+      id: 021-diagrams-backfill-name
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -54,7 +54,7 @@ databaseChangeLog:
       rollback: [ ]
 
   - changeSet:
-      id: 020-diagrams-name-not-null
+      id: 021-diagrams-name-not-null
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -77,7 +77,7 @@ databaseChangeLog:
 
   # The one-diagram-per-ontology constraint. Dropping it IS the feature.
   - changeSet:
-      id: 020-diagrams-drop-unique-ontology
+      id: 021-diagrams-drop-unique-ontology
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -100,7 +100,7 @@ databaseChangeLog:
   # The dropped unique constraint was also the index backing every lookup by ontology. That lookup is
   # now a list query and runs on every diagram list/read, so it needs an index of its own.
   - changeSet:
-      id: 020-diagrams-ontology-index
+      id: 021-diagrams-ontology-index
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -120,7 +120,7 @@ databaseChangeLog:
   # --- pending edits: ontology-scoped -> diagram-scoped -------------------------------------------
 
   - changeSet:
-      id: 020-pending-edits-add-diagram-id
+      id: 021-pending-edits-add-diagram-id
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -148,7 +148,7 @@ databaseChangeLog:
   # at most one row. A staged edit whose ontology has NO diagram row cannot be re-homed and is deleted
   # by the next changeset — it was unreachable already (nothing could display or materialize it).
   - changeSet:
-      id: 020-pending-edits-backfill-diagram-id
+      id: 021-pending-edits-backfill-diagram-id
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -172,7 +172,7 @@ databaseChangeLog:
   # any other engine the backfill is skipped, so every row still reads NULL and this would empty the
   # table rather than drop orphans.
   - changeSet:
-      id: 020-pending-edits-drop-orphans
+      id: 021-pending-edits-drop-orphans
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -190,7 +190,7 @@ databaseChangeLog:
       rollback: [ ]
 
   - changeSet:
-      id: 020-pending-edits-diagram-id-not-null
+      id: 021-pending-edits-diagram-id-not-null
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -232,7 +232,7 @@ databaseChangeLog:
   # Postgres's ~2704-byte btree row limit. concept_iri is VARCHAR(1024), which caps the value at ~1345
   # bytes even when every character is a two-byte Czech accent, so a plain index is always in range.
   - changeSet:
-      id: 020-pending-edits-rekey-to-diagram
+      id: 021-pending-edits-rekey-to-diagram
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -262,7 +262,7 @@ databaseChangeLog:
             constraintName: uq_diagram_pending_edits_ontology_concept
 
   - changeSet:
-      id: 020-pending-edits-diagram-index
+      id: 021-pending-edits-diagram-index
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -285,7 +285,7 @@ databaseChangeLog:
   # never editable. The flag is what lets the ingress graph guard stay strict — a foreign IRI is
   # accepted only on a row that claims to be foreign, and never on an overlay target.
   - changeSet:
-      id: 020-diagram-nodes-is-foreign
+      id: 021-diagram-nodes-is-foreign
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -315,7 +315,7 @@ databaseChangeLog:
   # WITHIN an ontology. Scoped per ontology, not globally: two unrelated slovníky may each hold a
   # "Hlavní diagram", and a global constraint would be violated by this changelog's own backfill.
   - changeSet:
-      id: 020-diagrams-unique-name-per-ontology
+      id: 021-diagrams-unique-name-per-ontology
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

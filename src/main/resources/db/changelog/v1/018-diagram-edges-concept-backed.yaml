@@ -8,7 +8,7 @@ databaseChangeLog:
   # derives, so the old rows are deleted outright rather than converted. Waypoints are the only loss and
   # they are re-drawable presentation state.
   - changeSet:
-      id: 017-diagram-edges-truncate
+      id: 018-diagram-edges-truncate
       author: richard.koubek
       changes:
         - delete:
@@ -21,7 +21,7 @@ databaseChangeLog:
 
   # Endpoint FKs go: source/target are projections of RDF now, and a stored copy could disagree with them.
   - changeSet:
-      id: 017-diagram-edges-drop-endpoint-fks
+      id: 018-diagram-edges-drop-endpoint-fks
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -62,7 +62,7 @@ databaseChangeLog:
   # Handles were always the endpoints' own IRIs — a duplicate of source/target, and stale the moment an
   # endpoint is repointed. ReactFlow renders an edge from source/target alone.
   - changeSet:
-      id: 017-diagram-edges-drop-handles
+      id: 018-diagram-edges-drop-handles
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -86,7 +86,7 @@ databaseChangeLog:
 
   # edge_kind is derived from the backing concept (VZTAH) or the predicate (SUBCLASS_OF / EXACT_MATCH).
   - changeSet:
-      id: 017-diagram-edges-drop-edge-kind
+      id: 018-diagram-edges-drop-edge-kind
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -110,7 +110,7 @@ databaseChangeLog:
   # TEXT on Postgres, not VARCHAR(n): a hierarchy key concatenates TWO full concept IRIs (each up to 1024),
   # so it exceeds 2000 chars, and percent-encoded Czech IRIs reach that easily.
   - changeSet:
-      id: 017-diagram-edges-add-edge-key
+      id: 018-diagram-edges-add-edge-key
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -141,7 +141,7 @@ databaseChangeLog:
   # H2 (test-only) maps TEXT to CLOB and cannot index it. The length ceiling is a Postgres-index concern,
   # and H2 schemas are always fresh test fixtures, so a bounded VARCHAR is sufficient there.
   - changeSet:
-      id: 017-diagram-edges-add-edge-key-h2
+      id: 018-diagram-edges-add-edge-key-h2
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -173,7 +173,7 @@ databaseChangeLog:
   # One waypoint row per edge per diagram; a second Save must update, never duplicate. Hashed: a btree
   # index over the raw value would exceed Postgres's ~2704-byte per-row index limit for long IRI pairs.
   - changeSet:
-      id: 017-diagram-edges-unique-edge-key
+      id: 018-diagram-edges-unique-edge-key
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -192,7 +192,7 @@ databaseChangeLog:
   # H2 (test-only) cannot index an expression this way; a plain unique constraint is enough there, since
   # the length problem is Postgres-index-specific and H2 schemas are always fresh.
   - changeSet:
-      id: 017-diagram-edges-unique-edge-key-h2
+      id: 018-diagram-edges-unique-edge-key-h2
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -222,7 +222,7 @@ databaseChangeLog:
   # Postgres-only: the jsonb surgery has no H2 equivalent, and H2 is only ever a fresh test schema with no
   # legacy overlays to clean.
   - changeSet:
-      id: 017-diagram-nodes-strip-removed-overlay-fields
+      id: 018-diagram-nodes-strip-removed-overlay-fields
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -245,7 +245,7 @@ databaseChangeLog:
   # An overlay left holding nothing but its stale-base fingerprint is not a pending change; clear it so the
   # node stops inflating pendingChangeCount.
   - changeSet:
-      id: 017-diagram-nodes-clear-emptied-overlays
+      id: 018-diagram-nodes-clear-emptied-overlays
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

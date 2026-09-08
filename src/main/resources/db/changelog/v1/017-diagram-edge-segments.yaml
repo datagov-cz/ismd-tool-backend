@@ -3,7 +3,7 @@ databaseChangeLog:
   # See docs/DIAGRAM_LAYER.md.
 
   - changeSet:
-      id: 016-diagram-edges-segments-json
+      id: 017-diagram-edges-segments-json
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN

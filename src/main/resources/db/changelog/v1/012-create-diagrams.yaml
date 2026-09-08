@@ -4,7 +4,7 @@ databaseChangeLog:
   # or RDF write here. Mirrors the CommentEntity pattern: FK to the owning metadata row with ON DELETE
   # CASCADE so deleting an ontology drops its diagram, nodes and edges.
   - changeSet:
-      id: 011-create-diagrams
+      id: 012-create-diagrams
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -73,7 +73,7 @@ databaseChangeLog:
             onDelete: CASCADE
 
   - changeSet:
-      id: 011-create-diagram-nodes
+      id: 012-create-diagram-nodes
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
@@ -154,7 +154,7 @@ databaseChangeLog:
                   name: diagram_id
 
   - changeSet:
-      id: 011-create-diagram-edges
+      id: 012-create-diagram-edges
       author: richard.koubek
       preConditions:
         - onFail: MARK_RAN
