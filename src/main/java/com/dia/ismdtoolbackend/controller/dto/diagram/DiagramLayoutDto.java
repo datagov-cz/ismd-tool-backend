@@ -35,6 +35,10 @@ public record DiagramLayoutDto(
     /**
      * A node's persisted layout. {@code id} is {@code iri:<full-iri>}; a new IRI adds the node.
      * {@code collapsed} is optional on the wire — omitted or null means not collapsed.
+     *
+     * <p>Any IRI may be placed, this ontology's or another's. Foreignness is not declared here: the
+     * server derives it from the concept's own graph and echoes it back as {@code data.readOnly}. It
+     * governs PLACEMENT only — no overlay may target a foreign concept.
      */
     @Schema(name = "DiagramLayoutNode")
     public record Node(
@@ -43,20 +47,12 @@ public record DiagramLayoutDto(
             String parentId,
             Boolean collapsed,
             /* The VLASTNOST rows this class cell renders — authoritative full-replace, like `position`.*/
-            List<String> properties,
-            /*
-             * This node references a concept from ANOTHER ontology (or NKD), placed for context and
-             * rendered read-only. Optional; omitted means an ordinary own-ontology node. The server
-             * verifies the claim both ways — a foreign IRI needs this set, and setting it on an own-graph
-             * concept is a 400. Permits PLACEMENT only: no overlay may target a foreign concept.
-             */
-            Boolean isForeign
+            List<String> properties
     ) {
 
         public Node {
             collapsed = collapsed != null && collapsed;
             properties = properties != null ? List.copyOf(properties) : List.of();
-            isForeign = isForeign != null && isForeign;
         }
     }
 

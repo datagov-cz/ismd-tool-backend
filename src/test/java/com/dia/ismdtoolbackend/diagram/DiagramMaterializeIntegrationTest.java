@@ -765,9 +765,14 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                 .as("VZTAH survives a refused convert").isTrue();
     }
 
-    /** Op 6's other raw IRI: a foreign {@code broader} must be refused too. */
+    /**
+     * Op 6's other raw IRI is the opposite case: {@code broader} is only REFERENCED, becoming the object
+     * of an {@code rdfs:subClassOf} written into our own graph, so a foreign one is allowed — being a
+     * subclass of another ontology's class is the point of the foreign-node feature. Only
+     * {@code addBroaderOn}, the class actually edited, must be ours.
+     */
     @Test
-    void op6_foreignBroader_refused() {
+    void op6_foreignBroader_isApplied() {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Broader");
         ConceptMetadataEntity a = create(classModel("Op6 Broader A", true));
@@ -783,11 +788,41 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
         MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
+        assertThat(result.failed()).isEmpty();
+        // Our class gained the foreign super-class — a triple in OUR graph, naming theirs.
+        assertThat(broaderOf(a.getConceptIri())).contains(victimClass.getConceptIri());
+        // ...and op 6 completed: the VZTAH it replaces is gone.
+        assertThat(graph().containsResource(graph().getResource(v.getConceptIri()))).isFalse();
+    }
+
+    /**
+     * The guard that remains: op 6's {@code addBroaderOn} names the class the edit WRITES, so a foreign
+     * one is the cross-tenant reach. Paired with the test above, this is what proves the rule is an
+     * asymmetry between the two endpoints and not a blanket allow.
+     */
+    @Test
+    void op6_foreignAddBroaderOn_refused() {
+        seedVictimOntology();
+        ConceptMetadataEntity victimClass = createVictimClass("Victim Target");
+        String victimBefore = victimClass.getConceptIri();
+        ConceptMetadataEntity a = create(classModel("Op6 Target A", true));
+        ConceptMetadataEntity b = create(classModel("Op6 Target B", true));
+        ConceptMetadataEntity v = create(relModel("op6-target-rel", a.getConceptIri(), b.getConceptIri()));
+
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(victimClass.getConceptIri());     // foreign target — refused
+        marker.setBroader(a.getConceptIri());
+        convert.setConvertToHierarchy(marker);
+        stageNode(v.getConceptIri(), convert);
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
         assertThat(result.failed()).hasSize(1);
         assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
-        // The local class did not gain the foreign super-class, and the VZTAH survives.
-        assertThat(broaderOf(a.getConceptIri())).doesNotContain(victimClass.getConceptIri());
-        assertThat(graph().containsResource(graph().getResource(v.getConceptIri()))).isTrue();
+        assertThat(broaderOf(victimBefore)).doesNotContain(a.getConceptIri());
+        assertThat(graph().containsResource(graph().getResource(v.getConceptIri())))
+                .as("all-or-nothing: the VZTAH survives a refused convert").isTrue();
     }
 
     // ---- B2 layer 2: ownership assertion inside ConceptServiceImpl -------------------------------

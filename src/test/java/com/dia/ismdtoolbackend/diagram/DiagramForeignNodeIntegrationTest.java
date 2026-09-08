@@ -64,9 +64,13 @@ import static org.mockito.Mockito.when;
  *   <li><b>A foreign node renders like a real one</b> — its label and type come from its OWN graph, which
  *       the read fetches in addition to the diagram's. Without that it is indistinguishable from a
  *       concept deleted underneath the canvas.</li>
- *   <li><b>A foreign concept is referenced, never written.</b> The flag exempts node PLACEMENT from the
- *       graph guard and nothing else; an overlay targeting a foreign concept is still refused. That is
- *       what keeps the cross-tenant write fix intact, and it is the assertion that matters most here.</li>
+ *   <li><b>A foreign concept is referenced, never written.</b> Placement is free and foreignness is
+ *       derived from the concept's graph, never declared by the client. What stays guarded is every
+ *       endpoint the edit WRITES — the overlay's subject, its {@code domain}, op 6's
+ *       {@code addBroaderOn} — while the endpoints it merely POINTS AT ({@code range},
+ *       {@code broaderConcept}, {@code exactMatch}, op 6's {@code broader}) may be foreign, since those
+ *       become objects of triples in our own graph. That asymmetry is what keeps the cross-tenant write
+ *       fix intact while still letting the link be drawn, and it is what matters most here.</li>
  * </ol>
  */
 @DataJpaTest
@@ -84,6 +88,8 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     private static final String SLUG = "foreign-node-ontology";
     private static final String USER = "user123";
     private static final String MY_CLASS = GRAPH + "/pojem/zamestnanec";
+    /** A VZTAH this ontology owns — the subject of an overlay pointing at a foreign range. */
+    private static final String MY_VZTAH = GRAPH + "/pojem/ma-osobu";
 
     /** Another ontology entirely — owned by someone else, never written by this diagram. */
     private static final String OTHER_GRAPH = "https://slovnik.gov.cz/theirs";
@@ -120,6 +126,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         txTemplate.executeWithoutResult(tx -> {
             OntologyMetadataEntity mine = ontology(SLUG, GRAPH, USER);
             seedConcept(mine, MY_CLASS, "Zaměstnanec", ConceptType.TRIDA, GRAPH);
+            seedConcept(mine, MY_VZTAH, "má osobu", ConceptType.VZTAH, GRAPH);
             OntologyMetadataEntity theirs = ontology(OTHER_SLUG, OTHER_GRAPH, OTHER_USER);
             seedConcept(theirs, FOREIGN_CLASS, "Osoba", ConceptType.TRIDA, OTHER_GRAPH);
             seedConcept(theirs, FOREIGN_PARENT, "Subjekt", ConceptType.TRIDA, OTHER_GRAPH);
@@ -138,7 +145,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
         stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
 
-        DiagramDto read = save(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, true));
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
 
         DiagramDto.Node foreign = nodeFor(read, FOREIGN_CLASS);
         assertThat(foreign.data().label())
@@ -166,9 +173,9 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
                 subClassOf(concept(FOREIGN_CLASS, "Osoba"), FOREIGN_PARENT),
                 concept(FOREIGN_PARENT, "Subjekt"));
 
-        DiagramDto read = save(node(MY_CLASS, 0, 0, false),
-                node(FOREIGN_CLASS, 300, 0, true),
-                node(FOREIGN_PARENT, 600, 0, true));
+        DiagramDto read = save(node(MY_CLASS, 0, 0),
+                node(FOREIGN_CLASS, 300, 0),
+                node(FOREIGN_PARENT, 600, 0));
 
         assertThat(read.edges())
                 .as("the foreign graph's own hierarchy is not this diagram's to draw")
@@ -184,7 +191,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(GRAPH, subClassOf(concept(MY_CLASS, "Zaměstnanec"), FOREIGN_CLASS));
         stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
 
-        DiagramDto read = save(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, true));
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
 
         assertThat(read.edges())
                 .as("our concept's own subClassOf to a foreign target still draws")
@@ -198,7 +205,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     void ownNode_isNotMarkedReadOnly() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
 
-        DiagramDto read = save(node(MY_CLASS, 0, 0, false));
+        DiagramDto read = save(node(MY_CLASS, 0, 0));
 
         assertThat(nodeFor(read, MY_CLASS).data().readOnly()).isFalse();
     }
@@ -211,7 +218,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     void nkdIri_withNoPgRow_isAcceptedAsForeign() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
 
-        DiagramDto read = save(node(MY_CLASS, 0, 0, false), node(NKD_CLASS, 300, 0, true));
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(NKD_CLASS, 300, 0));
 
         assertThat(nodeFor(read, NKD_CLASS)).isNotNull();
         assertThat(nodeFor(read, NKD_CLASS).data().readOnly()).isTrue();
@@ -230,7 +237,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
         when(tdb2.fetchGraph(eq(OTHER_GRAPH))).thenThrow(new RuntimeException("Fuseki down"));
 
-        DiagramDto read = save(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, true));
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
 
         assertThat(nodeFor(read, MY_CLASS).data().label()).containsEntry("cs", "Zaměstnanec");
         assertThat(nodeFor(read, FOREIGN_CLASS).data().stale())
@@ -241,17 +248,17 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     // ---- the guard ------------------------------------------------------------------------------
 
     /**
-     * The flag exempts PLACEMENT only. An overlay targeting a foreign concept is still refused, because
-     * materializing it would write another ontology's RDF — the cross-tenant defect this guard exists to
-     * prevent. This is the most important assertion in the class.
+     * Free placement does not imply a free edit. An overlay whose SUBJECT is a foreign concept is
+     * refused, because materializing it would write another ontology's RDF — the cross-tenant defect
+     * this guard exists to prevent. This is the most important assertion in the class.
      */
     @Test
-    void overlayTargetingAForeignConcept_isStillRejected() {
+    void overlayOnAForeignConcept_isStillRejected() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
 
         DiagramLayoutDto layout = new DiagramLayoutDto(
                 storedVersion(), null,
-                List.of(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, true)),
+                List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
                 List.of(),
                 List.of(new DiagramLayoutDto.Overlay(
                         FOREIGN_CLASS, MY_CLASS, null, null, null, null)));
@@ -265,25 +272,114 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
                 .isEmpty();
     }
 
-    /** Without the flag the old guard still applies — a foreign IRI is a plain 400. */
+    /**
+     * Foreignness is DERIVED from the concept's graph, never declared by the client. The write body says
+     * nothing about it, so a foreign node placed by a client that only echoes back what it read — which
+     * is every client, since the read exposes the flag under {@code data.readOnly} and the FE rebuilds
+     * the Save body from canvas state — is still stored read-only rather than rejected as cross-tenant.
+     */
     @Test
-    void foreignIriWithoutTheFlag_isStillRejected() {
+    void foreignnessIsDerivedFromTheGraph_notDeclaredByTheClient() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
+        stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
 
-        assertThatThrownBy(() -> save(node(MY_CLASS, 0, 0, false), node(FOREIGN_CLASS, 300, 0, false)))
-                .isInstanceOf(ConceptValidationException.class);
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
+
+        assertThat(nodeFor(read, FOREIGN_CLASS).data().readOnly())
+                .as("another ontology's concept is read-only however the client asked for it")
+                .isTrue();
+        assertThat(nodeFor(read, MY_CLASS).data().readOnly())
+                .as("and our own concept stays editable — the derivation is not blanket read-only")
+                .isFalse();
     }
 
     /**
-     * The flag is a claim about the concept, and a false claim is a bug worth surfacing: marking an
-     * own-ontology concept foreign would render it read-only and silently un-editable.
+     * A concept that changes hands is re-derived on the next save, not frozen at placement time. Stored
+     * foreignness is a cache of the graph relation, so it may never contradict it.
      */
     @Test
-    void ownConceptFlaggedForeign_isRejected() {
+    void aNodeStoredForeign_becomesEditableOnceItsConceptIsOurs() {
+        stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"), concept(FOREIGN_CLASS, "Osoba"));
+        save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
+
+        // The concept moves into our ontology; the node row still says foreign.
+        txTemplate.executeWithoutResult(tx -> {
+            ConceptMetadataEntity c = conceptRepo.findByConceptIri(FOREIGN_CLASS).orElseThrow();
+            c.setGraphName(GRAPH);
+            c.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
+            conceptRepo.save(c);
+        });
+
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
+
+        assertThat(nodeFor(read, FOREIGN_CLASS).data().readOnly())
+                .as("re-derived on save — a stale read-only flag would lock a concept we now own")
+                .isFalse();
+    }
+
+    /**
+     * The feature this whole class exists for: a VZTAH our ontology owns, pointing AT a foreign concept.
+     * The range is only referenced — it becomes the object of a triple in our own graph — so it may be
+     * foreign, and staging it is the supported way to draw that link.
+     */
+    @Test
+    void overlayWithAForeignRange_isStaged() {
+        stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"), concept(MY_VZTAH, "má osobu"));
+
+        DiagramLayoutDto layout = new DiagramLayoutDto(
+                storedVersion(), null,
+                List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
+                List.of(),
+                List.of(new DiagramLayoutDto.Overlay(
+                        MY_VZTAH, MY_CLASS, FOREIGN_CLASS, null, null, null)));
+
+        diagramService.saveLayout(SLUG, diagramId(), layout);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(diagramId(), MY_VZTAH))
+                .as("our vztah may point at another ontology's concept")
+                .isPresent();
+    }
+
+    /**
+     * The mirror image, and the reason range and domain cannot share one rule: the domain is the concept
+     * the link hangs OFF, so a foreign one would write a triple into an ontology we were never authorized
+     * for — the diagram endpoints authorize this slug only.
+     */
+    @Test
+    void overlayWithAForeignDomain_isRejected() {
+        stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"), concept(MY_VZTAH, "má osobu"));
+
+        DiagramLayoutDto layout = new DiagramLayoutDto(
+                storedVersion(), null,
+                List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
+                List.of(),
+                List.of(new DiagramLayoutDto.Overlay(
+                        MY_VZTAH, FOREIGN_CLASS, MY_CLASS, null, null, null)));
+
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), layout))
+                .as("the origin of the link must be ours")
+                .isInstanceOf(ConceptValidationException.class);
+
+        assertThat(pendingEditRepo.findByDiagramId(diagramId())).isEmpty();
+    }
+
+    /** A hierarchy target is referenced, not written — our class may be a subclass of a foreign one. */
+    @Test
+    void overlayWithAForeignHierarchyTarget_isStaged() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
 
-        assertThatThrownBy(() -> save(node(MY_CLASS, 0, 0, true)))
-                .isInstanceOf(ConceptValidationException.class);
+        DiagramLayoutDto layout = new DiagramLayoutDto(
+                storedVersion(), null,
+                List.of(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0)),
+                List.of(),
+                List.of(new DiagramLayoutDto.Overlay(
+                        MY_CLASS, null, null, List.of(FOREIGN_CLASS), null, null)));
+
+        diagramService.saveLayout(SLUG, diagramId(), layout);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(diagramId(), MY_CLASS))
+                .as("subClassOf a foreign class writes only our own graph")
+                .isPresent();
     }
 
     // ---- fixtures -------------------------------------------------------------------------------
@@ -317,9 +413,9 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         return c;
     }
 
-    private DiagramLayoutDto.Node node(String iri, double x, double y, boolean foreign) {
+    private DiagramLayoutDto.Node node(String iri, double x, double y) {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri,
-                new PositionDto(x, y), null, false, List.of(), foreign);
+                new PositionDto(x, y), null, false, List.of());
     }
 
     /**

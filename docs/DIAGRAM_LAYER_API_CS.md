@@ -249,9 +249,9 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
     // parentId/collapsed jsou volitelné — vynechané nebo null znamená bez rodiče / nesbaleno
     { "id": "iri:https://…/pojem/organizace",
       "position": { "x": 720, "y": 80 }, "properties": [] },
-    // pojem z JINÉHO slovníku, umístěný pro kontext a vykreslený jen ke čtení
+    // pojem z JINÉHO slovníku — umísťuje se jako každý jiný uzel; server jej označí jen ke čtení
     { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
-      "position": { "x": 1100, "y": 80 }, "properties": [], "isForeign": true }
+      "position": { "x": 1100, "y": 80 }, "properties": [] }
   ],
   // jen body lomu — pošlete zpět id, které jste dostali při čtení; konce se odvozují, neposílají
   "edges": [
@@ -274,11 +274,24 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
 
 **Pouze třídy.** VZTAH cestuje v `edges[]` a VLASTNOST uvnitř `properties[]` své třídy — nikdy jako uzel, v žádném směru.
 
-**`isForeign` — umístění pojmu z jiného slovníku.** Nastavte na uzlu, jehož pojem patří *jinému* slovníku (nebo NKD), aby uživatel mohl nakreslit vztah od pojmu, který vlastní, k pojmu, který nevlastní. Uzel se vykreslí jen ke čtení (`data.readOnly: true`) s názvem načteným z grafu, který ho vlastní.
+**Umístění pojmu z jiného slovníku nevyžaduje nic zvláštního.** Pošlete uzel jako každý jiný; pojem patřící *jinému* slovníku (nebo NKD) je přijat a uložen jen ke čtení, aby uživatel mohl nakreslit vztah od pojmu, který vlastní, k pojmu, který nevlastní. Vykreslí se s `data.readOnly: true` a názvem načteným z grafu, který jej vlastní.
 
-Server tvrzení ověřuje **oběma směry**: cizí IRI bez příznaku je 400 (běžná kontrola grafu) a příznak na vlastním pojmu je také 400 — nepravdivé tvrzení by tiše vykreslilo editovatelný pojem jen ke čtení.
+**Cizost se odvozuje, nedeklaruje.** Server ji při každém uložení určí z grafu pojmu — v požadavku pro ni není žádné pole, takže uzel nelze ani nepravdivě zamknout, ani nepravdivě zpřístupnit k editaci, a klient, který pouze vrací to, co přečetl, uloží vždy správně. (`data.readOnly` je jen v odpovědi; neposílejte jej zpět.)
 
-⚠️ **Příznak povoluje pouze umístění.** Položka `overlays[]` nikdy nesmí mířit na cizí pojem: jeho materializace by zapsala RDF jiného slovníku. To zůstává 400 při uložení a `FOREIGN_CONCEPT` při materializaci. Cizí pojem lze *odkazovat* — jako `range` VZTAHu, jako `broaderConcept` či `exactMatch` nasazený na **vašem** pojmu — ale nikdy editovat.
+⚠️ **Jen ke čtení znamená nikdy nebýt PODMĚTEM úpravy.** Položka `overlays[]`, jejíž `conceptIri` je cizí pojem, je 400 při uložení a `FOREIGN_CONCEPT` při materializaci — její materializace by zapsala RDF jiného slovníku.
+
+**Cizí pojem naopak smí být PŘEDMĚTEM trojice ve vašem vlastním grafu**, což je celý smysl jeho umístění. Pravidlo tento rozdíl sleduje konec po konci:
+
+| Pole overlay | Cizí povolen? | Proč |
+|---|---|---|
+| `conceptIri` (podmět) | ❌ | Editovaný pojem |
+| `domain` | ❌ | Třída, na které VZTAH/VLASTNOST visí — *počátek* vazby, a ten musí být váš |
+| `range` | ✅ | Stává se předmětem trojice ve vašem grafu |
+| `broaderConcept`, `exactMatch` | ✅ | Totéž — váš pojem míří na jejich |
+| `convertToHierarchy.addBroaderOn` | ❌ | Třída, která se edituje |
+| `convertToHierarchy.broader` | ✅ | Pouze odkazovaný |
+
+VZTAH vlastněný vaším slovníkem tedy smí mířit **na** cizí třídu (`range`), ale nikdy nesmí viset **na** ní (`domain`). Obojí se kontroluje při uložení i znovu při materializaci.
 
 ### `nodes[].properties` — řádky, které třída vykresluje
 
@@ -489,7 +502,7 @@ Zastaralý uzel se ve čtení dál objevuje s `"stale": true` a nedotčeným ove
 
 `DiagramLayoutDto.required` je `["nodes", "version"]` — **`overlays` jsou volitelné**, takže generovaný klient je typuje jako nullable a stávající místa volání se dál překládají. `DiagramLayoutOverlay.required` je `["conceptIri"]`; `DiagramLayoutOverlayConvertToHierarchy.required` je `["addBroaderOn", "broader"]`.
 
-**Vše přidané kvůli více diagramům je ve schématu záměrně volitelné.** `DiagramLayoutNode.isForeign` ani `DiagramCreateDto.name` nenesou žádné omezení bean validace, takže je generovaný klient typuje jako nullable a stávající místa volání se dál překládají. (`required` se odvozuje výhradně z bean validace — anotování nového pole by ho v generovaném klientu udělalo nevolitelným a rozbilo každého současného volajícího.) `DiagramDto.diagramId`/`name` a `SearchResultDto.diagramId` jsou na straně odpovědi, takže typ požadavku neovlivňují.
+**Vše přidané kvůli více diagramům je ve schématu záměrně volitelné.** `DiagramCreateDto.name` nenese žádné omezení bean validace, takže jej generovaný klient typuje jako nullable a stávající místa volání se dál překládají. (`required` se odvozuje výhradně z bean validace — anotování nového pole by ho v generovaném klientu udělalo nevolitelným a rozbilo každého současného volajícího.) `DiagramDto.diagramId`/`name` a `SearchResultDto.diagramId` jsou na straně odpovědi, takže typ požadavku neovlivňují.
 
 ---
 

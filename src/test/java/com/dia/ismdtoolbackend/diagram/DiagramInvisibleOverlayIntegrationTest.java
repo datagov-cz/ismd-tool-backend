@@ -172,7 +172,7 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
-        return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of(), false);
+        return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of());
     }
 
     /** The version a fresh GET would report — null before the first save provisions the diagram row. */
@@ -200,7 +200,7 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         double x = 0;
         for (String iri : canvasClasses) {
             nodes.add(new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, 0.0),
-                    null, false, iri.equals(hostClass) ? List.of(PROP) : List.of(), false));
+                    null, false, iri.equals(hostClass) ? List.of(PROP) : List.of()));
             x += 100;
         }
         return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(

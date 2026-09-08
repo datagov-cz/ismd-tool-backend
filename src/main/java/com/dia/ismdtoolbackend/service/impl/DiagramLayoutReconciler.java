@@ -56,7 +56,9 @@ public class DiagramLayoutReconciler {
         Map<String, DiagramNodeEntity> incoming = new HashMap<>();
         for (DiagramLayoutDto.Node in : layout.nodes()) {
             String iri = mapper.conceptIriFromNodeId(in.id());
-            requireNodeGraph(diagramGraphName, iri, in.isForeign());
+            // Resolved BEFORE the row is attached: the lookup auto-flushes, and a node added but not yet
+            // given its position would be flushed with a null pos_x.
+            boolean foreign = isForeign(diagramGraphName, iri);
             DiagramNodeEntity node = existing.get(iri);
             if (node == null) {
                 node = new DiagramNodeEntity();
@@ -64,7 +66,7 @@ public class DiagramLayoutReconciler {
                 diagram.addNode(node);
                 existing.put(iri, node);
             }
-            applyNodeLayout(node, in);
+            applyNodeLayout(node, in, foreign);
             incoming.put(iri, node);
         }
 
@@ -98,7 +100,7 @@ public class DiagramLayoutReconciler {
                 log.warn("Ignoring duplicate overlay entry for concept {}", iri);
                 continue;
             }
-            // Every overlay target is graph-checked, not just a newly staged one.
+            // Every overlay subject is graph-checked, not just a newly staged one.
             requireSameGraph(diagramGraphName, iri);
 
             DiagramPendingEdit edit = mapper.toPendingEdit(in);
@@ -139,45 +141,48 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Op 6's {@code addBroaderOn} / {@code broader} name concepts that need never be on the canvas, so
-     * they are the one overlay input reaching {@code editConcept}/{@code deleteConcept} on their own.
-     * Rejected here at stage time; the applier re-asserts it at Převzít.
+     * Graph-check an overlay's endpoint IRIs. They are asymmetric, because an endpoint is either a
+     * concept this edit WRITES or merely one it POINTS AT:
+     *
+     * <ul>
+     *   <li>{@code domain} is the class the VZTAH/VLASTNOST hangs off — the origin of the link, which
+     *       must be ours. A foreign domain is the cross-tenant reach the guard exists to stop.</li>
+     *   <li>{@code range} and the hierarchy targets ({@code broaderConcept}, {@code exactMatch}) are
+     *       pure references: they become the OBJECT of a triple written into our own graph, so a foreign
+     *       one is exactly the link the foreign-node feature exists to draw.</li>
+     *   <li>Op 6's {@code addBroaderOn} is edited and must be ours; its {@code broader} is only
+     *       referenced and may be foreign. They need never be on the canvas, which makes them the one
+     *       overlay input reaching {@code editConcept}/{@code deleteConcept} on their own.</li>
+     * </ul>
+     *
+     * <p>Rejected here at stage time; the applier re-asserts it at Převzít.
      */
     private void requireSameGraph(String diagramGraphName, DiagramPendingEdit edit) {
+        requireSameGraph(diagramGraphName, edit.getDomain());
+
         DiagramPendingEdit.ConvertToHierarchy marker = edit.getConvertToHierarchy();
         if (marker == null) {
             return;
         }
         requireSameGraph(diagramGraphName, marker.getAddBroaderOn());
-        requireSameGraph(diagramGraphName, marker.getBroader());
     }
 
     /**
-     * A node's IRI must agree with what the node claims: an unflagged node stays own-graph, and a node
-     * flagged foreign must genuinely resolve elsewhere. A false claim in either direction is rejected.
+     * Whether this IRI belongs to an ontology other than the diagram's — derived, never taken from the
+     * client, so a node can be neither falsely marked read-only nor falsely made editable. A concept with
+     * no PG row is an NKD or otherwise external IRI, foreign by construction.
      *
-     * <p>The exemption covers node placement only — overlay targets stay strictly own-graph
+     * <p>Placement is unrestricted; it is the overlay targets that stay strictly own-graph
      * ({@link #requireSameGraph}), so a foreign concept can be referenced but never edited.
      */
-    private void requireNodeGraph(String diagramGraphName, String conceptIri, boolean claimsForeign) {
-        if (!claimsForeign) {
-            requireSameGraph(diagramGraphName, conceptIri);
-            return;
-        }
+    private boolean isForeign(String diagramGraphName, String conceptIri) {
         if (conceptIri == null) {
-            return;
+            return false;
         }
         String graphName = conceptMetadataRepository.findByConceptIri(conceptIri)
                 .map(ConceptMetadataEntity::getGraphName)
                 .orElse(null);
-        // A concept with no PG row is an NKD or otherwise external IRI — foreign by construction.
-        if (graphName != null && java.util.Objects.equals(diagramGraphName, graphName)) {
-            log.warn("Rejected node {} flagged foreign but owned by this diagram's graph {}",
-                    conceptIri, diagramGraphName);
-            throw new ConceptValidationException(
-                    "Pojem " + conceptIri + " patří do slovníku tohoto diagramu a nelze jej označit "
-                            + "jako cizí.");
-        }
+        return !java.util.Objects.equals(diagramGraphName, graphName);
     }
 
     /**
@@ -222,8 +227,8 @@ public class DiagramLayoutReconciler {
         }
     }
 
-    private void applyNodeLayout(DiagramNodeEntity node, DiagramLayoutDto.Node in) {
-        node.setForeign(in.isForeign());
+    private void applyNodeLayout(DiagramNodeEntity node, DiagramLayoutDto.Node in, boolean foreign) {
+        node.setForeign(foreign);
         PositionDto pos = in.position();
         node.setPosX(pos.x());
         node.setPosY(pos.y());

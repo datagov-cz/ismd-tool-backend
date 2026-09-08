@@ -95,6 +95,9 @@ public class DiagramChangeApplier {
         if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
             applyConvertToHierarchy(overlay, concept, ontologyGraphName);
         } else {
+            // Re-asserted here, not just at stage time: a row staged earlier could name a concept that
+            // has since moved graphs, and this is the last point before it is written to RDF.
+            requireSameGraphIri(ontologyGraphName, overlay.getDomain());
             conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
         }
         applyEdgeRekeys(rekeys);
@@ -210,8 +213,8 @@ public class DiagramChangeApplier {
         ConceptMetadataEntity targetClass = conceptMetadataRepository.findByConceptIri(marker.getAddBroaderOn())
                 .orElseThrow(() -> new ConceptValidationException(
                         "Cílová třída " + marker.getAddBroaderOn() + " nebyla nalezena."));
+        // addBroaderOn is EDITED and must be ours; broader is only referenced, so it may be foreign.
         requireSameGraph(diagramGraphName, targetClass.getGraphName(), targetClass.getConceptIri());
-        requireSameGraphIri(diagramGraphName, marker.getBroader());
 
         ClassConceptEditModel addBroader = new ClassConceptEditModel();
         addBroader.setConceptType(ConceptType.TRIDA.getValue());
@@ -264,7 +267,10 @@ public class DiagramChangeApplier {
 
     /**
      * Same check for a raw overlay IRI that need not have a PG row. An unresolvable IRI passes — it becomes
-     * an ordinary rdfs:subClassOf object; only a row in a different graph is a cross-tenant reach.
+     * an ordinary triple object; only a row in a different graph is a cross-tenant reach.
+     *
+     * <p>Applied to {@code domain} only. A {@code range} or hierarchy target is referenced rather than
+     * written, so a foreign one is legitimate — see {@code DiagramLayoutReconciler}.
      */
     private void requireSameGraphIri(String diagramGraphName, String conceptIri) {
         if (conceptIri == null) {

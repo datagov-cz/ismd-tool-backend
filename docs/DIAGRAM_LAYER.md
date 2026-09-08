@@ -118,7 +118,11 @@ A canvas may place a concept from **another ISMD ontology, or from NKD**, so the
 
 **A foreign node is an edge target, never an edge source.** The projector skips hierarchy and equivalence whose subject is foreign, so a link between two foreign nodes is not drawn even when both are on the canvas and the triple is real: it belongs to the graph that owns it, and this canvas can neither stage nor reroute it. A link from an owned concept to a foreign one is exactly what the feature draws.
 
-**The flag exempts placement only.** An overlay may never target a foreign concept, because materializing it would write another ontology's RDF. That is enforced at ingress and re-asserted at materialize (`FOREIGN_CONCEPT`), and it is what keeps the cross-tenant write guarantee intact. The flag is also a claim the server verifies both ways: a foreign IRI is accepted only on a node that sets it, and setting it on an own-graph concept is a 400.
+**Foreignness is derived from the concept's graph, not declared by the client.** There is no request field for it: the write path resolves it on every save and stores it, so a node can be neither falsely locked nor falsely made editable, and a client that echoes back what it read always saves correctly. It is a cache of the graph relation, re-derived rather than frozen at placement, so a concept that changes hands stops being read-only on the next save.
+
+**What the flag governs is placement only — an overlay may never take a foreign concept as its SUBJECT**, because materializing it would write another ontology's RDF. Enforced at ingress and re-asserted at materialize (`FOREIGN_CONCEPT`); this is what keeps the cross-tenant write guarantee intact.
+
+**Endpoints split on written-vs-referenced, which is the same rule stated above from the other side.** `domain` names the concept the link hangs *off* — the origin — so it must be ours, as must op 6's `addBroaderOn`, the class it edits. `range`, `broaderConcept`, `exactMatch` and op 6's `broader` are only referenced: they become objects of triples in our own graph, so a foreign one is exactly the link the feature exists to draw.
 
 **Reads fetch the foreign graphs too**, grouped one fetch per graph rather than per node — without that a foreign node renders label-less and `stale`, indistinguishable from a concept someone deleted. A foreign graph that fails to load degrades its nodes to `stale` rather than failing the whole read.
 
@@ -158,7 +162,7 @@ The overlay content model (`DiagramPendingEdit`) is **structural-only**: `domain
 
 **Reap provisions from the persisted set, not the incoming one.** `diagram_nodes` has a plain unique on `(diagram_id, concept_iri)` and the collection is `orphanRemoval`, so if one Save ever produced a remove of a row and an insert for the same IRI, Hibernate would emit the INSERT before the DELETE and the constraint would fire. This is the same hazard the edge reconciler was already hardened against.
 
-**Every overlay target is graph-checked on every Save**, not only when its row is provisioned — otherwise a concept that already has a row could receive a foreign-graph overlay unchecked.
+**Every overlay subject is graph-checked on every Save**, not only when its row is provisioned — otherwise a concept that already has a row could receive a foreign-graph overlay unchecked.
 
 ### The stale-base fingerprint
 
@@ -177,7 +181,7 @@ Stamping on first appearance makes recovery an explicit, reachable sequence: **d
 Materialize fans out **in-process** to the existing concept services (not via HTTP self-calls), so it reuses the existing validators and outbox. For each node with a non-empty overlay:
 
 1. Resolve the node's `concept_iri` to the numeric concept id (the edit/delete services key by id). A missing row means the concept was deleted → reported as `skippedStale`.
-2. Check the resolved concept belongs to the **diagram's own ontology graph**. The endpoints authorize the ontology slug, but concept IRIs travel inside the body, so an unscoped write would let any authenticated user edit — and via op 6 delete — another user's concepts. A foreign IRI is a rejected request (`FOREIGN_CONCEPT`, 400), not a stale reference. The same check applies to op 6's `addBroaderOn` and `broader`, which name concepts that need never appear on the canvas. The Save path enforces it at ingress too, so a foreign IRI is never persisted in the first place.
+2. Check the resolved concept belongs to the **diagram's own ontology graph**. The endpoints authorize the ontology slug, but concept IRIs travel inside the body, so an unscoped write would let any authenticated user edit — and via op 6 delete — another user's concepts. A foreign IRI is a rejected request (`FOREIGN_CONCEPT`, 400), not a stale reference. The same check applies to the overlay's `domain` and to op 6's `addBroaderOn` — the endpoints the edit writes, which need never appear on the canvas — but *not* to `range`, `broaderConcept`, `exactMatch` or op 6's `broader`, which are only referenced. The Save path enforces it at ingress too, so a foreign write target is never staged in the first place.
 3. Check the concept has not been edited underneath the overlay since it was staged (the stale-base fingerprint above). If it moved, the change is reported as a conflict rather than silently clobbering the intervening edit. Every path that mutates a concept's RDF must stamp `updatedAt`, not just the concept editor — the NKD snapshot UPDATE/REMOVE endpoints and the owner warmer do so too (when they actually produce a delta), or the RDF would move while the fingerprint stayed frozen and this check would silently miss it.
 4. Build a **field-scoped** edit carrying only the changed predicates and apply it. Field-scoped (not a full snapshot) is required because the display read model does not expose the `isPublic` boolean, and the edit path strips-then-conditionally-re-adds the public/private classification — a full-snapshot edit with a null `isPublic` would silently drop it. (The one edit helper that isn't null-safe for this is hardened accordingly.)
 

@@ -154,12 +154,12 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
-        return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y), null, false, List.of(), false);
+        return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y), null, false, List.of());
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y, String parentIri) {
         return new DiagramLayoutDto.Node("iri:" + iri, new PositionDto(x, y),
-                parentIri != null ? "iri:" + parentIri : null, false, List.of(), false);
+                parentIri != null ? "iri:" + parentIri : null, false, List.of());
     }
 
     /** Run the two-step reconcile the way the service does: reconcile → flush → finalize → save. */
@@ -361,12 +361,13 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
     }
 
     /**
-     * B2 ingress: Save authorizes the ontology SLUG, but node IRIs travel in the body. A node referencing a
-     * concept in ANOTHER ontology's graph must be rejected and no row persisted — otherwise the canvas
-     * becomes the staging ground for a later cross-tenant materialize.
+     * B2 ingress: Save authorizes the ontology SLUG, but node IRIs travel in the body. Placing another
+     * ontology's concept is allowed — that is the foreign-node feature — so what stops the canvas being a
+     * staging ground for a cross-tenant materialize is that the row is marked foreign, which makes it
+     * read-only and refuses every overlay targeting it.
      */
     @Test
-    void foreignGraphNode_isRejected_andNotPersisted() {
+    void foreignGraphNode_isPersistedAsReadOnly_notAsAnEditableNode() {
         DiagramEntity diagram = newDiagram("tenant-a");
         diagramRepository.saveAndFlush(diagram);
         em.clear();
@@ -392,13 +393,52 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
         DiagramLayoutDto layout = new DiagramLayoutDto(null, null, List.of(node(foreignIri, 0, 0)), List.of(), null);
 
-        assertThatThrownBy(() -> reconciler.reconcileNodes(managed, layout))
-                .isInstanceOf(ConceptValidationException.class)
-                .hasMessageContaining(foreignIri);
+        reconciler.reconcileNodes(managed, layout);
+        diagramRepository.saveAndFlush(managed);
 
         em.clear();
         assertThat(nodeRepository.findByDiagramId(diagram.getId()))
-                .as("no node row persisted for the foreign concept").isEmpty();
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getConceptIri()).isEqualTo(foreignIri);
+                    assertThat(row.isForeign())
+                            .as("derived from the concept's graph — this is what makes it uneditable")
+                            .isTrue();
+                });
+    }
+
+    /**
+     * The other half of the derivation, so the flag above is not simply always-on: an own-graph concept
+     * is stored editable. Without this the guard could be satisfied by marking everything foreign.
+     */
+    @Test
+    void ownGraphNode_isPersistedEditable() {
+        DiagramEntity diagram = newDiagram("tenant-a");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        OntologyMetadataEntity own = ontologyRepository.findAll().stream()
+                .filter(o -> "tenant-a".equals(o.getSlug()))
+                .findFirst().orElseThrow();
+        String ownIri = own.getGraphName() + "/pojem/mine";
+        ConceptMetadataEntity c = new ConceptMetadataEntity();
+        c.setConceptIri(ownIri);
+        c.setGraphName(own.getGraphName());
+        c.setSlug("mine");
+        c.setConceptName("Mine");
+        c.setUserId(own.getUserId());
+        c.setOntologyMetadata(own);
+        conceptRepository.saveAndFlush(c);
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        reconciler.reconcileNodes(managed,
+                new DiagramLayoutDto(null, null, List.of(node(ownIri, 0, 0)), List.of(), null));
+        diagramRepository.saveAndFlush(managed);
+
+        em.clear();
+        assertThat(nodeRepository.findByDiagramId(diagram.getId()))
+                .singleElement()
+                .satisfies(row -> assertThat(row.isForeign()).isFalse());
     }
 
     /**

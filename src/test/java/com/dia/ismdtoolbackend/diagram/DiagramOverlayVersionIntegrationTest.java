@@ -154,7 +154,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
-        return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of(), false);
+        return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of());
     }
 
     private DiagramLayoutDto.Overlay broaderOverlay(String nodeIri, String broaderIri) {
@@ -410,9 +410,9 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
         DiagramLayoutDto layout = new DiagramLayoutDto(
                 null, null,
                 List.of(new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + CLASS_A,
-                                new PositionDto(0.0, 0.0), null, true, List.of(), false),
+                                new PositionDto(0.0, 0.0), null, true, List.of()),
                         new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + CLASS_B,
-                                new PositionDto(100.0, 0.0), null, false, List.of(), false)),
+                                new PositionDto(100.0, 0.0), null, false, List.of())),
                 List.of(), null);
 
         DiagramDto saved = diagramService.saveLayout(SLUG, diagramId(), layout);

@@ -249,9 +249,9 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
     // parentId/collapsed are optional — omitted or null means no parent / not collapsed
     { "id": "iri:https://…/pojem/organizace",
       "position": { "x": 720, "y": 80 }, "properties": [] },
-    // a concept from ANOTHER ontology, placed for context and rendered read-only
+    // a concept from ANOTHER ontology — placed like any other node; the server marks it read-only
     { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
-      "position": { "x": 1100, "y": 80 }, "properties": [], "isForeign": true }
+      "position": { "x": 1100, "y": 80 }, "properties": [] }
   ],
   // waypoints only — echo the id you were given on read; endpoints are derived, never sent
   "edges": [
@@ -274,11 +274,24 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
 
 **Classes only.** A VZTAH travels in `edges[]` and a VLASTNOST inside its class's `properties[]` — never as a node, in either direction.
 
-**`isForeign` — placing a concept from another ontology.** Set it on a node whose concept belongs to a *different* ontology (or to NKD), so the user can draw a relationship from a concept they own to one they do not. The node renders read-only (`data.readOnly: true`) with its label fetched from the graph that owns it.
+**Placing a concept from another ontology needs nothing special.** Send the node like any other; a concept belonging to a *different* ontology (or to NKD) is accepted and stored read-only, so the user can draw a relationship from a concept they own to one they do not. It renders with `data.readOnly: true` and its label fetched from the graph that owns it.
 
-The server verifies the claim **both ways**: a foreign IRI without the flag is a 400 (the ordinary graph guard), and the flag on an own-ontology concept is also a 400 — a false claim would silently render an editable concept read-only.
+**Foreignness is derived, never declared.** The server resolves it from the concept's own graph on every save — there is no request field for it, so a node can be neither falsely locked nor falsely made editable, and a client that simply echoes back what it read always saves correctly. (`data.readOnly` is response-only; do not send it back.)
 
-⚠️ **The flag permits placement only.** An `overlays[]` entry may never target a foreign concept: materializing it would write another ontology's RDF. That stays a 400 at save and `FOREIGN_CONCEPT` at materialize. A foreign concept can be *referenced* — as a VZTAH's `range`, a `broaderConcept`, an `exactMatch` staged on **your** concept — but never edited.
+⚠️ **Read-only means never the SUBJECT of an edit.** An `overlays[]` entry whose `conceptIri` is a foreign concept is a 400 at save and `FOREIGN_CONCEPT` at materialize — materializing it would write another ontology's RDF.
+
+**What a foreign concept may be is the OBJECT of a triple in your own graph**, which is the whole point of placing one. The rule follows that distinction, endpoint by endpoint:
+
+| Overlay field | Foreign allowed? | Why |
+|---|---|---|
+| `conceptIri` (the subject) | ❌ | The concept being edited |
+| `domain` | ❌ | The class the VZTAH/VLASTNOST hangs off — the *origin* of the link, and it must be yours |
+| `range` | ✅ | Becomes the object of a triple in your graph |
+| `broaderConcept`, `exactMatch` | ✅ | Same — your concept points at theirs |
+| `convertToHierarchy.addBroaderOn` | ❌ | The class that gets edited |
+| `convertToHierarchy.broader` | ✅ | Only referenced |
+
+So a VZTAH your ontology owns may point **at** a foreign class (`range`), but a VZTAH may never hang **off** one (`domain`). Both are checked at save and re-checked at materialize.
 
 ### `nodes[].properties` — the rows a class renders
 
@@ -489,7 +502,7 @@ A stale node still appears in reads with `"stale": true` and its overlay intact,
 
 `DiagramLayoutDto.required` is `["nodes", "version"]` — **`overlays` is optional**, so a generated client types it nullable and existing call sites keep compiling. `DiagramLayoutOverlay.required` is `["conceptIri"]`; `DiagramLayoutOverlayConvertToHierarchy.required` is `["addBroaderOn", "broader"]`.
 
-**Everything added for many-diagrams is optional in the schema, deliberately.** `DiagramLayoutNode.isForeign` and `DiagramCreateDto.name` carry no bean-validation constraint, so a generated client types them nullable and existing call sites keep compiling. (`required` is derived from bean validation alone — annotating a new field would make it non-optional in the generated client and break every current caller.) `DiagramDto.diagramId`/`name` and `SearchResultDto.diagramId` are response-side, so they never affect a request type.
+**Everything added for many-diagrams is optional in the schema, deliberately.** `DiagramCreateDto.name` carries no bean-validation constraint, so a generated client types it nullable and existing call sites keep compiling. (`required` is derived from bean validation alone — annotating a new field would make it non-optional in the generated client and break every current caller.) `DiagramDto.diagramId`/`name` and `SearchResultDto.diagramId` are response-side, so they never affect a request type.
 
 ---
 

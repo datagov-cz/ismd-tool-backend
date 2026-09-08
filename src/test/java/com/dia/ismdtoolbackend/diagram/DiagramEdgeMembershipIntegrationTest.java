@@ -307,7 +307,7 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
 
     private DiagramLayoutDto.Node node(String iri, double x) {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri,
-                new PositionDto(x, 0.0), null, false, List.of(), false);
+                new PositionDto(x, 0.0), null, false, List.of());
     }
 
     /** Save with both classes on the canvas and the given edge membership. */

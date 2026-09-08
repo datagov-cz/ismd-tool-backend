@@ -373,7 +373,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
         for (String iri : classes) {
             nodes.add(new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri,
                     new PositionDto(x, 0.0), null, false,
-                    propertiesByClass.getOrDefault(iri, List.of()), false));
+                    propertiesByClass.getOrDefault(iri, List.of())));
             x += 100;
         }
         return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
@@ -396,7 +396,7 @@ class DiagramOverlayDiscardReapIntegrationTest extends PostgresIntegrationTestBa
 
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y),
-                null, false, List.of(), false);
+                null, false, List.of());
     }
 
     private Long storedVersion() {
