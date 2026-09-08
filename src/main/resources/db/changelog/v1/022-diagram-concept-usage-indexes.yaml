@@ -1,8 +1,7 @@
 databaseChangeLog:
-  # "Which diagrams show this concept?" reverses the diagram->concept direction every existing index
-  # serves. uq_diagram_nodes_diagram_concept leads with diagram_id, so it cannot answer a bare
-  # concept_iri lookup — without this index the usage endpoint seq-scans diagram_nodes on every
-  # concept detail view.
+  # "Which diagrams show this concept?" reverses the diagram->concept direction every existing index serves.
+  # uq_diagram_nodes_diagram_concept leads with diagram_id and cannot answer a bare concept_iri lookup, so
+  # without this the usage endpoint seq-scans diagram_nodes on every concept detail view.
   - changeSet:
       id: 022-diagram-nodes-concept-iri-index
       author: richard.koubek
@@ -40,7 +39,9 @@ databaseChangeLog:
                 schemaName: ismd_schema
       changes:
         # edge_key is TEXT holding up to two IRIs, which can exceed the ~2704-byte btree limit, so the
-        # index is on its md5. Equality lookups rewrite to match; nothing here range-scans the key.
+        # index is on its md5. NOTE: Postgres matches an expression index only when the query repeats the
+        # expression, so a query filtering on the raw column does not use this index — see
+        # DiagramRepository.findConceptUsage.
         - sql:
             dbms: postgresql
             sql: >-
@@ -51,12 +52,11 @@ databaseChangeLog:
             dbms: postgresql
             sql: DROP INDEX ismd_schema.idx_diagram_edges_edge_key
 
-  # A VLASTNOST is neither a node nor an edge: it renders as a row inside its domain class's node, so
-  # its membership lives inside that node's visible_properties_json array.
+  # A VLASTNOST is neither a node nor an edge: it renders as a row inside its domain class's node, so its
+  # membership lives in that node's visible_properties_json array.
   #
-  # The column stays VARCHAR — a GIN index over a jsonb CAST gives indexed containment without the
+  # The column stays VARCHAR — a GIN index over a jsonb cast gives indexed containment without the
   # irreversible type change an ALTER would be, and without touching the entity's read/write path.
-  # Matched with `visible_properties_json::jsonb @> '["<iri>"]'`, which this index serves.
   - changeSet:
       id: 022-diagram-nodes-visible-properties-gin
       author: richard.koubek
@@ -69,13 +69,12 @@ databaseChangeLog:
                 indexName: idx_diagram_nodes_visible_properties
                 schemaName: ismd_schema
       changes:
-        # The `LIKE '[%'` predicate is load-bearing and must stay a pure text test. A predicate that
-        # casts (`jsonb_typeof(... ::jsonb) = 'array'`) evaluates the cast on EVERY row to decide
-        # membership, so one malformed row fails the whole CREATE INDEX; `pg_input_is_valid` is only
-        # STABLE and is rejected outright. Verified against PG 17 with a malformed row present.
+        # The `LIKE '[%'` predicate is load-bearing and must stay a pure text test: a casting predicate
+        # (`jsonb_typeof(... ::jsonb) = 'array'`) evaluates the cast on every row, so one malformed row
+        # fails the whole CREATE INDEX, and `pg_input_is_valid` is only STABLE and rejected outright.
         #
-        # Queries must repeat `LIKE '[%'` alongside the containment test, or the planner cannot match
-        # this partial index.
+        # Queries must repeat `LIKE '[%'` alongside the containment test, or the planner cannot match this
+        # partial index.
         - sql:
             dbms: postgresql
             sql: >-

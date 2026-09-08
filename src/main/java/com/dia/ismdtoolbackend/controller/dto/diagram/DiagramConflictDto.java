@@ -7,12 +7,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The concepts this diagram and a sibling diagram of the same ontology both stage an edit on.
- *
- * <p>Returned with HTTP 409 from Převzít when no resolution was given. Materializing one side writes
- * RDF the other's staged edit was fingerprinted against, so the sibling would afterwards fail
- * {@code STALE_BASE} one concept at a time; reporting the whole collision up front lets the user choose
- * which side to discard. See {@code docs/DIAGRAM_LAYER_API.md}.
+ * The concepts this diagram and a sibling diagram of the same ontology both stage an edit on, returned with
+ * HTTP 409 from Převzít when no resolution was given. Materializing one side writes RDF the other's staged
+ * edit was fingerprinted against, so the sibling would afterwards fail {@code STALE_BASE} one concept at a
+ * time; reporting the whole collision up front lets the user settle it in one decision. See
+ * {@code docs/DIAGRAM_LAYER_API.md}.
  */
 @Schema(description = "Přehled změn, které kolidují se změnami rozpracovanými v jiném diagramu.")
 public record DiagramConflictDto(
@@ -39,7 +38,7 @@ public record DiagramConflictDto(
     ) {
     }
 
-    /** The competing staged edit, and which canvas holds it. */
+    /** A competing staged edit and the canvas holding it. */
     @Schema(description = "Kolidující změna v jiném diagramu.")
     public record Theirs(
 

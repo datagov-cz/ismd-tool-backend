@@ -12,9 +12,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Fat, render-ready diagram read model: layout rows already joined to live concept content with each
- * node's overlay applied and edges projected from {@code live ⊕ overlay}. The response of
- * {@code GET /api/diagram/{slug}/{diagramId}/detail} and every write endpoint. See
+ * Render-ready diagram read model: layout rows joined to live concept content, each node's overlay applied
+ * and edges projected from {@code live ⊕ overlay}. The response of
+ * {@code GET /api/diagram/{slug}/{diagramId}/detail} and of every write endpoint. See
  * {@code docs/DIAGRAM_LAYER_API.md}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -26,13 +26,13 @@ public record DiagramDto(
         ViewportDto viewport,
         List<Node> nodes,
         List<Edge> edges,
-        /* Every staged edit, canvas-rendered or not. Always present (empty, never null). */
+        /* Every staged edit, canvas-rendered or not. Empty rather than null. */
         @JsonInclude List<PendingEditEntry> pendingEdits
 ) {
 
     /**
-     * One staged overlay, keyed by concept IRI. Listed whether or not the canvas renders its concept; the
-     * {@code pendingEdit} on a node, edge or property row is a copy for the element that draws it.
+     * One staged overlay, keyed by concept IRI and listed whether or not the canvas renders its concept.
+     * The {@code pendingEdit} on a node, edge or property row is a copy for the element that draws it.
      */
     @Schema(name = "DiagramPendingEditEntry")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -48,8 +48,8 @@ public record DiagramDto(
 
     /**
      * A canvas node: layout from PG, {@code data} joined from live RDF ⊕ overlay. {@code collapsed}
-     * completes the layout round-trip, so a collapsed group survives a reload; it is a primitive and
-     * always serializes. Versioning belongs to the enclosing {@link DiagramDto}, never to a node.
+     * completes the layout round-trip so a collapsed group survives a reload. Versioning belongs to the
+     * enclosing {@link DiagramDto}, never to a node.
      */
     @Schema(name = "DiagramNode")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -64,9 +64,9 @@ public record DiagramDto(
     }
 
     /**
-     * Merged live-content-plus-overlay payload the FE renders directly. {@code properties} are the class's
-     * VLASTNOSTi as rows inside the node — always present (empty, never null) and ordered by label so they
-     * do not reshuffle between reads.
+     * The merged live-plus-overlay payload the FE renders directly. {@code properties} are the class's
+     * VLASTNOSTi as rows inside the node, empty rather than null and ordered by label so they do not
+     * reshuffle between reads.
      */
     @Schema(name = "DiagramNodeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -79,18 +79,16 @@ public record DiagramDto(
             boolean hasPendingEdits,
             DiagramPendingEdit pendingEdit,
             @JsonInclude List<PropertyRow> properties,
-            /*
-             * This node's concept belongs to another ontology (or NKD). Drawn for context and never
-             * editable from here — no overlay may target it.
-             */
+            /* The concept belongs to another ontology or to NKD: drawn for context, never editable from
+             * here, and no overlay may target it. */
             boolean readOnly
     ) {
     }
 
     /**
-     * One VLASTNOST, rendered as a row inside its {@code rdfs:domain} class — never a node and never an
-     * edge, since its range is a literal datatype. A domainless property is absent from the canvas until
-     * it is dragged in from the ontology detail, which supplies the domain.
+     * One VLASTNOST, rendered as a row inside its {@code rdfs:domain} class rather than a node or an edge,
+     * since its range is a literal datatype. A domainless property is absent from the canvas until it is
+     * dragged in from the ontology detail, which supplies the domain.
      */
     @Schema(name = "DiagramPropertyRow")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -107,11 +105,11 @@ public record DiagramDto(
 
     /**
      * A projected edge: existence, kind and endpoints are re-derived on read from {@code live ⊕ overlay},
-     * while {@code segments} is joined on from the persisted row — the one thing RDF cannot express. It is
-     * null for an edge that has never been saved, or whose endpoint moved since it was.
+     * while {@code segments} is joined on from the persisted row, being the one thing RDF cannot express.
+     * It is null for an edge never saved, or whose endpoint has moved since.
      *
      * <p>{@code id} is the backing concept's IRI for a VZTAH, and the deterministic
-     * {@code edge|KIND|source|target} for a hierarchy/equivalence link, which has no concept behind it.
+     * {@code edge|KIND|source|target} for a hierarchy or equivalence link, which has no concept behind it.
      */
     @Schema(name = "DiagramEdge")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -126,11 +124,10 @@ public record DiagramDto(
     }
 
     /**
-     * Edge metadata. {@code pending} is true when an endpoint comes from an unmaterialized overlay.
-     *
-     * <p>The concept fields are populated only for a {@code VZTAH}, where the edge <em>is</em> a concept.
-     * {@code SUBCLASS_OF} and {@code EXACT_MATCH} are bare triples and leave them null — an edge with a
-     * non-null {@code iri} is the FE's signal that it can be selected, staged and deep-linked.
+     * Edge metadata; {@code pending} is true when an endpoint comes from an unmaterialized overlay. The
+     * concept fields are populated only for a {@code VZTAH}, where the edge is a concept —
+     * {@code SUBCLASS_OF} and {@code EXACT_MATCH} are bare triples and leave them null, so a non-null
+     * {@code iri} is the FE's signal that the edge can be selected, staged and deep-linked.
      */
     @Schema(name = "DiagramEdgeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -146,7 +143,7 @@ public record DiagramDto(
             DiagramPendingEdit pendingEdit
     ) {
 
-        /** A bare triple: hierarchy or equivalence, with no backing concept. */
+        /** A bare triple, hierarchy or equivalence, with no backing concept. */
         public EdgeData(DiagramEdgeKind edgeKind, boolean pending) {
             this(edgeKind, pending, null, null, null, null, null, null, null);
         }

@@ -6,11 +6,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 /**
- * Result of {@code POST /api/diagram/{slug}/materialize}. One entry per staged change
- * (a change may span two concepts). Per-change partial-ok; a two-concept change is all-or-nothing —
- * a failure keeps the whole change staged. See {@code docs/DIAGRAM_LAYER_API.md}.
- *
- * <p>Every entry is keyed by {@code conceptIri} — the same identity as {@code pendingEdits[]}.
+ * Result of {@code POST /api/diagram/{slug}/materialize}, one entry per staged change, each keyed by
+ * {@code conceptIri} like {@code pendingEdits[]}. Partial-ok per change, while a change spanning two
+ * concepts is all-or-nothing and a failure keeps the whole change staged. See
+ * {@code docs/DIAGRAM_LAYER_API.md}.
  */
 public record MaterializeResultDto(
         List<Materialized> materialized,
@@ -18,13 +17,14 @@ public record MaterializeResultDto(
         List<SkippedStale> skippedStale
 ) {
 
-    /** A change that was applied to RDF and had its staged edit cleared. */
+    /** A change applied to RDF and had its staged edit cleared. */
     public record Materialized(String conceptIri, DiagramOp op) {
     }
 
     /**
-     * A change that failed; the staged edit is retained. {@code error} ∈ {@code VALIDATION} (400),
-     * {@code STALE_BASE} (409), {@code CASCADE_CONFLICT}.
+     * A change that failed, whose staged edit is retained. {@code error} is one of {@code VALIDATION} (400),
+     * {@code FOREIGN_CONCEPT} (400), {@code FORBIDDEN} (403), {@code STALE_BASE} (409),
+     * {@code CASCADE_CONFLICT} (409) or {@code ERROR} (500).
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Failed(
@@ -36,7 +36,7 @@ public record MaterializeResultDto(
     ) {
     }
 
-    /** A change whose referenced concept no longer exists — un-applyable. */
+    /** A change whose referenced concept no longer exists, so it cannot be applied. */
     public record SkippedStale(String conceptIri) {
     }
 }

@@ -38,10 +38,9 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Applies one staged overlay to the ontology in its OWN transaction ({@code REQUIRES_NEW}), so a failing
- * change rolls back only itself. The overlay-clear commits with that transaction, so a thrown exception
- * rolls back the RDF edit and the clear together and leaves the overlay staged. Callers run outside a
- * transaction and turn the exception into a {@code failed} report. See {@code docs/DIAGRAM_LAYER.md}.
+ * Applies one staged overlay to the ontology in its own {@code REQUIRES_NEW} transaction, so a failing
+ * change rolls back only itself and leaves its overlay staged. Callers run outside a transaction and turn
+ * the exception into a {@code failed} report. See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Service
@@ -54,15 +53,15 @@ public class DiagramChangeApplier {
     private final DiagramEdgeRepository diagramEdgeRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
 
-    /** The classified op plus the outcome, so the caller can report it without re-deriving the op. */
+    /** The classified op and the outcome, so the caller reports it without re-deriving the op. */
     public record Outcome(DiagramOp op, Kind kind) {
         public enum Kind { MATERIALIZED, SKIPPED_STALE }
     }
 
     /**
-     * Apply one concept's staged edit in a fresh transaction and clear it on success. Re-loads the staged
-     * row managed in this transaction, and throws on any failure for the caller to record as
-     * {@code failed}. Addressed by {@code (diagram, conceptIri)} — a staged edit need not have a node.
+     * Applies one concept's staged edit in a fresh transaction and clears it on success, throwing on any
+     * failure for the caller to record as {@code failed}. Addressed by {@code (diagram, conceptIri)}, so a
+     * staged edit need not have a node.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Outcome applyChange(Long diagramId, Long ontologyId, String conceptIri) {
@@ -70,7 +69,7 @@ public class DiagramChangeApplier {
                 .findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .orElse(null);
         if (staged == null || staged.getPendingEdit() == null) {
-            // Raced away since the caller snapshotted — nothing to do.
+            // Raced away since the caller snapshotted.
             return new Outcome(null, Outcome.Kind.MATERIALIZED);
         }
         DiagramPendingEdit overlay = staged.getPendingEdit();
@@ -88,37 +87,35 @@ public class DiagramChangeApplier {
             throw new StaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
         }
 
-        // Captured BEFORE the edit: a triple edge's id embeds its endpoints, so once RDF moves them the
-        // old ids are unrecoverable and any membership row would be stranded on a key nothing projects.
+        // Captured before the edit: a triple edge's id embeds its endpoints, so once RDF moves them the
+        // old ids are unrecoverable and a membership row would strand on a key nothing projects.
         List<EdgeRekey> rekeys = plannedEdgeRekeys(diagramId, concept, overlay);
 
         if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
             applyConvertToHierarchy(overlay, concept, ontologyGraphName);
         } else {
-            // Re-asserted here, not just at stage time: a row staged earlier could name a concept that
-            // has since moved graphs, and this is the last point before it is written to RDF.
+            // Re-asserted here: a row staged earlier could name a concept that has since moved graphs.
             requireSameGraphIri(ontologyGraphName, overlay.getDomain());
             conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
         }
         applyEdgeRekeys(rekeys);
-        // Applied to RDF; the staged row has served its purpose.
+        // Applied to RDF, so the staged row has served its purpose.
         pendingEditRepository.delete(staged);
         return new Outcome(op, Outcome.Kind.MATERIALIZED);
     }
 
-    /** One membership row moving from the id it was placed under to the one the edit projects. */
+    /** A membership row moving from the id it was placed under to the one the edit projects. */
     private record EdgeRekey(DiagramEdgeEntity row, String newKey) {
     }
 
     /**
-     * Plan the membership moves this edit forces. A {@code SUBCLASS_OF}/{@code EXACT_MATCH} edge is keyed
-     * {@code edge|KIND|source|target}, so repointing it changes the edge's identity: without this the row
-     * keeps the old key, stops matching the projection and the edge silently leaves the canvas — taking
-     * the user's waypoints with it. A VZTAH needs nothing here; its key is its own concept IRI.
+     * Plans the membership moves this edit forces. A {@code SUBCLASS_OF}/{@code EXACT_MATCH} edge is keyed
+     * {@code edge|KIND|source|target}, so repointing it changes the edge's identity — without the move the
+     * row keeps the old key, stops matching the projection and leaves the canvas with its waypoints. A
+     * VZTAH needs nothing here, its key being its own concept IRI.
      *
-     * <p>Targets are matched by position: the n-th staged target replaces the n-th live one, which is how
-     * a repoint of a single link reads. A target the overlay merely keeps is left alone, and an added one
-     * has no row to move.
+     * <p>Targets are matched by position: the n-th staged target replaces the n-th live one. A target the
+     * overlay keeps is left alone, and an added one has no row to move.
      */
     private List<EdgeRekey> plannedEdgeRekeys(Long diagramId, ConceptMetadataEntity concept,
                                               DiagramPendingEdit overlay) {
@@ -141,7 +138,7 @@ public class DiagramChangeApplier {
         return rekeys;
     }
 
-    /** The URI objects of one predicate, in graph order — the live targets an edge id is built from. */
+    /** The URI objects of one predicate, in graph order; the live targets an edge id is built from. */
     private List<String> uriObjects(Resource subject, Property predicate) {
         List<String> uris = new ArrayList<>();
         StmtIterator it = subject.listProperties(predicate);
@@ -176,9 +173,8 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Move each planned row onto its new key. A row already sitting on the destination key means the user
-     * had both links placed; the moved row would collide on {@code (diagram_id, edge_key)}, so it is
-     * dropped in favour of the one already there.
+     * Moves each planned row onto its new key. A row already on the destination key means both links were
+     * placed, so the moved row would collide on {@code (diagram_id, edge_key)} and is dropped instead.
      */
     private void applyEdgeRekeys(List<EdgeRekey> rekeys) {
         for (EdgeRekey rekey : rekeys) {
@@ -196,9 +192,9 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Op 6: guard against a cascading delete, add the broader link on the target class, then delete the
-     * VZTAH. All-or-nothing — the delete is gated on the broader-edit succeeding, and both run in this
-     * change's transaction so a delete failure rolls back the broader-edit too.
+     * Op 6: guards against a cascading delete, adds the broader link on the target class, then deletes the
+     * VZTAH. All-or-nothing — both run in this change's transaction, so a delete failure rolls back the
+     * broader-edit too.
      */
     private void applyConvertToHierarchy(DiagramPendingEdit overlay, ConceptMetadataEntity vztah,
                                          String diagramGraphName) {
@@ -225,9 +221,8 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Op 6 <em>adds</em> a super-class, but the edit model's {@code broaderConcept} is a full replace, so
-     * existing {@code rdfs:subClassOf} links are read and carried through. Existing first, new appended;
-     * an already-present broader is a no-op.
+     * Op 6 adds a super-class, but the edit model's {@code broaderConcept} is a full replace, so existing
+     * {@code rdfs:subClassOf} links are read and carried through. Existing first, new appended.
      */
     private List<String> mergedBroaderFor(ConceptMetadataEntity targetClass, String newBroader) {
         Model graph = jenaTDB2Repository.fetchGraph(targetClass.getGraphName());
@@ -253,8 +248,8 @@ public class DiagramChangeApplier {
     // ---- graph scoping --------------------------------------------------------------------------
 
     /**
-     * A concept outside the diagram's own graph is a rejected request, not a stale reference — the diagram
-     * endpoints authorize the ontology slug, so writing another ontology's concept would escape that check.
+     * A concept outside the diagram's own graph is a rejected request, not a stale reference: the endpoints
+     * authorize the ontology slug, so writing another ontology's concept would escape that check.
      */
     private void requireSameGraph(String diagramGraphName, String conceptGraphName, String conceptIri) {
         if (!Objects.equals(diagramGraphName, conceptGraphName)) {
@@ -266,11 +261,9 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * Same check for a raw overlay IRI that need not have a PG row. An unresolvable IRI passes — it becomes
-     * an ordinary triple object; only a row in a different graph is a cross-tenant reach.
-     *
-     * <p>Applied to {@code domain} only. A {@code range} or hierarchy target is referenced rather than
-     * written, so a foreign one is legitimate — see {@code DiagramLayoutReconciler}.
+     * The same check for a raw overlay IRI that need not have a PG row; an unresolvable IRI passes, since it
+     * becomes an ordinary triple object. Applied to {@code domain} only — a {@code range} or hierarchy
+     * target is referenced rather than written, so a foreign one is legitimate.
      */
     private void requireSameGraphIri(String diagramGraphName, String conceptIri) {
         if (conceptIri == null) {
@@ -284,10 +277,9 @@ public class DiagramChangeApplier {
     // ---- op classification ----------------------------------------------------------------------
 
     /**
-     * Infer the op from the overlay's fields, disambiguated by the referencing concept's type. Op 4 vs 5
-     * (change-parent vs set-domain) are indistinguishable from the overlay alone; both carry only a domain
-     * on a VLASTNOST — reported as {@code CHANGE_PROPERTY_PARENT} (a set-on-empty is a parent change from
-     * "none").
+     * Infers the op from the overlay's fields. Op 4 and 5 (change-parent, set-domain) are indistinguishable
+     * from the overlay alone — both carry only a domain on a VLASTNOST — and both report as
+     * {@code CHANGE_PROPERTY_PARENT}.
      */
     DiagramOp classify(DiagramPendingEdit overlay) {
         if (overlay.getConvertToHierarchy() != null) {
@@ -304,7 +296,7 @@ public class DiagramChangeApplier {
 
     // ---- field-scoped edit model ----------------------------------------------------------------
 
-    /** Build an edit carrying only the overlay's changed predicates for this concept type; rest stay null. */
+    /** Builds an edit carrying the overlay's predicates for this concept type; the rest stay null. */
     private ConceptEditModel buildEdit(DiagramPendingEdit overlay, ConceptType type) {
         return switch (type) {
             case TRIDA -> {
@@ -329,8 +321,8 @@ public class DiagramChangeApplier {
                 m.setExactMatch(overlay.getExactMatch());
                 yield m;
             }
-            // A roleless concept carries none of the structural predicates an overlay stages; in practice
-            // every diagram node has a specific role, so an overlay here is a programming error, not a no-op.
+            // A roleless concept carries none of the structural predicates an overlay stages, so an
+            // overlay on one is a programming error rather than a no-op.
             case KONCEPT -> throw new ConceptValidationException(
                     "Pojem bez konkrétní role (KONCEPT) nelze převzít z diagramu.");
         };
@@ -344,21 +336,21 @@ public class DiagramChangeApplier {
         return !Objects.equals(staged, concept.getUpdatedAt());
     }
 
-    /** The referenced concept moved under the overlay since it was staged (409 STALE_BASE). */
+    /** The referenced concept changed since the overlay was staged (409 STALE_BASE). */
     public static class StaleBaseException extends RuntimeException {
         public StaleBaseException(String message) {
             super(message);
         }
     }
 
-    /** A concept IRI in the request does not belong to the diagram's own ontology graph (400). */
+    /** A concept IRI in the request is outside the diagram's own ontology graph (400). */
     public static class ForeignConceptException extends RuntimeException {
         public ForeignConceptException(String message) {
             super(message);
         }
     }
 
-    /** Op 6 blocked because deleting the VZTAH would cascade to concepts pointing at it (409). */
+    /** Op 6 blocked: deleting the VZTAH would cascade to concepts pointing at it (409). */
     public static class CascadeConflictException extends RuntimeException {
         public CascadeConflictException(String message) {
             super(message);

@@ -20,12 +20,12 @@ import java.time.LocalDateTime;
 /**
  * One staged, uncommitted structural edit to a real concept, applied to RDF by Převzít.
  *
- * <p>Scoped to the DIAGRAM and keyed by concept IRI, so two diagrams of one ontology may hold competing
- * edits on the same concept and the conflict is detectable. Independent of canvas <em>membership</em>:
- * a staged edit needs no node row and survives a node's removal.
+ * <p>Scoped to the diagram and keyed by concept IRI, so two diagrams of one ontology may hold competing
+ * edits on the same concept and the conflict is detectable. Independent of canvas membership: a staged edit
+ * needs no node row and survives a node's removal.
  *
- * <p>{@code ontologyMetadata} is kept alongside {@code diagram} as the scope check and the join key for
- * the sibling-conflict query. A row exists only while there is an edit — discarding deletes it. See
+ * <p>{@code ontologyMetadata} is kept alongside {@code diagram} as the scope check and the sibling-conflict
+ * join key. A row exists only while there is an edit; discarding deletes it. See
  * {@code docs/DIAGRAM_LAYER.md}.
  */
 @Entity
@@ -41,12 +41,12 @@ public class DiagramPendingEditEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** The canvas that staged this edit. Deleting the diagram discards its staged work (DB cascade). */
+    /** The canvas that staged this edit; deleting the diagram cascades its staged work away. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "diagram_id", nullable = false)
     private DiagramEntity diagram;
 
-    /** The diagram's ontology, denormalized: the scope check and the sibling-conflict join key. */
+    /** The diagram's ontology, denormalized as the scope check and sibling-conflict join key. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ontology_metadata_id", nullable = false)
     private OntologyMetadataEntity ontologyMetadata;
@@ -57,7 +57,7 @@ public class DiagramPendingEditEntity {
     @Column(name = "pending_edit_json", columnDefinition = "text", nullable = false)
     private String pendingEditJson;
 
-    /** The target concept's {@code updatedAt} at stage time; the STALE_BASE fingerprint. Server-stamped. */
+    /** The target concept's {@code updatedAt} at stage time: the server-stamped STALE_BASE fingerprint. */
     @Column(name = "base_updated_at")
     private LocalDateTime baseUpdatedAt;
 
@@ -74,7 +74,7 @@ public class DiagramPendingEditEntity {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    /** Deserialize the overlay; {@code null} on malformed JSON (logged). */
+    /** The overlay, or {@code null} on malformed JSON. */
     public DiagramPendingEdit getPendingEdit() {
         if (pendingEditJson == null || pendingEditJson.isBlank()) {
             return null;
@@ -88,7 +88,7 @@ public class DiagramPendingEditEntity {
         }
     }
 
-    /** Serialize and store the overlay. Rejects null — discarding deletes the row instead. */
+    /** Stores the overlay; null is rejected, since discarding deletes the row instead. */
     public void setPendingEdit(DiagramPendingEdit edit) {
         if (edit == null) {
             throw new IllegalArgumentException(

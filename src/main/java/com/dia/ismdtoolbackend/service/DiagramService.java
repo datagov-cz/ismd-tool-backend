@@ -8,48 +8,46 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import java.util.List;
 
 /**
- * The diagram layer's service surface — layout + the pending-edit overlay, plus the Převzít fan-out
- * to the existing concept services. Content has a single owner (RDF); the overlay is a keyed, transient
- * diff. See {@code docs/DIAGRAM_LAYER.md}.
+ * The diagram layer's service surface: layout and the pending-edit overlay, plus the Převzít fan-out to the
+ * concept services. Content has a single owner in RDF; the overlay is a keyed, transient diff. See
+ * {@code docs/DIAGRAM_LAYER.md}.
  */
 public interface DiagramService {
 
-    /** Lightweight list of every diagram (identity + node count), for a diagram picker. */
+    /** Every diagram's identity and node count, for a diagram picker. */
     List<DiagramSummaryDto> listAll();
 
-    /** The ontology's diagrams, oldest first — identity and node count only. */
+    /** The ontology's diagrams, oldest first; identity and node count only. */
     List<DiagramSummaryDto> listForOntology(String ontologySlug);
 
-    /** Create a new, empty canvas for an ontology. An ontology may hold many. */
+    /** Creates an empty canvas for an ontology, which may hold many. */
     DiagramDto createDiagram(String ontologySlug, String name);
 
-    /** Delete one diagram, its layout and its staged edits. The ontology's concepts are untouched. */
+    /** Deletes one diagram with its layout and staged edits; the ontology's concepts are untouched. */
     void deleteDiagram(String ontologySlug, Long diagramId);
 
     /**
-     * Rename one canvas. Deliberately separate from {@link #saveLayout}: that path reads live concept
-     * content back and can fail with a 502 AFTER its write commits, which would report a successful
-     * rename as an error. This touches PG only and cannot.
+     * Renames one diagram. Separate from {@link #saveLayout}, which reads live content back and can fail
+     * with a 502 after its write commits; this touches PG only and cannot.
      *
-     * @return the renamed diagram's summary — identity only, no graph read
+     * @return the renamed diagram's summary, identity only
      */
     DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name);
 
-    /** Fat read: layout joined to live concept content with each node's overlay applied, edges projected. */
+    /** Layout joined to live concept content, each node's overlay applied and edges projected. */
     DiagramDto getDiagram(String ontologySlug, Long diagramId);
 
     /**
-     * Save (PG only, no RDF) — the diagram's only layout write. Layout is a full replace: the node set is canvas
-     * membership, and the edge set is the persisted waypoints. Overlays are additive over what is already
-     * staged: a concept absent from {@code overlays} keeps its overlay, and an entry carrying only
+     * Save: the diagram's only layout write, PG only. Layout is a full replace — the node set is canvas
+     * membership and the edge set the persisted waypoints. Overlays are additive over what is staged: a
+     * concept absent from {@code overlays} keeps its overlay, and an entry carrying only
      * {@code conceptIri} discards that one.
      */
     DiagramDto saveLayout(String ontologySlug, Long diagramId, DiagramLayoutDto layout);
 
     /**
-     * Převzít: apply every staged change via the concept CRUD → outbox → RDF, clearing each on success.
-     *
-     * <p>Refuses with a conflict report when a sibling diagram of the same ontology stages an edit on
+     * Převzít: applies every staged change through the concept CRUD → outbox → RDF, clearing each on
+     * success. Refuses with a conflict report when a sibling diagram of the same ontology stages an edit on
      * one of the same concepts, unless {@code onConflict} names the winning side.
      *
      * @param winnerDiagramId the diagram whose edits win, required by {@link ConflictResolution#ACCEPT_THEIRS}
@@ -59,18 +57,16 @@ public interface DiagramService {
                                      ConflictResolution onConflict, Long winnerDiagramId);
 
     /**
-     * Which side wins when sibling diagrams stage edits on the same concept.
-     *
-     * <p>A resolution always names exactly ONE winner, however many canvases are in conflict: every loser's
-     * contested edits are discarded in the same pass. Naming a side to discard instead would leave the
-     * remaining siblings' collisions standing, so a three-way conflict would need one round trip per canvas.
+     * Which side wins when sibling diagrams stage edits on the same concept. A resolution names exactly one
+     * winner however many canvases are in conflict, and every loser's contested edits are discarded in the
+     * same pass — naming a side to discard would leave the remaining siblings' collisions standing.
      */
     enum ConflictResolution {
-        /** This diagram wins: discard every sibling's conflicting edits, then materialize this diagram. */
+        /** This diagram wins: discards every sibling's conflicting edits, then materializes it. */
         ACCEPT_MINE,
         /**
-         * A named sibling wins: discard the conflicting edits on this diagram and on every OTHER sibling,
-         * then materialize the winner. Requires {@code winnerDiagramId}.
+         * A named sibling wins: discards the conflicting edits on this diagram and every other sibling, then
+         * materializes the winner. Requires {@code winnerDiagramId}.
          */
         ACCEPT_THEIRS
     }

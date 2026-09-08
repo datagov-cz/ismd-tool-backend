@@ -15,22 +15,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Pure translation for the diagram layer: node-id ↔ IRI, entity ↔ DTO, the overlay merge, and the
- * {@code ConceptType} → ReactFlow node-type mapping. No persistence or fan-out — that lives in the
- * service. See {@code docs/DIAGRAM_LAYER.md}.
+ * Pure translation for the diagram layer: node-id ↔ IRI, entity ↔ DTO, the overlay merge and the
+ * {@code ConceptType} → ReactFlow node-type mapping. No persistence or fan-out. See
+ * {@code docs/DIAGRAM_LAYER.md}.
  */
 @Component
 public class DiagramMapper {
 
-    /** Every node's wire id is {@code iri:<full-iri>} (stable across reloads; all nodes reference a concept). */
+    /** Every node's wire id is {@code iri:<full-iri>}, stable across reloads. */
     public static final String NODE_ID_PREFIX = "iri:";
 
-    /** Build the wire node id for a concept IRI. */
+    /** The wire node id for a concept IRI. */
     public String nodeId(String conceptIri) {
         return NODE_ID_PREFIX + conceptIri;
     }
 
-    /** Extract the concept IRI from a wire node id; returns the input unchanged if unprefixed. */
+    /** The concept IRI behind a wire node id; an unprefixed input is returned unchanged. */
     public String conceptIriFromNodeId(String nodeId) {
         if (nodeId != null && nodeId.startsWith(NODE_ID_PREFIX)) {
             return nodeId.substring(NODE_ID_PREFIX.length());
@@ -38,7 +38,7 @@ public class DiagramMapper {
         return nodeId;
     }
 
-    /** ReactFlow node-type string for a concept type; null (a stale node) falls back to the generic node. */
+    /** ReactFlow node-type string for a concept type; a null type falls back to the generic node. */
     public String nodeType(ConceptType type) {
         if (type == null) {
             return "conceptNode";
@@ -47,12 +47,12 @@ public class DiagramMapper {
             case TRIDA -> "classNode";
             case VLASTNOST -> "propertyNode";
             case VZTAH -> "relationNode";
-            // A roleless concept has no specific diagram shape; render as the generic node.
+            // A roleless concept has no specific diagram shape.
             case KONCEPT -> "conceptNode";
         };
     }
 
-    /** Saved pan/zoom, or null when the canvas has never been saved. */
+    /** Saved pan and zoom, or null when the canvas has never been saved. */
     public ViewportDto toViewport(DiagramEntity diagram) {
         if (diagram.getViewportX() == null && diagram.getViewportY() == null && diagram.getViewportZoom() == null) {
             return null;
@@ -65,7 +65,7 @@ public class DiagramMapper {
         return new PositionDto(node.getPosX(), node.getPosY());
     }
 
-    /** Convert the wire overlay entry to the persisted overlay model (no stale-base fingerprint yet). */
+    /** The wire overlay entry as the persisted overlay model, without a stale-base fingerprint yet. */
     public DiagramPendingEdit toPendingEdit(DiagramLayoutDto.Overlay dto) {
         if (dto == null || dto.isEmpty()) {
             return null;
@@ -85,9 +85,9 @@ public class DiagramMapper {
     }
 
     /**
-     * Merge live concept content with a node's overlay into the render-ready {@code NodeData}. The overlay
-     * fields (domain/range/hierarchy/exactMatch) override live values; label is always live-only.
-     * {@code detail} is null when the concept is stale (deleted underneath the node).
+     * Merges live concept content with a node's overlay into the render-ready {@code NodeData}. The overlay
+     * fields override live values; the label is always live-only. {@code detail} is null when the concept
+     * was deleted underneath the node.
      */
     public DiagramDto.NodeData toNodeData(DiagramNodeEntity node,
                                           ConceptType conceptType,

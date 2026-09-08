@@ -14,19 +14,17 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
 /**
- * The persisted <em>waypoints</em> of a diagram edge, and nothing else. An edge's existence, kind and
- * endpoints are NOT read from here — they are re-projected on every load from {@code live ⊕ overlay} by
- * {@code EdgeProjector}, because the semantics always live on a concept (a VZTAH's {@code rdfs:domain} /
- * {@code rdfs:range}, a hierarchy target, an {@code skos:exactMatch}). This row carries only what RDF
- * cannot express: how the link is routed.
+ * The persisted waypoints of a diagram edge, and nothing else. An edge's existence, kind and endpoints are
+ * re-projected on every load from {@code live ⊕ overlay} by {@code EdgeProjector}, the semantics always
+ * living on a concept — a VZTAH's {@code rdfs:domain}/{@code rdfs:range}, a hierarchy target, an
+ * {@code skos:exactMatch}. This row carries only what RDF cannot express: how the link is routed.
  *
  * <p>A row is matched to its projected edge by {@link #edgeKey} — a VZTAH's own concept IRI, or the
- * composite {@code edge|KIND|source|target} of a hierarchy/equivalence link. Repointing an endpoint
- * therefore drops the saved waypoints: the geometry was drawn for an endpoint the edge no longer has, and
- * the stale row is cleared by the next Save, which full-replaces the edge set.
+ * composite {@code edge|KIND|source|target} of a hierarchy or equivalence link. Repointing an endpoint
+ * therefore drops the saved waypoints, and the stale row is cleared by the next Save.
  *
- * <p>Endpoints are deliberately absent as columns. They were stored once and could silently disagree with
- * the projection they duplicated; see {@code .planning/diagram-edge-model-REDESIGN.md}.
+ * <p>Endpoints are deliberately absent as columns, having once been stored and able to disagree with the
+ * projection they duplicated; see {@code .planning/diagram-edge-model-REDESIGN.md}.
  */
 @Slf4j
 @Entity
@@ -45,9 +43,9 @@ public class DiagramEdgeEntity {
     private DiagramEntity diagram;
 
     /**
-     * The projected edge id these waypoints belong to; unique per diagram. A hierarchy key concatenates two
-     * full concept IRIs, so the Postgres column is TEXT — {@code length} here is JPA metadata for schema
-     * validation (H2 uses a bounded VARCHAR), not a ceiling on what Postgres stores.
+     * The projected edge id these waypoints belong to, unique per diagram. A hierarchy key concatenates two
+     * full concept IRIs, so the Postgres column is TEXT; {@code length} is JPA metadata for schema
+     * validation, where H2 uses a bounded VARCHAR, not a ceiling on what Postgres stores.
      */
     @Column(name = "edge_key", nullable = false, length = 2048)
     private String edgeKey;
@@ -62,7 +60,7 @@ public class DiagramEdgeEntity {
     private static final TypeReference<List<EdgeWaypoint>> WAYPOINTS = new TypeReference<>() {
     };
 
-    /** Deserialize the waypoints; {@code null} on absent/malformed JSON (logged). */
+    /** The waypoints, or {@code null} on absent or malformed JSON. */
     public List<EdgeWaypoint> getSegments() {
         if (segmentsJson == null || segmentsJson.isBlank()) {
             return null;
@@ -75,7 +73,7 @@ public class DiagramEdgeEntity {
         }
     }
 
-    /** Serialize and store the waypoints; a null or empty list clears the column. */
+    /** Stores the waypoints; a null or empty list clears the column. */
     public void setSegments(List<EdgeWaypoint> segments) {
         if (segments == null || segments.isEmpty()) {
             this.segmentsJson = null;

@@ -47,9 +47,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The diagram layer's core service: fat read (layout ⋈ live content, overlays applied, edges projected) and
- * the Save-time layout + membership + overlay reconcile. Pure PG — never writes RDF. Materialize is
- * delegated to {@link DiagramMaterializeService}. See {@code docs/DIAGRAM_LAYER.md}.
+ * Diagram reads (layout ⋈ live content, overlays applied, edges projected) and the Save-time layout,
+ * membership and overlay reconcile. Pure PG — never writes RDF; materialize is delegated to
+ * {@link DiagramMaterializeService}. See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Service
@@ -65,7 +65,7 @@ public class DiagramServiceImpl implements DiagramService {
     private final DiagramPendingEditRepository pendingEditRepository;
     private final DiagramMapper mapper;
 
-    /** Self-reference through the Spring proxy; a direct {@code this.commitLayout(...)} runs untransacted. */
+    /** Self-proxy — a direct {@code this.commitLayout(...)} would run untransacted. */
     private final DiagramServiceImpl self;
 
     public DiagramServiceImpl(DiagramRepository diagramRepository,
@@ -145,18 +145,14 @@ public class DiagramServiceImpl implements DiagramService {
         }
     }
 
-    /**
-     * Rename one canvas — PG only, no graph read, so it cannot fail after committing the way
-     * {@link #saveLayout} can. Renaming to the name it already has is a no-op rather than a self-collision.
-     */
+    /** Renames one diagram. PG only, no graph read. Renaming to the current name is a no-op. */
     @Override
     @Transactional
     public DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
         DiagramEntity diagram = requireDiagramOf(ontology, ontologySlug, diagramId);
 
-        // @NotBlank covers the DTO, but the service is also called directly — and a name of only spaces
-        // passes @NotBlank's trim-aware check yet must not be stored as-is.
+        // The service is also called directly, so the DTO's @NotBlank is not the only gate.
         String resolved = name == null ? "" : name.trim();
         if (resolved.isEmpty()) {
             throw new IllegalArgumentException("Název diagramu nesmí být prázdný.");
@@ -164,7 +160,7 @@ public class DiagramServiceImpl implements DiagramService {
         if (resolved.equals(diagram.getName())) {
             return summaryOf(diagram, ontology);
         }
-        // Excludes this diagram, so an unchanged name never collides with itself. The unique constraint
+        // Excludes this diagram so an unchanged name never collides with itself;
         // uq_diagrams_ontology_name stays the real guarantee.
         if (diagramRepository.existsByOntologyMetadataIdAndNameAndIdNot(
                 ontology.getId(), resolved, diagram.getId())) {
@@ -180,7 +176,7 @@ public class DiagramServiceImpl implements DiagramService {
         }
     }
 
-    /** Summary for a single managed diagram — the node count comes off the loaded collection, no query. */
+    /** Summary for one loaded diagram; the node count comes off the loaded collection, no query. */
     private DiagramSummaryDto summaryOf(DiagramEntity diagram, OntologyMetadataEntity ontology) {
         return new DiagramSummaryDto(
                 diagram.getId(),
@@ -192,7 +188,7 @@ public class DiagramServiceImpl implements DiagramService {
                 diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
     }
 
-    /** "Nový diagram", numbered when that is taken — a create with no name never fails on the name. */
+    /** "Nový diagram", numbered when taken, so a create with no name never fails on the name. */
     private String defaultName(OntologyMetadataEntity ontology) {
         String base = "Nový diagram";
         if (!diagramRepository.existsByOntologyMetadataIdAndName(ontology.getId(), base)) {
@@ -207,7 +203,7 @@ public class DiagramServiceImpl implements DiagramService {
         return base + " " + java.util.UUID.randomUUID();
     }
 
-    /** Delete one canvas. Its nodes, waypoints and staged edits go with it (DB cascade); concepts do not. */
+    /** Deletes one diagram. Nodes, waypoints and staged edits cascade with it; concepts do not. */
     @Override
     @Transactional
     public void deleteDiagram(String ontologySlug, Long diagramId) {
@@ -215,10 +211,7 @@ public class DiagramServiceImpl implements DiagramService {
         diagramRepository.delete(requireDiagramOf(ontology, ontologySlug, diagramId));
     }
 
-    /**
-     * Untransacted on purpose: {@link #loadForRead} does the PG work in its own short transaction and
-     * returns a detached snapshot, so the Fuseki fetch holds no connection.
-     */
+    /** Untransacted: {@link #loadForRead} returns a detached snapshot, so the Fuseki fetch holds no connection. */
     @Override
     public DiagramDto getDiagram(String ontologySlug, Long diagramId) {
         DiagramSnapshot snapshot = self.loadForRead(ontologySlug, diagramId);
@@ -233,11 +226,9 @@ public class DiagramServiceImpl implements DiagramService {
 
 
     /**
-     * Write then read: the PG write commits in {@link #commitLayout}, and only then is the graph fetched —
-     * the two never share a transaction, so a slow Fuseki holds no Hikari connection. A fetch failure
-     * therefore arrives after a durable write and is reported as {@link DiagramReadbackFailedException},
-     * telling the client to reload rather than retry into a spurious 409. Rationale in
-     * {@code docs/DIAGRAM_LAYER.md}.
+     * Commits the layout, then fetches the graph outside that transaction so a slow Fuseki holds no
+     * connection. A fetch failure lands after a durable write and surfaces as
+     * {@link DiagramReadbackFailedException} — reload, not retry. See {@code docs/DIAGRAM_LAYER.md}.
      */
     @Override
     public DiagramDto saveLayout(String ontologySlug, Long diagramId, DiagramLayoutDto layout) {
@@ -252,17 +243,17 @@ public class DiagramServiceImpl implements DiagramService {
         requireCurrentVersion(diagram, layout.version());
 
         Map<String, DiagramNodeEntity> incoming = layoutReconciler.reconcileNodes(diagram, layout);
-        // Flush so new nodes hold an identity before parentId references resolve against them.
+        // New nodes need an identity before parentId references resolve against them.
         diagramRepository.saveAndFlush(diagram);
         layoutReconciler.finalizeLayout(diagram, layout, incoming);
         diagram.touch();
-        // Flush again so the snapshot carries the post-increment @Version the client echoes on its next save.
+        // The snapshot must carry the post-increment @Version the client echoes on its next save.
         diagramRepository.saveAndFlush(diagram);
 
         return snapshot(diagram, ontology);
     }
 
-    /** Fetch live content for an ALREADY-COMMITTED write; a Fuseki failure here is a readback, not a rollback. */
+    /** Live content for an already-committed write; a Fuseki failure here is a readback, not a rollback. */
     private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot) {
         try {
             return withForeign(snapshot, liveConcepts(snapshot.graphName()));
@@ -272,12 +263,9 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Add the content of foreign nodes — concepts this canvas references from OTHER ontologies — to the
-     * own-graph map, so they render with a real label instead of a bare IRI.
-     *
-     * <p>One fetch per distinct foreign graph, not per node. Own-graph entries win, and only the IRIs
-     * actually placed as foreign nodes are merged in. A foreign graph that fails to load is skipped and
-     * its nodes render stale.
+     * Merges content for foreign nodes — concepts referenced from other ontologies — into the own-graph
+     * map so they render with a label instead of a bare IRI. One fetch per distinct foreign graph;
+     * own-graph entries win. A graph that fails to load is skipped and its nodes render stale.
      */
     private Map<String, ConceptDetailModel> withForeign(DiagramSnapshot snapshot,
                                                         Map<String, ConceptDetailModel> own) {
@@ -310,12 +298,10 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * The optimistic lock, enforced here rather than by JPA: {@code saveLayout} re-reads the diagram in its
-     * own transaction, so {@code @Version} would only ever compare that value against itself. The client's
-     * version is the one carrying the "has anyone saved since?" signal, and membership is a full replace,
-     * so a stale save would delete another editor's nodes and their staged overlays.
-     *
-     * <p>A null version is accepted only for a diagram with no saved state yet.
+     * Optimistic lock enforced here rather than by JPA: {@code saveLayout} re-reads the diagram in its own
+     * transaction, so {@code @Version} would only compare that value against itself. Membership is a full
+     * replace, so a stale save would delete another editor's nodes. A null version is accepted only for a
+     * diagram with no saved state yet.
      */
     private void requireCurrentVersion(DiagramEntity diagram, Long clientVersion) {
         Long stored = diagram.getVersion();
@@ -330,36 +316,34 @@ public class DiagramServiceImpl implements DiagramService {
         }
     }
 
-    /** A layout save carried a version behind the stored one — another editor saved first (409). */
+    /** A layout save carried a stale version — another editor saved first (409). */
     public static class DiagramVersionConflictException extends RuntimeException {
         public DiagramVersionConflictException(String message) {
             super(message);
         }
     }
 
-    // Not transactional: each staged change materializes in its OWN transaction (REQUIRES_NEW), so a
+    // Not transactional: each staged change materializes in its own REQUIRES_NEW transaction, so a
     // failure cannot roll back earlier successes.
     @Override
     public MaterializeResultDto materialize(String ontologySlug, Long diagramId,
                                             ConflictResolution onConflict, Long winnerDiagramId) {
-        // Conflict detection and any resolution commit first, before the per-change loop writes any RDF.
+        // Detection and resolution commit before the per-change loop writes any RDF.
         Resolved resolved = self.resolveConflicts(ontologySlug, diagramId, onConflict, winnerDiagramId);
         return materializeService.materialize(resolved.winnerDiagramId(), resolved.ontologyId());
     }
 
-    /** What the resolution settled: which ontology, and whose staged edits are the ones to apply. */
+    /** What the resolution settled: the ontology, and whose staged edits apply. */
     public record Resolved(Long ontologyId, Long winnerDiagramId) {
     }
 
     /**
-     * Refuse, or resolve, edits this diagram stages on concepts a sibling diagram also stages. Sibling rows
-     * are always re-read through the ontology scope, never trusted from the request.
+     * Refuses or resolves edits this diagram stages on concepts a sibling diagram also stages. Sibling rows
+     * are re-read through the ontology scope, never trusted from the request. A resolution names one winner
+     * and discards every loser's contested edits in a single pass; the winner is the diagram that
+     * materializes, which for {@code ACCEPT_THEIRS} is not the one in the path.
      *
-     * <p>A resolution names the ONE winner and discards every loser's contested edits in a single pass —
-     * so a conflict spanning three canvases is settled by one decision, not one per sibling. The winner is
-     * then the diagram that materializes, which for {@code ACCEPT_THEIRS} is not the diagram in the path.
-     *
-     * @return the ontology id and the diagram to materialize, so the caller needs no second lookup
+     * @return the ontology id and the diagram to materialize
      */
     @Transactional
     public Resolved resolveConflicts(String ontologySlug, Long diagramId,
@@ -384,8 +368,7 @@ public class DiagramServiceImpl implements DiagramService {
 
         Long winner = requireWinner(diagramId, onConflict, winnerDiagramId, conflicting);
 
-        // The delete is keyed on the contested IRIs, never on `staged` — a resolution abandons only what is
-        // in conflict, leaving every canvas's uncontested staged work intact.
+        // Keyed on the contested IRIs, never on `staged`, so uncontested staged work survives.
         List<String> conflictedIris = conflicting.stream()
                 .map(DiagramPendingEditEntity::getConceptIri)
                 .distinct()
@@ -401,9 +384,8 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Nothing collides, so there is nothing for a resolution to decide. A stray {@code ACCEPT_THEIRS} is
-     * still refused rather than silently materializing the named diagram: with no conflict its edits were
-     * never offered up here, and applying them would write a canvas the caller only named as a winner.
+     * Nothing collides, so a resolution has nothing to decide. A stray {@code ACCEPT_THEIRS} is still
+     * refused rather than materializing a diagram whose edits were never offered up here.
      */
     private Resolved noConflict(OntologyMetadataEntity ontology, Long diagramId,
                                 ConflictResolution onConflict) {
@@ -415,10 +397,9 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * The winning diagram id, validated against the conflict set rather than taken on trust. {@code
-     * ACCEPT_THEIRS} makes this call materialize a canvas other than the one in the path, and only the slug
-     * is authorized by the endpoint — so the winner must be a diagram that actually appears in this
-     * ontology's conflict set, which the report just named to the user.
+     * The winning diagram id, validated against the conflict set rather than taken on trust. The endpoint
+     * authorizes only the slug, and {@code ACCEPT_THEIRS} materializes a diagram other than the one in the
+     * path, so the winner must appear in this ontology's conflict set.
      */
     private Long requireWinner(Long diagramId, ConflictResolution onConflict, Long winnerDiagramId,
                                List<DiagramPendingEditEntity> conflicting) {
@@ -444,7 +425,7 @@ public class DiagramServiceImpl implements DiagramService {
         return winnerDiagramId;
     }
 
-    /** A resolution the request could not settle: a missing, self-addressed or non-conflicting winner (400). */
+    /** A resolution the request could not settle: missing, self-addressed or non-conflicting winner (400). */
     public static class DiagramConflictResolutionException extends RuntimeException {
         public DiagramConflictResolutionException(String message) {
             super(message);
@@ -452,10 +433,8 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Re-detect from the WINNER's side after a resolution, in the same transaction that applied it. Never
-     * trips on a single request — the first pass already covered every staged IRI — but a save committed by
-     * another request between the two queries stages a conflict the resolution never named, and
-     * materializing that would reintroduce the collision the caller just resolved.
+     * Re-detects from the winner's side after a resolution, in the transaction that applied it. Only trips
+     * when a concurrent save stages a conflict the resolution never named.
      */
     private void requireNoRemainingConflict(Long ontologyId, Long winnerDiagramId) {
         List<String> staged = pendingEditRepository.findStagedConceptIris(winnerDiagramId);
@@ -469,7 +448,7 @@ public class DiagramServiceImpl implements DiagramService {
         }
     }
 
-    /** Pair each conflicted concept's own staged edit with the competing ones, for the 409 body. */
+    /** Pairs each conflicted concept's own staged edit with the competing ones, for the 409 body. */
     private DiagramConflictDto buildConflictReport(Long diagramId,
                                                    List<DiagramPendingEditEntity> conflicting) {
         Map<String, List<DiagramConflictDto.Theirs>> theirsByIri = new LinkedHashMap<>();
@@ -493,7 +472,7 @@ public class DiagramServiceImpl implements DiagramService {
         return new DiagramConflictDto(conflicts);
     }
 
-    /** Best-effort display label for the conflict report; PG metadata only, no graph fetch. */
+    /** Display label for the conflict report; PG metadata only, no graph fetch. */
     private Map<String, String> conceptLabel(String conceptIri) {
         return conceptMetadataRepository.findByConceptIri(conceptIri)
                 .map(ConceptMetadataEntity::getConceptName)
@@ -504,9 +483,8 @@ public class DiagramServiceImpl implements DiagramService {
     // ---- snapshot -------------------------------------------------------------------------------
 
     /**
-     * Everything the response needs from PG, detached from the persistence context. Built inside the
-     * transaction so the Fuseki fetch and the assembly after it touch no lazy association. {@code nodes}
-     * preserves the diagram's node order.
+     * Everything the response needs from PG, detached from the persistence context so the Fuseki fetch and
+     * the assembly after it touch no lazy association. {@code nodes} preserves the diagram's node order.
      */
     public record DiagramSnapshot(
             Long diagramId,
@@ -521,16 +499,13 @@ public class DiagramServiceImpl implements DiagramService {
             Map<String, List<EdgeWaypoint>> edgeWaypoints,
             /* Edge membership: the projected edge ids placed on this canvas. */
             Set<String> onCanvasEdges,
-            /* Staged edits by concept IRI. Independent of `nodes` — either may exist without the other. */
+            /* Staged edits by concept IRI. Independent of `nodes`; either may exist without the other. */
             Map<String, DiagramPendingEdit> overlays,
-            /*
-             * Graph name per foreign node IRI. An NKD IRI has no PG row and so no entry — its content
-             * comes from the snapshot machinery instead.
-             */
+            /* Graph name per foreign node IRI. An NKD IRI has no PG row, so no entry. */
             Map<String, String> foreignGraphs
     ) {
 
-        /** The snapshot node for a concept IRI, or null when the diagram has no such node. */
+        /** The node for a concept IRI, or null when the diagram has none. */
         DiagramNodeEntity node(String conceptIri) {
             return nodes.stream()
                     .filter(n -> conceptIri.equals(n.getConceptIri()))
@@ -540,10 +515,8 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Capture the diagram's PG state; must be called inside the transaction that read/wrote it.
-     *
-     * <p>Two metadata queries, not one per derived map: the own graph's concepts and the foreign nodes'
-     * rows are each fetched once, then types, slugs and foreign graph names are all derived from them.
+     * Captures the diagram's PG state; must run inside the transaction that read or wrote it. Two metadata
+     * queries in all — types, slugs and foreign graph names are derived from the same two result sets.
      */
     private DiagramSnapshot snapshot(DiagramEntity diagram, OntologyMetadataEntity ontology) {
         String graphName = ontology.getGraphName();
@@ -565,7 +538,7 @@ public class DiagramServiceImpl implements DiagramService {
                 foreignGraphs(foreignConcepts));
     }
 
-    /** The projected edge ids on this canvas — one row per edge the user has placed. */
+    /** The projected edge ids on this canvas, one row per placed edge. */
     private Set<String> onCanvasEdges(DiagramEntity diagram) {
         Set<String> keys = new java.util.HashSet<>();
         for (DiagramEdgeEntity edge : diagram.getEdges()) {
@@ -576,7 +549,7 @@ public class DiagramServiceImpl implements DiagramService {
         return keys;
     }
 
-    /** Graph name per foreign node IRI. An external IRI with no PG row stays absent. */
+    /** Graph name per foreign node IRI; an external IRI with no PG row stays absent. */
     private Map<String, String> foreignGraphs(List<ConceptMetadataEntity> foreignConcepts) {
         Map<String, String> byIri = new HashMap<>();
         for (ConceptMetadataEntity c : foreignConcepts) {
@@ -596,10 +569,10 @@ public class DiagramServiceImpl implements DiagramService {
                 .toList();
     }
 
-    /** Staged edits by concept IRI, read inside the transaction so assembly works on a detached snapshot. */
+    /** Staged edits by concept IRI, read inside the transaction so assembly sees a detached snapshot. */
     private Map<String, DiagramPendingEdit> overlays(DiagramEntity diagram) {
         if (diagram.getId() == null) {
-            return Map.of();   // not yet persisted, so nothing can be staged against it
+            return Map.of();   // not persisted, so nothing can be staged against it
         }
         Map<String, DiagramPendingEdit> byIri = new HashMap<>();
         for (DiagramPendingEditEntity row : pendingEditRepository.findByDiagramId(diagram.getId())) {
@@ -611,10 +584,7 @@ public class DiagramServiceImpl implements DiagramService {
         return byIri;
     }
 
-    /**
-     * Waypoints by projected edge id. A row whose key no longer projects finds no match and is ignored;
-     * the next Save full-replaces the set.
-     */
+    /** Waypoints by projected edge id. A key that no longer projects is ignored; the next Save replaces the set. */
     private Map<String, List<EdgeWaypoint>> edgeWaypoints(DiagramEntity diagram) {
         Map<String, List<EdgeWaypoint>> byKey = new HashMap<>();
         for (DiagramEdgeEntity edge : diagram.getEdges()) {
@@ -629,7 +599,7 @@ public class DiagramServiceImpl implements DiagramService {
 
     // ---- assembly -------------------------------------------------------------------------------
 
-    /** Join layout rows to live content, apply overlays, project edges and property rows. */
+    /** Joins layout rows to live content, applies overlays, projects edges and property rows. */
     private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot,
                                 Map<String, ConceptDetailModel> live) {
         EdgeProjector projector = new EdgeProjector(mapper, snapshot.edgeWaypoints(),
@@ -638,7 +608,7 @@ public class DiagramServiceImpl implements DiagramService {
         Map<String, List<DiagramDto.PropertyRow>> rows =
                 projector.propertyRows(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
 
-        // nodes[] is the canvas: classes only. Relationships render as edges, properties as rows.
+        // nodes[] is classes only; relationships render as edges and properties as rows.
         List<DiagramDto.Node> nodes = new ArrayList<>();
         for (DiagramNodeEntity node : snapshot.nodes()) {
             if (!isCanvasMember(snapshot, node.getConceptIri())) {
@@ -655,7 +625,7 @@ public class DiagramServiceImpl implements DiagramService {
                 snapshot.viewport(), nodes, edges, pendingEdits(snapshot, live));
     }
 
-    /** Canvas membership: classes only. An unknown type is kept — a stale row is still on the canvas. */
+    /** Canvas membership: classes only. An unknown type is kept, since a stale row is still on the canvas. */
     private boolean isCanvasMember(DiagramSnapshot snapshot, String conceptIri) {
         ConceptType type = snapshot.types().get(conceptIri);
         return type == null || type == ConceptType.TRIDA || type == ConceptType.KONCEPT;
@@ -680,7 +650,7 @@ public class DiagramServiceImpl implements DiagramService {
         return entries;
     }
 
-    /** Build one render-ready node; type/slug come from the snapshot, never a fresh PG read. */
+    /** Builds one render-ready node; type and slug come from the snapshot, never a fresh PG read. */
     private DiagramDto.Node toNode(DiagramSnapshot snapshot, DiagramNodeEntity node,
                                    ConceptDetailModel detail, List<DiagramDto.PropertyRow> properties) {
         String conceptIri = node.getConceptIri();
@@ -715,12 +685,9 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Resolve a diagram, requiring that it belongs to the ontology named in the path. The endpoints
-     * authorize the <em>slug</em> only, so without this an owner of any ontology could reach another
-     * ontology's diagram through their own slug.
-     *
-     * <p>Filtered in ONE query rather than load-then-compare, and 404 rather than 403 — the response must
-     * not confirm that the id exists elsewhere.
+     * Resolves a diagram, requiring that it belongs to the ontology in the path. The endpoints authorize the
+     * slug only, so without this an owner of any ontology could reach another's diagram through their own
+     * slug. 404 rather than 403, so the response does not confirm the id exists elsewhere.
      */
     private DiagramEntity requireDiagramOf(OntologyMetadataEntity ontology, String ontologySlug,
                                            Long diagramId) {
@@ -729,7 +696,7 @@ public class DiagramServiceImpl implements DiagramService {
                         "Diagram " + diagramId + " nepatří do slovníku " + ontologySlug + "."));
     }
 
-    /** Live concept detail keyed by IRI; empty when the ontology graph has no concepts yet. */
+    /** Live concept detail by IRI; empty when the graph has no concepts yet. */
     private Map<String, ConceptDetailModel> liveConcepts(String graphName) {
         Model raw = jenaTDB2Repository.fetchGraph(graphName);
         if (raw == null || raw.isEmpty()) {
@@ -747,8 +714,8 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /**
-     * Concept types by IRI: the whole own graph, plus the individually-named foreign nodes. Without a
-     * type a foreign class takes {@link #isCanvasMember}'s unknown branch and renders as deleted.
+     * Concept types by IRI: the whole own graph plus the named foreign nodes. Without a type a foreign
+     * class takes {@link #isCanvasMember}'s unknown branch and renders as deleted.
      */
     private Map<String, ConceptType> conceptTypes(List<ConceptMetadataEntity> own,
                                                   List<ConceptMetadataEntity> foreign) {
@@ -762,7 +729,7 @@ public class DiagramServiceImpl implements DiagramService {
         return types;
     }
 
-    /** Slugs by IRI — own graph plus foreign nodes, so a foreign node can still deep-link to detail. */
+    /** Slugs by IRI, own graph plus foreign nodes, so a foreign node can deep-link to detail. */
     private Map<String, String> conceptSlugs(List<ConceptMetadataEntity> own,
                                              List<ConceptMetadataEntity> foreign) {
         Map<String, String> slugs = new HashMap<>();
@@ -775,7 +742,7 @@ public class DiagramServiceImpl implements DiagramService {
         return slugs;
     }
 
-    /** PG rows for the foreign nodes, in one query. Empty for NKD IRIs, which have no local row. */
+    /** PG rows for the foreign nodes in one query; empty for NKD IRIs, which have no local row. */
     private List<ConceptMetadataEntity> foreignMetadata(List<DiagramNodeEntity> nodes) {
         List<String> iris = foreignIris(nodes);
         return iris.isEmpty() ? List.of() : conceptMetadataRepository.findByConceptIriIn(iris);

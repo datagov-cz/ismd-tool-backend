@@ -31,27 +31,19 @@ import java.util.Set;
 /**
  * "Which diagrams draw this concept?" — the concept detail page's canvas cross-reference.
  *
- * <p>Deliberately NOT built on {@link DiagramServiceImpl#getDiagram}. That read fetches the whole
- * ontology graph and extracts every concept in it, per diagram; answering this question that way would
- * cost one whole-graph fetch per listed diagram to report a handful of IRIs. This path instead does:
- *
- * <ol>
- *   <li>one PG query for placements across all three membership shapes,</li>
- *   <li>one PG query for the staged overlays on those diagrams,</li>
- *   <li>one hierarchy SELECT scoped to the concept's own graph, and</li>
- *   <li>one batched, per-IRI-cached {@code resolveAll} for every IRI mentioned by any of the above.</li>
- * </ol>
- *
- * <p>That last step is the reason structure is resolved once for the whole response rather than per
- * diagram: the overlay values of every placement are resolved in the SAME batch as the live values, so
- * adding a diagram adds rows to a map, not a round trip. See {@code docs/DIAGRAM_LAYER_API.md}.
+ * <p>Not built on {@link DiagramServiceImpl#getDiagram}, which fetches the whole ontology graph per
+ * diagram and would cost one such fetch per listed diagram to report a handful of IRIs. This path runs
+ * one PG query for placements across all three membership shapes, one for the staged overlays on those
+ * diagrams, one hierarchy SELECT scoped to the concept's graph, and one batched {@code resolveAll} for
+ * every IRI the three name. Resolving once for the whole response rather than per diagram is what keeps
+ * an added diagram to extra map rows instead of a round trip. See {@code docs/DIAGRAM_LAYER_API.md}.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DiagramConceptUsageService {
 
-    /** Mirrors the entity's own mapper: overlays are written by it, so they must be read the same way. */
+    /** Mirrors the entity's own mapper, since overlays are written by it and must be read the same way. */
     private static final ObjectMapper OVERLAY_MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
@@ -64,11 +56,9 @@ public class DiagramConceptUsageService {
     private final ReferencedConceptResolutionEngine resolutionEngine;
 
     /**
-     * Every canvas placement of one concept, addressed by the concept's slug (what the detail page has).
-     *
-     * <p>Read-only and short: the transaction covers the two PG queries, while the Fuseki calls that
-     * follow are made outside it — the same split {@code getConceptDetail} uses, so a slow external
-     * store never holds a database connection.
+     * Every canvas placement of one concept, addressed by the concept's slug, which is what the detail page
+     * holds. The PG queries use projections rather than lazy associations, so the Fuseki calls that follow
+     * need no open transaction and a slow external store never holds a database connection.
      */
     public DiagramConceptUsageDto usageForSlug(String conceptSlug) {
         ConceptMetadataEntity concept = conceptMetadataRepository.findBySlug(conceptSlug)
@@ -78,7 +68,7 @@ public class DiagramConceptUsageService {
         String conceptIri = concept.getConceptIri();
         List<DiagramRepository.ConceptUsageRow> rows = placements(conceptIri);
         if (rows.isEmpty()) {
-            // Still identify the concept: "on no diagram" is a real answer the page renders.
+            // The concept is still identified: "on no diagram" is an answer the page renders.
             return new DiagramConceptUsageDto(conceptIri, label(concept), concept.getSlug(), List.of());
         }
 
@@ -86,7 +76,7 @@ public class DiagramConceptUsageService {
                 .filter(Objects::nonNull).distinct().toList();
         Map<Long, DiagramPendingEdit> overlays = overlays(conceptIri, diagramIds);
 
-        // Live structure, fetched once — every placement starts from this and layers its own overlay.
+        // Live structure, fetched once; every placement layers its own overlay over it.
         JenaTDB2Repository.ConceptHierarchyLinks live =
                 jenaTDB2Repository.fetchConceptHierarchy(conceptIri, concept.getGraphName());
 
@@ -108,11 +98,8 @@ public class DiagramConceptUsageService {
     }
 
     /**
-     * The staged edit each of those diagrams holds on this concept, if any.
-     *
-     * <p>A malformed overlay is skipped rather than failing the read: the concept detail page's job is
-     * to report where the concept is drawn, and one unreadable staged edit must not cost the user the
-     * whole answer. It matches how the entity's own accessor treats bad JSON.
+     * The staged edit each of those diagrams holds on this concept, if any. A malformed overlay is skipped
+     * rather than failing the read, matching how the entity's own accessor treats bad JSON.
      */
     private Map<Long, DiagramPendingEdit> overlays(String conceptIri, Collection<Long> diagramIds) {
         Map<Long, DiagramPendingEdit> byDiagram = new HashMap<>();
@@ -140,10 +127,9 @@ public class DiagramConceptUsageService {
     }
 
     /**
-     * Resolve every IRI any placement could name, in ONE batch — the concept itself, its live hierarchy,
-     * each host class, and the overlay values of every diagram. Resolving per placement instead would
-     * turn a multi-diagram response into a round trip per diagram, which is exactly what this endpoint
-     * exists to avoid.
+     * Resolves every IRI any placement could name in one batch: the concept itself, its live hierarchy, each
+     * host class and the overlay values of every diagram. Resolving per placement would cost a round trip
+     * per diagram.
      */
     private Map<String, ResolvedConceptDto> resolveEverything(
             String conceptIri,
@@ -167,11 +153,9 @@ public class DiagramConceptUsageService {
     }
 
     /**
-     * One placement's view: live structure with that diagram's overlay layered over it, field by field.
-     *
-     * <p>Only a non-null overlay field overrides — a staged {@code range} does not blank the live
-     * {@code domain}. Domain and range come from the concept's own resolution, which already carries
-     * them ({@code resolvedDomain}/{@code resolvedRange}), so a class simply has none and reports null.
+     * One placement's view: live structure with that diagram's overlay layered over it, field by field. Only
+     * a non-null overlay field overrides, so a staged {@code range} does not blank the live {@code domain}.
+     * Domain and range come from the concept's own resolution, so a class has none and reports null.
      */
     private DiagramConceptUsageDto.Placement placement(
             DiagramRepository.ConceptUsageRow row,
@@ -192,7 +176,7 @@ public class DiagramConceptUsageService {
             if (overlay.getRange() != null) {
                 range = resolved.get(overlay.getRange());
             }
-            // An explicitly-empty list is a real staged value ("clear this predicate"), not "unset".
+            // An explicitly-empty list stages "clear this predicate" rather than "unset".
             if (overlay.getBroaderConcept() != null) {
                 broader = overlay.getBroaderConcept();
             }
@@ -214,7 +198,7 @@ public class DiagramConceptUsageService {
                 overlay != null);
     }
 
-    /** Drop IRIs that resolved to nothing rather than emitting nulls the FE would have to filter. */
+    /** Drops IRIs that resolved to nothing rather than emitting nulls the FE would filter. */
     private List<ResolvedConceptDto> resolveList(List<String> iris,
                                                  Map<String, ResolvedConceptDto> resolved) {
         if (iris == null || iris.isEmpty()) {
@@ -223,20 +207,20 @@ public class DiagramConceptUsageService {
         return iris.stream().map(resolved::get).filter(Objects::nonNull).toList();
     }
 
-    /** An unrecognised kind is a bug in the query, not user input — fail loudly rather than guess. */
+    /** An unrecognised kind is a bug in the query rather than user input, so it fails loudly. */
     private DiagramConceptUsageKind kindOf(DiagramRepository.ConceptUsageRow row) {
         return DiagramConceptUsageKind.valueOf(row.getKind());
     }
 
-    /** PG holds a single Czech name; the multilingual label lives in RDF and is not worth a fetch here. */
+    /** PG holds a single Czech name; the multilingual label lives in RDF and is not worth a fetch. */
     private Map<String, String> label(ConceptMetadataEntity concept) {
         return concept.getConceptName() == null ? Map.of() : Map.of("cs", concept.getConceptName());
     }
 
     /**
-     * The concept IRI as a one-element JSON array, the right-hand side of the {@code @>} containment
-     * test. Built with Jackson-equivalent escaping rather than concatenation so an IRI containing a
-     * quote or backslash cannot produce malformed JSON — a broken cast would fail the whole query.
+     * The concept IRI as a one-element JSON array, the right-hand side of the {@code @>} containment test.
+     * Escaped through Jackson rather than concatenated, so an IRI holding a quote or backslash cannot
+     * produce malformed JSON and fail the cast.
      */
     private String jsonArrayOf(String conceptIri) {
         StringBuilder sb = new StringBuilder("[\"");

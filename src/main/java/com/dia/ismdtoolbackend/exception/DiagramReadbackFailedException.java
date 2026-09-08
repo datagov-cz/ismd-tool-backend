@@ -1,23 +1,20 @@
 package com.dia.ismdtoolbackend.exception;
 
 /**
- * Thrown when a diagram write COMMITTED but the follow-up read of live concept content from Fuseki failed,
- * so the fat response could not be assembled.
+ * Thrown when a diagram write committed but the follow-up read of live concept content from Fuseki failed,
+ * so the response could not be assembled.
  *
- * <p>The distinction from a plain {@link JenaTDB2Exception} is the whole point: the write is durable and the
- * version has advanced. The client must NOT retry the write — a blind retry would send the now-stale version
- * and earn a spurious 409. It should re-issue {@code GET …/detail} to render, using {@link #getVersion()} if
- * it wants to save again without that read first.
+ * <p>Distinct from a plain {@link JenaTDB2Exception} because the write is durable and the version has
+ * advanced: the client must not retry the write, which would send the now-stale version and earn a spurious
+ * 409. It should re-issue {@code GET …/detail}, or use {@link #getVersion()} to save again without it.
  *
- * <p>Diagram writes are pure PG (the layer never writes RDF), so the failing Fuseki call is a READ that
- * happens strictly after every write. Keeping it outside the transaction is what stops a PG connection being
- * held across an external HTTP call; this exception is how that ordering stays honest to the client.
- *
- * <p>See {@code docs/DIAGRAM_LAYER_API.md}.
+ * <p>Diagram writes are pure PG, so the failing Fuseki call is always a read after the write. Keeping it
+ * outside the transaction is what stops a PG connection being held across an external HTTP call. See
+ * {@code docs/DIAGRAM_LAYER_API.md}.
  */
 public class DiagramReadbackFailedException extends RuntimeException {
 
-    /** Stable error code the FE branches on (not the localized message). */
+    /** Stable error code the FE branches on, rather than the localized message. */
     public static final String ERROR_CODE = "DIAGRAM_SAVED_READBACK_FAILED";
 
     private final transient Long version;
@@ -28,7 +25,7 @@ public class DiagramReadbackFailedException extends RuntimeException {
         this.version = version;
     }
 
-    /** The diagram version AFTER the committed write — echo it in the next layout save. */
+    /** The diagram version after the committed write; echo it in the next layout save. */
     public Long getVersion() {
         return version;
     }

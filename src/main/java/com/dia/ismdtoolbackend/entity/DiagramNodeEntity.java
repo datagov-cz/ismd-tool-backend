@@ -16,8 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
 /**
- * One node on a diagram canvas: a position for a materialized ISMD concept ({@link #conceptIri}).
- * Layout only — a row means "this concept is on the canvas". Staged structural edits live in
+ * One node on a diagram canvas: a position for a materialized ISMD concept ({@link #conceptIri}). Layout
+ * only — a row means the concept is on the canvas. Staged structural edits live in
  * {@link DiagramPendingEditEntity}. See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Entity
@@ -40,7 +40,7 @@ public class DiagramNodeEntity {
     @Enumerated(EnumType.STRING)
     private DiagramNodeBacking backing = DiagramNodeBacking.ISMD_CONCEPT;
 
-    /** Referenced concept's IRI — always set. */
+    /** The referenced concept's IRI; always set. */
     @Column(name = "concept_iri", length = 1024, nullable = false)
     private String conceptIri;
 
@@ -54,18 +54,17 @@ public class DiagramNodeEntity {
     @Column(name = "collapsed", nullable = false)
     private boolean collapsed = false;
 
-    /** Parent node id for grouping/containers (ReactFlow {@code parentId}); null for top-level nodes. */
+    /** Parent node id for grouping (ReactFlow {@code parentId}); null for a top-level node. */
     @Column(name = "parent_node_id")
     private Long parentNodeId;
 
-    /** Serialized IRI list: the VLASTNOST rows this class cell renders. */
+    /** Serialized IRI list of the VLASTNOST rows this class cell renders. */
     @Column(name = "visible_properties_json", columnDefinition = "text")
     private String visiblePropertiesJson;
 
     /**
-     * This node references a concept OUTSIDE the diagram's ontology graph — placed for context and
-     * rendered read-only. A claim the write path verifies both ways: a foreign IRI needs this set, and a
-     * row that sets it must resolve to another graph. No overlay may target such a concept.
+     * The node references a concept outside the diagram's ontology graph, placed for context and rendered
+     * read-only. The write path derives it both ways, and no overlay may target such a concept.
      */
     @Column(name = "is_foreign", nullable = false)
     private boolean isForeign = false;
@@ -88,8 +87,8 @@ public class DiagramNodeEntity {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /**
-     * The property IRIs this class cell renders; empty on absent/malformed JSON (logged). Empty is a
-     * meaningful value — an uncurated class shows no rows — so this never falls back to "all".
+     * The property IRIs this class cell renders, empty on absent or malformed JSON. Empty is a meaningful
+     * value — an uncurated class shows no rows — so this never falls back to "all".
      */
     public List<String> getVisibleProperties() {
         if (visiblePropertiesJson == null || visiblePropertiesJson.isBlank()) {
@@ -103,7 +102,7 @@ public class DiagramNodeEntity {
         }
     }
 
-    /** Store the rendered property IRIs; null or empty clears the column. */
+    /** Stores the rendered property IRIs; null or empty clears the column. */
     public void setVisibleProperties(List<String> properties) {
         if (properties == null || properties.isEmpty()) {
             this.visiblePropertiesJson = null;

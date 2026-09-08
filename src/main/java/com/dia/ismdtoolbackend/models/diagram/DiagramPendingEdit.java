@@ -12,25 +12,25 @@ import java.util.List;
 @Data
 public class DiagramPendingEdit {
 
-    /** {@code rdfs:domain} — VZTAH or VLASTNOST. */
+    /** {@code rdfs:domain} of a VZTAH or VLASTNOST. */
     private String domain;
 
-    /** {@code rdfs:range} — VZTAH. */
+    /** {@code rdfs:range} of a VZTAH. */
     private String range;
 
-    /** {@code subClassOf} targets — TRIDA. */
+    /** {@code subClassOf} targets of a TRIDA. */
     private List<String> broaderConcept;
 
     /** {@code skos:exactMatch} targets. */
     private List<String> exactMatch;
 
-    /** Op 6 marker — convert this VZTAH into a hierarchy. Null otherwise. */
+    /** Op 6 marker converting this VZTAH into a hierarchy; null otherwise. */
     private ConvertToHierarchy convertToHierarchy;
 
-    /** Referenced concept's {@code updatedAt} at stage time — stale-base fingerprint for Převzít. */
+    /** The referenced concept's {@code updatedAt} at stage time: Převzít's stale-base fingerprint. */
     private LocalDateTime baseUpdatedAt;
 
-    /** Add {@code broader} as a super-class of {@code addBroaderOn}, then delete the overlay's VZTAH. */
+    /** Adds {@code broader} as a super-class of {@code addBroaderOn}, then deletes the overlay's VZTAH. */
     @Data
     public static class ConvertToHierarchy {
         private String addBroaderOn;

@@ -19,39 +19,35 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Re-derives diagram edges from {@code live ⊕ overlay} — an edge's existence, kind and endpoints are a
- * pure projection, never read from storage as truth. Only waypoints are joined on from the persisted
+ * Re-derives diagram edges from {@code live ⊕ overlay}: an edge's existence, kind and endpoints are a pure
+ * projection, never read from storage as truth. Only waypoints are joined on from the persisted
  * {@code diagram_edges} rows, keyed by the projected edge id.
  *
  * <p>Three kinds are projected:
  * <ul>
- *   <li>{@code VZTAH} — one edge per relationship concept, drawn from its {@code rdfs:domain} class to its
- *       {@code rdfs:range} class, carrying the concept's own identity. The relationship is the edge; it is
- *       not a node with an edge to each endpoint.</li>
- *   <li>{@code SUBCLASS_OF} and {@code EXACT_MATCH} — bare RDF triples between two classes, with no
- *       backing concept.</li>
+ *   <li>{@code VZTAH} — one edge per relationship concept, from its {@code rdfs:domain} class to its
+ *       {@code rdfs:range} class, carrying the concept's own identity. The relationship is the edge, not a
+ *       node with an edge to each endpoint.</li>
+ *   <li>{@code SUBCLASS_OF} and {@code EXACT_MATCH} — bare triples between two classes, no backing
+ *       concept.</li>
  * </ul>
  *
- * <p>VLASTNOSTi are not projected here at all: a property renders as a row inside its domain class
- * (see {@link #propertyRows}). Sub-property/sub-relation hierarchy is not projected either — neither
- * endpoint is a node, so the link has nothing to attach to. See
- * {@code .planning/diagram-edge-model-REDESIGN.md}.
- *
- * <p>Every edge is asserted from a concept this ontology OWNS. A foreign node may be an edge's target,
- * never its source: its own outgoing triples belong to the graph that owns them, and this canvas can
- * neither stage nor reroute them.
+ * <p>VLASTNOSTi are not projected: a property renders as a row inside its domain class (see
+ * {@link #propertyRows}). Sub-property and sub-relation hierarchy is not projected either, neither endpoint
+ * being a node. Every edge is asserted from a concept this ontology owns — a foreign node may be an edge's
+ * target, never its source. See {@code .planning/diagram-edge-model-REDESIGN.md}.
  */
 class EdgeProjector {
 
     private final DiagramMapper mapper;
     private final Map<String, List<EdgeWaypoint>> waypoints;
-    /** Staged edits by concept IRI; supplied, since an edit need not have a node row. */
+    /** Staged edits by concept IRI, supplied because an edit need not have a node row. */
     private final Map<String, DiagramPendingEdit> overlays;
-    /** Foreign node IRIs — valid edge targets, never edge sources. */
+    /** Foreign node IRIs: valid edge targets, never edge sources. */
     private final Set<String> foreignIris;
     /**
-     * Edge membership: the projected edge ids the user has placed on this canvas. Projection decides an
-     * edge's endpoints, kind and validity; this decides whether it is drawn at all.
+     * The projected edge ids the user has placed on this canvas. Projection decides an edge's endpoints,
+     * kind and validity; this decides whether it is drawn at all.
      */
     private final Set<String> onCanvasEdges;
 
@@ -71,9 +67,9 @@ class EdgeProjector {
     }
 
     /**
-     * Project every edge the canvas should render. {@code nodes} is the canvas membership (classes);
-     * {@code live} is the whole graph, so relationships that are not themselves on the canvas still
-     * project as long as both their endpoint classes are.
+     * Projects every edge the canvas renders. {@code nodes} is canvas membership (classes) and {@code live}
+     * is the whole graph, so a relationship not itself on the canvas still projects while both its endpoint
+     * classes are.
      */
     List<DiagramDto.Edge> project(List<DiagramNodeEntity> nodes,
                                   Map<String, ConceptDetailModel> live,
@@ -90,7 +86,7 @@ class EdgeProjector {
             if (isRelationship(iri, detail, types)) {
                 projectRelationship(edges, iri, detail, overlay, onCanvas, slugs);
             }
-            // Foreign concepts are targets only: their own triples are the owning graph's to draw.
+            // Foreign concepts are targets only; their own triples belong to the owning graph.
             if (onCanvas.contains(iri) && !foreignIris.contains(iri)) {
                 projectHierarchy(edges, iri, detail, overlay, onCanvas);
                 projectExactMatch(edges, iri, detail, overlay, onCanvas);
@@ -100,8 +96,8 @@ class EdgeProjector {
     }
 
     /**
-     * Canvas membership: the CLASS nodes, the only things an edge may attach to. An unknown type is kept —
-     * a stale row whose concept was deleted is still on the canvas.
+     * Canvas membership: the class nodes, the only things an edge may attach to. An unknown type is kept,
+     * since a stale row whose concept was deleted is still on the canvas.
      */
     private Set<String> onCanvas(List<DiagramNodeEntity> nodes, Map<String, ConceptType> types) {
         Set<String> onCanvas = new HashSet<>();
@@ -127,9 +123,9 @@ class EdgeProjector {
     }
 
     /**
-     * A concept is a relationship when PG says so, or — when PG has no type for it — when its RDF carries
-     * both a domain and a range. {@code concept_metadata.concept_type} is null for uploads whose OFN tag
-     * carries no matching OWL type, so gating on it alone would drop a real VZTAH from the canvas.
+     * A concept is a relationship when PG says so, or, when PG has no type for it, when its RDF carries both
+     * a domain and a range. {@code concept_metadata.concept_type} is null for uploads whose OFN tag carries
+     * no matching OWL type, so gating on it alone would drop a real VZTAH from the canvas.
      */
     private boolean isRelationship(String iri, ConceptDetailModel detail, Map<String, ConceptType> types) {
         ConceptType type = types.get(iri);
@@ -140,9 +136,8 @@ class EdgeProjector {
     }
 
     /**
-     * A VZTAH is one edge from its domain class to its range class, carrying its own concept identity.
-     * A relationship missing either endpoint — or pointing off-canvas — is simply not drawn; it is placed
-     * by being dragged in from the ontology detail, which supplies both.
+     * A VZTAH is one edge from its domain class to its range class, carrying its own concept identity. One
+     * missing either endpoint, or pointing off-canvas, is not drawn.
      */
     private void projectRelationship(List<DiagramDto.Edge> edges, String iri, ConceptDetailModel detail,
                                      DiagramPendingEdit overlay, Set<String> onCanvas,
@@ -178,13 +173,13 @@ class EdgeProjector {
     }
 
     /**
-     * Group the graph's VLASTNOSTi by their {@code rdfs:domain} (live ⊕ overlay) into the rows each class
-     * node renders. A property is never a canvas object of its own: its range is a literal datatype, so
+     * Groups the graph's VLASTNOSTi by their {@code rdfs:domain} (live ⊕ overlay) into the rows each class
+     * node renders. A property is never a canvas object of its own — its range is a literal datatype, so
      * there is no second concept to draw an edge to.
      *
-     * <p>Rows are ordered by label, falling back to the IRI so a label-less concept still sorts stably.
-     * Only properties whose domain is a class on the canvas appear, and membership is CURATED, not
-     * derived — a property renders only when its domain class lists it in {@code visibleProperties}.
+     * <p>Rows are ordered by label, falling back to the IRI so a label-less concept sorts stably. Membership
+     * is curated, not derived: a property renders only when its domain class lists it in
+     * {@code visibleProperties}.
      */
     Map<String, List<DiagramDto.PropertyRow>> propertyRows(List<DiagramNodeEntity> nodes,
                                                            Map<String, ConceptDetailModel> live,
@@ -225,7 +220,7 @@ class EdgeProjector {
         return byClass;
     }
 
-    /** Czech-aware-enough ordering key: the label if there is one, else the IRI. */
+    /** Ordering key: the label if there is one, else the IRI. */
     private static String rowSortKey(DiagramDto.PropertyRow row) {
         Map<String, String> label = row.label();
         if (label != null && !label.isEmpty()) {
@@ -238,7 +233,7 @@ class EdgeProjector {
         return row.iri() != null ? row.iri() : "";
     }
 
-    /** TRIDA: SUBCLASS_OF, child → broader. A bare triple; no concept backs it. */
+    /** TRIDA: SUBCLASS_OF, child → broader. A bare triple with no backing concept. */
     private void projectHierarchy(List<DiagramDto.Edge> edges, String iri, ConceptDetailModel detail,
                                   DiagramPendingEdit overlay, Set<String> onCanvas) {
         boolean pending = overlay != null && overlay.getBroaderConcept() != null;
@@ -271,8 +266,8 @@ class EdgeProjector {
                 continue;
             }
             String id = projectedEdgeId(kind, source, target);
-            // A repoint moves the endpoints the id is built from, so the row still carries the OLD id.
-            // Honour membership under either, or staging an overlay would silently drop the edge.
+            // A repoint moves the endpoints the id is built from, so the row still carries the old id;
+            // membership is honoured under either, or staging an overlay would drop the edge.
             if (!placed(id) && !repointed) {
                 continue;
             }
@@ -287,9 +282,8 @@ class EdgeProjector {
     }
 
     /**
-     * True when this (kind, source) had a placed edge before the overlay repointed it. Membership means
-     * "this link from this class is on the canvas", so it survives a change of target — the id is derived
-     * from the endpoints and cannot be, on its own, the thing that carries the user's placement.
+     * True when this (kind, source) had a placed edge before the overlay repointed it. Membership means the
+     * link from this class is on the canvas, so it survives a change of target.
      */
     private boolean placedUnderLiveId(String source, List<String> liveTargets, DiagramEdgeKind kind) {
         if (liveTargets == null) {
@@ -308,9 +302,9 @@ class EdgeProjector {
     }
 
     /**
-     * Deterministic id for an edge with no backing concept, unique per (kind, source, target), so
-     * ReactFlow keeps the edge's identity across reloads. It doubles as the join key onto the persisted
-     * waypoints, so repointing an endpoint drops them. A VZTAH edge uses its concept IRI instead.
+     * Deterministic id for an edge with no backing concept, unique per (kind, source, target), so ReactFlow
+     * keeps the edge's identity across reloads. It doubles as the join key onto the persisted waypoints, so
+     * repointing an endpoint drops them. A VZTAH edge uses its concept IRI instead.
      */
     static String projectedEdgeId(DiagramEdgeKind kind, String source, String target) {
         return String.join("|", "edge", kind.name(), source, target);

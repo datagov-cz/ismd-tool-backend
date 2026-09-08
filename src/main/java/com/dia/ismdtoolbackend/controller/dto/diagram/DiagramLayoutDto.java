@@ -10,35 +10,34 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /**
- * Thin write body for {@code PUT /api/diagram/{slug}/{diagramId}/layout} (Save). Layout only — never RDF.
- * {@code nodes} is authoritative for canvas membership (idempotent full-replace): a node present is kept
- * or added, a node omitted is removed. {@code overlays} is additive, not authoritative — see the field.
- * See {@code docs/DIAGRAM_LAYER_API.md}.
+ * Write body for {@code PUT /api/diagram/{slug}/{diagramId}/layout} (Save). Layout only, never RDF.
+ * {@code nodes} is authoritative for canvas membership as an idempotent full replace: a node present is
+ * kept or added, one omitted is removed. {@code overlays} is additive — see the field. See
+ * {@code docs/DIAGRAM_LAYER_API.md}.
  */
 public record DiagramLayoutDto(
-        /* Required on every save, including the first — a fresh canvas sends 0. */
+        /* Required on every save; a fresh canvas sends 0. */
         @NotNull Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
-        /* Authoritative canvas membership for edges, exactly like `nodes` — an edge present is on the
-         * canvas, an edge omitted is taken off it. A projectable edge the user has never added simply is
-         * not drawn: like a new class, it exists in the ontology and waits in the sidebar until the user
-         * places it. Null/absent is the one exception, a NO-OP that leaves the edge set untouched, so a
+        /* Authoritative canvas membership for edges, like `nodes`: an edge present is on the canvas, one
+         * omitted is taken off it. A projectable edge the user has never added is not drawn, waiting in the
+         * sidebar like a new class. Null is the exception, a no-op that leaves the edge set untouched, so a
          * client that never edits edges need not echo them. */
         @Valid List<Edge> edges,
-        /* Optional, and ADDITIVE — unlike `edges` above. An entry stages or updates that concept's
-         * overlay; a concept absent from the array keeps whatever is already staged, so null and [] both
-         * mean "not touching overlays". Discarding is explicit: an entry carrying only conceptIri. */
+        /* Optional and additive, unlike `edges` above. An entry stages or updates that concept's overlay;
+         * a concept absent from the array keeps what is already staged, so null and [] both mean "not
+         * touching overlays". Discarding is explicit: an entry carrying only conceptIri. */
         @Valid List<Overlay> overlays
 ) {
 
     /**
-     * A node's persisted layout. {@code id} is {@code iri:<full-iri>}; a new IRI adds the node.
-     * {@code collapsed} is optional on the wire — omitted or null means not collapsed.
+     * A node's persisted layout. {@code id} is {@code iri:<full-iri>} and a new IRI adds the node;
+     * {@code collapsed} is optional on the wire, where null means not collapsed.
      *
-     * <p>Any IRI may be placed, this ontology's or another's. Foreignness is not declared here: the
-     * server derives it from the concept's own graph and echoes it back as {@code data.readOnly}. It
-     * governs PLACEMENT only — no overlay may target a foreign concept.
+     * <p>Any IRI may be placed, this ontology's or another's. Foreignness is not declared here — the server
+     * derives it from the concept's own graph and echoes it back as {@code data.readOnly}. It governs
+     * placement only, since no overlay may target a foreign concept.
      */
     @Schema(name = "DiagramLayoutNode")
     public record Node(
@@ -46,7 +45,7 @@ public record DiagramLayoutDto(
             @NotNull @Valid PositionDto position,
             String parentId,
             Boolean collapsed,
-            /* The VLASTNOST rows this class cell renders — authoritative full-replace, like `position`.*/
+            /* The VLASTNOST rows this class cell renders; a full replace, like `position`. */
             List<String> properties
     ) {
 
@@ -57,17 +56,16 @@ public record DiagramLayoutDto(
     }
 
     /**
-     * One edge on the canvas: its identity, plus optional routing. {@code id} is the projected edge id from
-     * the last read — a VZTAH's concept IRI, or the composite {@code edge|KIND|source|target} of a
-     * hierarchy/equivalence link.
+     * One edge on the canvas: identity plus optional routing. {@code id} is the projected edge id from the
+     * last read — a VZTAH's concept IRI, or the composite {@code edge|KIND|source|target} of a hierarchy or
+     * equivalence link.
      *
-     * <p>The entry's presence is what puts the edge on the canvas; {@code segments} only says how it is
-     * drawn, and is three-way: omitted/null KEEPS the stored waypoints (so a client that does not manage
-     * routing cannot silently discard it), {@code []} clears them to default routing, and a list sets them.
+     * <p>The entry's presence puts the edge on the canvas; {@code segments} says only how it is drawn, and
+     * is three-way: null keeps the stored waypoints, so a client that does not manage routing cannot
+     * discard them, {@code []} clears them to default routing, and a list sets them.
      *
-     * <p>Endpoints and kind are absent: they are re-derived from {@code rdfs:domain}/{@code rdfs:range}
-     * ⊕ overlay on every read, so membership can never contradict RDF — an edge whose endpoint leaves the
-     * canvas stops projecting and is not drawn, whatever its row says. Structural changes go through
+     * <p>Endpoints and kind are absent, being re-derived from {@code rdfs:domain}/{@code rdfs:range} ⊕
+     * overlay on every read, so membership can never contradict RDF. Structural changes go through
      * {@code overlays}.
      */
     @Schema(name = "DiagramLayoutEdge")
@@ -78,16 +76,16 @@ public record DiagramLayoutDto(
     }
 
     /**
-     * One concept's staged structural overlay. Only the changed structural fields; IRIs as strings.
-     * Structural-only — never RDF content.
+     * One concept's staged structural overlay — the changed structural fields only, IRIs as strings, never
+     * RDF content.
      *
-     * <p>{@code conceptIri} identifies the target <em>concept</em>, not a canvas node, optionally
-     * {@code iri:}-prefixed — a VZTAH renders as an edge and a VLASTNOST as a row, and both are staged
-     * here by their own IRI.
+     * <p>{@code conceptIri} identifies the target concept rather than a canvas node, optionally
+     * {@code iri:}-prefixed: a VZTAH renders as an edge and a VLASTNOST as a row, and both are staged here
+     * by their own IRI.
      *
-     * <p>An entry carrying every overlay field null discards that concept's overlay; {@code conceptIri} is
-     * addressing, not content, so it never counts toward emptiness. An explicitly-empty <em>list</em>
-     * ({@code "broaderConcept": []}) is not empty — it stages "clear this predicate".
+     * <p>An entry carrying every overlay field null discards that concept's overlay, {@code conceptIri}
+     * being addressing rather than content. An explicitly-empty list ({@code "broaderConcept": []}) is not
+     * empty — it stages "clear this predicate".
      *
      * <p>{@code baseUpdatedAt} is absent from the wire: the service captures the stale-base fingerprint
      * itself, so a client cannot forge the value the STALE_BASE guard compares against.
@@ -104,15 +102,15 @@ public record DiagramLayoutDto(
     ) {
 
         /**
-         * Op 6 marker: add {@code broader} as a super-class of {@code addBroaderOn}, then delete the VZTAH.
-         * Both endpoints are mandatory — a missing one would delete the concept without the hierarchy
-         * link that replaces it.
+         * Op 6 marker: adds {@code broader} as a super-class of {@code addBroaderOn}, then deletes the
+         * VZTAH. Both endpoints are mandatory, since a missing one would delete the concept without the
+         * hierarchy link that replaces it.
          */
         @Schema(name = "DiagramLayoutOverlayConvertToHierarchy")
         public record ConvertToHierarchy(@NotBlank String addBroaderOn, @NotBlank String broader) {
         }
 
-        /** True when the entry carries no overlay field at all — a discard. */
+        /** True when the entry carries no overlay field at all, which is a discard. */
         public boolean isEmpty() {
             return domain == null
                     && range == null

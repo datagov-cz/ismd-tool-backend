@@ -25,12 +25,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The Save-time reconcile: the incoming layout is authoritative for canvas membership, while
- * {@code overlays[]} is additive over whatever is already staged. Splits into two steps around the caller's
- * flush: {@link #reconcileNodes} inserts/updates/removes node rows and applies the staged overlays, then
- * {@link #finalizeLayout} sets viewport, resolves parents, and rebuilds the persisted edge rows. Layout and
- * staged edits live in separate tables — a Save carries both, neither constrains the other. See
- * {@code docs/DIAGRAM_LAYER.md}.
+ * The Save-time reconcile. The incoming layout is authoritative for canvas membership; {@code overlays[]}
+ * is additive over what is already staged. Runs in two steps around the caller's flush:
+ * {@link #reconcileNodes} writes node rows and overlays, then {@link #finalizeLayout} sets the viewport,
+ * resolves parents and rebuilds edge rows. See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
 @Component
@@ -42,9 +40,8 @@ public class DiagramLayoutReconciler {
     private final DiagramPendingEditRepository pendingEditRepository;
 
     /**
-     * Reconcile the node set: update/keep matching rows, insert rows for new IRIs, apply the staged
-     * overlays, and remove any persisted node absent from the payload. Returns the incoming nodes keyed by
-     * concept IRI, for parent resolution after the caller flushes.
+     * Reconciles the node set — updates matching rows, inserts new IRIs, applies overlays and removes rows
+     * absent from the payload. Returns the incoming nodes by IRI, for parent resolution after the flush.
      */
     public Map<String, DiagramNodeEntity> reconcileNodes(DiagramEntity diagram, DiagramLayoutDto layout) {
         Map<String, DiagramNodeEntity> existing = new HashMap<>();
@@ -56,8 +53,8 @@ public class DiagramLayoutReconciler {
         Map<String, DiagramNodeEntity> incoming = new HashMap<>();
         for (DiagramLayoutDto.Node in : layout.nodes()) {
             String iri = mapper.conceptIriFromNodeId(in.id());
-            // Resolved BEFORE the row is attached: the lookup auto-flushes, and a node added but not yet
-            // given its position would be flushed with a null pos_x.
+            // Resolved before the row is attached: the lookup auto-flushes, and a node without its
+            // position yet would flush with a null pos_x.
             boolean foreign = isForeign(diagramGraphName, iri);
             DiagramNodeEntity node = existing.get(iri);
             if (node == null) {
@@ -72,7 +69,7 @@ public class DiagramLayoutReconciler {
 
         applyOverlays(diagram, diagram.getOntologyMetadata(), layout, diagramGraphName);
 
-        // Membership is a plain full replace: a row absent from nodes[] is off the canvas.
+        // Membership is a full replace: a row absent from nodes[] is off the canvas.
         List<DiagramNodeEntity> toRemove = diagram.getNodes().stream()
                 .filter(n -> !incoming.containsKey(n.getConceptIri()))
                 .toList();
@@ -81,11 +78,9 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Apply {@code overlays[]} — additive, never a full replace: an entry stages or updates that concept's
-     * overlay, and a concept absent from the array is untouched, so a null or empty array is a no-op.
-     * Discarding is an entry carrying only {@code conceptIri}, and deletes the row.
-     *
-     * <p>Writes {@code diagram_pending_edits} only, never layout.
+     * Applies {@code overlays[]}, additive rather than a full replace: an entry stages or updates that
+     * concept's overlay, a concept absent from the array is untouched, and an entry carrying only
+     * {@code conceptIri} discards it. Writes {@code diagram_pending_edits} only, never layout.
      */
     private void applyOverlays(DiagramEntity diagram, OntologyMetadataEntity ontology,
                                DiagramLayoutDto layout, String diagramGraphName) {
@@ -100,7 +95,7 @@ public class DiagramLayoutReconciler {
                 log.warn("Ignoring duplicate overlay entry for concept {}", iri);
                 continue;
             }
-            // Every overlay subject is graph-checked, not just a newly staged one.
+            // Every overlay subject is graph-checked, not only a newly staged one.
             requireSameGraph(diagramGraphName, iri);
 
             DiagramPendingEdit edit = mapper.toPendingEdit(in);
@@ -109,7 +104,7 @@ public class DiagramLayoutReconciler {
                     .orElse(null);
 
             if (edit == null) {
-                // Discard: delete the row. Discarding what was never staged is a no-op.
+                // Discard; discarding what was never staged is a no-op.
                 if (existing != null) {
                     pendingEditRepository.delete(existing);
                 }
@@ -117,8 +112,8 @@ public class DiagramLayoutReconciler {
             }
             requireSameGraph(diagramGraphName, edit);
 
-            // Stamp the stale-base fingerprint only when the edit first comes into existence — refreshing
-            // it on every save would absorb a concurrent concept edit instead of reporting it.
+            // The stale-base fingerprint is stamped only at first stage; refreshing it on every save
+            // would absorb a concurrent concept edit instead of reporting it.
             DiagramPendingEditEntity row = existing;
             if (row == null) {
                 row = new DiagramPendingEditEntity();
@@ -133,7 +128,7 @@ public class DiagramLayoutReconciler {
         }
     }
 
-    /** The referenced concept's {@code updatedAt} at stage time — null when it has no row. */
+    /** The referenced concept's {@code updatedAt} at stage time; null when it has no row. */
     private LocalDateTime baseUpdatedAt(String conceptIri) {
         return conceptMetadataRepository.findByConceptIri(conceptIri)
                 .map(ConceptMetadataEntity::getUpdatedAt)
@@ -141,18 +136,14 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Graph-check an overlay's endpoint IRIs. They are asymmetric, because an endpoint is either a
-     * concept this edit WRITES or merely one it POINTS AT:
+     * Graph-checks an overlay's endpoint IRIs. Endpoints are asymmetric — a written concept must be ours,
+     * a merely referenced one may be foreign:
      *
      * <ul>
-     *   <li>{@code domain} is the class the VZTAH/VLASTNOST hangs off — the origin of the link, which
-     *       must be ours. A foreign domain is the cross-tenant reach the guard exists to stop.</li>
-     *   <li>{@code range} and the hierarchy targets ({@code broaderConcept}, {@code exactMatch}) are
-     *       pure references: they become the OBJECT of a triple written into our own graph, so a foreign
-     *       one is exactly the link the foreign-node feature exists to draw.</li>
-     *   <li>Op 6's {@code addBroaderOn} is edited and must be ours; its {@code broader} is only
-     *       referenced and may be foreign. They need never be on the canvas, which makes them the one
-     *       overlay input reaching {@code editConcept}/{@code deleteConcept} on their own.</li>
+     *   <li>{@code domain} is the class the VZTAH/VLASTNOST hangs off, so it must be ours.</li>
+     *   <li>{@code range} and the hierarchy targets ({@code broaderConcept}, {@code exactMatch}) become
+     *       the object of a triple in our own graph, so a foreign one is the intended cross-link.</li>
+     *   <li>Op 6's {@code addBroaderOn} is edited and must be ours; its {@code broader} may be foreign.</li>
      * </ul>
      *
      * <p>Rejected here at stage time; the applier re-asserts it at Převzít.
@@ -168,12 +159,10 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Whether this IRI belongs to an ontology other than the diagram's — derived, never taken from the
-     * client, so a node can be neither falsely marked read-only nor falsely made editable. A concept with
-     * no PG row is an NKD or otherwise external IRI, foreign by construction.
-     *
-     * <p>Placement is unrestricted; it is the overlay targets that stay strictly own-graph
-     * ({@link #requireSameGraph}), so a foreign concept can be referenced but never edited.
+     * Whether this IRI belongs to an ontology other than the diagram's. Derived, never taken from the
+     * client, so a node can be neither falsely marked read-only nor falsely made editable; a concept with
+     * no PG row is external and foreign by construction. Placement is unrestricted — only the overlay
+     * targets stay own-graph ({@link #requireSameGraph}), so a foreign concept is referenced, never edited.
      */
     private boolean isForeign(String diagramGraphName, String conceptIri) {
         if (conceptIri == null) {
@@ -186,11 +175,9 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * The IRI must reference a concept in the diagram's own ontology graph; Save authorizes the slug only,
-     * so a foreign IRI here would stage a write the caller was never authorized for.
-     *
-     * <p>An IRI with no concept row passes: its concept was deleted out from under the canvas, which
-     * Převzít reports as {@code skippedStale}. Only a row in a <em>different</em> graph is foreign.
+     * Requires the IRI to reference a concept in the diagram's own graph; Save authorizes the slug only, so
+     * a foreign IRI would stage an unauthorized write. An IRI with no concept row passes — it was deleted
+     * out from under the canvas, which Převzít reports as {@code skippedStale}.
      */
     private void requireSameGraph(String diagramGraphName, String conceptIri) {
         // A null op-6 marker endpoint is left to materialize, which reports it as a VALIDATION failure.
@@ -209,8 +196,8 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Finish the layout once every incoming node has an identity: set viewport, resolve each
-     * node's {@code parentNodeId}, and rebuild the persisted edge rows.
+     * Finishes the layout once every incoming node has an identity: viewport, {@code parentNodeId}
+     * resolution and the persisted edge rows.
      */
     public void finalizeLayout(DiagramEntity diagram, DiagramLayoutDto layout,
                                Map<String, DiagramNodeEntity> incoming) {
@@ -255,19 +242,17 @@ public class DiagramLayoutReconciler {
     }
 
     /**
-     * Reconcile edge membership: a row means "this edge is on the canvas", and {@code segments_json} is
-     * that row's optional routing. Authoritative like {@code nodes[]} — an edge omitted from a present
-     * {@code edges[]} leaves the canvas and its waypoints go with it. A null {@code edges[]} is a no-op,
-     * so a client that never touches edges cannot clear them by omission.
+     * Reconciles edge membership: a row means the edge is on the canvas, and {@code segments_json} is its
+     * optional routing. Authoritative like {@code nodes[]} — an edge omitted from a present {@code edges[]}
+     * leaves the canvas with its waypoints. A null {@code edges[]} is a no-op, so a client that never
+     * touches edges cannot clear them by omission.
      *
-     * <p>{@code segments} is three-way per entry: null/omitted KEEPS what is stored (the entry is about
-     * membership, not routing), {@code []} clears to default routing, a list sets it. Omitting it used to
-     * delete the row, which silently discarded a user's hand-drawn geometry on every save that did not
-     * echo it back.
+     * <p>{@code segments} is three-way per entry: null keeps what is stored, {@code []} clears to default
+     * routing, a list sets it.
      *
-     * <p>Reconciled <em>in place</em>, never cleared-and-reinserted: Hibernate flushes the INSERT before
-     * the orphan DELETE, so re-saving a surviving edge would collide with the
-     * {@code (diagram_id, edge_key)} unique constraint.
+     * <p>Reconciled in place, never cleared-and-reinserted: Hibernate flushes the INSERT before the orphan
+     * DELETE, so re-saving a surviving edge would collide with the {@code (diagram_id, edge_key)} unique
+     * constraint.
      */
     private void reconcileEdges(DiagramEntity diagram, DiagramLayoutDto layout) {
         if (layout.edges() == null) {
@@ -291,7 +276,7 @@ public class DiagramLayoutReconciler {
                 edge.setEdgeKey(in.id());
                 diagram.addEdge(edge);
             }
-            // Null means "not saying anything about routing" — keep whatever this row already holds.
+            // Null says nothing about routing, so keep what the row already holds.
             if (in.segments() != null) {
                 edge.setSegments(in.segments());
             }

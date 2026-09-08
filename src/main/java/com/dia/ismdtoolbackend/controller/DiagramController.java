@@ -29,12 +29,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * The diagram layer's REST surface.
- *
- * <p>Paths nest the diagram under its ontology ({@code /{ontologySlug}/{diagramId}/…}) so every write
- * keeps authorizing the slug through {@code belongsToUserBySlug}. That check does NOT constrain the
- * diagram id travelling beside it, so the service additionally asserts the diagram belongs to the named
- * ontology — see {@code DiagramServiceImpl.requireDiagramOf}.
+ * The diagram layer's REST surface. Paths nest the diagram under its ontology
+ * ({@code /{ontologySlug}/{diagramId}/…}) so every write authorizes the slug through
+ * {@code belongsToUserBySlug}. That check does not constrain the diagram id beside it, so the service also
+ * asserts the diagram belongs to the named ontology — see {@code DiagramServiceImpl.requireDiagramOf}.
  */
 @RestController
 @RequestMapping("/api/diagram")
@@ -46,8 +44,7 @@ public class DiagramController {
 
     /**
      * Injected directly rather than routed through {@link DiagramService}: the usage read is
-     * concept-addressed and shares none of that service's diagram-addressed machinery, so widening its
-     * constructor would only push an unused dependency into every caller.
+     * concept-addressed and shares none of that service's diagram-addressed machinery.
      */
     private final DiagramConceptUsageService conceptUsageService;
 
@@ -152,8 +149,8 @@ public class DiagramController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Diagram byl přejmenován."),
-            // Same springdoc gap as materialize's 409: the body comes from GlobalExceptionHandler, so
-            // without this the FE cannot generate a type for the name clash.
+            // The body comes from GlobalExceptionHandler, which springdoc does not walk; without this the
+            // FE cannot generate a type for the name clash.
             @ApiResponse(responseCode = "409",
                     description = "Diagram s tímto názvem už ve slovníku existuje.",
                     content = @Content(mediaType = "application/json",
@@ -229,8 +226,8 @@ public class DiagramController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Změny diagramu byly převzaty."),
-            // The 409 body is produced by GlobalExceptionHandler, which springdoc does not walk — without
-            // this the conflict types are absent from the schema and the FE cannot generate them.
+            // The 409 body comes from GlobalExceptionHandler, which springdoc does not walk; without this
+            // the conflict types are absent from the schema.
             @ApiResponse(responseCode = "409",
                     description = "Na některém pojmu má rozpracovanou změnu i jiný diagram téhož slovníku. "
                             + "Nic nebylo zapsáno; tělo obsahuje přehled kolizí.",

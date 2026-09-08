@@ -20,8 +20,8 @@ import java.util.List;
 
 /**
  * Materialize (Převzít) orchestrator. Resolves the staged work-list up front, then applies each change
- * through {@link DiagramChangeApplier}, which runs each in its OWN transaction. Deliberately not
- * transactional itself, so a failing change rolls back only itself and earlier successes stay committed.
+ * through {@link DiagramChangeApplier}, which runs each in its own transaction. Not transactional itself,
+ * so a failing change rolls back only itself and earlier successes stay committed.
  * See {@code docs/DIAGRAM_LAYER.md}.
  */
 @Slf4j
@@ -32,7 +32,7 @@ public class DiagramMaterializeService {
     private final DiagramChangeApplier changeApplier;
     private final DiagramPendingEditRepository pendingEditRepository;
 
-    /** Apply every staged edit on the diagram, each in its own transaction; aggregate the outcomes. */
+    /** Applies every staged edit on the diagram, each in its own transaction, and aggregates the outcomes. */
     public MaterializeResultDto materialize(Long diagramId, Long ontologyId) {
         List<MaterializeResultDto.Materialized> materialized = new ArrayList<>();
         List<MaterializeResultDto.Failed> failed = new ArrayList<>();
@@ -55,7 +55,7 @@ public class DiagramMaterializeService {
             } catch (ConceptValidationException | OntologyValidationException e) {
                 failed.add(fail(diagramId, conceptIri, "VALIDATION", e.getMessage(), 400));
             } catch (AccessDeniedException e) {
-                // The caller owns the ontology but not this concept; a per-change 403, not a server error.
+                // The caller owns the ontology but not this concept: a per-change 403, not a 500.
                 failed.add(fail(diagramId, conceptIri, "FORBIDDEN",
                         "Nemáte oprávnění upravit tento pojem.", 403));
             } catch (RuntimeException e) {
@@ -68,7 +68,7 @@ public class DiagramMaterializeService {
     }
 
     /**
-     * The staged work-list, ordered so every {@link DiagramOp#CONVERT_TO_HIERARCHY} applies LAST — it bumps
+     * The staged work-list, ordered so every {@link DiagramOp#CONVERT_TO_HIERARCHY} applies last: it bumps
      * its target class's {@code updatedAt}, which would otherwise falsely stale that class's own edit.
      */
     private List<String> orderedWorkList(Long diagramId) {
@@ -78,20 +78,20 @@ public class DiagramMaterializeService {
         return iris;
     }
 
-    /** Classify a staged op without applying it (own read; the edit may have raced away → false). */
+    /** Classifies a staged op without applying it; an edit that raced away reads as false. */
     private boolean isConvertToHierarchy(Long diagramId, String conceptIri) {
         DiagramOp op = classifyStaged(diagramId, conceptIri);
         return op == DiagramOp.CONVERT_TO_HIERARCHY;
     }
 
-    /** Build a failure entry; the change rolled back, so the still-staged edit is re-read for its op. */
+    /** Builds a failure entry, re-reading the still-staged edit for its op. */
     private MaterializeResultDto.Failed fail(Long diagramId, String conceptIri, String error,
                                              String message, int status) {
         return new MaterializeResultDto.Failed(
                 conceptIri, classifyStaged(diagramId, conceptIri), error, message, status);
     }
 
-    /** The op a concept's staged edit would apply, or null when nothing is staged for it. */
+    /** The op a concept's staged edit would apply, or null when nothing is staged. */
     private DiagramOp classifyStaged(Long diagramId, String conceptIri) {
         return pendingEditRepository.findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .map(DiagramPendingEditEntity::getPendingEdit)
