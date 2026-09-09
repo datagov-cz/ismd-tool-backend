@@ -6,6 +6,9 @@ import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
+import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
+import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.sample;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
@@ -104,6 +107,40 @@ class OntologyControllerTest {
     void setUp() {
         // Reset security service to allow modifications by default
         TestOntologySecurityService.reset();
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void createWithConcepts_ReturnsCreatedAndRefMapping() throws Exception {
+        var response = new OntologyCreateWithConceptsResponseDto(new OntologyMetadataModel(), java.util.Map.of("driver", "https://example.org/driver"));
+        when(ontologyService.createWithConcepts(any(), eq("user123"))).thenReturn(response);
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(sample())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.conceptIris.driver").value("https://example.org/driver"));
+        verify(ontologyService).createWithConcepts(argThat(r -> r.classes().size() == 2 && r.attributes().size() == 1 && r.relationships().size() == 1), eq("user123"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void createWithConcepts_ConflictReturns409() throws Exception {
+        when(ontologyService.createWithConcepts(any(), anyString())).thenThrow(new OntologyCreationConflictException("IRI is taken"));
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(sample())))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void createWithConcepts_RejectsMissingCollectionsAndNullTerms() throws Exception {
+        var json = new ObjectMapper().valueToTree(sample());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) json).remove("classes");
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
+                .andExpect(status().isBadRequest());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) json).putArray("classes").addNull();
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(ontologyService);
     }
 
     @Test

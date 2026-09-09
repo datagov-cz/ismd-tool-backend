@@ -8,6 +8,8 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
@@ -158,6 +160,20 @@ public class OntologyController {
         log.info("Ontology create successful: {}", createdOntology);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdOntology, "Slovník úspěšně vytvořen: " + createdOntology.getGraphName()));
+    }
+
+    @Operation(
+            summary = "Vytvoření slovníku s vybranými pojmy",
+            description = "Přijme nový slovník a vybrané pojmy. Sestaví finální IRI a převede refs na vazby. "
+                    + "Používá stejné validace a RDF tvorbu jako běžné vytvoření. "
+                    + "Obsazené IRI slovníku vrací 409. Nic nepřidává do existujícího slovníku. Vyžaduje autentizaci."
+    )
+    @PostMapping("/create-with-concepts")
+    public ResponseEntity<ApiResponseDto<OntologyCreateWithConceptsResponseDto>> createWithConcepts(
+            @Valid @RequestBody OntologyCreateWithConceptsRequestDto request,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        return ResponseEntity.status(201).body(ApiResponseDto.success(
+                ontologyService.createWithConcepts(request, securityUser.getUserId()), "Slovník a pojmy byly vytvořeny."));
     }
 
     @Operation(

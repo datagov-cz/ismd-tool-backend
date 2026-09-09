@@ -198,7 +198,7 @@ public class SecurityConfig {
                         // Explicitly configured authenticated endpoints
                         .requestMatchers(HttpMethod.GET, "/api/user/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/upload").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/ontology/create", "/api/ontology/check-iri").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/ontology/create", "/api/ontology/check-iri", "/api/ontology/create-with-concepts").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/ontology/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/*/validate").authenticated()

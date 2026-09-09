@@ -339,11 +339,14 @@ class OntologyServiceImplTest {
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit RDF model"));
-        verify(ontologyMetadataRepository, never()).save(any());
+        var order = inOrder(ontologyMetadataRepository, jenaTDB2Repository);
+        order.verify(ontologyMetadataRepository).save(any());
+        order.verify(ontologyMetadataRepository).flush();
+        order.verify(jenaTDB2Repository).saveOntologyModel(anyString(), any(Model.class));
     }
 
     @Test
-    void createOntology_MetadataSaveFails_CleanupTDB2() {
+    void createOntology_MetadataSaveFails_DoesNotTouchTDB2() {
         OntologyCreateModel createModel = createValidOntologyCreateModel();
 
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
@@ -353,7 +356,7 @@ class OntologyServiceImplTest {
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit metadata"));
-        verify(jenaTDB2Repository).deleteGraph(anyString());
+        verifyNoInteractions(jenaTDB2Repository);
     }
 
     // ========== createOntology required-field validation ==========
