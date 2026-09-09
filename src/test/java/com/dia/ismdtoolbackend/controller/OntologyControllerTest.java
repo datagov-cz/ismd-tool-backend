@@ -6,6 +6,7 @@ import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
@@ -103,6 +104,51 @@ class OntologyControllerTest {
     void setUp() {
         // Reset security service to allow modifications by default
         TestOntologySecurityService.reset();
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void checkIri_AcceptsNameAndNamespaceWithoutDescription() throws Exception {
+        when(ontologyService.checkIri(any())).thenReturn(
+                new OntologyIriCheckResponseDto("http://example.org/test", true, true));
+
+        mockMvc.perform(post("/api/ontology/check-iri")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"namespace":"http://example.org/","nameModel":{"name":{"cs":"Test"}}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.iri").value("http://example.org/test"))
+                .andExpect(jsonPath("$.data.valid").value(true))
+                .andExpect(jsonPath("$.data.available").value(true));
+        verify(ontologyService).checkIri(argThat(request -> request.namespace().equals("http://example.org/")
+                && request.nameModel().getName().get("cs").equals("Test")));
+        verifyNoMoreInteractions(ontologyService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void checkIri_MissingNameModel_ReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/ontology/check-iri")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(ontologyService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void checkIri_InvalidIri_ReturnsFlags() throws Exception {
+        when(ontologyService.checkIri(any())).thenReturn(new OntologyIriCheckResponseDto("invalid", false, false));
+        mockMvc.perform(post("/api/ontology/check-iri")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"namespace":"invalid","nameModel":{"name":{"cs":"Test"}}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.valid").value(false))
+                .andExpect(jsonPath("$.data.available").value(false));
     }
 
     @Test

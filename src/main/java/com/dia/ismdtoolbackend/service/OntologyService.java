@@ -1,6 +1,8 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -9,9 +11,9 @@ import com.dia.ismdtoolbackend.models.OntologyEditModel;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface OntologyService {
+    OntologyIriCheckResponseDto checkIri(OntologyIriCheckRequestDto request);
     void deleteOntology(Long ontologyId);
     OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId);
     GetOntologyDto getOntologyDetailModel(String ontologySlug);

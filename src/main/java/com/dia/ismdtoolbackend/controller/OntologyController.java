@@ -8,6 +8,8 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
@@ -120,6 +122,18 @@ public class OntologyController {
 
         ontologyService.deleteOntology(ontologyId);
         return ResponseEntity.ok(ApiResponseDto.success("Slovník úspěšně smazán."));
+    }
+
+    @Operation(
+            summary = "Ověření IRI nového slovníku",
+            description = "Sestaví IRI z názvu a namespace stejným způsobem jako vytvoření slovníku. "
+                    + "Vrací valid a available; dostupnost ověřuje pouze v lokální databázi. "
+                    + "Neplatné IRI má oba příznaky false. Nic neukládá ani nerezervuje. Vyžaduje autentizaci."
+    )
+    @PostMapping("/check-iri")
+    public ResponseEntity<ApiResponseDto<OntologyIriCheckResponseDto>> checkIri(
+            @Valid @RequestBody OntologyIriCheckRequestDto request) {
+        return ResponseEntity.ok(ApiResponseDto.success(ontologyService.checkIri(request), "Kontrola IRI dokončena."));
     }
 
     @Operation(
