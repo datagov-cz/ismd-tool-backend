@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
@@ -203,6 +204,78 @@ class OntologyServiceImplTest {
 
         assertThrows(OntologyNotFoundException.class,
                 () -> ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG));
+    }
+
+    @Test
+    void checkIri_Available_DoesNotWriteOrContactNkd() {
+        var model = createValidOntologyCreateModel();
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(model.getNamespace(), model.getNameModel()));
+
+        assertEquals(TEST_GRAPH_NAME, result.iri());
+        assertTrue(result.valid());
+        assertTrue(result.available());
+        verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
+        verifyNoMoreInteractions(ontologyMetadataRepository);
+        verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, nkdDetailService, nkdSnapshotService, outboxWriter);
+    }
+
+    @Test
+    void checkIri_Occupied_DoesNotReturnOrModifyExistingOntology() {
+        var model = createValidOntologyCreateModel();
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(model.getNamespace(), model.getNameModel()));
+
+        assertEquals(TEST_GRAPH_NAME, result.iri());
+        assertTrue(result.valid());
+        assertFalse(result.available());
+        verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
+        verifyNoMoreInteractions(ontologyMetadataRepository);
+        verifyNoInteractions(ontologyMetadataMapper, jenaTDB2Repository, nkdSparqlClient, nkdDetailService);
+    }
+
+    @Test
+    void checkIri_InvalidNamespace_DoesNotQueryDatabase() {
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(
+                "invalid iri with spaces", createValidOntologyCreateModel().getNameModel()));
+
+        assertFalse(result.valid());
+        assertFalse(result.available());
+        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, nkdSparqlClient);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"http://example.org/", "https://slovník.gov.cz/datový/"})
+    void checkIri_UsesSameIriAsCreate(String namespace) {
+        var model = createValidOntologyCreateModel();
+        model.setNamespace(namespace);
+        model.getNameModel().setName(Map.of("cs", "Silniční provoz", "en", "Road traffic"));
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(namespace, model.getNameModel()));
+        assertTrue(result.valid());
+        clearInvocations(ontologyMetadataRepository);
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(new OntologyMetadataModel());
+
+        ontologyService.createOntology(model, TEST_USER_ID);
+
+        verify(ontologyMetadataRepository).findByGraphName(result.iri());
+        verify(jenaTDB2Repository).saveOntologyModel(eq(result.iri()), any(Model.class));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"   "})
+    void checkIri_RequiresCzechName(String czechName) {
+        NameModel name = new NameModel();
+        Map<String, String> names = new HashMap<>();
+        names.put("en", "Road traffic");
+        if (czechName != null) names.put("cs", czechName);
+        name.setName(names);
+
+        assertThrows(OntologyValidationException.class, () -> ontologyService.checkIri(
+                new OntologyIriCheckRequestDto("http://example.org/", name)));
+        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, nkdSparqlClient);
     }
 
     // ========== createOntology Tests ==========

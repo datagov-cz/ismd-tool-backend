@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -138,9 +140,7 @@ public class OntologyServiceImpl implements OntologyService {
     public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
-        URIGenerator uriGenerator = new URIGenerator();
-        String nameForURI = getNameForUriGeneration(ontologyCreateModel.getNameModel());
-        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(nameForURI, ontologyCreateModel.getNamespace());
+        String ontologyIRI = generateOntologyIri(ontologyCreateModel.getNameModel(), ontologyCreateModel.getNamespace());
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
             log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
@@ -399,19 +399,36 @@ public class OntologyServiceImpl implements OntologyService {
         return nkdDetailService.listOntologyConcepts(ontologyIri);
     }
 
-    private void validateOntologyCreateModel(OntologyCreateModel model) {
-        if (model == null) {
-            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
-        }
+    @Override
+    @Transactional(readOnly = true)
+    public OntologyIriCheckResponseDto checkIri(OntologyIriCheckRequestDto request) {
+        validateOntologyName(request.nameModel());
+        String iri = generateOntologyIri(request.nameModel(), request.namespace());
+        boolean valid = UtilityMethods.isValidIRI(iri);
+        boolean available = valid && ontologyMetadataRepository.findByGraphName(iri).isEmpty();
+        return new OntologyIriCheckResponseDto(iri, valid, available);
+    }
 
-        // name is required and must include a non-blank cs variant
-        Map<String, String> name = model.getNameModel() != null ? model.getNameModel().getName() : null;
+    private String generateOntologyIri(NameModel nameModel, String namespace) {
+        return new URIGenerator().generateVocabularyURIFromGivenNamespace(getNameForUriGeneration(nameModel), namespace);
+    }
+
+    private void validateOntologyName(NameModel nameModel) {
+        Map<String, String> name = nameModel != null ? nameModel.getName() : null;
         if (name == null || name.isEmpty()) {
             throw new OntologyValidationException("Název slovníku je povinný.");
         }
         if (isBlank(name.get(DEFAULT_LANG))) {
             throw new OntologyValidationException("Název slovníku musí obsahovat českou variantu (cs).");
         }
+    }
+
+    private void validateOntologyCreateModel(OntologyCreateModel model) {
+        if (model == null) {
+            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
+        }
+
+        validateOntologyName(model.getNameModel());
 
         // description is optional, but if present it must include a non-blank cs variant
         Map<String, String> description = model.getDescriptionModel() != null
