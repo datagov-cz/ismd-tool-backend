@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
@@ -595,6 +596,145 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 .satisfies(e -> assertThat(e.getSegments())
                         .as("routing survives a membership-only save")
                         .containsExactly(new EdgeWaypoint(12.5, -4)));
+    }
+
+    /**
+     * A hierarchy edge the user has just drawn has no id from a read: a bare triple has no identity of its
+     * own, its id being built from its endpoints. The client assembles the composite itself, so the very
+     * first write already carries the id the projector will derive — the id it holds locally and the id in
+     * the response are one and the same, with nothing to re-map.
+     */
+    @Test
+    void newHierarchyEdge_isStoredUnderTheCompositeIdTheClientAssembled() {
+        DiagramEntity diagram = newDiagram("drawn-hierarchy");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        String composite = "edge|SUBCLASS_OF|https://x/pojem/zamestnanec|https://x/pojem/osoba";
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/zamestnanec", 0, 0), node("https://x/pojem/osoba", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge(composite, DiagramEdgeKind.SUBCLASS_OF,
+                        "iri:https://x/pojem/zamestnanec", "iri:https://x/pojem/osoba", null)),
+                null));
+
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getEdgeKey()).isEqualTo(composite));
+    }
+
+    /**
+     * Echoing the id back on the next save must reconcile onto the SAME row — otherwise every reload would
+     * duplicate the edge, or collide with the {@code (diagram_id, edge_key)} unique constraint. The
+     * cross-check fields are redundant on an echo, so this save omits them.
+     */
+    @Test
+    void echoingTheCompositeId_reconcilesOntoTheSameRow() {
+        DiagramEntity diagram = newDiagram("edge-id-roundtrip");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        String composite = "edge|SUBCLASS_OF|https://x/pojem/zamestnanec|https://x/pojem/osoba";
+        List<DiagramLayoutDto.Node> nodes =
+                List.of(node("https://x/pojem/zamestnanec", 0, 0), node("https://x/pojem/osoba", 100, 0));
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null, nodes,
+                List.of(new DiagramLayoutDto.Edge(composite, DiagramEdgeKind.SUBCLASS_OF,
+                        "iri:https://x/pojem/zamestnanec", "iri:https://x/pojem/osoba", null)),
+                null));
+
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(again, new DiagramLayoutDto(again.getVersion(), null, nodes,
+                List.of(new DiagramLayoutDto.Edge(composite, List.of(new EdgeWaypoint(8, 3)))), null));
+
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .as("the echoed id is the same edge, not a second one")
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.getEdgeKey()).isEqualTo(composite);
+                    assertThat(e.getSegments()).containsExactly(new EdgeWaypoint(8, 3));
+                });
+    }
+
+    /**
+     * A bare ReactFlow uuid cannot key a row: it matches no projection, so the edge would disappear on the
+     * next read with no error anywhere. That silence is what hid this gap, so it is a 400 instead.
+     */
+    @Test
+    void unresolvableEdgeId_isRejected() {
+        DiagramEntity diagram = newDiagram("bad-edge-id");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/zamestnanec", 0, 0)),
+                List.of(new DiagramLayoutDto.Edge("reactflow__edge-a3f9c1b2", null)), null);
+
+        assertThatThrownBy(() -> save(managed, layout))
+                .isInstanceOf(ConceptValidationException.class)
+                .hasMessageContaining("edge|DRUH|zdroj|cíl");
+
+        em.clear();
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .as("nothing persisted")
+                .isEmpty();
+    }
+
+    /**
+     * The endpoints are a cross-check, not decoration: an id that does not encode them is a client bug, and
+     * catching it at the boundary beats persisting a row that never renders. Here the endpoints are swapped,
+     * so the id names the opposite direction of the hierarchy it claims.
+     */
+    @Test
+    void compositeIdContradictingItsEndpoints_isRejected() {
+        DiagramEntity diagram = newDiagram("edge-id-mismatch");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        DiagramLayoutDto layout = new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/zamestnanec", 0, 0), node("https://x/pojem/osoba", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge(
+                        "edge|SUBCLASS_OF|https://x/pojem/zamestnanec|https://x/pojem/osoba",
+                        DiagramEdgeKind.SUBCLASS_OF,
+                        "iri:https://x/pojem/osoba",            // swapped
+                        "iri:https://x/pojem/zamestnanec",
+                        null)),
+                null);
+
+        assertThatThrownBy(() -> save(managed, layout))
+                .isInstanceOf(ConceptValidationException.class)
+                .hasMessageContaining("neodpovídá");
+
+        em.clear();
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .as("nothing persisted")
+                .isEmpty();
+    }
+
+    /**
+     * A VZTAH is concept-backed and keyed by its own concept IRI, so the cross-check does not apply — its
+     * endpoints are the {@code rdfs:domain}/{@code rdfs:range} the projector re-derives and encode nothing
+     * about its id. Cross-checking them would reject every relationship edge that sends its endpoints.
+     */
+    @Test
+    void vztahEdge_isKeyedByItsConceptIri_endpointsNotCrossChecked() {
+        DiagramEntity diagram = newDiagram("vztah-key");
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node("https://x/pojem/zamestnanec", 0, 0), node("https://x/pojem/osoba", 100, 0)),
+                List.of(new DiagramLayoutDto.Edge("https://x/pojem/je-zamestnan-u", DiagramEdgeKind.VZTAH,
+                        "iri:https://x/pojem/zamestnanec", "iri:https://x/pojem/osoba", null)),
+                null));
+
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .singleElement()
+                .satisfies(e -> assertThat(e.getEdgeKey()).isEqualTo("https://x/pojem/je-zamestnan-u"));
     }
 
     /**

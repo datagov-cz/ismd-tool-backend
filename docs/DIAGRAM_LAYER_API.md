@@ -328,12 +328,17 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
     { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
       "position": { "x": 1100, "y": 80 }, "visibleProperties": [] }
   ],
-  // waypoints only — echo the id you were given on read; endpoints are derived, never sent
+  // membership + waypoints. Echo the id you were given on read; for an edge the user has JUST drawn,
+  // build the id with diagramEdgeId() and send edgeKind/source/target as a cross-check.
   "edges": [
     { "id": "https://…/pojem/je-zamestnan-u",              // a VZTAH: its concept IRI
       "segments": [{ "x": 120, "y": 40 }] },
     { "id": "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba",
-      "segments": [] }                                     // [] or omitted = default routing
+      "segments": [] },                                    // [] or omitted = default routing
+    { "id": "edge|SUBCLASS_OF|https://…/pojem/brigadnik|https://…/pojem/zamestnanec",
+      "edgeKind": "SUBCLASS_OF",                           // newly drawn: id cross-checked
+      "source": "iri:https://…/pojem/brigadnik",
+      "target": "iri:https://…/pojem/zamestnanec" }
   ],
   // staged structural edits — ADDITIVE; omit the whole key to leave staged work alone
   "overlays": [
@@ -390,7 +395,51 @@ Note the read and write shapes differ, which is why they no longer share a name:
 
 ### Edges — explicit canvas membership
 
-**An edge persists exactly two things: `id` and `segments`.** Its existence, endpoints and kind are re-derived from `live ⊕ overlay` on every read, so `source`, `target` and `edgeKind` are **not accepted on write** — sending them is ignored. This is deliberate: a stored endpoint could silently contradict the projection it duplicates, which is precisely the drift the diagram layer is built to prevent. To change where a relationship points, stage `{domain, range}` on its overlay; the edge follows.
+**An edge persists exactly two things: `id` and `segments`.** Its existence, endpoints and kind are re-derived from `live ⊕ overlay` on every read, so `source`, `target` and `edgeKind` are **never stored** and never read back as truth. This is deliberate: a stored endpoint could silently contradict the projection it duplicates, which is precisely the drift the diagram layer is built to prevent. To change where a relationship points, stage `{domain, range}` on its overlay; the edge follows.
+
+#### Drawing a *new* hierarchy or equivalence edge — build the id with `diagramEdgeId()`
+
+A class node's id is its own IRI, but a `SUBCLASS_OF`/`EXACT_MATCH` edge is a **bare triple with no concept behind it**, so it has no identity of its own — its id is built from its endpoints. An edge the user has just drawn therefore has no id from a previous read, and a ReactFlow uuid is **rejected with 400**: it would key a row that matches no projection, and the edge would silently vanish on the next read.
+
+Assemble the same id the server projects, and use it from the very first save. It then matches on write and on every read after, so there is nothing to re-map when the response comes back:
+
+```ts
+import type { DiagramEdgeKind } from './generated'  // 'VZTAH' | 'SUBCLASS_OF' | 'EXACT_MATCH'
+
+/** Strips the `iri:` prefix a node id carries; a bare IRI passes through. */
+const conceptIri = (nodeId: string): string =>
+  nodeId.startsWith('iri:') ? nodeId.slice('iri:'.length) : nodeId
+
+/**
+ * The canvas-membership id for an edge, identical to the one the backend projects.
+ *
+ * A VZTAH is concept-backed and keyed by its own concept IRI — pass that IRI as `source` and ignore
+ * `target`. A SUBCLASS_OF / EXACT_MATCH link is a bare triple keyed by `edge|KIND|source|target`,
+ * where `source` is the CHILD (the subclass) and `target` the parent.
+ */
+export function diagramEdgeId(
+  kind: DiagramEdgeKind,
+  source: string,
+  target?: string,
+): string {
+  if (kind === 'VZTAH') return conceptIri(source)
+  if (!target) throw new Error(`diagramEdgeId: ${kind} requires a target`)
+  return ['edge', kind, conceptIri(source), conceptIri(target)].join('|')
+}
+```
+
+```ts
+// the user drags zaměstnanec ⊐ osoba onto the canvas
+const id = diagramEdgeId('SUBCLASS_OF', childNode.id, parentNode.id)
+// → "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba"
+
+edges.push({ id, edgeKind: 'SUBCLASS_OF', source: childNode.id, target: parentNode.id })
+overlays.push({ conceptIri: childNode.id, broaderConcept: [...existingBroader, parentIri] })
+```
+
+**`edgeKind`, `source` and `target` are an optional cross-check, not a second way to key the edge.** When you send them, the server recomputes the id and returns **400** if it disagrees — catching a hand-built or stale id at the boundary instead of persisting a row that never renders. Send them when you mint an id; omit them when echoing one we gave you. They are ignored for a `VZTAH`, whose endpoints are its `rdfs:domain`/`rdfs:range` and encode nothing about its id.
+
+**Membership and overlays stay independent.** The `edges[]` entry says the link is *on the canvas*; the `overlays[]` entry stages the *RDF*. A new hierarchy edge normally needs both in the same Save — the entry alone draws nothing until the triple exists (live or staged), since projection still governs what *can* be drawn.
 
 **`edges` is canvas membership, exactly like `nodes` — echo back every edge you want to keep drawn.** An edge present is on the canvas; an edge omitted from a present `edges` array is taken off it. Removing an edge this way is **pure presentation**: the triple is untouched, so the edge stays projectable and can be re-added later.
 
@@ -468,6 +517,18 @@ Reload the diagram and re-apply.
 | overlay entry with no `conceptIri` | `Neplatná data v požadavku: overlays[0].conceptIri: must not be blank` |
 | `convertToHierarchy` missing `broader` | `Neplatná data v požadavku: overlays[0].convertToHierarchy.broader: must not be blank` |
 | `convertToHierarchy` missing `addBroaderOn` | `Neplatná data v požadavku: overlays[0].convertToHierarchy.addBroaderOn: must not be blank` |
+
+An edge id that cannot key a membership row is also a 400 — see *Edges — explicit canvas membership*:
+
+```jsonc
+// a bare ReactFlow uuid: neither a composite id nor a concept IRI
+{ "success": false, "data": null,
+  "message": "Hranu reactflow__edge-a3f9c1b2 nelze uložit: identifikátor musí být složený id hrany (edge|DRUH|zdroj|cíl) nebo IRI pojmu." }
+
+// a composite id that does not match the edgeKind/source/target sent alongside it
+{ "success": false, "data": null,
+  "message": "Hranu edge|SUBCLASS_OF|…|… nelze uložit: identifikátor neodpovídá zadaným koncovým bodům." }
+```
 
 A concept IRI from another ontology — in a node id, an overlay `conceptIri`, or either `convertToHierarchy` endpoint — is also a 400:
 

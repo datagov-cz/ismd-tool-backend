@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
@@ -303,6 +304,11 @@ public class DiagramLayoutReconciler {
      * <p>{@code segments} is three-way per entry: null keeps what is stored, {@code []} clears to default
      * routing, a list sets it.
      *
+     * <p>Each entry is keyed by {@link #edgeKey}, which derives the projected id from
+     * {@code (edgeKind, source, target)} when the client sends them — the only way to place a hierarchy or
+     * equivalence link the user has just drawn, whose id no read has yet supplied. Membership stays
+     * independent of {@code overlays}: this writes rows, never staged edits.
+     *
      * <p>Reconciled in place, never cleared-and-reinserted: Hibernate flushes the INSERT before the orphan
      * DELETE, so re-saving a surviving edge would collide with the {@code (diagram_id, edge_key)} unique
      * constraint.
@@ -319,14 +325,15 @@ public class DiagramLayoutReconciler {
 
         Set<String> incoming = new HashSet<>();
         for (DiagramLayoutDto.Edge in : layout.edges()) {
-            if (!incoming.add(in.id())) {
-                log.warn("Ignoring duplicate entry for diagram edge {}", in.id());
+            String edgeKey = edgeKey(in);
+            if (!incoming.add(edgeKey)) {
+                log.warn("Ignoring duplicate entry for diagram edge {}", edgeKey);
                 continue;
             }
-            DiagramEdgeEntity edge = existing.get(in.id());
+            DiagramEdgeEntity edge = existing.get(edgeKey);
             if (edge == null) {
                 edge = new DiagramEdgeEntity();
-                edge.setEdgeKey(in.id());
+                edge.setEdgeKey(edgeKey);
                 diagram.addEdge(edge);
             }
             // Null says nothing about routing, so keep what the row already holds.
@@ -336,5 +343,65 @@ public class DiagramLayoutReconciler {
         }
 
         diagram.getEdges().removeIf(e -> !incoming.contains(e.getEdgeKey()));
+    }
+
+    /**
+     * The membership key for one incoming edge: always {@code id} itself, which the client owns end to end.
+     * An edge the user has just drawn carries no id from a read, so the client assembles the same composite
+     * the projector will — {@code edge|KIND|source|target}, built by the shared TypeScript helper in
+     * {@code docs/DIAGRAM_LAYER_API.md} — and that one id then matches on the first write and on every read
+     * after it, with nothing to re-map when the response comes back.
+     *
+     * <p>The id must therefore already be a projected one: a composite, or a VZTAH's own concept IRI.
+     * Anything else — a bare ReactFlow uuid — is rejected, since its row could never match a projection and
+     * the edge would silently vanish on the next read. That silence is what hid this gap.
+     *
+     * <p>{@code (edgeKind, source, target)} are an optional cross-check rather than the key: when present,
+     * the id must be exactly what they derive. They bite where ids are newly minted, which is where a
+     * malformed one actually comes from; on an echo-back save the id came from us and they are redundant.
+     */
+    private String edgeKey(DiagramLayoutDto.Edge in) {
+        String id = in.id();
+        boolean composite = id.startsWith(EdgeProjector.COMPOSITE_ID_PREFIX);
+        if (!composite && !isIri(mapper.conceptIriFromNodeId(id))) {
+            log.warn("Rejected diagram edge id {} — neither a composite id nor a concept IRI", id);
+            throw new ConceptValidationException(
+                    "Hranu " + id + " nelze uložit: identifikátor musí být složený id hrany "
+                            + "(edge|DRUH|zdroj|cíl) nebo IRI pojmu.");
+        }
+        requireIdMatchesEndpoints(in, composite);
+        return id;
+    }
+
+    /**
+     * Cross-checks a client-assembled id against the endpoints it claims to encode, so a mismatch is a 400
+     * rather than a row that persists and never renders. A VZTAH is exempt: it is keyed by its own concept
+     * IRI, and its endpoints are the {@code rdfs:domain}/{@code rdfs:range} the projector re-derives, so they
+     * encode nothing about its id.
+     */
+    private void requireIdMatchesEndpoints(DiagramLayoutDto.Edge in, boolean composite) {
+        if (!in.hasEndpoints() || in.edgeKind() == DiagramEdgeKind.VZTAH) {
+            return;
+        }
+        if (!composite) {
+            log.warn("Rejected diagram edge id {} — {} needs a composite id", in.id(), in.edgeKind());
+            throw new ConceptValidationException(
+                    "Hranu " + in.id() + " nelze uložit: hrana druhu " + in.edgeKind()
+                            + " vyžaduje složený identifikátor.");
+        }
+        String derived = EdgeProjector.projectedEdgeId(
+                in.edgeKind(),
+                mapper.conceptIriFromNodeId(in.source()),
+                mapper.conceptIriFromNodeId(in.target()));
+        if (!derived.equals(in.id())) {
+            log.warn("Rejected diagram edge id {} — endpoints derive {}", in.id(), derived);
+            throw new ConceptValidationException(
+                    "Hranu " + in.id() + " nelze uložit: identifikátor neodpovídá zadaným koncovým bodům.");
+        }
+    }
+
+    /** Whether the id is a concept IRI rather than an opaque client-side handle. */
+    private boolean isIri(String id) {
+        return id.startsWith("http://") || id.startsWith("https://");
     }
 }

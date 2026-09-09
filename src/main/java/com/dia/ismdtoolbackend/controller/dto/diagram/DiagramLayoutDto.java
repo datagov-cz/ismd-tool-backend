@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
+import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -55,23 +56,48 @@ public record DiagramLayoutDto(
     }
 
     /**
-     * One edge on the canvas: identity plus optional routing. {@code id} is the projected edge id from the
-     * last read — a VZTAH's concept IRI, or the composite {@code edge|KIND|source|target} of a hierarchy or
-     * equivalence link.
+     * One edge on the canvas: identity plus optional routing. {@code id} is the projected edge id — a VZTAH's
+     * concept IRI, or the composite {@code edge|KIND|source|target} of a hierarchy or equivalence link.
      *
      * <p>The entry's presence puts the edge on the canvas; {@code segments} says only how it is drawn, and
      * is three-way: null keeps the stored waypoints, so a client that does not manage routing cannot
      * discard them, {@code []} clears them to default routing, and a list sets them.
      *
-     * <p>Endpoints and kind are absent, being re-derived from {@code rdfs:domain}/{@code rdfs:range} ⊕
-     * overlay on every read, so membership can never contradict RDF. Structural changes go through
-     * {@code overlays}.
+     * <p><b>An edge the user has just drawn has no id from a read.</b> A hierarchy or equivalence link is a
+     * bare triple, so unlike a node it has no identity of its own and its id is built from its endpoints. The
+     * client assembles that same composite itself — see the shared TypeScript helper in
+     * {@code docs/DIAGRAM_LAYER_API.md} — so one id matches on the first write and on every read after it,
+     * with nothing to re-map when the response comes back. An {@code id} that is neither a composite nor a
+     * concept IRI is rejected with 400: its row could never match a projection, so the edge would silently
+     * vanish on the next read.
+     *
+     * <p>{@code edgeKind}, {@code source} and {@code target} are an optional cross-check on a
+     * client-assembled id, not a second way to key one: when present, the id must be exactly what they
+     * derive, or the save is a 400. They are never stored and never read back as truth — endpoints and kind
+     * are re-derived from {@code rdfs:domain}/{@code rdfs:range} ⊕ overlay on every read, so membership can
+     * never contradict RDF. Structural changes still go through {@code overlays}, independent of membership.
      */
     @Schema(name = "DiagramLayoutEdge")
     public record Edge(
             @NotBlank String id,
+            /* Optional cross-check on a client-assembled id; ignored for a VZTAH, which is keyed by IRI. */
+            DiagramEdgeKind edgeKind,
+            String source,
+            String target,
             List<EdgeWaypoint> segments
     ) {
+
+        /** Membership-only entry for an edge already carrying a projected id. */
+        public Edge(String id, List<EdgeWaypoint> segments) {
+            this(id, null, null, null, segments);
+        }
+
+        /** True when the endpoints needed to derive a composite id are both present. */
+        public boolean hasEndpoints() {
+            return edgeKind != null
+                    && source != null && !source.isBlank()
+                    && target != null && !target.isBlank();
+        }
     }
 
     /**

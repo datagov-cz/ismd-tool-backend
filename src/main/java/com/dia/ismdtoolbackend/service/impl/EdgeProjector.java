@@ -44,6 +44,9 @@ import java.util.Set;
  */
 class EdgeProjector {
 
+    /** Marks a composite edge id, distinguishing it from a VZTAH's concept IRI. */
+    static final String COMPOSITE_ID_PREFIX = "edge|";
+
     private final DiagramMapper mapper;
     /** Routing waypoints by projected edge id, joined on from the persisted row. */
     private final Map<String, List<EdgeWaypoint>> waypoints;
@@ -320,6 +323,6 @@ class EdgeProjector {
      * repointing an endpoint drops them. A VZTAH edge uses its concept IRI instead.
      */
     static String projectedEdgeId(DiagramEdgeKind kind, String source, String target) {
-        return String.join("|", "edge", kind.name(), source, target);
+        return COMPOSITE_ID_PREFIX + String.join("|", kind.name(), source, target);
     }
 }

@@ -328,12 +328,17 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
     { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
       "position": { "x": 1100, "y": 80 }, "visibleProperties": [] }
   ],
-  // jen body lomu — pošlete zpět id, které jste dostali při čtení; konce se odvozují, neposílají
+  // příslušnost + body lomu. Pošlete zpět id, které jste dostali při čtení; u hrany, kterou uživatel
+  // PRÁVĚ nakreslil, sestavte id pomocí diagramEdgeId() a přiložte edgeKind/source/target ke kontrole.
   "edges": [
     { "id": "https://…/pojem/je-zamestnan-u",              // VZTAH: jeho IRI pojmu
       "segments": [{ "x": 120, "y": 40 }] },
     { "id": "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba",
-      "segments": [] }                                     // [] nebo vynecháno = výchozí vedení
+      "segments": [] },                                    // [] nebo vynecháno = výchozí vedení
+    { "id": "edge|SUBCLASS_OF|https://…/pojem/brigadnik|https://…/pojem/zamestnanec",
+      "edgeKind": "SUBCLASS_OF",                           // nově nakreslená: id se kontroluje
+      "source": "iri:https://…/pojem/brigadnik",
+      "target": "iri:https://…/pojem/zamestnanec" }
   ],
   // nasazené strukturální úpravy — PŘÍRŮSTKOVÉ; vynechte celý klíč, ať nasazená práce zůstane
   "overlays": [
@@ -390,7 +395,17 @@ Tvar pro čtení a zápis se liší — proto už nesdílejí název: čtení vr
 
 ### Hrany — explicitní členství na plátně
 
-**Hrana ukládá právě dvě věci: `id` a `segments`.** Její existence, konce i druh se při každém čtení znovu odvozují z `živý ⊕ overlay`, takže `source`, `target` ani `edgeKind` **se na zápisu nepřijímají** — poslat je znamená, že se ignorují. Je to záměrné: uložený konec by mohl tiše odporovat projekci, kterou duplikuje, a přesně proti tomuto rozcházení je diagramová vrstva postavena. Chcete-li změnit, kam vztah míří, nasaďte `{domain, range}` na jeho overlay; hrana se přizpůsobí.
+**Hrana ukládá právě dvě věci: `id` a `segments`.** Její existence, konce i druh se při každém čtení znovu odvozují z `živý ⊕ overlay`, takže `source`, `target` ani `edgeKind` **se nikdy neukládají** a nikdy se nečtou zpět jako pravda. Je to záměrné: uložený konec by mohl tiše odporovat projekci, kterou duplikuje, a přesně proti tomuto rozcházení je diagramová vrstva postavena. Chcete-li změnit, kam vztah míří, nasaďte `{domain, range}` na jeho overlay; hrana se přizpůsobí.
+
+#### Kreslení NOVÉ hierarchické nebo ekvivalenční hrany — sestavte id pomocí `diagramEdgeId()`
+
+Id uzlu třídy je jeho vlastní IRI, ale hrana `SUBCLASS_OF`/`EXACT_MATCH` je **holé trojice bez pojmu za sebou**, takže nemá vlastní identitu — její id se sestavuje z jejích konců. Hrana, kterou uživatel právě nakreslil, tedy nemá id z předchozího čtení a ReactFlow uuid se **odmítá s 400**: uložilo by řádek, který neodpovídá žádné projekci, a hrana by při dalším čtení tiše zmizela.
+
+Sestavte stejné id, jaké projektuje server, a použijte je od prvního uložení. Pak sedí při zápisu i při každém dalším čtení, takže se v odpovědi nemusí nic přemapovávat — funkce v TypeScriptu je v [anglické verzi](DIAGRAM_LAYER_API.md#drawing-a-new-hierarchy-or-equivalence-edge--build-the-id-with-diagramedgeid).
+
+**`edgeKind`, `source` a `target` jsou volitelná kontrola, nikoli druhý způsob, jak hranu klíčovat.** Když je pošlete, server id přepočítá a při neshodě vrátí **400** — chybné či zastaralé id se tak zachytí na hranici místo toho, aby se uložil řádek, který se nikdy nevykreslí. Posílejte je, když id vytváříte; vynechte je, když vracíte id, které jste dostali od nás. U `VZTAH` se ignorují: jeho konce jsou `rdfs:domain`/`rdfs:range` a o jeho id nevypovídají nic.
+
+**Příslušnost a overlaye zůstávají nezávislé.** Záznam v `edges[]` říká, že spoj je *na plátně*; záznam v `overlays[]` nasazuje *RDF*. Nová hierarchická hrana obvykle potřebuje v témž uložení oba — samotný záznam nic nevykreslí, dokud trojice neexistuje (živá nebo nasazená), protože o tom, co *lze* vykreslit, stále rozhoduje projekce.
 
 **`edges` je členství na plátně, stejně jako `nodes` — pošlete zpět každou hranu, kterou chcete mít nakreslenou.** Uvedená hrana je na plátně; hrana vynechaná z přítomného pole `edges` se z něj odebere. Takové odebrání je **čistá prezentace**: trojice v RDF zůstává nedotčená, takže hrana je dál projektovatelná a lze ji později přidat zpět.
 
@@ -474,6 +489,18 @@ IRI pojmu z jiného slovníku — v id uzlu, v `conceptIri` overlaye nebo v kter
 ```jsonc
 { "success": false, "data": null,
   "message": "Pojem https://…/a3791---registr-vysokých-škol/pojem/elektronická-adresa nepatří do slovníku tohoto diagramu." }
+```
+
+Chybou 400 je i id hrany, kterým nelze naklíčovat řádek příslušnosti — viz *Hrany — explicitní příslušnost na plátně*:
+
+```jsonc
+// holé ReactFlow uuid: ani složené id, ani IRI pojmu
+{ "success": false, "data": null,
+  "message": "Hranu reactflow__edge-a3f9c1b2 nelze uložit: identifikátor musí být složený id hrany (edge|DRUH|zdroj|cíl) nebo IRI pojmu." }
+
+// složené id, které neodpovídá přiloženým edgeKind/source/target
+{ "success": false, "data": null,
+  "message": "Hranu edge|SUBCLASS_OF|…|… nelze uložit: identifikátor neodpovídá zadaným koncovým bodům." }
 ```
 
 ### `DIAGRAM_CONTENT_UNAVAILABLE` (HTTP 502) — čtení se nedostalo ke grafu slovníku
