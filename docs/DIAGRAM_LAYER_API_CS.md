@@ -1,12 +1,5 @@
 # Diagramová vrstva: FE / REST kontrakt
 
-> Stav: **hotovo a ověřeno smoke testem** — `DiagramController` implementuje každý níže uvedený endpoint,
-> cesty jsou v allowlistu SecurityConfig a zápisová cesta byla 2026-08-25 ověřena end-to-end proti
-> lokálnímu Postgresu + Fuseki. Anglická verze:
-> [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md). Architektura a zdůvodnění:
-> [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md). Doslovné přepisy požadavků/odpovědí:
-> `.planning/diagram-write-consolidation-FE-EXAMPLES.md`.
-
 Drátový kontrakt diagramové funkce: **tenký na zápis, tučný na čtení.** Backend spojí řádky rozvržení s živým obsahem pojmů a aplikuje overlay každého pojmu, takže FE dostane payload, který může předat téměř přímo do ReactFlow. Tento dokument je referencí pro integraci FE; proč je model takto tvarovaný, viz [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md).
 
 **Co je uzel, hrana a řádek.** Plátno kreslí každý typ pojmu ve tvaru, který odpovídá tomu, čím *je*:

@@ -1,20 +1,10 @@
 # Diagramová vrstva: architektura a návrh
 
-> Stav: **hotovo, pokryto testovací sadou** — entitní vrstva/migrace, služby, controller i zabezpečení
-> jsou implementovány. Jádro s jedním diagramem bylo 2026-08-25 ověřeno end-to-end proti lokálnímu
-> Postgresu + Fuseki; **více diagramů na ontologii, kolize mezi diagramy a cizí pojmy jsou pokryty
-> integračními testy proti reálnému Postgresu, ale stejným živým smoke testem zatím neprošly.**
-> Anglická verze: [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md). FE/REST kontrakt:
-> [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md).
->
-> ⚠ **Zásadní změna pro FE.** Každá cesta diagramu nyní nese id diagramu a diagram se zakládá
-> explicitně, místo aby vznikl při prvním uložení. Viz poznámku o migraci v API kontraktu.
-
 Plátno založené na ReactFlow, které vizuálně zobrazuje a edituje ISMD ontologii — **více diagramů na ontologii**, každý jinak zaměřený pohled na tytéž pojmy — s modelem perzistence navrženým tak, aby se diagram *nikdy* nemohl tiše stát rozcházející se kopií dat pojmů.
 
 ## Jaký problém řešíme
 
-Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovní plochou s vlastním CRUD. Právě tato kombinace vyvolává obavy z „rozcházení" (drift). Tato codebase už podobný problém s „dvě úložiště držící kopie téhož obsahu" řešila: duální zápis PG↔TDB2 bez sdílené transakce, outbox, rekonciliátor, dokumentovaný základ známého šumu (viz [`PG_TDB2_CONSISTENCY_CS.md`](./PG_TDB2_CONSISTENCY_CS.md)). Diagram, který by ukládal vlastní kopii obsahu pojmu, by tento problém — třetí úložiště — otevřel znovu.
+Diagram je **zároveň** živým obrazem reálného ISMD slovníku **i** pracovní plochou s vlastním CRUD.
 
 ## Řídicí princip
 

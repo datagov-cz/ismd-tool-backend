@@ -1,12 +1,5 @@
 # The Diagram Layer: FE / REST Contract
 
-> Status: **built and smoke-tested** — `DiagramController` implements every endpoint below, the paths are
-> in the SecurityConfig allowlist, and the write path was verified end to end against local
-> Postgres + Fuseki on 2026-08-25. Czech version:
-> [`DIAGRAM_LAYER_API_CS.md`](./DIAGRAM_LAYER_API_CS.md). Architecture & rationale:
-> [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md). Verbatim request/response transcripts:
-> `.planning/diagram-write-consolidation-FE-EXAMPLES.md`.
-
 The wire contract for the diagram feature: **thin on write, fat on read.** The backend joins layout rows to live concept content and applies each concept's overlay, so the FE receives a payload it can pass almost directly to ReactFlow. This document is the FE integration reference; see [`DIAGRAM_LAYER.md`](./DIAGRAM_LAYER.md) for why the model is shaped this way.
 
 **What is a node, an edge, and a row.** The canvas draws each concept type in the shape that matches what it *is*:

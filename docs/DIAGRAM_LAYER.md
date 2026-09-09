@@ -1,20 +1,10 @@
 # The Diagram Layer: Architecture & Design
 
-> Status: **built, covered by the test suite** — entity/migration, service, controller and security are
-> implemented. The single-diagram core was verified end to end against local Postgres + Fuseki on
-> 2026-08-25; **many-diagrams-per-ontology, cross-diagram conflicts and foreign concepts are covered by
-> integration tests against real Postgres but have not yet had that same live smoke run.**
-> Czech version: [`DIAGRAM_LAYER_CS.md`](./DIAGRAM_LAYER_CS.md). FE/REST contract:
-> [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md).
->
-> ⚠ **Breaking FE change.** Every diagram path now carries a diagram id, and a diagram is created
-> explicitly rather than appearing on first save. See the API contract's migration note.
-
 A ReactFlow-based canvas that renders and edits an ISMD ontology visually — **many diagrams per ontology**, each a differently-scoped view of the same concepts — with a persistence model designed so a diagram *can never* silently become a divergent copy of your concept data.
 
 ## What problem this solves
 
-A diagram is **both** a live picture of a real ISMD ontology **and** a working surface with its own CRUD. That combination is what makes people worry about "drift". This codebase already fought the "two stores holding copies of the same content" battle: the PG↔TDB2 dual-write with no shared transaction, the outbox, the reconciler, a documented baseline of known drift noise (see [`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md)). A diagram that stored its own copy of concept content would reopen that exact problem class — a third store — on top of the one just closed.
+A diagram is **both** a live picture of a real ISMD ontology **and** a working surface with its own CRUD.
 
 ## Governing principle
 
