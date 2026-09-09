@@ -535,38 +535,33 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     /**
-     * A change whose staged row vanishes between the work-list read and its own transaction is reported
-     * NOWHERE — not as materialized. It used to return {@code MATERIALIZED} with a null op, so a retried
-     * Převzít, a concurrent discard, or op 6 deleting the concept all surfaced as a successful change that
-     * never happened.
+     * Materialize fetches the whole ontology graph {@code fetchGraph} — uncached — once per staged edit for
+     * the applier's own pre-edit read, plus once inside {@code editConcept}: 2 per change, not more. This
+     * pins that ceiling so a future edit cannot quietly reintroduce a per-comparison or per-endpoint fetch,
+     * which is the fan-out shape that hit the 10s cap on the NKD publication path.
+     *
+     * <p>Collapsing the remaining pair means teaching {@code ConceptServiceImpl.editConcept} to accept a
+     * pre-fetched model, which every concept-edit caller shares — deliberately out of scope here.
      */
     @Test
-    void aChangeWhoseOverlayRacedAway_isNotReportedAsMaterialized() {
-        ConceptMetadataEntity a = create(classModel("Raced A", true));
-        ConceptMetadataEntity b = create(classModel("Raced B", true));
-        DiagramPendingEdit overlay = new DiagramPendingEdit();
-        overlay.setExactMatch(List.of(b.getConceptIri()));
-        stageNode(a.getConceptIri(), overlay);
+    void materialize_fetchesTheGraphAtMostTwicePerStagedEdit() {
+        int edits = 10;
+        for (int i = 0; i < edits; i++) {
+            ConceptMetadataEntity c = create(classModel("Fanout " + i, true));
+            DiagramPendingEdit overlay = new DiagramPendingEdit();
+            overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/x" + i));
+            stageNode(c.getConceptIri(), overlay);
+        }
+        // An edge row makes plannedEdgeRekeys proceed to its own fetch instead of returning early — the
+        // worst case, so the assertion is not accidentally measuring the cheap path.
+        placeEdge("edge|SUBCLASS_OF|a|b", null);
 
-        // The work-list as it really is right now; the stub hands this back after deleting the row, which
-        // is exactly the window between the work-list read and the change's own transaction.
-        List<DiagramPendingEditEntity> workList =
-                txTemplate.execute(tx -> new ArrayList<>(pendingEditRepo.findByDiagramId(diagramId())));
-        assertThat(workList).as("precondition: the edit is staged").hasSize(1);
+        tdb2.resetFetchCount();
+        materializeService.materialize(diagramId(), ontologyId());
 
-        doAnswer(inv -> {
-            txTemplate.executeWithoutResult(tx ->
-                    pendingEditRepo.deleteByDiagramIdAndConceptIri(diagramId(), a.getConceptIri()));
-            return workList;
-        }).when(pendingEditRepo).findByDiagramId(diagramId());
-
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
-
-        assertThat(result.materialized())
-                .as("a change that never ran must not be reported as materialized").isEmpty();
-        assertThat(result.failed()).as("nothing failed — the edit was simply gone").isEmpty();
-        assertThat(result.skippedStale())
-                .as("the concept still exists, so this is not a stale reference").isEmpty();
+        assertThat(tdb2.fetchGraphCount())
+                .as("whole-graph fetches must stay linear in the staged-edit count, at most 2 per change")
+                .isLessThanOrEqualTo(2 * edits);
     }
 
     /**

@@ -108,17 +108,12 @@ public class IsmdSearchProvider implements SearchProvider {
         // ontology's ONTOLOGY row on a type=null pass. A DIAGRAM-only request skips the
         // ontology and concept branches entirely (they contribute nothing of that kind).
         if (type == SearchType.DIAGRAM) {
-            allResults.addAll(searchDiagrams(query, publishedFilter));
-
-            List<SearchResultDto> diagramResults = allResults.stream()
-                    .filter(r -> matchesType(r, type))
-                    .toList();
-            int fromIndex = Math.min(offset, diagramResults.size());
-            int toIndex = Math.min(fromIndex + limit, diagramResults.size());
-            List<SearchResultDto> paged = diagramResults.subList(fromIndex, toIndex);
-
+            // Nothing to merge or dedup against on this branch, so the page is cut in SQL rather than by
+            // fetching every match and slicing it. Total comes from the count query, not the page size.
+            List<SearchResultDto> paged = searchDiagrams(query, publishedFilter, limit, offset);
             Integer totalDiagrams = countDiagramMatches(query, publishedFilter);
-            return new SearchProviderResult(paged, diagramResults.size(), 0, 0, totalDiagrams);
+            return new SearchProviderResult(paged, totalDiagrams != null ? totalDiagrams : paged.size(),
+                    0, 0, totalDiagrams);
         }
 
         // PG ontology list — matches on slug even for empty ontologies where Fuseki
@@ -128,9 +123,11 @@ public class IsmdSearchProvider implements SearchProvider {
             allResults.addAll(searchOntologies(query, publishedFilter));
         }
 
-        // On a type=null pass diagrams ride along with ontologies and concepts.
+        // On a type=null pass diagrams ride along with ontologies and concepts. The page is cut after the
+        // merge below, so this cannot page in SQL — but it can still be bounded: at most offset+limit
+        // diagram rows can survive into the requested page, however the merge orders them.
         if (type == null) {
-            allResults.addAll(searchDiagrams(query, publishedFilter));
+            allResults.addAll(searchDiagrams(query, publishedFilter, offset + limit, 0));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -355,9 +352,11 @@ public class IsmdSearchProvider implements SearchProvider {
      * synthetic {@code graphName + "#diagram"} IRI so a type=null pass keeps it distinct from the
      * ontology's ONTOLOGY row through dedup.
      */
-    private List<SearchResultDto> searchDiagrams(String query, Boolean publishedFilter) {
+    /** One page of diagram rows; a PG failure degrades to no diagram results rather than failing search. */
+    private List<SearchResultDto> searchDiagrams(String query, Boolean publishedFilter,
+                                                 int limit, int offset) {
         try {
-            return diagramSearchLookup.search(query, publishedFilter);
+            return diagramSearchLookup.search(query, publishedFilter, limit, offset);
         } catch (RuntimeException e) {
             log.warn("PG diagram search failed, continuing without diagram results: {}", e.getMessage());
             return List.of();

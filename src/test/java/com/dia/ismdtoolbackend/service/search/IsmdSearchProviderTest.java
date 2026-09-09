@@ -522,7 +522,7 @@ class IsmdSearchProviderTest {
         when(conceptMetadataRepository.searchByText(eq("osoba"), eq(false), anyList(), eq(false), isNull()))
                 .thenReturn(List.of(createConcept("https://example.org/concept/osoba", "osoba", "Osoba",
                         ConceptType.TRIDA, "https://example.org/ontology/1", true)));
-        when(diagramSearchLookup.search("osoba", null))
+        when(diagramSearchLookup.search("osoba", null, 20, 0))
                 .thenThrow(new RuntimeException("simulated diagram-lookup failure"));
         lenient().when(diagramSearchLookup.count("osoba", null))
                 .thenThrow(new RuntimeException("simulated diagram-count failure"));
@@ -549,7 +549,7 @@ class IsmdSearchProviderTest {
                 .source(SearchSource.ISMD)
                 .build();
 
-        when(diagramSearchLookup.search("bez-grafu", null)).thenReturn(List.of(diagramRow));
+        when(diagramSearchLookup.search("bez-grafu", null, 20, 0)).thenReturn(List.of(diagramRow));
         lenient().when(diagramSearchLookup.count("bez-grafu", null)).thenReturn(1L);
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();

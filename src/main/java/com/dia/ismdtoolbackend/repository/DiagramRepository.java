@@ -72,9 +72,18 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
      *       node's class as {@code hostClassIri}.</li>
      * </ul>
      *
-     * <p>The {@code LIKE '[%'} test is the partial index's predicate, not a redundant check: omitting it
-     * stops the planner matching {@code idx_diagram_nodes_visible_properties}. It also guards the cast,
-     * which throws on a malformed row rather than returning false.
+     * <p>Two predicates are load-bearing for index matching, neither redundant:
+     *
+     * <ul>
+     *   <li>{@code md5(e.edge_key) = md5(...)} repeats the expression {@code idx_diagram_edges_edge_key} is
+     *       built on. Postgres matches an expression index only when the query spells out that same
+     *       expression — it does not rewrite {@code col = $1} into {@code md5(col) = md5($1)} — so without
+     *       this the index is dead weight and the branch seq-scans {@code diagram_edges}. The raw equality
+     *       stays alongside it as the recheck that makes an md5 collision harmless.</li>
+     *   <li>{@code LIKE '[%'} is {@code idx_diagram_nodes_visible_properties}' partial-index predicate;
+     *       omitting it stops the planner matching that index. It also guards the cast, which throws on a
+     *       malformed row rather than returning false.</li>
+     * </ul>
      *
      * <p>A concept may be drawn on one diagram in two ways, each its own row, which is why the caller keys
      * placements by {@code (diagramId, kind)} rather than by diagram alone.
@@ -94,7 +103,8 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
             from ismd_schema.diagram_edges e
             join ismd_schema.diagrams d on d.id = e.diagram_id
             join ismd_schema.ontologies o on o.id = d.ontology_metadata_id
-            where e.edge_key = :conceptIri
+            where md5(e.edge_key) = md5(cast(:conceptIri as text))
+              and e.edge_key = :conceptIri
             union all
             select n.diagram_id, d.name, o.slug, 'PROPERTY_ROW', n.concept_iri
             from ismd_schema.diagram_nodes n
@@ -113,47 +123,54 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
     /** The same check for a rename, excluding the diagram being renamed so it cannot collide with itself. */
     boolean existsByOntologyMetadataIdAndNameAndIdNot(Long ontologyMetadataId, String name, Long id);
 
+    /** One search hit: everything {@code DiagramSearchLookup} maps, so no lazy association is touched. */
+    interface DiagramSearchRow {
+        Long getDiagramId();
+        String getName();
+        String getSlug();
+        String getGraphName();
+        Boolean getIsPublished();
+        LocalDateTime getUpdatedAt();
+    }
+
     /**
      * Diagrams whose ontology slug or own name matches the query, accent-insensitively. Backs
      * {@code type=DIAGRAM} results in ISMD search, one row per diagram.
-     */
-    @Query(value = """
-            SELECT d.* FROM ismd_schema.diagrams d
-            JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
-            WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-               OR ismd_schema.unaccent(d.name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-            ORDER BY d.ontology_metadata_id, d.id
-            """, nativeQuery = true)
-    List<DiagramEntity> searchByOntologyText(@Param("query") String query);
-
-    /**
-     * As {@link #searchByOntologyText}, narrowed to diagrams of unpublished ontologies. A diagram mirrors
+     *
+     * <p>Paginated in SQL rather than in Java: the caller shows one page, and fetching every match to slice
+     * it in memory scales with the corpus instead of the page. A projection rather than {@code SELECT d.*}
+     * because {@code ontologyMetadata} is LAZY, so entities would emit one extra SELECT per row.
+     *
+     * <p>{@code unpublishedOnly} folds in what used to be a second, near-identical query. A diagram mirrors
      * its ontology's publish state, so an UNPUBLISHED search filters on the join.
+     *
+     * <p>{@code ORDER BY} is total ({@code d.id} is unique), which is what makes LIMIT/OFFSET stable —
+     * an unordered paginated search silently hides rows (see {@code search_unordered_pagination_hid_drafts}).
      */
     @Query(value = """
-            SELECT d.* FROM ismd_schema.diagrams d
+            SELECT d.id AS diagramId, d.name AS name, o.slug AS slug, o.graph_name AS graphName,
+                   o.is_published AS isPublished, d.updated_at AS updatedAt
+            FROM ismd_schema.diagrams d
             JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
             WHERE (ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                 OR ismd_schema.unaccent(d.name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
-              AND o.is_published = false
+              AND (:unpublishedOnly = false OR o.is_published = false)
             ORDER BY d.ontology_metadata_id, d.id
+            LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
-    List<DiagramEntity> searchByOntologyTextUnpublished(@Param("query") String query);
+    List<DiagramSearchRow> searchByOntologyText(@Param("query") String query,
+                                                @Param("unpublishedOnly") boolean unpublishedOnly,
+                                                @Param("limit") int limit,
+                                                @Param("offset") int offset);
 
-    @Query(value = """
-            SELECT COUNT(*) FROM ismd_schema.diagrams d
-            JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
-            WHERE ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-               OR ismd_schema.unaccent(d.name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
-            """, nativeQuery = true)
-    long countSearchByOntologyText(@Param("query") String query);
-
+    /** Total matches for {@link #searchByOntologyText}, for the paging header. */
     @Query(value = """
             SELECT COUNT(*) FROM ismd_schema.diagrams d
             JOIN ismd_schema.ontologies o ON o.id = d.ontology_metadata_id
             WHERE (ismd_schema.unaccent(o.slug) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%'))
                 OR ismd_schema.unaccent(d.name) ILIKE ismd_schema.unaccent(CONCAT('%', :query, '%')))
-              AND o.is_published = false
+              AND (:unpublishedOnly = false OR o.is_published = false)
             """, nativeQuery = true)
-    long countSearchByOntologyTextUnpublished(@Param("query") String query);
+    long countSearchByOntologyText(@Param("query") String query,
+                                   @Param("unpublishedOnly") boolean unpublishedOnly);
 }

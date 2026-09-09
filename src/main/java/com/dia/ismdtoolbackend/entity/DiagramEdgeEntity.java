@@ -14,10 +14,14 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
 /**
- * The persisted waypoints of a diagram edge, and nothing else. An edge's existence, kind and endpoints are
- * re-projected on every load from {@code live ⊕ overlay} by {@code EdgeProjector}, the semantics always
- * living on a concept — a VZTAH's {@code rdfs:domain}/{@code rdfs:range}, a hierarchy target, an
- * {@code skos:exactMatch}. This row carries only what RDF cannot express: how the link is routed.
+ * One edge's presence on a canvas, plus how it is routed. The row IS the membership: canvas membership is
+ * user-curated and explicit, so an edge the projection could draw but no row names is not drawn, and a class
+ * can sit on the canvas with none of its relationships shown.
+ *
+ * <p>An edge's kind and endpoints are re-projected on every load from {@code live ⊕ overlay} by
+ * {@code EdgeProjector}, the semantics always living on a concept — a VZTAH's
+ * {@code rdfs:domain}/{@code rdfs:range}, a hierarchy target, an {@code skos:exactMatch}. So this row holds
+ * only what RDF cannot express: that the user placed the link, and how it is routed.
  *
  * <p>A row is matched to its projected edge by {@link #edgeKey} — a VZTAH's own concept IRI, or the
  * composite {@code edge|KIND|source|target} of a hierarchy or equivalence link. Repointing an endpoint
@@ -43,8 +47,8 @@ public class DiagramEdgeEntity {
     private DiagramEntity diagram;
 
     /**
-     * The projected edge id these waypoints belong to, unique per diagram. A hierarchy key concatenates two
-     * full concept IRIs, so the Postgres column is TEXT; {@code length} is JPA metadata for schema
+     * The projected edge id this row places on the canvas, unique per diagram. A hierarchy key concatenates
+     * two full concept IRIs, so the Postgres column is TEXT; {@code length} is JPA metadata for schema
      * validation, where H2 uses a bounded VARCHAR, not a ceiling on what Postgres stores.
      */
     @Column(name = "edge_key", nullable = false, length = 2048)

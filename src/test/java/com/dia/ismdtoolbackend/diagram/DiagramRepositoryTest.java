@@ -478,6 +478,43 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
                 .hasMessageContaining("discard deletes the row");
     }
 
+    /**
+     * {@code idx_diagram_edges_edge_key} is on {@code md5(edge_key)}, because the column is TEXT holding up
+     * to two IRIs and can exceed the btree limit. Postgres matches an expression index only when the query
+     * repeats that expression — {@code col = $1} is NOT rewritten to {@code md5(col) = md5($1)} — so the
+     * query has to spell it out or the index is write-cost with no read benefit and the EDGE branch
+     * seq-scans. This asserts the plan actually reaches the index, which reading the SQL cannot tell you.
+     *
+     * <p>Rows plus {@code enable_seqscan = off} because the planner rightly prefers a seq scan on a tiny
+     * table; the question here is whether an index scan is POSSIBLE, not which one it costs out cheaper.
+     */
+    @Test
+    void conceptUsageEdgeBranch_canUseTheMd5Index() {
+        OntologyMetadataEntity o = ontology("explain-slovnik");
+        DiagramEntity d = diagramFor(o, "Plan");
+        for (int i = 0; i < 50; i++) {
+            DiagramEdgeEntity e = new DiagramEdgeEntity();
+            e.setDiagram(d);
+            e.setEdgeKey("https://x/pojem/rel-" + i);
+            edgeRepository.save(e);
+        }
+        edgeRepository.flush();
+        em.clear();
+
+        em.createNativeQuery("set enable_seqscan = off").executeUpdate();
+        String plan = String.join("\n", em.createNativeQuery("""
+                explain select e.diagram_id from ismd_schema.diagram_edges e
+                where md5(e.edge_key) = md5(cast(:iri as text)) and e.edge_key = :iri
+                """)
+                .setParameter("iri", "https://x/pojem/rel-7")
+                .getResultList().stream().map(String::valueOf).toList());
+        em.createNativeQuery("set enable_seqscan = on").executeUpdate();
+
+        assertThat(plan)
+                .as("the md5 expression index must be reachable; a plain col = $1 predicate cannot use it")
+                .contains("idx_diagram_edges_edge_key");
+    }
+
     private DiagramPendingEditEntity pendingEdit(DiagramEntity diagram, String conceptIri,
                                                  DiagramPendingEdit edit) {
         DiagramPendingEditEntity row = new DiagramPendingEditEntity();

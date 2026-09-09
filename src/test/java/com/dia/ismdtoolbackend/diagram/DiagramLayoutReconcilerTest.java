@@ -31,12 +31,18 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * Save-time layout membership reconcile ({@code PUT …/layout}) on real Postgres: the incoming node set is
@@ -53,10 +59,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import(JpaAuditingConfig.class)
 class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
 
-    @Autowired private ConceptMetadataRepository conceptRepository;
+    /** Spied so a save's query count can be asserted, not just its result. */
+    @MockitoSpyBean private ConceptMetadataRepository conceptRepository;
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private DiagramNodeRepository nodeRepository;
-    @Autowired private DiagramPendingEditRepository pendingEditRepository;
+    @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
     @Autowired private EntityManager em;
 
@@ -209,6 +216,39 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 diagram.getId(), "https://x/pojem/trida").orElseThrow().getVisibleProperties())
                 .as("an explicit [] still clears them")
                 .isEmpty();
+    }
+
+    /**
+     * A save resolves every concept it touches in ONE query. The previous shape issued a
+     * {@code findByConceptIri} per incoming node for the foreign check, plus up to three more per overlay
+     * entry (subject graph-check, staged-row lookup, stale-base fingerprint) — 200+ round trips on the
+     * ~200-node canvas the docs describe.
+     */
+    @Test
+    void save_resolvesConceptsInOneQuery_notOnePerNode() {
+        DiagramEntity diagram = newDiagram("n-plus-one");
+        for (int i = 0; i < 12; i++) {
+            seedConcept(diagram, "https://x/n-plus-one/pojem/c" + i);
+        }
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        List<DiagramLayoutDto.Node> nodes = new java.util.ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            nodes.add(node("https://x/n-plus-one/pojem/c" + i, i, i));
+        }
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        clearInvocations(conceptRepository, pendingEditRepository);
+        save(managed, new DiagramLayoutDto(null, null, nodes, List.of(),
+                List.of(new DiagramLayoutDto.Overlay(
+                        "iri:https://x/n-plus-one/pojem/c0", null,
+                        "https://x/n-plus-one/pojem/c1", null, null, null))));
+
+        verify(conceptRepository, times(1)).findByConceptIriIn(any());
+        verify(conceptRepository, never()).findByConceptIri(any());
+        // The overlay's staged row comes from one diagram-scoped read, not a lookup per entry.
+        verify(pendingEditRepository, times(1)).findByDiagramId(diagram.getId());
+        verify(pendingEditRepository, never()).findByDiagramIdAndConceptIri(any(), any());
     }
 
     @Test

@@ -12,15 +12,15 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * Diagram rows for ISMD search, mapped to DTOs inside an open persistence session.
+ * Diagram rows for ISMD search, mapped to DTOs.
  *
  * <p>Its own bean rather than a method on {@link IsmdSearchProvider}: a private method there would be
  * self-invoked and bypass the transaction proxy, and the transaction must not span the provider's whole
  * {@code search}, which also calls Fuseki and would hold a pooled connection across that HTTP call.
  *
- * <p>The session is required because {@code searchByOntologyText} is native and
- * {@link DiagramEntity#getOntologyMetadata()} is {@code LAZY}, so mapping outside one throws
- * {@code LazyInitializationException} and aborts the whole ISMD provider.
+ * <p>The queries project the ontology columns rather than returning entities, so no LAZY association is
+ * traversed during mapping and neither the per-row SELECT nor a {@code LazyInitializationException} is
+ * reachable here.
  */
 @Component
 @RequiredArgsConstructor
@@ -29,9 +29,12 @@ public class DiagramSearchLookup {
     private final DiagramRepository diagramRepository;
 
     /**
-     * Matching diagrams, already mapped, so no lazy proxy escapes. {@code publishedFilter} mirrors the
-     * ontology branch: {@code FALSE} narrows to unpublished ontologies' diagrams, {@code null} returns them
-     * regardless of publish state.
+     * One page of matching diagrams, already mapped. {@code publishedFilter} mirrors the ontology branch:
+     * {@code FALSE} narrows to unpublished ontologies' diagrams, {@code null} returns them regardless of
+     * publish state.
+     *
+     * <p>The page is cut in SQL, so the caller must not slice again — passing the whole corpus through
+     * Java to keep 20 rows is what this signature exists to prevent.
      *
      * <p>No ownership filter, matching {@code OntologyMetadataRepository.searchByText}: any authenticated
      * caller sees every slovník, drafts included, and anonymous callers are forced to NKD before reaching
@@ -39,20 +42,17 @@ public class DiagramSearchLookup {
      * where the ontology row surfaces only a slug.
      */
     @Transactional(readOnly = true)
-    public List<SearchResultDto> search(String query, Boolean publishedFilter) {
-        List<DiagramEntity> rows = Boolean.FALSE.equals(publishedFilter)
-                ? diagramRepository.searchByOntologyTextUnpublished(query)
-                : diagramRepository.searchByOntologyText(query);
-        return rows.stream()
+    public List<SearchResultDto> search(String query, Boolean publishedFilter, int limit, int offset) {
+        return diagramRepository
+                .searchByOntologyText(query, Boolean.FALSE.equals(publishedFilter), limit, offset)
+                .stream()
                 .map(this::toDto)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public long count(String query, Boolean publishedFilter) {
-        return Boolean.FALSE.equals(publishedFilter)
-                ? diagramRepository.countSearchByOntologyTextUnpublished(query)
-                : diagramRepository.countSearchByOntologyText(query);
+        return diagramRepository.countSearchByOntologyText(query, Boolean.FALSE.equals(publishedFilter));
     }
 
     /**
@@ -63,19 +63,19 @@ public class DiagramSearchLookup {
      * {@code diagramId} to route {@code /api/diagram/{slug}/{diagramId}/detail}. {@code isPublished} is the
      * ontology's, a diagram having no publish state of its own.
      */
-    private SearchResultDto toDto(DiagramEntity d) {
-        String graphName = d.getOntologyMetadata().getGraphName();
-        String slug = d.getOntologyMetadata().getSlug();
+    private SearchResultDto toDto(DiagramRepository.DiagramSearchRow d) {
+        String graphName = d.getGraphName();
+        String slug = d.getSlug();
         return SearchResultDto.builder()
-                .id(d.getId())
-                .diagramId(d.getId())
-                .iri(graphName != null ? graphName + "#diagram-" + d.getId() : "diagram:" + d.getId())
+                .id(d.getDiagramId())
+                .diagramId(d.getDiagramId())
+                .iri(graphName != null ? graphName + "#diagram-" + d.getDiagramId() : "diagram:" + d.getDiagramId())
                 .slug(slug)
                 .label(d.getName() != null ? d.getName() : slug)
                 .type(SearchType.DIAGRAM)
                 .source(SearchSource.ISMD)
                 .ontologyIri(graphName)
-                .isPublished(d.getOntologyMetadata().getIsPublished())
+                .isPublished(d.getIsPublished())
                 .lastModified(d.getUpdatedAt() != null ? d.getUpdatedAt().toString() : null)
                 .build();
     }

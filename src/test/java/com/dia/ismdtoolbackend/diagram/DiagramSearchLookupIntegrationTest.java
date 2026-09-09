@@ -102,7 +102,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
         diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));   // ontology() is unpublished
 
-        List<SearchResultDto> unpublishedOnly = lookup.search("pomer", Boolean.FALSE);
+        List<SearchResultDto> unpublishedOnly = lookup.search("pomer", Boolean.FALSE, Integer.MAX_VALUE, 0);
 
         assertThat(unpublishedOnly).extracting(SearchResultDto::getSlug)
                 .containsExactly("draft-pomer");
@@ -115,7 +115,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
         diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));
 
-        assertThat(lookup.search("pomer", null)).extracting(SearchResultDto::getSlug)
+        assertThat(lookup.search("pomer", null, Integer.MAX_VALUE, 0)).extracting(SearchResultDto::getSlug)
                 .containsExactlyInAnyOrder("published-pomer", "draft-pomer");
         assertThat(lookup.count("pomer", null)).isEqualTo(2);
     }
@@ -126,7 +126,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
         diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));
 
-        assertThat(lookup.search("pomer", null))
+        assertThat(lookup.search("pomer", null, Integer.MAX_VALUE, 0))
                 .extracting(SearchResultDto::getSlug, SearchResultDto::getIsPublished)
                 .containsExactlyInAnyOrder(
                         org.assertj.core.api.Assertions.tuple("published-pomer", true),
@@ -137,7 +137,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     void mapsOntologyFieldsWithoutLazyInitializationException() {
         diagramFor(ontology("pracovni-pomer", "https://x/pracovni-pomer"));
 
-        List<SearchResultDto> hits = lookup.search("pomer", null);
+        List<SearchResultDto> hits = lookup.search("pomer", null, Integer.MAX_VALUE, 0);
 
         assertThat(hits).hasSize(1);
         SearchResultDto dto = hits.get(0);
@@ -156,7 +156,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     void syntheticIriDiffersFromTheOntologyIri() {
         diagramFor(ontology("obchodni-rejstrik", "https://x/obchodni-rejstrik"));
 
-        SearchResultDto dto = lookup.search("rejstrik", null).get(0);
+        SearchResultDto dto = lookup.search("rejstrik", null, Integer.MAX_VALUE, 0).get(0);
 
         assertThat(dto.getIri()).isNotEqualTo(dto.getOntologyIri());
         assertThat(dto.getIri()).contains("#diagram-");
@@ -167,7 +167,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     void graphlessOntologyFallsBackToDiagramIdKey() {
         diagramFor(ontology("bez-grafu", null));
 
-        SearchResultDto dto = lookup.search("bez-grafu", null).get(0);
+        SearchResultDto dto = lookup.search("bez-grafu", null, Integer.MAX_VALUE, 0).get(0);
 
         assertThat(dto.getIri()).isNotNull().startsWith("diagram:");
         assertThat(dto.getOntologyIri()).isNull();
@@ -179,7 +179,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramFor(ontology("pomerne-jina", "https://x/pomerne-jina"));
 
         assertThat(lookup.count("pomer", null)).isEqualTo(2);
-        assertThat(lookup.search("pomer", null)).hasSize(2);
+        assertThat(lookup.search("pomer", null, Integer.MAX_VALUE, 0)).hasSize(2);
     }
 
     /**
@@ -192,7 +192,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramFor(o, "Hlavní diagram");
         diagramFor(o, "Pohled HR");
 
-        List<SearchResultDto> hits = lookup.search("pomer", null);
+        List<SearchResultDto> hits = lookup.search("pomer", null, Integer.MAX_VALUE, 0);
 
         assertThat(hits).hasSize(2);
         assertThat(hits).extracting(SearchResultDto::getLabel)

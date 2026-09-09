@@ -57,16 +57,25 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         return diagramRepository.save(d);
     }
 
+    /** Search with paging wide open, the shape every assertion below cares about. */
+    private List<DiagramRepository.DiagramSearchRow> search(String query) {
+        return diagramRepository.searchByOntologyText(query, false, Integer.MAX_VALUE, 0);
+    }
+
+    private long count(String query) {
+        return diagramRepository.countSearchByOntologyText(query, false);
+    }
+
     @Test
     void matchesDiagramByOntologySlug() {
         diagramFor(ontology("pracovni-pomer"));
         diagramFor(ontology("obchodni-rejstrik"));
 
-        List<DiagramEntity> hits = diagramRepository.searchByOntologyText("pomer");
+        List<DiagramRepository.DiagramSearchRow> hits = search("pomer");
 
         assertThat(hits).hasSize(1);
-        assertThat(hits.get(0).getOntologyMetadata().getSlug()).isEqualTo("pracovni-pomer");
-        assertThat(diagramRepository.countSearchByOntologyText("pomer")).isEqualTo(1);
+        assertThat(hits.get(0).getSlug()).isEqualTo("pracovni-pomer");
+        assertThat(count("pomer")).isEqualTo(1);
     }
 
     @Test
@@ -74,15 +83,15 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         diagramFor(ontology("skoly-a-skolstvi"));
 
         // 'školy' (accented) matches the unaccented stored slug 'skoly'.
-        assertThat(diagramRepository.searchByOntologyText("školy")).hasSize(1);
+        assertThat(search("školy")).hasSize(1);
     }
 
     @Test
     void ontologyWithoutDiagram_isNotMatched() {
         ontology("no-diagram-here");   // no diagram created
 
-        assertThat(diagramRepository.searchByOntologyText("no-diagram-here")).isEmpty();
-        assertThat(diagramRepository.countSearchByOntologyText("no-diagram-here")).isZero();
+        assertThat(search("no-diagram-here")).isEmpty();
+        assertThat(count("no-diagram-here")).isZero();
     }
 
     @Test
@@ -93,9 +102,9 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         // '%%' matches every diagram — assert against the total row count rather than a fixed 2,
         // so committed rows leaked by sibling Testcontainer tests (shared singleton container) don't
         // make this brittle.
-        List<DiagramEntity> all = diagramRepository.searchByOntologyText("");
+        List<DiagramRepository.DiagramSearchRow> all = search("");
         assertThat(all).hasSize((int) diagramRepository.count());
-        assertThat(all).extracting(d -> d.getOntologyMetadata().getSlug())
+        assertThat(all).extracting(DiagramRepository.DiagramSearchRow::getSlug)
                 .contains("a-slovnik", "b-slovnik");
     }
 
@@ -109,10 +118,10 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         diagramFor(o, "Hlavní diagram");
         diagramFor(o, "Pohled HR");
 
-        assertThat(diagramRepository.searchByOntologyText("pomer"))
+        assertThat(search("pomer"))
                 .as("both canvases of the matched ontology are returned")
                 .hasSize(2);
-        assertThat(diagramRepository.countSearchByOntologyText("pomer")).isEqualTo(2);
+        assertThat(count("pomer")).isEqualTo(2);
     }
 
     /** The name is searchable in its own right — a user may recall the canvas, not the slovník. */
@@ -122,10 +131,10 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         diagramFor(o, "Hlavní diagram");
         diagramFor(o, "Pohled HR");
 
-        List<DiagramEntity> hits = diagramRepository.searchByOntologyText("Pohled");
+        List<DiagramRepository.DiagramSearchRow> hits = search("Pohled");
 
         assertThat(hits).singleElement()
-                .extracting(DiagramEntity::getName).isEqualTo("Pohled HR");
+                .extracting(DiagramRepository.DiagramSearchRow::getName).isEqualTo("Pohled HR");
     }
 
     /** Accent-insensitive on the name too, matching the slug behaviour. */
@@ -133,7 +142,7 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
     void matchesDiagramNameWithoutAccents() {
         diagramFor(ontology("jine-slovnik"), "Přehled vazeb");
 
-        assertThat(diagramRepository.searchByOntologyText("prehled")).hasSize(1);
+        assertThat(search("prehled")).hasSize(1);
     }
 
     /** A name identifies a canvas to the user, so it must be unique inside its ontology. */
@@ -144,6 +153,49 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
 
         assertThatThrownBy(() -> diagramFor(o, "Pohled HR"))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * The page is cut in SQL. An unbounded fetch sliced in Java scales with the corpus rather than the
+     * page, and the ORDER BY is total, so paging is stable rather than silently dropping rows.
+     */
+    @Test
+    void paginatesInSql_withAStableOrder() {
+        OntologyMetadataEntity o = ontology("stránkování");
+        diagramFor(o, "Diagram A");
+        diagramFor(o, "Diagram B");
+        diagramFor(o, "Diagram C");
+
+        List<DiagramRepository.DiagramSearchRow> firstTwo =
+                diagramRepository.searchByOntologyText("stránkování", false, 2, 0);
+        List<DiagramRepository.DiagramSearchRow> lastOne =
+                diagramRepository.searchByOntologyText("stránkování", false, 2, 2);
+
+        assertThat(firstTwo).hasSize(2);
+        assertThat(lastOne).hasSize(1);
+        // Every row appears exactly once across the pages — no overlap, nothing hidden.
+        assertThat(java.util.stream.Stream.concat(firstTwo.stream(), lastOne.stream())
+                .map(DiagramRepository.DiagramSearchRow::getName))
+                .containsExactlyInAnyOrder("Diagram A", "Diagram B", "Diagram C");
+        assertThat(count("stránkování")).isEqualTo(3);
+    }
+
+    /** One query serves both publish scopes; unpublishedOnly=true narrows on the join. */
+    @Test
+    void unpublishedOnlyFlag_narrowsToDrafts() {
+        OntologyMetadataEntity draft = ontology("koncept-slovnik");
+        OntologyMetadataEntity published = ontology("vydany-slovnik");
+        published.setIsPublished(true);
+        ontologyRepository.saveAndFlush(published);
+        diagramFor(draft, "Draft diagram");
+        diagramFor(published, "Published diagram");
+
+        assertThat(diagramRepository.searchByOntologyText("slovnik", true, Integer.MAX_VALUE, 0))
+                .extracting(DiagramRepository.DiagramSearchRow::getName)
+                .containsExactly("Draft diagram");
+        assertThat(diagramRepository.searchByOntologyText("slovnik", false, Integer.MAX_VALUE, 0))
+                .extracting(DiagramRepository.DiagramSearchRow::getName)
+                .containsExactlyInAnyOrder("Draft diagram", "Published diagram");
     }
 
     /** Uniqueness is per ontology, not global — two slovníky may each hold a "Hlavní diagram". */

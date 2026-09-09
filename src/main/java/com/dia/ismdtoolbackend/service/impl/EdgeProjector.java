@@ -19,9 +19,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Re-derives diagram edges from {@code live ⊕ overlay}: an edge's existence, kind and endpoints are a pure
- * projection, never read from storage as truth. Only waypoints are joined on from the persisted
- * {@code diagram_edges} rows, keyed by the projected edge id.
+ * Re-derives diagram edges from {@code live ⊕ overlay}: an edge's kind and endpoints are a pure projection,
+ * never read from storage as truth, so a persisted endpoint can never contradict the RDF it duplicates.
+ *
+ * <p><b>Existence is not projected.</b> Canvas membership is user-curated and explicit, exactly like nodes:
+ * a {@code diagram_edges} row means the user put that edge on the canvas, and an edge the projection could
+ * draw but no row names is deliberately left off it, waiting in the sidebar like an unplaced class. So a
+ * class can sit on the canvas with none of its relationships drawn. The persisted row carries membership
+ * plus its waypoints; everything else about the edge is re-derived on every read.
  *
  * <p>Three kinds are projected:
  * <ul>
@@ -40,16 +45,23 @@ import java.util.Set;
 class EdgeProjector {
 
     private final DiagramMapper mapper;
+    /** Routing waypoints by projected edge id, joined on from the persisted row. */
     private final Map<String, List<EdgeWaypoint>> waypoints;
     /** Staged edits by concept IRI, supplied because an edit need not have a node row. */
     private final Map<String, DiagramPendingEdit> overlays;
     /** Foreign node IRIs: valid edge targets, never edge sources. */
     private final Set<String> foreignIris;
     /**
-     * The projected edge ids the user has placed on this canvas. Projection decides an edge's endpoints,
-     * kind and validity; this decides whether it is drawn at all.
+     * The projected edge ids the user has placed on this canvas. Projection decides an edge's endpoints and
+     * kind; this decides whether it is drawn at all.
      */
     private final Set<String> onCanvasEdges;
+    /**
+     * Memoized canvas membership. Both {@link #project} and {@link #propertyRows} need it and are called
+     * once each per read with the same {@code nodes} and {@code types}, so computing it twice is pure
+     * duplicated work on the hottest path. A projector serves one read, so one memo is safe.
+     */
+    private Set<String> onCanvasMemo;
 
     EdgeProjector(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints,
                   Map<String, DiagramPendingEdit> overlays, Set<String> foreignIris,
@@ -100,6 +112,9 @@ class EdgeProjector {
      * since a stale row whose concept was deleted is still on the canvas.
      */
     private Set<String> onCanvas(List<DiagramNodeEntity> nodes, Map<String, ConceptType> types) {
+        if (onCanvasMemo != null) {
+            return onCanvasMemo;
+        }
         Set<String> onCanvas = new HashSet<>();
         for (DiagramNodeEntity n : nodes) {
             ConceptType type = types.get(n.getConceptIri());
@@ -107,6 +122,7 @@ class EdgeProjector {
                 onCanvas.add(n.getConceptIri());
             }
         }
+        onCanvasMemo = onCanvas;
         return onCanvas;
     }
 
