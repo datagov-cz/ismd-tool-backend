@@ -129,6 +129,7 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
         "slug": "pracovni-pomer-zamestnanec",       // FE odkazuje hluboko na /detail
         "label": { "cs": "Zaměstnanec", "en": "Employee" },
         "stale": false,                              // true ⇒ odkazovaný pojem byl smazán
+        "unavailable": false,                        // true ⇒ jeho graf nešel načíst; NENÍ smazán
         "hasPendingEdits": false,
         "readOnly": false,                           // true ⇒ CIZÍ pojem: vykreslit needitovatelně
         // VLASTNOSTi dané třídy, vykreslené jako řádky uvnitř uzlu. Vždy přítomné (prázdné, nikdy null)
@@ -152,7 +153,7 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
       "position": { "x": 720, "y": 80 },
       "data": {
         "conceptType": "TRIDA", "iri": "https://…/pojem/organizace",
-        "label": { "cs": "Organizace" }, "stale": false, "hasPendingEdits": false,
+        "label": { "cs": "Organizace" }, "stale": false, "unavailable": false, "hasPendingEdits": false,
         "properties": []
       }
     }
@@ -199,6 +200,7 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
       "slug": "pracovni-pomer-je-zamestnan-u",
       "label": { "cs": "je zaměstnán u" },
       "stale": false,                          // true ⇒ pojem byl pod diagramem smazán
+      "unavailable": false,                    // true ⇒ jeho graf se právě nepodařilo načíst
       "pendingEdit": { "range": "https://…/pojem/organizace" } }
   ]
 }
@@ -209,6 +211,21 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
 **`pendingEdits[]` je jediný stabilní domov nasazené práce.** Je *úplné*, ne zbytkové: pojem, který plátno vykresluje, nese svůj overlay na daném prvku **a zároveň** je zde. Ta redundance je záměrná — členství na plátně se během relace neustále mění (třídu odtáhnete pryč, pak zpět) a seznam obsahující jen neviditelné úpravy by při každé takové změně položku vkládal a zase vyjímal, takže by klient musel po každém uložení znovu odvozovat, které ze čtyř míst danou úpravu vlastní. Identitou je IRI pojmu; úpravu čtěte odsud a kopii na uzlu/hraně/řádku berte jako pomůcku pro vykreslení.
 
 **Uzel nenese žádnou `version`.** Verze patří diagramu; klíč u žádného uzlu není — ani jako `null`.
+
+### `stale` vs. `unavailable` — dvě různé nepřítomnosti
+
+Obojí znamená „pro toto IRI není živý obsah" a **nikdy nejsou pravdivé zároveň**. Vyžadují opačnou reakci, proto jsou to dva příznaky:
+
+| příznak | co se stalo | co sdělit uživateli |
+|---|---|---|
+| `stale: true` | graf pojmu **byl načten** a pojem v něm není | byl **smazán** pod uzlem — nabídnout odebrání z plátna, nebo obnovení |
+| `unavailable: true` | graf pojmu **vůbec nešel načíst** | dočasný problém nadřazené služby; pojem je nejspíš v pořádku — vykreslit jako nenačtený (šedě, spinner, „nyní nelze načíst") a nechat to vyřešit opětovné načtení |
+
+`unavailable` může být pravdivé jen u **cizího** uzlu — pojmu z jiného slovníku nebo z NKD. Vlastní graf diagramu selhává uzavřeně: pokud ho nelze načíst, celý požadavek je **502** a není tělo, které by příznak neslo. Cizí graf naopak selhává otevřeně, protože jeden nedostupný externí slovník nesmí položit celé plátno.
+
+**`unavailable` nikdy neprezentujte jako smazání.** Nabídnout odebrání nebo obnovení kvůli krátkodobému výpadku Fuseki znamená vyzvat uživatele ke zničení obsahu, který je zcela v pořádku.
+
+Tatáž dvojice je i u položek `pendingEdits[]`, odvozená stejně.
 
 `edgeKind` (jen na straně čtení) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
 
@@ -353,9 +370,19 @@ VZTAH vlastněný vaším slovníkem tedy smí mířit **na** cizí třídu (`ra
 
 ### `nodes[].properties` — řádky, které třída vykresluje
 
-**Plané pole IRI vlastností, autoritativní úplná náhrada** — chová se jako `position`, ne jako `overlays`. Vlastnost se vykreslí jako řádek uvnitř třídy jen tehdy, dokud ji ta třída uvádí. Členství je **kurátorované, ne odvozené**: třída s `"properties": []` nezobrazí žádné řádky, i když její VLASTNOSTi v RDF existují, a backend se nikdy nevrací k „zobraz všechny".
+**Ploché pole IRI vlastností.** Vlastnost se vykreslí jako řádek uvnitř třídy jen tehdy, dokud ji ta třída uvádí. Členství je **kurátorované, ne odvozené**: třída s `"properties": []` nezobrazí žádné řádky, i když její VLASTNOSTi v RDF existují, a backend se nikdy nevrací k „zobraz všechny".
 
-**Vynechání klíče je totéž jako poslat `[]`** — uzel v payloadu udává svou úplnou množinu řádků. Tvar pro čtení a zápis se liší: čtení vrací bohaté objekty `PropertyRow`, zápis bere holá IRI, takže uložení mapuje `node.data.properties.map(p => p.iri)`.
+**Klíč je trojstavový, stejně jako `overlays` a `segments` u hran — NEJDE o prostou úplnou náhradu:**
+
+| co pošlete | výsledek |
+|---|---|
+| klíč vynechán, nebo `null` | **beze změny** — uložené řádky zůstávají |
+| `[]` | třída nevykreslí **žádné** řádky |
+| `["iri-a", "iri-b"]` | právě tyto řádky, nahradí uložené |
+
+Vynechat klíč a poslat `[]` jsou **dvě různé věci**. Klient, který viditelnost vlastností neřídí, může klíč u všech uzlů vynechávat a kurátorované řádky tím nikdy nenaruší; smaže je jen explicitní `[]`. (Toto se změnilo — dříve vynechání klíče řádky smazalo, takže uložení sestavené z částečného tvaru uzlu je tiše vyprázdnilo.)
+
+Tvar pro čtení a zápis se liší: čtení vrací bohaté objekty `PropertyRow`, zápis bere holá IRI, takže uložení mapuje `node.data.properties.map(p => p.iri)`.
 
 **Přidání** řádku = zahrnout jeho IRI; **odebrání** = vynechat ho a zbytek poslat znovu. **Přesun vlastnosti k jiné třídě vyžaduje obojí**: uvést ji u nové hostitelské třídy *a* nasadit `{"domain": "<nová třída>"}` na její overlay. Samotný overlay nevykreslí nic — umístění a struktura jsou oddělené pokyny.
 
@@ -446,6 +473,20 @@ IRI pojmu z jiného slovníku — v id uzlu, v `conceptIri` overlaye nebo v kter
 { "success": false, "data": null,
   "message": "Pojem https://…/a3791---registr-vysokých-škol/pojem/elektronická-adresa nepatří do slovníku tohoto diagramu." }
 ```
+
+### `DIAGRAM_CONTENT_UNAVAILABLE` (HTTP 502) — čtení se nedostalo ke grafu slovníku
+
+`GET …/detail` nedokázal načíst **vlastní** graf diagramu, takže není z čeho obsah sestavit. Nic se nezapsalo a nic není ztraceno — **opakujte požadavek**, na rozdíl od selhání zpětného načtení níže.
+
+```jsonc
+{
+  "success": false,
+  "errorCode": "DIAGRAM_CONTENT_UNAVAILABLE",
+  "message": "Obsah pojmů diagramu se nepodařilo načíst. Zkuste to prosím znovu."
+}
+```
+
+Tentýž nedostupný Fuseki vrací **502 při čtení i při ukládání** — jedno selhání nadřazené služby, jeden stavový kód. Kódy zůstávají oddělené jen proto, že se liší doporučení: zde opakovat, tam znovu načíst. Selhání *cizího* grafu toto nezpůsobí; degraduje jeho uzly na `unavailable` a vrátí 200.
 
 ### `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) — zápis se povedl, data pro vykreslení ne
 

@@ -173,6 +173,44 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
         return saved;
     }
 
+    /**
+     * {@code properties} is three-way like {@code overlays}, not a full replace like node membership: a
+     * client that does not manage property visibility omits the field and keeps the curated rows. Were null
+     * coerced to {@code []}, every such save would silently blank the class's rendered properties.
+     */
+    @Test
+    void omittedProperties_keepsCuratedRows_whileEmptyListClearsThem() {
+        DiagramEntity diagram = newDiagram("visible-props");
+        DiagramNodeEntity seeded = seedNode(diagram, "https://x/pojem/trida", 0, 0);
+        seeded.setVisibleProperties(List.of("https://x/pojem/vlastnost"));
+        diagramRepository.saveAndFlush(diagram);
+        em.clear();
+
+        // Save with `properties` absent — the node moves, the curated rows must survive.
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(new DiagramLayoutDto.Node(
+                        "iri:https://x/pojem/trida", new PositionDto(9.0, 9.0), null, false, null)),
+                List.of(), null));
+
+        assertThat(nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/trida").orElseThrow().getVisibleProperties())
+                .as("an omitted properties array must not clear the curated rows")
+                .containsExactly("https://x/pojem/vlastnost");
+
+        // An explicit [] is the clear signal, and still works.
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(again, new DiagramLayoutDto(null, null,
+                List.of(new DiagramLayoutDto.Node(
+                        "iri:https://x/pojem/trida", new PositionDto(9.0, 9.0), null, false, List.of())),
+                List.of(), null));
+
+        assertThat(nodeRepository.findByDiagramIdAndConceptIri(
+                diagram.getId(), "https://x/pojem/trida").orElseThrow().getVisibleProperties())
+                .as("an explicit [] still clears them")
+                .isEmpty();
+    }
+
     @Test
     void addsNewIriNode_keepsMatching_removesOmitted() {
         DiagramEntity diagram = newDiagram("membership");

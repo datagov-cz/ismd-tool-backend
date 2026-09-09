@@ -104,7 +104,7 @@ class DiagramMapperTest {
 
         DiagramDto.NodeData data = mapper.toNodeData(
                 node, ConceptType.VZTAH, "slug-je-zamestnan-u", detail.getName(), detail, List.of(),
-                overlay);
+                overlay, false);
 
         assertThat(data.conceptType()).isEqualTo(ConceptType.VZTAH);
         assertThat(data.iri()).isEqualTo("https://x/pojem/je-zamestnan-u");
@@ -120,11 +120,24 @@ class DiagramMapperTest {
         DiagramNodeEntity node = new DiagramNodeEntity();
         node.setConceptIri("https://x/pojem/deleted");
 
-        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null, null);
+        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null, null, false);
 
         assertThat(data.stale()).isTrue();          // concept deleted underneath the node
+        assertThat(data.unavailable()).isFalse();   // its graph was read; the concept is genuinely gone
         assertThat(data.hasPendingEdits()).isFalse();
         assertThat(data.pendingEdit()).isNull();
         assertThat(data.properties()).isEmpty();    // always a list on the wire, never null
+    }
+
+    @Test
+    void toNodeData_unreadableGraphMarksNodeUnavailableNotStale() {
+        DiagramNodeEntity node = new DiagramNodeEntity();
+        node.setConceptIri("https://other/pojem/neco");
+
+        // Same missing detail as above, but the absence is an unreadable foreign graph, not a deletion.
+        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null, null, true);
+
+        assertThat(data.unavailable()).isTrue();
+        assertThat(data.stale()).isFalse();  // must NOT be reported as deleted — a blip is not a deletion
     }
 }

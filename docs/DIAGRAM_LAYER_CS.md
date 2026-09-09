@@ -120,7 +120,11 @@ Plátno může umístit pojem z **jiné ISMD ontologie nebo z NKD**, aby uživat
 
 **Příznak povoluje pouze umístění.** Overlay nikdy nesmí mířit na cizí pojem, protože jeho materializace by zapsala RDF jiné ontologie. To je vynuceno na vstupu a znovu ověřeno při materializaci (`FOREIGN_CONCEPT`) a je to právě to, co zachovává záruku proti zápisům napříč vlastníky. Příznak je zároveň tvrzení, které server ověřuje oběma směry: cizí IRI je přijato jen na uzlu, který ho nastaví, a nastavení na vlastním pojmu je 400.
 
-**Čtení načítá i cizí grafy**, seskupeně po jednom načtení na graf, ne na uzel — bez toho se cizí uzel vykreslí bez názvu a jako `stale`, k nerozeznání od pojmu, který někdo smazal. Cizí graf, který se nepodaří načíst, degraduje své uzly na `stale`, místo aby shodil celé čtení.
+**Čtení načítá i cizí grafy**, seskupeně po jednom načtení na graf, ne na uzel — bez toho se cizí uzel vykreslí bez názvu a nenačtený, k nerozeznání od pojmu, který někdo smazal.
+
+**Vlastní graf selhává uzavřeně, cizí otevřeně, a obě nepřítomnosti se hlásí odlišně.** Nenačtený vlastní graf je 502 (`DIAGRAM_CONTENT_UNAVAILABLE` při čtení, `DIAGRAM_SAVED_READBACK_FAILED` po uložení) — bez něj žádný diagram není. Nenačtený *cizí* graf degraduje jen své vlastní uzly a zbytek plátna se vykreslí, protože jeden nedostupný externí slovník nesmí položit celý diagram.
+
+Takto degradované uzly hlásí `unavailable`, **nikdy `stale`**. `stale` znamená, že graf byl načten a pojem v něm není — byl smazán, takže FE nabídne odebrání nebo obnovení. Hlásit tímto způsobem krátkodobý výpadek Fuseki by uživatele vybízelo ke zničení nedotčeného obsahu, proto má případ selhání čtení vlastní příznak.
 
 **Nasměrování `rdfs:range` na *publikovaný NKD* pojem je povoleno pouze pro VZTAH** a cíl se snímkuje jako lokální kopie (`RANGE_TARGET`) stejně jako ostatní NKD odkazy. `rdfs:domain` mířící na publikovaný pojem zůstává neplatný pro každý typ a `range` u VLASTNOSTI zůstává neplatný, protože pojmenovává XSD datový typ, ne pojem. Viz [`NKD_LOCAL_COPY_SNAPSHOT.md`](./NKD_LOCAL_COPY_SNAPSHOT.md).
 
@@ -194,6 +198,8 @@ Protože nasazování je po diagramech, dvě plátna jedné ontologie mohou drž
 **Detekce běží před smyčkou po jednotlivých změnách.** Změny se aplikují ve vlastních `REQUIRES_NEW` transakcích, takže kontrola uvnitř té smyčky by už měla zapsané RDF za vše, co kolizi předchází. Běží ve vlastní transakci, jako první; odmítnutí znamená, že se nic nezapsalo a nasazená práce obou stran zůstala nedotčená.
 
 **Rozhodnutí je uživatelovo a explicitní.** `POST …/materialize` bez `onConflict` kolizi ohlásí a odmítne (409). Klient zavolá znovu a pojmenuje **vítěze**: `ACCEPT_MINE` pro tento diagram, nebo `ACCEPT_THEIRS` s `winnerDiagramId` pro uvedený. **Zahodí se pouze sporné pojmy** — nikdy celá nasazená práce plátna, což by byl mnohem větší úkon, než k jakému dal uživatel souhlas.
+
+**Zahození se potvrdí ještě před jakýmkoli zápisem do RDF a platí i tehdy, když všechny změny následně selžou.** Řešení kolize běží ve vlastní transakci před smyčkou aplikace změn; materializace, která kolizi vyřeší a pak selže na všech změnách, přesto nechá kontestované úpravy poražených smazané. Je to záměr — pojmenování vítěze je uživatelovo rozhodnutí o tom, čí záměr přežije, ne sázka na úspěch zápisu — ale znamená to, že záruka „nic nebylo zapsáno" z větve 409 se na vyřešenou větev **nevztahuje**. Nekontestovaná nasazená práce zůstává v obou případech nedotčena.
 
 **Jeden vítěz, ne strana k zahození.** Kolize může zasáhnout víc než dvě plátna a tam je „zahodit jejich" nejednoznačné, zatímco „zahodit moje" nevyřeší nic — zbylé diagramy spolu stále kolidují. Pojmenování vítěze vyčistí všechny poražené v jednom průchodu, včetně pláten, která volající nezmínil, takže trojstranná kolize stojí jedno rozhodnutí místo jednoho kola na každého sourozence. `ACCEPT_THEIRS` pak materializuje **vítěze**, ne diagram v cestě: ponechat zvolenou úpravu jen nasazenou by kolizi přesunulo na plátno, ke kterému se uživatel už nemusí vrátit.
 

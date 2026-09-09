@@ -49,13 +49,15 @@ public record DiagramLayoutDto(
             @NotNull @Valid PositionDto position,
             String parentId,
             Boolean collapsed,
-            /* The VLASTNOST rows this class cell renders; a full replace, like `position`. */
+            /* The VLASTNOST rows this class cell renders. Three-way, like `overlays` and edge `segments`:
+             * null leaves the stored rows untouched, so a client that does not manage property visibility
+             * cannot wipe it, `[]` renders none, and a list replaces the set wholesale. */
             List<String> properties
     ) {
 
         public Node {
             collapsed = collapsed != null && collapsed;
-            properties = properties != null ? List.copyOf(properties) : List.of();
+            properties = properties != null ? List.copyOf(properties) : null;
         }
     }
 

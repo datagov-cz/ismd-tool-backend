@@ -95,15 +95,18 @@ public class DiagramMapper {
                                           Map<String, String> label,
                                           ConceptDetailModel detail,
                                           List<DiagramDto.PropertyRow> properties,
-                                          DiagramPendingEdit overlay) {
+                                          DiagramPendingEdit overlay,
+                                          boolean unavailable) {
         boolean hasPendingEdits = overlay != null;
-        boolean stale = detail == null;
+        // Absent because its graph could not be read is `unavailable`, not deleted; the two never coincide.
+        boolean stale = detail == null && !unavailable;
         return new DiagramDto.NodeData(
                 conceptType,
                 node.getConceptIri(),
                 slug,
                 label,
                 stale,
+                unavailable,
                 hasPendingEdits,
                 overlay,
                 properties != null ? properties : List.of(),

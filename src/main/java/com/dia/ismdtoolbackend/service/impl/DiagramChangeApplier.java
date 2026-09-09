@@ -39,6 +39,13 @@ import java.util.Objects;
  * Applies one staged overlay to the ontology in its own {@code REQUIRES_NEW} transaction, so a failing
  * change rolls back only itself and leaves its overlay staged. Callers run outside a transaction and turn
  * the exception into a {@code failed} report. See {@code docs/DIAGRAM_LAYER.md}.
+ *
+ * <p>That transaction covers PG. Whether the RDF write joins it depends on {@code outbox.enabled}: on the
+ * outbox path (the default) the triples are enqueued in this same transaction and a rollback discards them
+ * with the overlay clear, so the two stay consistent. On the direct path the TDB2 write has already
+ * committed when PG rolls back, leaving RDF changed and the overlay still staged — the next materialize
+ * re-applies it, which is why every op here must be idempotent. This is the repo-wide dual-write
+ * limitation, not a diagram-specific one.
  */
 @Slf4j
 @Service

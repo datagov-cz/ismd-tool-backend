@@ -124,7 +124,11 @@ A canvas may place a concept from **another ISMD ontology, or from NKD**, so the
 
 **Endpoints split on written-vs-referenced, which is the same rule stated above from the other side.** `domain` names the concept the link hangs *off* — the origin — so it must be ours, as must op 6's `addBroaderOn`, the class it edits. `range`, `broaderConcept`, `exactMatch` and op 6's `broader` are only referenced: they become objects of triples in our own graph, so a foreign one is exactly the link the feature exists to draw.
 
-**Reads fetch the foreign graphs too**, grouped one fetch per graph rather than per node — without that a foreign node renders label-less and `stale`, indistinguishable from a concept someone deleted. A foreign graph that fails to load degrades its nodes to `stale` rather than failing the whole read.
+**Reads fetch the foreign graphs too**, grouped one fetch per graph rather than per node — without that a foreign node renders label-less and unresolved, indistinguishable from a concept someone deleted.
+
+**Own graph fails closed, foreign fails open, and the two absences are reported differently.** An unreadable own graph is a 502 (`DIAGRAM_CONTENT_UNAVAILABLE` on a read, `DIAGRAM_SAVED_READBACK_FAILED` after a save) — there is no diagram without it. An unreadable *foreign* graph degrades only its own nodes and the rest of the canvas still renders, since one unreachable external ontology must not take a whole diagram down.
+
+Those degraded nodes report `unavailable`, **never `stale`**. `stale` means the graph was read and the concept is not in it — deleted, so the FE offers remove-or-recreate. Reporting a transient Fuseki blip that way would invite the user to destroy intact content, so the read-failure case carries its own flag.
 
 **Pointing `rdfs:range` at a *published NKD* concept is permitted for a VZTAH only**, and the target is snapshotted as a local copy (`RANGE_TARGET`) exactly like the other NKD links. `rdfs:domain` naming a published concept stays invalid for every type, and a VLASTNOST's `range` stays invalid because it names an XSD datatype, not a concept. See [`NKD_LOCAL_COPY_SNAPSHOT.md`](./NKD_LOCAL_COPY_SNAPSHOT.md).
 
@@ -210,6 +214,8 @@ Because staging is per-diagram, two canvases of one ontology can hold competing 
 **Detection runs before the per-change loop.** The changes are applied in their own `REQUIRES_NEW` transactions, so a check inside that loop would already have committed RDF for everything ahead of the collision. It runs in one transaction of its own, first; a refusal means nothing was written and both sides' staged work is untouched.
 
 **Resolution is the user's, and explicit.** `POST …/materialize` with no `onConflict` reports the conflict and refuses (409). The client re-calls naming the **winner**: `ACCEPT_MINE` for this diagram, or `ACCEPT_THEIRS` with `winnerDiagramId` for a named one. **Only the contested concepts are discarded** — never a whole canvas's staged work, which is a far larger act than the user agreed to.
+
+**The discard commits before any RDF is written, and stands even if every change then fails.** Resolution runs in its own transaction ahead of the apply loop; a materialize that resolves a conflict and then fails on every change still leaves the losers' contested edits gone. That is deliberate — naming a winner is the user's decision about whose intent survives, not a bet on the write succeeding — but it means the 409 path's "nothing was written" guarantee does **not** extend to the resolved path. Uncontested staged work is untouched either way.
 
 **One winner, not a side to discard.** A conflict can span more than two canvases, and there "discard theirs" is ambiguous while "discard mine" settles nothing — the remaining diagrams still collide. Naming a winner clears every loser in the same pass, including canvases the caller never mentioned, so a three-way conflict costs one decision rather than one round trip per sibling. `ACCEPT_THEIRS` then materializes the **winner**, not the diagram in the path: leaving the chosen edit merely staged would push the collision onto a canvas the user may never return to.
 

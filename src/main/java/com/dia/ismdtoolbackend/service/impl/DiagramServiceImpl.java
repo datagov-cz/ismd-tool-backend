@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.DiagramContentUnavailableException;
 import com.dia.ismdtoolbackend.exception.DiagramEditConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramNameConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
@@ -41,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,7 +124,7 @@ public class DiagramServiceImpl implements DiagramService {
     @Override
     public DiagramDto createDiagram(String ontologySlug, String name) {
         DiagramSnapshot snapshot = self.commitNewDiagram(ontologySlug, name);
-        return assemble(ontologySlug, snapshot, withForeign(snapshot, liveConcepts(snapshot.graphName())));
+        return assemble(ontologySlug, snapshot, readbackConcepts(snapshot));
     }
 
     @Transactional
@@ -210,11 +212,21 @@ public class DiagramServiceImpl implements DiagramService {
         diagramRepository.delete(requireDiagramOf(ontology, ontologySlug, diagramId));
     }
 
-    /** Untransacted: {@link #loadForRead} returns a detached snapshot, so the Fuseki fetch holds no connection. */
+    /**
+     * Untransacted: {@link #loadForRead} returns a detached snapshot, so the Fuseki fetch holds no
+     * connection. An unreadable own graph is a 502, the same status the save path returns for the same
+     * failure.
+     */
     @Override
     public DiagramDto getDiagram(String ontologySlug, Long diagramId) {
         DiagramSnapshot snapshot = self.loadForRead(ontologySlug, diagramId);
-        return assemble(ontologySlug, snapshot, withForeign(snapshot, liveConcepts(snapshot.graphName())));
+        LiveConcepts live;
+        try {
+            live = liveContent(snapshot);
+        } catch (RuntimeException e) {
+            throw new DiagramContentUnavailableException(e);
+        }
+        return assemble(ontologySlug, snapshot, live);
     }
 
     @Transactional(readOnly = true)
@@ -252,10 +264,26 @@ public class DiagramServiceImpl implements DiagramService {
         return snapshot(diagram, ontology);
     }
 
+    /**
+     * The resolved live content plus the IRIs whose graph could not be read at all. The two absences are
+     * different facts: an IRI missing from {@code byIri} after its graph was read is deleted, one in
+     * {@code unavailable} is only unreadable right now. See {@link DiagramDto.NodeData#stale()}.
+     */
+    private record LiveConcepts(Map<String, ConceptDetailModel> byIri, Set<String> unavailable) {
+
+        ConceptDetailModel get(String iri) {
+            return byIri.get(iri);
+        }
+
+        boolean isUnavailable(String iri) {
+            return unavailable.contains(iri);
+        }
+    }
+
     /** Live content for an already-committed write; a Fuseki failure here is a readback, not a rollback. */
-    private Map<String, ConceptDetailModel> readbackConcepts(DiagramSnapshot snapshot) {
+    private LiveConcepts readbackConcepts(DiagramSnapshot snapshot) {
         try {
-            return withForeign(snapshot, liveConcepts(snapshot.graphName()));
+            return liveContent(snapshot);
         } catch (RuntimeException e) {
             throw new DiagramReadbackFailedException(snapshot.version(), e);
         }
@@ -264,26 +292,30 @@ public class DiagramServiceImpl implements DiagramService {
     /**
      * Merges content for foreign nodes — concepts referenced from other ontologies — into the own-graph
      * map so they render with a label instead of a bare IRI. One fetch per distinct foreign graph;
-     * own-graph entries win. A graph that fails to load is skipped and its nodes render stale.
+     * own-graph entries win. The own graph fails closed, since without it there is no diagram to render; a
+     * foreign graph that fails to load leaves the rest of the canvas usable and marks only its own nodes
+     * unavailable.
      */
-    private Map<String, ConceptDetailModel> withForeign(DiagramSnapshot snapshot,
-                                                        Map<String, ConceptDetailModel> own) {
+    private LiveConcepts liveContent(DiagramSnapshot snapshot) {
+        Map<String, ConceptDetailModel> own = liveConcepts(snapshot.graphName());
         if (snapshot.foreignGraphs().isEmpty()) {
-            return own;
+            return new LiveConcepts(own, Set.of());
         }
-        Map<String, List<String>> irisByGraph = new HashMap<>();
+        Map<String, List<String>> irisByGraph = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : snapshot.foreignGraphs().entrySet()) {
             irisByGraph.computeIfAbsent(e.getValue(), g -> new ArrayList<>()).add(e.getKey());
         }
 
         Map<String, ConceptDetailModel> merged = new HashMap<>(own);
+        Set<String> unavailable = new HashSet<>();
         for (Map.Entry<String, List<String>> e : irisByGraph.entrySet()) {
             Map<String, ConceptDetailModel> foreign;
             try {
                 foreign = liveConcepts(e.getKey());
             } catch (RuntimeException ex) {
-                log.warn("Foreign graph {} could not be read for diagram {}; its nodes render as stale",
-                        e.getKey(), snapshot.diagramId(), ex);
+                log.warn("Foreign graph {} could not be read for diagram {}; its {} node(s) render as "
+                        + "unavailable, not deleted", e.getKey(), snapshot.diagramId(), e.getValue().size(), ex);
+                unavailable.addAll(e.getValue());
                 continue;
             }
             for (String iri : e.getValue()) {
@@ -293,7 +325,7 @@ public class DiagramServiceImpl implements DiagramService {
                 }
             }
         }
-        return merged;
+        return new LiveConcepts(merged, unavailable);
     }
 
     /**
@@ -341,6 +373,11 @@ public class DiagramServiceImpl implements DiagramService {
      * are re-read through the ontology scope, never trusted from the request. A resolution names one winner
      * and discards every loser's contested edits in a single pass; the winner is the diagram that
      * materializes, which for {@code ACCEPT_THEIRS} is not the one in the path.
+     *
+     * <p>The discard commits here, before any RDF is written, and stands even if every subsequent change
+     * then fails — resolving a conflict is the user's decision about whose intent survives, not a
+     * consequence of the write succeeding. Only contested IRIs are discarded, so a loser's uncontested
+     * staged work is untouched.
      *
      * @return the ontology id and the diagram to materialize
      */
@@ -606,13 +643,12 @@ public class DiagramServiceImpl implements DiagramService {
     // ---- assembly -------------------------------------------------------------------------------
 
     /** Joins layout rows to live content, applies overlays, projects edges and property rows. */
-    private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot,
-                                Map<String, ConceptDetailModel> live) {
+    private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot, LiveConcepts live) {
         EdgeProjector projector = new EdgeProjector(mapper, snapshot.edgeWaypoints(),
-                snapshot.overlays(), new java.util.HashSet<>(foreignIris(snapshot.nodes())),
+                snapshot.overlays(), new HashSet<>(foreignIris(snapshot.nodes())),
                 snapshot.onCanvasEdges());
         Map<String, List<DiagramDto.PropertyRow>> rows =
-                projector.propertyRows(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
+                projector.propertyRows(snapshot.nodes(), live.byIri(), snapshot.types(), snapshot.slugs());
 
         // nodes[] is classes only; relationships render as edges and properties as rows.
         List<DiagramDto.Node> nodes = new ArrayList<>();
@@ -620,12 +656,11 @@ public class DiagramServiceImpl implements DiagramService {
             if (!isCanvasMember(snapshot, node.getConceptIri())) {
                 continue;
             }
-            nodes.add(toNode(snapshot, node, live.get(node.getConceptIri()),
-                    rows.getOrDefault(node.getConceptIri(), List.of())));
+            nodes.add(toNode(snapshot, node, live, rows.getOrDefault(node.getConceptIri(), List.of())));
         }
 
         List<DiagramDto.Edge> edges =
-                projector.project(snapshot.nodes(), live, snapshot.types(), snapshot.slugs());
+                projector.project(snapshot.nodes(), live.byIri(), snapshot.types(), snapshot.slugs());
 
         return new DiagramDto(snapshot.diagramId(), snapshot.name(), ontologySlug, snapshot.version(),
                 snapshot.viewport(), nodes, edges, pendingEdits(snapshot, live));
@@ -638,18 +673,19 @@ public class DiagramServiceImpl implements DiagramService {
     }
 
     /** Every staged edit on the diagram — what Převzít applies. Not filtered by canvas membership. */
-    private List<DiagramDto.PendingEditEntry> pendingEdits(DiagramSnapshot snapshot,
-                                                           Map<String, ConceptDetailModel> live) {
+    private List<DiagramDto.PendingEditEntry> pendingEdits(DiagramSnapshot snapshot, LiveConcepts live) {
         List<DiagramDto.PendingEditEntry> entries = new ArrayList<>();
         for (Map.Entry<String, DiagramPendingEdit> staged : snapshot.overlays().entrySet()) {
             String iri = staged.getKey();
             ConceptDetailModel detail = live.get(iri);
+            boolean unavailable = live.isUnavailable(iri);
             entries.add(new DiagramDto.PendingEditEntry(
                     iri,
                     snapshot.types().get(iri),
                     snapshot.slugs().get(iri),
                     detail != null ? detail.getName() : null,
-                    detail == null,
+                    detail == null && !unavailable,
+                    unavailable,
                     staged.getValue()));
         }
         entries.sort(Comparator.comparing(DiagramDto.PendingEditEntry::iri));
@@ -658,13 +694,14 @@ public class DiagramServiceImpl implements DiagramService {
 
     /** Builds one render-ready node; type and slug come from the snapshot, never a fresh PG read. */
     private DiagramDto.Node toNode(DiagramSnapshot snapshot, DiagramNodeEntity node,
-                                   ConceptDetailModel detail, List<DiagramDto.PropertyRow> properties) {
+                                   LiveConcepts live, List<DiagramDto.PropertyRow> properties) {
         String conceptIri = node.getConceptIri();
         ConceptType type = snapshot.types().get(conceptIri);
         String slug = snapshot.slugs().get(conceptIri);
+        ConceptDetailModel detail = live.get(conceptIri);
         Map<String, String> label = detail != null ? detail.getName() : null;
         DiagramDto.NodeData data = mapper.toNodeData(node, type, slug, label, detail, properties,
-                snapshot.overlays().get(conceptIri));
+                snapshot.overlays().get(conceptIri), live.isUnavailable(conceptIri));
         String parentId = node.getParentNodeId() != null
                 ? parentWireId(snapshot, node.getParentNodeId())
                 : null;

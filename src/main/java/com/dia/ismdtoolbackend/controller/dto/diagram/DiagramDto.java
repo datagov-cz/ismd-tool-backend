@@ -42,6 +42,7 @@ public record DiagramDto(
             String slug,
             Map<String, String> label,
             boolean stale,
+            boolean unavailable,
             DiagramPendingEdit pendingEdit
     ) {
     }
@@ -67,6 +68,12 @@ public record DiagramDto(
      * The merged live-plus-overlay payload the FE renders directly. {@code properties} are the class's
      * VLASTNOSTi as rows inside the node, empty rather than null and ordered by label so they do not
      * reshuffle between reads.
+     *
+     * <p>{@code stale} and {@code unavailable} are different absences and never both true. {@code stale}
+     * means the graph was read and the concept is not in it — deleted underneath the node, so offer remove
+     * or recreate. {@code unavailable} means that concept's graph could not be read at all, which only
+     * happens for a foreign ontology, since an unreadable own graph fails the whole request; the concept is
+     * presumed intact, so render it as temporarily unresolved and let a later reload settle it.
      */
     @Schema(name = "DiagramNodeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -76,6 +83,7 @@ public record DiagramDto(
             String slug,
             Map<String, String> label,
             boolean stale,
+            boolean unavailable,
             boolean hasPendingEdits,
             DiagramPendingEdit pendingEdit,
             @JsonInclude List<PropertyRow> properties,

@@ -227,12 +227,16 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
     /**
      * A foreign graph that cannot be read must not take the whole canvas down with it. The diagram's own
      * content is what the response exists to deliver.
+     *
+     * <p>The degraded node reports {@code unavailable}, never {@code stale}: a transient Fuseki blip is not
+     * a deletion, and telling the user their concept was deleted underneath the node invites a destructive
+     * remove-or-recreate over content that is intact.
      */
     @Test
-    void unreadableForeignGraph_degradesToStale_ratherThanFailingTheRead() {
+    void unreadableForeignGraph_marksNodeUnavailable_notStale() {
         stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
         // Stub the foreign graph to a WORKING baseline first, then break it: without this the node
-        // would render stale merely because the fixture never stubbed OTHER_GRAPH, and the assertion
+        // would degrade merely because the fixture never stubbed OTHER_GRAPH, and the assertion
         // below would hold with the throw removed.
         stubGraph(OTHER_GRAPH, concept(FOREIGN_CLASS, "Osoba"));
         when(tdb2.fetchGraph(eq(OTHER_GRAPH))).thenThrow(new RuntimeException("Fuseki down"));
@@ -240,9 +244,28 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
         DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
 
         assertThat(nodeFor(read, MY_CLASS).data().label()).containsEntry("cs", "Zaměstnanec");
-        assertThat(nodeFor(read, FOREIGN_CLASS).data().stale())
+        assertThat(nodeFor(read, FOREIGN_CLASS).data().unavailable())
                 .as("the foreign node degrades, the canvas still renders")
                 .isTrue();
+        assertThat(nodeFor(read, FOREIGN_CLASS).data().stale())
+                .as("an unreadable graph must not be reported as a deleted concept")
+                .isFalse();
+    }
+
+    /**
+     * The other absence: the foreign graph reads fine and simply has no such concept. That IS a deletion,
+     * so it stays {@code stale} — the distinction from the test above is the whole point of the two flags.
+     */
+    @Test
+    void foreignConceptMissingFromAReadableGraph_staysStale() {
+        stubGraph(GRAPH, concept(MY_CLASS, "Zaměstnanec"));
+        // Readable, but the concept is not in it.
+        stubGraph(OTHER_GRAPH, concept(OTHER_GRAPH + "/pojem/jiny", "Jiný"));
+
+        DiagramDto read = save(node(MY_CLASS, 0, 0), node(FOREIGN_CLASS, 300, 0));
+
+        assertThat(nodeFor(read, FOREIGN_CLASS).data().stale()).isTrue();
+        assertThat(nodeFor(read, FOREIGN_CLASS).data().unavailable()).isFalse();
     }
 
     // ---- the guard ------------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
+import com.dia.ismdtoolbackend.exception.DiagramContentUnavailableException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
@@ -250,6 +251,22 @@ class DiagramControllerTest {
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.errorCode").value("DIAGRAM_SAVED_READBACK_FAILED"))
                 .andExpect(jsonPath("$.data.version").value(4));
+    }
+
+    /**
+     * The same unreachable Fuseki on a plain read is also a 502, not a 500. One upstream failure must not
+     * report two different contracts depending on whether the client was reading or saving; the codes stay
+     * distinct because the advice differs — retry here, reload after a save.
+     */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getDiagram_ownGraphUnreadable_returns502LikeTheSavePath() throws Exception {
+        when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
+                .thenThrow(new DiagramContentUnavailableException(new RuntimeException("fuseki down")));
+
+        mockMvc.perform(get("/api/diagram/pracovni-pomer/5/detail"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.errorCode").value("DIAGRAM_CONTENT_UNAVAILABLE"));
     }
 
     /**

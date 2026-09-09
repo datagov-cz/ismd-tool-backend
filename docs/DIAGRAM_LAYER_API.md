@@ -129,6 +129,7 @@ The backend has already joined layout rows to live concept content and applied e
         "slug": "pracovni-pomer-zamestnanec",       // FE deep-links to /detail
         "label": { "cs": "Zaměstnanec", "en": "Employee" },
         "stale": false,                              // true ⇒ referenced concept was deleted
+        "unavailable": false,                        // true ⇒ its graph could not be read; NOT deleted
         "hasPendingEdits": false,
         "readOnly": false,                           // true ⇒ a FOREIGN concept: render non-editable
         // the class's VLASTNOSTi, rendered as rows inside the node. Always present (empty, never null)
@@ -152,7 +153,7 @@ The backend has already joined layout rows to live concept content and applied e
       "position": { "x": 720, "y": 80 },
       "data": {
         "conceptType": "TRIDA", "iri": "https://…/pojem/organizace",
-        "label": { "cs": "Organizace" }, "stale": false, "hasPendingEdits": false,
+        "label": { "cs": "Organizace" }, "stale": false, "unavailable": false, "hasPendingEdits": false,
         "properties": []
       }
     }
@@ -199,6 +200,7 @@ The backend has already joined layout rows to live concept content and applied e
       "slug": "pracovni-pomer-je-zamestnan-u",
       "label": { "cs": "je zaměstnán u" },
       "stale": false,                          // true ⇒ the concept was deleted underneath the diagram
+      "unavailable": false,                    // true ⇒ its graph could not be read right now
       "pendingEdit": { "range": "https://…/pojem/organizace" } }
   ]
 }
@@ -209,6 +211,21 @@ The backend has already joined layout rows to live concept content and applied e
 **`pendingEdits[]` is the one stable home for staged work.** It is *complete*, not a leftover: a concept the canvas draws carries its overlay on that element **and** appears here. That redundancy is deliberate — canvas membership changes constantly within a session (drag a class off, drag it back), and a list holding only the invisible edits would move an entry in and out on every such change, forcing the client to re-derive which of four places owns each edit after every save. Identity is the concept IRI; read the edit from here and treat the copy on a node/edge/row as a rendering convenience.
 
 **A node carries no `version`.** The version belongs to the diagram; the key is absent from every node, not present-and-null.
+
+### `stale` vs `unavailable` — two different absences
+
+Both mean "no live content for this IRI", and they are **never both true**. They call for opposite reactions, which is why they are two flags:
+
+| flag | what happened | what the user should be told |
+|---|---|---|
+| `stale: true` | the concept's graph **was read** and the concept is not in it | it was **deleted** underneath the node — offer remove-from-canvas or recreate |
+| `unavailable: true` | the concept's graph **could not be read at all** | a temporary upstream problem; the concept is presumed intact — render it unresolved (greyed, spinner, "cannot load right now") and let a reload settle it |
+
+`unavailable` can only ever be true for a **foreign** node — a concept from another ontology or NKD. The diagram's own graph fails closed: if it cannot be read, the whole request is a **502** and there is no body to carry a flag. A foreign graph fails open instead, because one unreachable external ontology must not take a whole canvas down.
+
+**Never present `unavailable` as a deletion.** Offering remove-or-recreate over a Fuseki blip invites the user to destroy content that is perfectly intact.
+
+The same pair appears on `pendingEdits[]` entries, derived the same way.
 
 `edgeKind` (read-side only) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
 
@@ -353,9 +370,19 @@ So a VZTAH your ontology owns may point **at** a foreign class (`range`), but a 
 
 ### `nodes[].properties` — the rows a class renders
 
-**A flat array of VLASTNOST IRIs, authoritative full-replace** — it behaves like `position`, not like `overlays`. A property renders as a row inside a class only while that class lists it. Membership is **curated, not derived**: a class with `"properties": []` shows no rows even when its VLASTNOSTi exist in RDF, and the backend never falls back to "show all".
+**A flat array of VLASTNOST IRIs.** A property renders as a row inside a class only while that class lists it. Membership is **curated, not derived**: a class with `"properties": []` shows no rows even when its VLASTNOSTi exist in RDF, and the backend never falls back to "show all".
 
-**Omitting the key is the same as sending `[]`** — a node in the payload states its full row set. Note the read and write shapes differ: the read returns rich `PropertyRow` objects, the write takes bare IRIs, so a Save maps `node.data.properties.map(p => p.iri)`.
+**The key is three-way, like `overlays` and edge `segments` — it is NOT a plain full replace:**
+
+| you send | result |
+|---|---|
+| key omitted, or `null` | **no-op** — the stored rows are kept |
+| `[]` | the class renders **no** rows |
+| `["iri-a", "iri-b"]` | exactly those rows, replacing whatever was stored |
+
+Omitting the key and sending `[]` are **different**. A client that does not manage property visibility can leave the key out of every node and never disturb the curated rows; only an explicit `[]` clears them. (This changed — omitting the key previously cleared the rows, so a Save built from a partial node shape silently blanked them.)
+
+Note the read and write shapes differ: the read returns rich `PropertyRow` objects, the write takes bare IRIs, so a Save maps `node.data.properties.map(p => p.iri)`.
 
 **Adding** a row = include its IRI; **removing** = omit it and resend the rest. **Moving a property to another class needs both**: list it under the new host *and* stage `{"domain": "<new class>"}` on its overlay. The overlay alone renders nothing — placement and structure are separate instructions.
 
@@ -446,6 +473,20 @@ A concept IRI from another ontology — in a node id, an overlay `conceptIri`, o
 { "success": false, "data": null,
   "message": "Pojem https://…/a3791---registr-vysokých-škol/pojem/elektronická-adresa nepatří do slovníku tohoto diagramu." }
 ```
+
+### `DIAGRAM_CONTENT_UNAVAILABLE` (HTTP 502) — the read could not reach the ontology's graph
+
+`GET …/detail` could not read the diagram's **own** graph, so there is no content to assemble. Nothing was written and nothing is lost — **retry**, unlike the read-back failure below.
+
+```jsonc
+{
+  "success": false,
+  "errorCode": "DIAGRAM_CONTENT_UNAVAILABLE",
+  "message": "Obsah pojmů diagramu se nepodařilo načíst. Zkuste to prosím znovu."
+}
+```
+
+The same unreachable Fuseki returns **502 on both the read and the save** — one upstream failure, one status. The two codes stay distinct only because the advice differs: retry here, reload there. A *foreign* graph failing does **not** produce this; it degrades those nodes to `unavailable` and returns 200.
 
 ### `DIAGRAM_SAVED_READBACK_FAILED` (HTTP 502) — the write succeeded, the render data did not
 

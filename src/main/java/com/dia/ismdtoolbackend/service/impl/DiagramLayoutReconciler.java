@@ -220,10 +220,14 @@ public class DiagramLayoutReconciler {
         node.setPosX(pos.x());
         node.setPosY(pos.y());
         node.setCollapsed(in.collapsed());
-        node.setVisibleProperties(in.properties().stream()
-                .map(mapper::conceptIriFromNodeId)
-                .distinct()
-                .toList());
+        // Null is a no-op, so a client that does not manage property visibility keeps what is stored;
+        // an explicit [] clears the rows.
+        if (in.properties() != null) {
+            node.setVisibleProperties(in.properties().stream()
+                    .map(mapper::conceptIriFromNodeId)
+                    .distinct()
+                    .toList());
+        }
     }
 
     private void resolveParents(DiagramLayoutDto layout, Map<String, DiagramNodeEntity> incoming) {

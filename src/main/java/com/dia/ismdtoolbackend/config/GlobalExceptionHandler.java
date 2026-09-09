@@ -106,6 +106,18 @@ public class GlobalExceptionHandler {
                 DiagramReadbackFailedException.ERROR_CODE));
     }
 
+    /**
+     * A diagram read could not reach the ontology's own graph. 502, like the read-back failure above, so one
+     * unreachable Fuseki does not report 500 on a read and 502 on a save.
+     */
+    @ExceptionHandler(DiagramContentUnavailableException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramContentUnavailable(
+            DiagramContentUnavailableException e) {
+        log.error("Diagram content could not be read: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
+                null, e.getMessage(), DiagramContentUnavailableException.ERROR_CODE));
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         log.warn("Constraint violation: {}", e.getMessage());

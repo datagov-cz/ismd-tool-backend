@@ -222,6 +222,8 @@ public class DiagramController {
                     + "diagramu, `ACCEPT_THEIRS` spolu s `winnerDiagramId` změny uvedeného diagramu. Kolidující změny všech "
                     + "ostatních diagramů se zahodí — jedno rozhodnutí vyřeší kolizi napříč libovolným počtem diagramů. "
                     + "U `ACCEPT_THEIRS` se materializuje vítězný diagram, nikoli diagram v cestě. "
+                    + "Zahození proběhne hned při rozhodnutí, tedy ještě před zápisem do RDF, a je nevratné i tehdy, "
+                    + "když všechny následné změny selžou. Nekolidující rozpracované změny poražených diagramů zůstávají. "
                     + "Vyžaduje oprávnění vlastníka slovníku nebo administrátora."
     )
     @ApiResponses({
