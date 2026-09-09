@@ -126,8 +126,12 @@ public class IsmdSearchProvider implements SearchProvider {
         // On a type=null pass diagrams ride along with ontologies and concepts. The page is cut after the
         // merge below, so this cannot page in SQL — but it can still be bounded: at most offset+limit
         // diagram rows can survive into the requested page, however the merge orders them.
+        //
+        // Saturating, not wrapping: `offset` is validated non-negative but has no upper bound, so a plain
+        // sum overflows to a NEGATIVE row limit, which Postgres rejects — and the failure is swallowed as
+        // "no diagram results", silently dropping diagrams from the page rather than erroring.
         if (type == null) {
-            allResults.addAll(searchDiagrams(query, publishedFilter, offset + limit, 0));
+            allResults.addAll(searchDiagrams(query, publishedFilter, boundedFetch(offset, limit), 0));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -353,6 +357,16 @@ public class IsmdSearchProvider implements SearchProvider {
      * ontology's ONTOLOGY row through dedup.
      */
     /** One page of diagram rows; a PG failure degrades to no diagram results rather than failing search. */
+    /**
+     * How many rows a branch must fetch to fill a page it cannot cut in SQL: everything up to the end of the
+     * requested window. Saturates instead of overflowing — {@code offset} is validated non-negative but
+     * unbounded above, and a wrapped sum becomes a negative row limit that the database rejects.
+     */
+    private static int boundedFetch(int offset, int limit) {
+        long fetch = (long) offset + limit;
+        return (int) Math.min(fetch, Integer.MAX_VALUE);
+    }
+
     private List<SearchResultDto> searchDiagrams(String query, Boolean publishedFilter,
                                                  int limit, int offset) {
         try {

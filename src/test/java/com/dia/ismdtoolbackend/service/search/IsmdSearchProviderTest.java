@@ -11,6 +11,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -563,6 +564,31 @@ class IsmdSearchProviderTest {
         assertNotNull(dto.getIri(), "a graphless diagram must still carry a dedup key");
         assertEquals("diagram:42", dto.getIri());
         assertEquals(SearchType.DIAGRAM, dto.getType());
+    }
+
+    /**
+     * A {@code type=null} pass cannot page diagrams in SQL, so it fetches {@code offset + limit} rows. That
+     * sum must saturate rather than wrap: {@code offset} is validated non-negative but has no upper bound,
+     * so a plain {@code int} addition overflows to a NEGATIVE row limit. Postgres rejects it, the failure is
+     * swallowed as "no diagram results" — and diagrams silently disappear from the page instead of erroring.
+     */
+    @Test
+    void hugeOffset_doesNotOverflowIntoANegativeDiagramFetch() {
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+        when(ontologyMetadataRepository.searchByText("osoba")).thenReturn(List.of());
+        when(diagramSearchLookup.search(eq("osoba"), isNull(), anyInt(), eq(0))).thenReturn(List.of());
+        lenient().when(diagramSearchLookup.count("osoba", null)).thenReturn(0L);
+
+        createProvider().search("osoba", null, 20, Integer.MAX_VALUE, "cs", null, null, "user1",
+                false, null);
+
+        ArgumentCaptor<Integer> fetch = ArgumentCaptor.forClass(Integer.class);
+        verify(diagramSearchLookup).search(eq("osoba"), isNull(), fetch.capture(), eq(0));
+        assertTrue(fetch.getValue() > 0,
+                "a wrapped offset+limit would ask the database for a negative number of rows");
+        assertEquals(Integer.MAX_VALUE, fetch.getValue());
     }
 
     // --- Helpers ---
