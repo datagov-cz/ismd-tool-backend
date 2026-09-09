@@ -3,6 +3,8 @@ package com.dia.ismdtoolbackend.controller.dto.diagram;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
+import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
+import com.dia.ismdtoolbackend.models.diagram.Backing;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -45,6 +47,15 @@ public record DiagramDto(
             boolean unavailable,
             DiagramPendingEdit pendingEdit
     ) {
+
+        /** Builds an entry from the one shared backing verdict; the label is live-only. */
+        public static PendingEditEntry of(String iri, ConceptType conceptType, String slug,
+                                          Backing backing, DiagramPendingEdit pendingEdit) {
+            ConceptDetailModel detail = backing.detailOrNull();
+            return new PendingEditEntry(iri, conceptType, slug,
+                    detail != null ? detail.getName() : null,
+                    backing.stale(), backing.unavailable(), pendingEdit);
+        }
     }
 
     /**
@@ -69,11 +80,17 @@ public record DiagramDto(
      * VLASTNOSTi as rows inside the node, empty rather than null and ordered by label so they do not
      * reshuffle between reads.
      *
-     * <p>{@code stale} and {@code unavailable} are different absences and never both true. {@code stale}
-     * means the graph was read and the concept is not in it — deleted underneath the node, so offer remove
-     * or recreate. {@code unavailable} means that concept's graph could not be read at all, which only
-     * happens for a foreign ontology, since an unreadable own graph fails the whole request; the concept is
-     * presumed intact, so render it as temporarily unresolved and let a later reload settle it.
+     * <p>{@code stale} and {@code unavailable} are different absences and never both true — an invariant the
+     * shared {@link Backing} verdict enforces by construction. {@code stale} means the graph was read and the
+     * concept is not in it — deleted underneath the node, so offer remove or recreate. {@code unavailable}
+     * means that concept's graph could not be read at all, which only happens for a foreign ontology, since
+     * an unreadable own graph fails the whole request; the concept is presumed intact, so render it as
+     * temporarily unresolved and let a later reload settle it.
+     *
+     * <p>The same pair, from the same verdict, appears on every placed element — {@link PropertyRow},
+     * {@link EdgeData} and {@link PendingEditEntry}. A placed element whose backing RDF was deleted keeps
+     * rendering, flagged, rather than vanishing: the layout may diverge from RDF, and the user is told
+     * instead of quietly losing work. Only materialization treats that divergence as a conflict.
      */
     @Schema(name = "DiagramNodeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -105,10 +122,26 @@ public record DiagramDto(
             String slug,
             Map<String, String> label,
             DataTypeDto rangeResolved,
+            /* Deleted underneath the canvas; the row stays, so the loss is visible. See NodeData. */
             boolean stale,
+            boolean unavailable,
             boolean hasPendingEdits,
             DiagramPendingEdit pendingEdit
     ) {
+
+        /**
+         * Builds a row from the one shared backing verdict. A stale row keeps its curated place inside the
+         * class and carries no live content — no label, no resolved range — so the FE renders the absence
+         * rather than the row disappearing.
+         */
+        public static PropertyRow of(String iri, String slug, Backing backing,
+                                     DiagramPendingEdit pendingEdit) {
+            ConceptDetailModel detail = backing.detailOrNull();
+            return new PropertyRow(iri, slug,
+                    detail != null ? detail.getName() : null,
+                    detail != null ? detail.getRangeResolved() : null,
+                    backing.stale(), backing.unavailable(), pendingEdit != null, pendingEdit);
+        }
     }
 
     /**
@@ -146,14 +179,35 @@ public record DiagramDto(
             String iri,
             String slug,
             Map<String, String> label,
-            Boolean stale,
-            Boolean hasPendingEdits,
+            /* Always present, like every other element's. See NodeData for the stale/unavailable pair. */
+            boolean stale,
+            boolean unavailable,
+            boolean hasPendingEdits,
             DiagramPendingEdit pendingEdit
     ) {
 
-        /** A bare triple, hierarchy or equivalence, with no backing concept. */
-        public EdgeData(DiagramEdgeKind edgeKind, boolean pending) {
-            this(edgeKind, pending, null, null, null, null, null, null, null);
+        /**
+         * A bare triple — hierarchy or equivalence — carrying no concept of its own, so it has no identity
+         * fields. {@code backing} is the verdict for the triple's <em>target</em>: the edge is drawn from a
+         * placed row, and a target whose concept was deleted makes the edge stale rather than making it
+         * vanish.
+         *
+         * <p>There is deliberately no constructor that omits the verdict. The one that used to exist is how
+         * hierarchy edges came to skip staleness entirely, silently disappearing when their target was
+         * deleted while nodes in the same response were correctly flagged.
+         */
+        public static EdgeData triple(DiagramEdgeKind edgeKind, boolean pending, Backing backing) {
+            return new EdgeData(edgeKind, pending, null, null, null, null,
+                    backing.stale(), backing.unavailable(), false, null);
+        }
+
+        /** A VZTAH: the edge is a relationship concept, so it carries that concept's identity and overlay. */
+        public static EdgeData relationship(boolean pending, String iri, String slug, Backing backing,
+                                            DiagramPendingEdit pendingEdit) {
+            ConceptDetailModel detail = backing.detailOrNull();
+            return new EdgeData(DiagramEdgeKind.VZTAH, pending, ConceptType.VZTAH, iri, slug,
+                    detail != null ? detail.getName() : null,
+                    backing.stale(), backing.unavailable(), pendingEdit != null, pendingEdit);
         }
     }
 }

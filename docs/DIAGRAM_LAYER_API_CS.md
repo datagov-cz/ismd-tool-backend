@@ -188,7 +188,10 @@ Backend už spojil řádky rozvržení s živým obsahem pojmů a aplikoval over
       "source": "iri:https://…/pojem/zamestnanec",
       "target": "iri:https://…/pojem/osoba",
       "type": "hierarchyEdge",
-      "data": { "edgeKind": "SUBCLASS_OF", "pending": false }
+      // stale/unavailable/hasPendingEdits jsou zde VŽDY, jako u každého jiného umístěného prvku.
+      // stale: true ⇒ cílový pojem byl smazán pod plátnem; hrana si své místo ponechává.
+      "data": { "edgeKind": "SUBCLASS_OF", "pending": false,
+                "stale": false, "unavailable": false, "hasPendingEdits": false }
     }
   ],
 
@@ -218,14 +221,32 @@ Obojí znamená „pro toto IRI není živý obsah" a **nikdy nejsou pravdivé z
 
 | příznak | co se stalo | co sdělit uživateli |
 |---|---|---|
-| `stale: true` | graf pojmu **byl načten** a pojem v něm není | byl **smazán** pod uzlem — nabídnout odebrání z plátna, nebo obnovení |
+| `stale: true` | graf pojmu **byl načten** a pojem v něm není | byl **smazán** pod plátnem — nabídnout odebrání z plátna, nebo obnovení |
 | `unavailable: true` | graf pojmu **vůbec nešel načíst** | dočasný problém nadřazené služby; pojem je nejspíš v pořádku — vykreslit jako nenačtený (šedě, spinner, „nyní nelze načíst") a nechat to vyřešit opětovné načtení |
 
-`unavailable` může být pravdivé jen u **cizího** uzlu — pojmu z jiného slovníku nebo z NKD. Vlastní graf diagramu selhává uzavřeně: pokud ho nelze načíst, celý požadavek je **502** a není tělo, které by příznak neslo. Cizí graf naopak selhává otevřeně, protože jeden nedostupný externí slovník nesmí položit celé plátno.
+`unavailable` může být pravdivé jen u **cizího** pojmu — z jiného slovníku nebo z NKD. Vlastní graf diagramu selhává uzavřeně: pokud ho nelze načíst, celý požadavek je **502** a není tělo, které by příznak neslo. Cizí graf naopak selhává otevřeně, protože jeden nedostupný externí slovník nesmí položit celé plátno.
 
 **`unavailable` nikdy neprezentujte jako smazání.** Nabídnout odebrání nebo obnovení kvůli krátkodobému výpadku Fuseki znamená vyzvat uživatele ke zničení obsahu, který je zcela v pořádku.
 
-Tatáž dvojice je i u položek `pendingEdits[]`, odvozená stejně.
+**Dvojice je na každém umístěném prvku, nejen na uzlech** — `nodes[].data`, `edges[].data`,
+`nodes[].data.properties[]` i `pendingEdits[]`, všude odvozená stejně. Oba klíče jsou u nich vždy přítomné.
+
+#### Umístěný prvek, jehož RDF zmizelo, na plátně zůstává
+
+**Rozvržení se od RDF může rozejít a rozdíl se ukáže, místo aby se tiše vyřešil.** Když někdo smaže pojem
+nebo trojici, kterou vaše plátno kreslí, prvek **si své místo ponechá** a vrátí se s příznakem `stale: true`
+— nezmizí. Uživatel o smazání nežádal a nesmí přijít o práci, aniž by se to dozvěděl; jako konflikt to řeší
+až **materializace**.
+
+Je to změna chování. Dříve smazaný pojem odnesl svou hranu nebo řádek vlastnosti z plátna zcela bez signálu,
+zatímco smazaná *třída* se správně označila — táž událost se u jednoho typu prvku hlásila a u tří skrývala.
+
+**Změny, které uživatel udělá na tomto plátně, jsou opačný případ a projeví se okamžitě.** Nasazení overlaye,
+který vypustí cíl hierarchie, tuto hranu ihned odkreslí, protože přesně o to uživatel požádal. Rozhoduje směr
+změny: **zvenčí → označit; z tohoto plátna → provést.**
+
+Zastaralý prvek nenese žádný živý obsah — bez `label`, bez `rangeResolved` — protože už není co číst. Jeho
+identita (`iri`) i místo na plátně zůstávají, což k vykreslení a nabídce odebrat/obnovit stačí.
 
 `edgeKind` (jen na straně čtení) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
 

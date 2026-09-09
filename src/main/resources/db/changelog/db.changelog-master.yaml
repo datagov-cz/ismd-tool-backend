@@ -66,3 +66,5 @@ databaseChangeLog:
       file: db/changelog/v1/021-diagrams-many-per-ontology.yaml
   - include:
       file: db/changelog/v1/022-diagram-concept-usage-indexes.yaml
+  - include:
+      file: db/changelog/v1/023-diagram-edge-last-known-endpoints.yaml

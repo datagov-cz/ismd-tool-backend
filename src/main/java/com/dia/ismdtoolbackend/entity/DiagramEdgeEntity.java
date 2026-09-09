@@ -57,6 +57,22 @@ public class DiagramEdgeEntity {
     @Column(name = "segments_json", columnDefinition = "text")
     private String segmentsJson;
 
+    /**
+     * The endpoints as last projected — a tombstone, read <em>only</em> when the backing concept has been
+     * deleted. A VZTAH's {@link #edgeKey} is its concept IRI alone, so once that concept is gone its
+     * {@code rdfs:domain}/{@code rdfs:range} are unrecoverable and the edge would have no two ends to render
+     * between; it would vanish from the canvas without the user ever being told.
+     *
+     * <p>This is not the endpoint storage the redesign removed. These are never consulted while the concept
+     * is live, so they cannot disagree with the projection — a stale value is exactly what is wanted, since
+     * it records where the edge was when it still existed.
+     */
+    @Column(name = "last_known_source", length = 1024)
+    private String lastKnownSource;
+
+    @Column(name = "last_known_target", length = 1024)
+    private String lastKnownTarget;
+
     private static final TypeReference<List<EdgeWaypoint>> WAYPOINTS = new TypeReference<>() {
     };
 

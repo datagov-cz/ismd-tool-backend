@@ -6,8 +6,11 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
+import com.dia.ismdtoolbackend.models.diagram.Backing;
+import com.dia.ismdtoolbackend.models.diagram.BackingResolver;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,16 +22,28 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Re-derives diagram edges from {@code live ⊕ overlay}: an edge's kind and endpoints are a pure projection,
- * never read from storage as truth, so a persisted endpoint can never contradict the RDF it duplicates.
+ * Renders a canvas's edges and property rows, driven by <b>membership</b>: the traversal walks the placed
+ * rows and asks {@code live ⊕ overlay} only for what a row cannot say about itself. Every element type — node,
+ * VZTAH edge, hierarchy or equivalence edge, property row — answers the same three questions in the same
+ * order: is it placed, are its endpoints on the canvas, and what is its {@link Backing}?
  *
- * <p><b>Existence is not projected.</b> Canvas membership is user-curated and explicit, exactly like nodes:
- * a {@code diagram_edges} row means the user put that edge on the canvas, and an edge the projection could
- * draw but no row names is deliberately left off it, waiting in the sidebar like an unplaced class. So a
- * class can sit on the canvas with none of its relationships drawn. The persisted row carries membership
- * plus its waypoints; everything else about the edge is re-derived on every read.
+ * <p><b>Membership decides existence; RDF never does.</b> A {@code diagram_edges} row means the user put that
+ * edge on the canvas, and an edge the graph could support but no row names is deliberately off it, waiting in
+ * the sidebar like an unplaced class. The traversal used to run the other way — iterate the graph, keep what
+ * happened to be placed — which silently coupled the two: an element existed on the canvas only while its RDF
+ * did, so a concept deleted elsewhere took the element with it, unannounced.
  *
- * <p>Three kinds are projected:
+ * <p><b>Divergence is shown, not resolved.</b> A placed element whose backing concept was deleted keeps
+ * rendering with {@code stale} set, because that deletion came from outside and the user must not lose work
+ * without being told. A change the user staged on this canvas is the opposite case and applies at once: an
+ * overlay that drops a hierarchy target un-draws that edge immediately, since removing it is what they asked
+ * for. Only materialization treats a divergence as a conflict.
+ *
+ * <p>Endpoints and kind are still derived rather than trusted from storage, so they cannot contradict RDF.
+ * A triple edge's row key already encodes them; a VZTAH's does not, and falls back to the row's tombstone
+ * only once its concept is gone — never while it is live.
+ *
+ * <p>Three kinds are rendered:
  * <ul>
  *   <li>{@code VZTAH} — one edge per relationship concept, from its {@code rdfs:domain} class to its
  *       {@code rdfs:range} class, carrying the concept's own identity. The relationship is the edge, not a
@@ -42,6 +57,7 @@ import java.util.Set;
  * being a node. Every edge is asserted from a concept this ontology owns — a foreign node may be an edge's
  * target, never its source. See {@code .planning/diagram-edge-model-REDESIGN.md}.
  */
+@Slf4j
 class EdgeProjector {
 
     /** Marks a composite edge id, distinguishing it from a VZTAH's concept IRI. */
@@ -59,6 +75,10 @@ class EdgeProjector {
      * kind; this decides whether it is drawn at all.
      */
     private final Set<String> onCanvasEdges;
+    /** The one verdict source: is a placed element's backing concept live, deleted or unreadable? */
+    private final BackingResolver backing;
+    /** Last-projected endpoints by edge key, {@code [source, target]}; read only for a deleted concept. */
+    private final Map<String, String[]> tombstones;
     /**
      * Memoized canvas membership. Both {@link #project} and {@link #propertyRows} need it and are called
      * once each per read with the same {@code nodes} and {@code types}, so computing it twice is pure
@@ -68,12 +88,15 @@ class EdgeProjector {
 
     EdgeProjector(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints,
                   Map<String, DiagramPendingEdit> overlays, Set<String> foreignIris,
-                  Set<String> onCanvasEdges) {
+                  Set<String> onCanvasEdges, BackingResolver backing,
+                  Map<String, String[]> tombstones) {
         this.mapper = mapper;
         this.waypoints = waypoints != null ? waypoints : Map.of();
         this.overlays = overlays != null ? overlays : Map.of();
         this.foreignIris = foreignIris != null ? foreignIris : Set.of();
         this.onCanvasEdges = onCanvasEdges != null ? onCanvasEdges : Set.of();
+        this.backing = backing != null ? backing : new BackingResolver(Map.of(), Set.of());
+        this.tombstones = tombstones != null ? tombstones : Map.of();
     }
 
     /** True when the user has placed this edge on the canvas. */
@@ -82,32 +105,108 @@ class EdgeProjector {
     }
 
     /**
-     * Projects every edge the canvas renders. {@code nodes} is canvas membership (classes) and {@code live}
-     * is the whole graph, so a relationship not itself on the canvas still projects while both its endpoint
-     * classes are.
+     * Every edge the canvas renders, driven by membership rather than by the graph: each placed row is
+     * resolved in turn, and {@code live ⊕ overlay} supplies only what the row cannot say for itself.
+     *
+     * <p>The traversal used to run the other way — iterate the whole graph, keep what happened to be placed —
+     * which meant an element only existed on the canvas while its RDF did. A concept deleted underneath the
+     * diagram then vanished silently, because a row whose concept is gone is never reached by a loop over
+     * live concepts. Driving from the rows is what lets a deleted element still render, flagged.
      */
     List<DiagramDto.Edge> project(List<DiagramNodeEntity> nodes,
-                                  Map<String, ConceptDetailModel> live,
                                   Map<String, ConceptType> types,
                                   Map<String, String> slugs) {
         Set<String> onCanvas = onCanvas(nodes, types);
 
         List<DiagramDto.Edge> edges = new ArrayList<>();
-        for (Map.Entry<String, ConceptDetailModel> entry : live.entrySet()) {
-            String iri = entry.getKey();
-            ConceptDetailModel detail = entry.getValue();
-            DiagramPendingEdit overlay = overlays.get(iri);
-
-            if (isRelationship(iri, detail, types)) {
-                projectRelationship(edges, iri, detail, overlay, onCanvas, slugs);
-            }
-            // Foreign concepts are targets only; their own triples belong to the owning graph.
-            if (onCanvas.contains(iri) && !foreignIris.contains(iri)) {
-                projectHierarchy(edges, iri, detail, overlay, onCanvas);
-                projectExactMatch(edges, iri, detail, overlay, onCanvas);
+        for (String edgeKey : onCanvasEdges) {
+            DiagramDto.Edge edge = edgeKey.startsWith(COMPOSITE_ID_PREFIX)
+                    ? tripleEdge(edgeKey, onCanvas)
+                    : relationshipEdge(edgeKey, onCanvas, types, slugs);
+            if (edge != null) {
+                edges.add(edge);
             }
         }
         return edges;
+    }
+
+    /**
+     * One placed hierarchy or equivalence edge. Kind and both endpoints come from the row's own key, so the
+     * edge survives its target's deletion; RDF is consulted only to say whether the triple is still asserted
+     * ({@code pending}) and whether the target concept is still there ({@code stale}).
+     *
+     * <p>A staged removal is the one case where an overlay un-draws an edge, and legitimately so: the user
+     * asked for it on this canvas, so the canvas reflects it at once. That is the opposite of an external
+     * deletion, which the user did not ask for and must not lose silently.
+     */
+    private DiagramDto.Edge tripleEdge(String edgeKey, Set<String> onCanvas) {
+        String[] parts = edgeKey.split("\\|", 4);
+        if (parts.length != 4) {
+            log.warn("Ignoring malformed diagram edge key {}", edgeKey);
+            return null;
+        }
+        DiagramEdgeKind kind;
+        try {
+            kind = DiagramEdgeKind.valueOf(parts[1]);
+        } catch (IllegalArgumentException e) {
+            log.warn("Ignoring diagram edge key {} with unknown kind {}", edgeKey, parts[1]);
+            return null;
+        }
+        String source = parts[2];
+        String target = parts[3];
+
+        // Membership never overrides the canvas: an edge whose endpoint left is not drawn, row or no row.
+        if (notOnCanvas(source, onCanvas) || notOnCanvas(target, onCanvas)) {
+            return null;
+        }
+        // A foreign concept's own triples belong to its owning graph; it is an edge target, never a source.
+        if (foreignIris.contains(source)) {
+            return null;
+        }
+
+        List<String> live = liveTargets(source, kind);
+        List<String> staged = stagedTargets(source, kind);
+        if (staged != null && !staged.contains(target)) {
+            // The user staged this link away on this canvas; drawing it would contradict their own intent.
+            return null;
+        }
+        boolean asserted = live.contains(target);
+        boolean pending = staged != null && staged.contains(target) && !asserted;
+        // A row for a triple neither RDF nor an overlay asserts is orphaned — the link is simply not there,
+        // and drawing it would invent an edge. Distinct from a STALE target, where the link is still
+        // asserted and it is the concept at the far end that is gone.
+        if (!asserted && !pending && !backing.of(source).stale() && !backing.of(target).stale()) {
+            return null;
+        }
+
+        return new DiagramDto.Edge(
+                edgeKey,
+                mapper.nodeId(source),
+                mapper.nodeId(target),
+                mapper.edgeType(kind),
+                waypoints.get(edgeKey),
+                DiagramDto.EdgeData.triple(kind, pending, backing.of(target)));
+    }
+
+    /** The targets a concept's predicate currently asserts in RDF; empty when the concept is gone. */
+    private List<String> liveTargets(String source, DiagramEdgeKind kind) {
+        ConceptDetailModel detail = backing.get(source);
+        if (detail == null) {
+            return List.of();
+        }
+        List<String> targets = kind == DiagramEdgeKind.SUBCLASS_OF
+                ? detail.getBroaderClasses()
+                : detail.getExactMatches();
+        return targets != null ? targets : List.of();
+    }
+
+    /** The targets the overlay stages for a predicate, or null when it stages none. */
+    private List<String> stagedTargets(String source, DiagramEdgeKind kind) {
+        DiagramPendingEdit overlay = overlays.get(source);
+        if (overlay == null) {
+            return null;
+        }
+        return kind == DiagramEdgeKind.SUBCLASS_OF ? overlay.getBroaderConcept() : overlay.getExactMatch();
     }
 
     /** The class nodes on this canvas — the only things an edge may attach to. */
@@ -151,40 +250,54 @@ class EdgeProjector {
     }
 
     /**
-     * A VZTAH is one edge from its domain class to its range class, carrying its own concept identity. One
-     * missing either endpoint, or pointing off-canvas, is not drawn.
+     * One placed VZTAH: an edge from its {@code rdfs:domain} class to its {@code rdfs:range} class, carrying
+     * the relationship concept's own identity. Unlike a triple edge, its row key is the concept IRI alone, so
+     * its endpoints are genuinely derived — they live on the concept and move when an overlay repoints it.
+     *
+     * <p>A deleted VZTAH keeps its endpoints from the row's tombstone, so it renders stale rather than
+     * disappearing; without that fallback there would be nothing to draw between.
      */
-    private void projectRelationship(List<DiagramDto.Edge> edges, String iri, ConceptDetailModel detail,
-                                     DiagramPendingEdit overlay, Set<String> onCanvas,
-                                     Map<String, String> slugs) {
+    private DiagramDto.Edge relationshipEdge(String conceptIri, Set<String> onCanvas,
+                                             Map<String, ConceptType> types, Map<String, String> slugs) {
+        Backing edgeBacking = backing.of(conceptIri);
+        ConceptDetailModel detail = edgeBacking.detailOrNull();
+        if (detail != null && !isRelationship(conceptIri, detail, types)) {
+            return null;
+        }
+        DiagramPendingEdit overlay = overlays.get(conceptIri);
         boolean domainPending = overlay != null && overlay.getDomain() != null;
         boolean rangePending = overlay != null && overlay.getRange() != null;
-        String domain = domainPending ? overlay.getDomain() : detail.getDomain();
-        String range = rangePending ? overlay.getRange() : detail.getRange();
+
+        String domain = domainPending ? overlay.getDomain() : liveEndpoint(detail, true, conceptIri);
+        String range = rangePending ? overlay.getRange() : liveEndpoint(detail, false, conceptIri);
 
         if (notOnCanvas(domain, onCanvas) || notOnCanvas(range, onCanvas)) {
-            return;
+            return null;
         }
-        // A VZTAH edge is keyed by its own concept IRI.
-        if (!placed(iri)) {
-            return;
-        }
-        edges.add(new DiagramDto.Edge(
-                iri,
+        return new DiagramDto.Edge(
+                conceptIri,
                 mapper.nodeId(domain),
                 mapper.nodeId(range),
                 mapper.edgeType(DiagramEdgeKind.VZTAH),
-                waypoints.get(iri),
-                new DiagramDto.EdgeData(
-                        DiagramEdgeKind.VZTAH,
-                        domainPending || rangePending,
-                        ConceptType.VZTAH,
-                        iri,
-                        slugs.get(iri),
-                        detail.getName(),
-                        false,
-                        overlay != null,
-                        overlay)));
+                waypoints.get(conceptIri),
+                DiagramDto.EdgeData.relationship(domainPending || rangePending, conceptIri,
+                        slugs.get(conceptIri), edgeBacking, overlay));
+    }
+
+    /**
+     * A VZTAH's live endpoint, falling back to what the row last saw when the concept is gone. The tombstone
+     * is read only in that case, so it can never contradict a live projection — it exists purely so a deleted
+     * relationship still has two ends to render between.
+     */
+    private String liveEndpoint(ConceptDetailModel detail, boolean wantDomain, String conceptIri) {
+        if (detail != null) {
+            return wantDomain ? detail.getDomain() : detail.getRange();
+        }
+        String[] lastKnown = tombstones.get(conceptIri);
+        if (lastKnown == null) {
+            return null;
+        }
+        return wantDomain ? lastKnown[0] : lastKnown[1];
     }
 
     /**
@@ -197,38 +310,33 @@ class EdgeProjector {
      * {@code visibleProperties}.
      */
     Map<String, List<DiagramDto.PropertyRow>> propertyRows(List<DiagramNodeEntity> nodes,
-                                                           Map<String, ConceptDetailModel> live,
                                                            Map<String, ConceptType> types,
                                                            Map<String, String> slugs) {
         Set<String> onCanvas = onCanvas(nodes, types);
-        Map<String, Set<String>> curated = curatedProperties(nodes);
 
         Map<String, List<DiagramDto.PropertyRow>> byClass = new HashMap<>();
-        for (Map.Entry<String, ConceptDetailModel> entry : live.entrySet()) {
-            String iri = entry.getKey();
-            if (types.get(iri) != ConceptType.VLASTNOST) {
-                continue;
+        Set<String> emitted = new HashSet<>();
+        for (DiagramNodeEntity node : nodes) {
+            for (String iri : node.getVisibleProperties()) {
+                Backing rowBacking = backing.of(iri);
+                ConceptDetailModel detail = rowBacking.detailOrNull();
+                // A deleted property has no PG row either, so its type is unknown; only a resolvable
+                // concept that is demonstrably not a VLASTNOST is skipped.
+                if (detail != null && types.get(iri) != ConceptType.VLASTNOST) {
+                    continue;
+                }
+                DiagramPendingEdit overlay = overlays.get(iri);
+                // The curating node is the fallback domain: a deleted property has no domain of its own,
+                // and the row it was curated into is where the user put it.
+                String domain = overlay != null && overlay.getDomain() != null
+                        ? overlay.getDomain()
+                        : detail != null ? detail.getDomain() : node.getConceptIri();
+                if (notOnCanvas(domain, onCanvas) || !emitted.add(domain + ' ' + iri)) {
+                    continue;
+                }
+                byClass.computeIfAbsent(domain, k -> new ArrayList<>())
+                        .add(DiagramDto.PropertyRow.of(iri, slugs.get(iri), rowBacking, overlay));
             }
-            ConceptDetailModel detail = entry.getValue();
-            DiagramPendingEdit overlay = overlays.get(iri);
-            String domain = overlay != null && overlay.getDomain() != null
-                    ? overlay.getDomain()
-                    : detail.getDomain();
-            if (notOnCanvas(domain, onCanvas)) {
-                continue;
-            }
-            if (!curated.getOrDefault(domain, Set.of()).contains(iri)) {
-                continue;
-            }
-            byClass.computeIfAbsent(domain, k -> new ArrayList<>())
-                    .add(new DiagramDto.PropertyRow(
-                            iri,
-                            slugs.get(iri),
-                            detail.getName(),
-                            detail.getRangeResolved(),
-                            false,
-                            overlay != null,
-                            overlay));
         }
         byClass.values().forEach(rows -> rows.sort(
                 Comparator.comparing(EdgeProjector::rowSortKey)));
@@ -246,70 +354,6 @@ class EdgeProjector {
             }
         }
         return row.iri() != null ? row.iri() : "";
-    }
-
-    /** TRIDA: SUBCLASS_OF, child → broader. A bare triple with no backing concept. */
-    private void projectHierarchy(List<DiagramDto.Edge> edges, String iri, ConceptDetailModel detail,
-                                  DiagramPendingEdit overlay, Set<String> onCanvas) {
-        boolean pending = overlay != null && overlay.getBroaderConcept() != null;
-        List<String> broader = pending ? overlay.getBroaderConcept() : detail.getBroaderClasses();
-        addTripleEdges(edges, iri, broader, detail.getBroaderClasses(),
-                DiagramEdgeKind.SUBCLASS_OF, pending, onCanvas);
-    }
-
-    private void projectExactMatch(List<DiagramDto.Edge> edges, String iri, ConceptDetailModel detail,
-                                   DiagramPendingEdit overlay, Set<String> onCanvas) {
-        boolean pending = overlay != null && overlay.getExactMatch() != null;
-        List<String> matches = pending ? overlay.getExactMatch() : detail.getExactMatches();
-        addTripleEdges(edges, iri, matches, detail.getExactMatches(),
-                DiagramEdgeKind.EXACT_MATCH, pending, onCanvas);
-    }
-
-    /**
-     * @param targets    what to draw — overlay targets when this predicate is staged, else the live ones
-     * @param liveTargets the pre-overlay targets, which is what any membership row is still keyed by
-     */
-    private void addTripleEdges(List<DiagramDto.Edge> edges, String source, List<String> targets,
-                                List<String> liveTargets, DiagramEdgeKind kind, boolean pending,
-                                Set<String> onCanvas) {
-        if (targets == null) {
-            return;
-        }
-        boolean repointed = pending && placedUnderLiveId(source, liveTargets, kind);
-        for (String target : targets) {
-            if (notOnCanvas(target, onCanvas)) {
-                continue;
-            }
-            String id = projectedEdgeId(kind, source, target);
-            // A repoint moves the endpoints the id is built from, so the row still carries the old id;
-            // membership is honoured under either, or staging an overlay would drop the edge.
-            if (!placed(id) && !repointed) {
-                continue;
-            }
-            edges.add(new DiagramDto.Edge(
-                    id,
-                    mapper.nodeId(source),
-                    mapper.nodeId(target),
-                    mapper.edgeType(kind),
-                    waypoints.get(id),
-                    new DiagramDto.EdgeData(kind, pending)));
-        }
-    }
-
-    /**
-     * True when this (kind, source) had a placed edge before the overlay repointed it. Membership means the
-     * link from this class is on the canvas, so it survives a change of target.
-     */
-    private boolean placedUnderLiveId(String source, List<String> liveTargets, DiagramEdgeKind kind) {
-        if (liveTargets == null) {
-            return false;
-        }
-        for (String liveTarget : liveTargets) {
-            if (liveTarget != null && placed(projectedEdgeId(kind, source, liveTarget))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /** True when this endpoint cannot anchor an edge: absent, or not a node on the canvas. */

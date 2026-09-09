@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
+import com.dia.ismdtoolbackend.models.diagram.Backing;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import org.springframework.stereotype.Component;
 
@@ -98,8 +99,9 @@ public class DiagramMapper {
 
     /**
      * Merges live concept content with a node's overlay into the render-ready {@code NodeData}. The overlay
-     * fields override live values; the label is always live-only. {@code detail} is null when the concept
-     * was deleted underneath the node.
+     * fields override live values; the label is always live-only. The {@link Backing} verdict carries
+     * whether the concept is live, deleted or unreadable — decided once by {@code BackingResolver} rather
+     * than re-derived here, so every element type answers it the same way.
      *
      * <p><b>One flag, three names.</b> {@code diagram_nodes.is_foreign} → {@link DiagramNodeEntity#isForeign}
      * → {@code data.readOnly} on the wire. The rename happens here and nowhere else, so this is the only
@@ -114,22 +116,18 @@ public class DiagramMapper {
     public DiagramDto.NodeData toNodeData(DiagramNodeEntity node,
                                           ConceptType conceptType,
                                           String slug,
-                                          Map<String, String> label,
-                                          ConceptDetailModel detail,
+                                          Backing backing,
                                           List<DiagramDto.PropertyRow> properties,
-                                          DiagramPendingEdit overlay,
-                                          boolean unavailable) {
-        boolean hasPendingEdits = overlay != null;
-        // Absent because its graph could not be read is `unavailable`, not deleted; the two never coincide.
-        boolean stale = detail == null && !unavailable;
+                                          DiagramPendingEdit overlay) {
+        ConceptDetailModel detail = backing.detailOrNull();
         return new DiagramDto.NodeData(
                 conceptType,
                 node.getConceptIri(),
                 slug,
-                label,
-                stale,
-                unavailable,
-                hasPendingEdits,
+                detail != null ? detail.getName() : null,
+                backing.stale(),
+                backing.unavailable(),
+                overlay != null,
                 overlay,
                 properties != null ? properties : List.of(),
                 node.isForeign());

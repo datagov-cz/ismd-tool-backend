@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
+import com.dia.ismdtoolbackend.models.diagram.Backing;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import org.junit.jupiter.api.Test;
 
@@ -103,8 +104,8 @@ class DiagramMapperTest {
                 .build();
 
         DiagramDto.NodeData data = mapper.toNodeData(
-                node, ConceptType.VZTAH, "slug-je-zamestnan-u", detail.getName(), detail, List.of(),
-                overlay, false);
+                node, ConceptType.VZTAH, "slug-je-zamestnan-u",
+                new Backing(Backing.Presence.LIVE, detail), List.of(), overlay);
 
         assertThat(data.conceptType()).isEqualTo(ConceptType.VZTAH);
         assertThat(data.iri()).isEqualTo("https://x/pojem/je-zamestnan-u");
@@ -120,7 +121,8 @@ class DiagramMapperTest {
         DiagramNodeEntity node = new DiagramNodeEntity();
         node.setConceptIri("https://x/pojem/deleted");
 
-        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null, null, false);
+        DiagramDto.NodeData data = mapper.toNodeData(node, null, null,
+                new Backing(Backing.Presence.STALE, null), null, null);
 
         assertThat(data.stale()).isTrue();          // concept deleted underneath the node
         assertThat(data.unavailable()).isFalse();   // its graph was read; the concept is genuinely gone
@@ -135,7 +137,8 @@ class DiagramMapperTest {
         node.setConceptIri("https://other/pojem/neco");
 
         // Same missing detail as above, but the absence is an unreadable foreign graph, not a deletion.
-        DiagramDto.NodeData data = mapper.toNodeData(node, null, null, null, null, null, null, true);
+        DiagramDto.NodeData data = mapper.toNodeData(node, null, null,
+                new Backing(Backing.Presence.UNAVAILABLE, null), null, null);
 
         assertThat(data.unavailable()).isTrue();
         assertThat(data.stale()).isFalse();  // must NOT be reported as deleted — a blip is not a deletion

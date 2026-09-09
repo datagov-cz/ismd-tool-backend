@@ -188,7 +188,10 @@ The backend has already joined layout rows to live concept content and applied e
       "source": "iri:https://…/pojem/zamestnanec",
       "target": "iri:https://…/pojem/osoba",
       "type": "hierarchyEdge",
-      "data": { "edgeKind": "SUBCLASS_OF", "pending": false }
+      // stale/unavailable/hasPendingEdits are ALWAYS present here, as on every other placed element.
+      // stale: true ⇒ the target concept was deleted underneath the canvas; the edge keeps its place.
+      "data": { "edgeKind": "SUBCLASS_OF", "pending": false,
+                "stale": false, "unavailable": false, "hasPendingEdits": false }
     }
   ],
 
@@ -218,14 +221,24 @@ Both mean "no live content for this IRI", and they are **never both true**. They
 
 | flag | what happened | what the user should be told |
 |---|---|---|
-| `stale: true` | the concept's graph **was read** and the concept is not in it | it was **deleted** underneath the node — offer remove-from-canvas or recreate |
+| `stale: true` | the concept's graph **was read** and the concept is not in it | it was **deleted** underneath the canvas — offer remove-from-canvas or recreate |
 | `unavailable: true` | the concept's graph **could not be read at all** | a temporary upstream problem; the concept is presumed intact — render it unresolved (greyed, spinner, "cannot load right now") and let a reload settle it |
 
-`unavailable` can only ever be true for a **foreign** node — a concept from another ontology or NKD. The diagram's own graph fails closed: if it cannot be read, the whole request is a **502** and there is no body to carry a flag. A foreign graph fails open instead, because one unreachable external ontology must not take a whole canvas down.
+`unavailable` can only ever be true for a **foreign** concept — one from another ontology or NKD. The diagram's own graph fails closed: if it cannot be read, the whole request is a **502** and there is no body to carry a flag. A foreign graph fails open instead, because one unreachable external ontology must not take a whole canvas down.
 
 **Never present `unavailable` as a deletion.** Offering remove-or-recreate over a Fuseki blip invites the user to destroy content that is perfectly intact.
 
-The same pair appears on `pendingEdits[]` entries, derived the same way.
+**The pair is on every placed element, not just nodes** — `nodes[].data`, `edges[].data`, `nodes[].data.properties[]` and `pendingEdits[]`, all derived the same way. Both keys are always present on each of them.
+
+#### A placed element whose RDF is gone stays on the canvas
+
+**The layout may diverge from RDF, and the divergence is shown rather than silently resolved.** If someone deletes a concept or a triple your canvas draws, the element **keeps its place** and comes back flagged `stale: true` — it does not disappear. The user did not ask for that deletion and must not lose work without being told; only **materialize** treats the divergence as a conflict.
+
+This is a behaviour change. Previously a deleted concept took its edge or property row off the canvas with no signal at all, while a deleted *class* was correctly flagged — the same event was reported for one element type and hidden for three.
+
+**Changes the user makes on this canvas are the opposite case and apply immediately.** Staging an overlay that drops a hierarchy target un-draws that edge at once, because removing it is exactly what they asked for. The direction of the change decides: **from outside → flag it; from this canvas → apply it.**
+
+A stale element carries no live content — no `label`, no `rangeResolved` — since there is nothing left to read. Its identity (`iri`) and its place on the canvas are intact, which is enough to render it and offer remove-or-recreate.
 
 `edgeKind` (read-side only) ∈ `VZTAH` · `SUBCLASS_OF` · `EXACT_MATCH`.
 

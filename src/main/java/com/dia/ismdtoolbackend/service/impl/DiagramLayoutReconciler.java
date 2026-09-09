@@ -340,9 +340,32 @@ public class DiagramLayoutReconciler {
             if (in.segments() != null) {
                 edge.setSegments(in.segments());
             }
+            recordTombstone(edge, in, edgeKey);
         }
 
         diagram.getEdges().removeIf(e -> !incoming.contains(e.getEdgeKey()));
+    }
+
+    /**
+     * Records where the edge currently runs, so a later deletion of its concept leaves something to render
+     * between. A composite key already encodes its endpoints; a VZTAH's does not, which is the case this
+     * exists for. Written on every save from the client's own view of the canvas, and read back only once
+     * the backing concept is gone — never while it is live, so it cannot contradict a projection.
+     */
+    private void recordTombstone(DiagramEdgeEntity edge, DiagramLayoutDto.Edge in, String edgeKey) {
+        String source = in.source();
+        String target = in.target();
+        if (edgeKey.startsWith(EdgeProjector.COMPOSITE_ID_PREFIX)) {
+            String[] parts = edgeKey.split("\\|", 4);
+            source = parts[2];
+            target = parts[3];
+        }
+        if (source == null || target == null) {
+            // A membership-only save that names no endpoints leaves the last known pair standing.
+            return;
+        }
+        edge.setLastKnownSource(mapper.conceptIriFromNodeId(source));
+        edge.setLastKnownTarget(mapper.conceptIriFromNodeId(target));
     }
 
     /**
