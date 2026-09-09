@@ -1,10 +1,9 @@
 package com.dia.ismdtoolbackend.entity;
 
+import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -58,9 +57,6 @@ public class DiagramEdgeEntity {
     @Column(name = "segments_json", columnDefinition = "text")
     private String segmentsJson;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
     private static final TypeReference<List<EdgeWaypoint>> WAYPOINTS = new TypeReference<>() {
     };
 
@@ -70,7 +66,7 @@ public class DiagramEdgeEntity {
             return null;
         }
         try {
-            return objectMapper.readValue(segmentsJson, WAYPOINTS);
+            return DiagramJson.MAPPER.readValue(segmentsJson, WAYPOINTS);
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize segments JSON for diagram edge id={}", id, e);
             return null;
@@ -84,7 +80,7 @@ public class DiagramEdgeEntity {
             return;
         }
         try {
-            this.segmentsJson = objectMapper.writeValueAsString(segments);
+            this.segmentsJson = DiagramJson.MAPPER.writeValueAsString(segments);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize segments for diagram edge id=" + id, e);

@@ -107,18 +107,14 @@ class EdgeProjector {
         return edges;
     }
 
-    /**
-     * Canvas membership: the class nodes, the only things an edge may attach to. An unknown type is kept,
-     * since a stale row whose concept was deleted is still on the canvas.
-     */
+    /** The class nodes on this canvas — the only things an edge may attach to. */
     private Set<String> onCanvas(List<DiagramNodeEntity> nodes, Map<String, ConceptType> types) {
         if (onCanvasMemo != null) {
             return onCanvasMemo;
         }
         Set<String> onCanvas = new HashSet<>();
         for (DiagramNodeEntity n : nodes) {
-            ConceptType type = types.get(n.getConceptIri());
-            if (type == null || type == ConceptType.TRIDA || type == ConceptType.KONCEPT) {
+            if (ConceptType.isCanvasMember(types.get(n.getConceptIri()))) {
                 onCanvas.add(n.getConceptIri());
             }
         }
@@ -174,7 +170,7 @@ class EdgeProjector {
                 iri,
                 mapper.nodeId(domain),
                 mapper.nodeId(range),
-                "relationEdge",
+                mapper.edgeType(DiagramEdgeKind.VZTAH),
                 waypoints.get(iri),
                 new DiagramDto.EdgeData(
                         DiagramEdgeKind.VZTAH,
@@ -291,7 +287,7 @@ class EdgeProjector {
                     id,
                     mapper.nodeId(source),
                     mapper.nodeId(target),
-                    "hierarchyEdge",
+                    mapper.edgeType(kind),
                     waypoints.get(id),
                     new DiagramDto.EdgeData(kind, pending)));
         }

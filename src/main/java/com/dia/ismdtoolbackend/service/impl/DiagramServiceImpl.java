@@ -12,10 +12,12 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.DiagramConflictResolutionException;
 import com.dia.ismdtoolbackend.exception.DiagramContentUnavailableException;
 import com.dia.ismdtoolbackend.exception.DiagramEditConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramNameConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
+import com.dia.ismdtoolbackend.exception.DiagramVersionConflictException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -46,7 +48,9 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Diagram reads (layout ⋈ live content, overlays applied, edges projected) and the Save-time layout,
@@ -67,7 +71,16 @@ public class DiagramServiceImpl implements DiagramService {
     private final DiagramPendingEditRepository pendingEditRepository;
     private final DiagramMapper mapper;
 
-    /** Self-proxy — a direct {@code this.commitLayout(...)} would run untransacted. */
+    /**
+     * Self-proxy — a direct {@code this.commitLayout(...)} would bypass the transaction proxy and run
+     * untransacted.
+     *
+     * <p>Typed as the impl, not {@link DiagramService}, because the four seams it reaches
+     * ({@code commitNewDiagram}, {@code loadForRead}, {@code commitLayout}, {@code resolveConflicts}) return
+     * impl-internal types — {@code DiagramSnapshot}, {@code Resolved}. Narrowing the field to the interface
+     * would mean publishing those types on the public API to keep the same call sites, which is a worse
+     * trade than four {@code public} methods on the impl.
+     */
     private final DiagramServiceImpl self;
 
     public DiagramServiceImpl(DiagramRepository diagramRepository,
@@ -113,7 +126,6 @@ public class DiagramServiceImpl implements DiagramService {
         return new DiagramSummaryDto(
                 row.getDiagramId(),
                 row.getName(),
-                row.getSlug(),
                 row.getSlug(),
                 row.getGraphName(),
                 (int) row.getNodeCount(),
@@ -183,11 +195,17 @@ public class DiagramServiceImpl implements DiagramService {
                 diagram.getId(),
                 diagram.getName(),
                 ontology.getSlug(),
-                ontology.getSlug(),
                 ontology.getGraphName(),
                 diagram.getNodes().size(),
                 diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
     }
+
+    /**
+     * How many numbered candidates to try before falling back to a UUID suffix. One query each, so the cap
+     * bounds the worst case; a slovník with this many unnamed diagrams is far past where a readable
+     * auto-name helps anyone, and the UUID still guarantees a successful create.
+     */
+    private static final int MAX_DEFAULT_NAME_ATTEMPTS = 1000;
 
     /** "Nový diagram", numbered when taken, so a create with no name never fails on the name. */
     private String defaultName(OntologyMetadataEntity ontology) {
@@ -195,13 +213,13 @@ public class DiagramServiceImpl implements DiagramService {
         if (!diagramRepository.existsByOntologyMetadataIdAndName(ontology.getId(), base)) {
             return base;
         }
-        for (int i = 2; i < 1000; i++) {
+        for (int i = 2; i < MAX_DEFAULT_NAME_ATTEMPTS; i++) {
             String candidate = base + " " + i;
             if (!diagramRepository.existsByOntologyMetadataIdAndName(ontology.getId(), candidate)) {
                 return candidate;
             }
         }
-        return base + " " + java.util.UUID.randomUUID();
+        return base + " " + UUID.randomUUID();
     }
 
     /** Deletes one diagram. Nodes, waypoints and staged edits cascade with it; concepts do not. */
@@ -339,18 +357,11 @@ public class DiagramServiceImpl implements DiagramService {
         if (clientVersion == null && (stored == null || stored == 0L) && diagram.getNodes().isEmpty()) {
             return;
         }
-        if (!java.util.Objects.equals(clientVersion, stored)) {
+        if (!Objects.equals(clientVersion, stored)) {
             log.warn("Rejected stale diagram save for {}: client version {}, stored {}",
                     diagram.getOntologyMetadata().getSlug(), clientVersion, stored);
             throw new DiagramVersionConflictException(
                     "Diagram byl mezitím uložen jiným editorem; načtěte jej znovu a uložte změny znovu.");
-        }
-    }
-
-    /** A layout save carried a stale version — another editor saved first (409). */
-    public static class DiagramVersionConflictException extends RuntimeException {
-        public DiagramVersionConflictException(String message) {
-            super(message);
         }
     }
 
@@ -475,13 +486,6 @@ public class DiagramServiceImpl implements DiagramService {
         return winnerDiagramId;
     }
 
-    /** A resolution the request could not settle: missing, self-addressed or non-conflicting winner (400). */
-    public static class DiagramConflictResolutionException extends RuntimeException {
-        public DiagramConflictResolutionException(String message) {
-            super(message);
-        }
-    }
-
     /**
      * The final gate before any RDF is written: re-detects from the winner's side, in the transaction that
      * decided it. Runs on every path, so it catches both a collision a resolution left standing and one a
@@ -574,16 +578,22 @@ public class DiagramServiceImpl implements DiagramService {
         List<ConceptMetadataEntity> ownConcepts = conceptMetadataRepository.findByGraphName(graphName);
         List<ConceptMetadataEntity> foreignConcepts = foreignMetadata(nodes);
 
-        return new DiagramSnapshot(diagram.getId(), diagram.getName(), graphName, diagram.getVersion(),
-                mapper.toViewport(diagram), nodes,
+        DiagramSnapshot snapshot = new DiagramSnapshot(diagram.getId(), diagram.getName(), graphName,
+                diagram.getVersion(), mapper.toViewport(diagram), nodes,
                 conceptTypes(ownConcepts, foreignConcepts), conceptSlugs(ownConcepts, foreignConcepts),
                 nodeIriByRowId, edgeWaypoints(diagram), onCanvasEdges(diagram), overlays(diagram),
                 foreignGraphs(foreignConcepts));
+        log.debug("Diagram {} snapshot: {} node(s), {} placed edge(s), {} overlay(s), {} own concept(s), "
+                        + "{} foreign node(s) across {} graph(s), version {}",
+                diagram.getId(), nodes.size(), snapshot.onCanvasEdges().size(), snapshot.overlays().size(),
+                ownConcepts.size(), snapshot.foreignGraphs().size(),
+                snapshot.foreignGraphs().values().stream().distinct().count(), snapshot.version());
+        return snapshot;
     }
 
     /** The projected edge ids on this canvas, one row per placed edge. */
     private Set<String> onCanvasEdges(DiagramEntity diagram) {
-        Set<String> keys = new java.util.HashSet<>();
+        Set<String> keys = new HashSet<>();
         for (DiagramEdgeEntity edge : diagram.getEdges()) {
             if (edge.getEdgeKey() != null) {
                 keys.add(edge.getEdgeKey());
@@ -607,7 +617,7 @@ public class DiagramServiceImpl implements DiagramService {
         return nodes.stream()
                 .filter(DiagramNodeEntity::isForeign)
                 .map(DiagramNodeEntity::getConceptIri)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
     }
@@ -653,7 +663,7 @@ public class DiagramServiceImpl implements DiagramService {
         // nodes[] is classes only; relationships render as edges and properties as rows.
         List<DiagramDto.Node> nodes = new ArrayList<>();
         for (DiagramNodeEntity node : snapshot.nodes()) {
-            if (!isCanvasMember(snapshot, node.getConceptIri())) {
+            if (!ConceptType.isCanvasMember(snapshot.types().get(node.getConceptIri()))) {
                 continue;
             }
             nodes.add(toNode(snapshot, node, live, rows.getOrDefault(node.getConceptIri(), List.of())));
@@ -662,14 +672,14 @@ public class DiagramServiceImpl implements DiagramService {
         List<DiagramDto.Edge> edges =
                 projector.project(snapshot.nodes(), live.byIri(), snapshot.types(), snapshot.slugs());
 
+        log.debug("Diagram {} assembled: {} of {} node(s) on canvas, {} projected edge(s), {} property row(s)"
+                        + ", {} live concept(s), {} unavailable",
+                snapshot.diagramId(), nodes.size(), snapshot.nodes().size(), edges.size(),
+                rows.values().stream().mapToInt(List::size).sum(), live.byIri().size(),
+                live.unavailable().size());
+
         return new DiagramDto(snapshot.diagramId(), snapshot.name(), ontologySlug, snapshot.version(),
                 snapshot.viewport(), nodes, edges, pendingEdits(snapshot, live));
-    }
-
-    /** Canvas membership: classes only. An unknown type is kept, since a stale row is still on the canvas. */
-    private boolean isCanvasMember(DiagramSnapshot snapshot, String conceptIri) {
-        ConceptType type = snapshot.types().get(conceptIri);
-        return type == null || type == ConceptType.TRIDA || type == ConceptType.KONCEPT;
     }
 
     /** Every staged edit on the diagram — what Převzít applies. Not filtered by canvas membership. */

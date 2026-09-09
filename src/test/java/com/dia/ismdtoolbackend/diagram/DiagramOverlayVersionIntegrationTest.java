@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.DiagramVersionConflictException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
@@ -384,7 +385,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), stale))
                 .as("a version predating the overlay save is stale → 409")
-                .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
+                .isInstanceOf(DiagramVersionConflictException.class);
     }
 
     /**
@@ -523,7 +524,7 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
                 current - 1, null, List.of(node(CLASS_A, 0, 0)), List.of(), null);
 
         assertThatThrownBy(() -> diagramService.saveLayout(SLUG, diagramId(), stale))
-                .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
+                .isInstanceOf(DiagramVersionConflictException.class);
 
         verify(tdb2, never()).fetchGraph(any());
     }

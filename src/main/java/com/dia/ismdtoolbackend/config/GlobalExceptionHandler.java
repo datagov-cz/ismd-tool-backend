@@ -8,7 +8,6 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramReadbackFailureDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.exception.*;
-import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -49,11 +48,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
-    @ExceptionHandler(DiagramServiceImpl.DiagramVersionConflictException.class)
+    /** Another editor saved the diagram first; membership is a full replace, so a stale save would delete. */
+    @ExceptionHandler(DiagramVersionConflictException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramVersionConflict(
-            DiagramServiceImpl.DiagramVersionConflictException e) {
+            DiagramVersionConflictException e) {
         log.warn("Diagram version conflict: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.CONFLICT);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResponseDto.error(null, e.getMessage(), DiagramVersionConflictException.ERROR_CODE));
     }
 
     /** A diagram name is already taken within its ontology (names identify a canvas to the user). */
@@ -69,11 +70,12 @@ public class GlobalExceptionHandler {
      * naming a diagram that is not in the conflict set. 400, not 409: re-sending the same request cannot
      * succeed, so the FE must correct it rather than let the user choose again.
      */
-    @ExceptionHandler(DiagramServiceImpl.DiagramConflictResolutionException.class)
+    @ExceptionHandler(DiagramConflictResolutionException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramConflictResolution(
-            DiagramServiceImpl.DiagramConflictResolutionException e) {
+            DiagramConflictResolutionException e) {
         log.warn("Invalid diagram conflict resolution: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(e.getMessage()));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
+                null, e.getMessage(), DiagramConflictResolutionException.ERROR_CODE));
     }
 
     /**

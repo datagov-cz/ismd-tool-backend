@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.exception.DiagramVersionConflictException;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -189,7 +190,7 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
 
         // Editor A saves its own view {a} using the now-stale version.
         assertThatThrownBy(() -> service.saveLayout(SLUG, diagramId(), layout(staleVersion, a)))
-                .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
+                .isInstanceOf(DiagramVersionConflictException.class);
 
         // B's node survives — the silent-delete this finding is about did not happen.
         assertThat(persistedIris())
@@ -207,7 +208,7 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
         service.saveLayout(SLUG, diagramId(), layout(first.version(), a, b));
 
         assertThatThrownBy(() -> service.saveLayout(SLUG, diagramId(), layout(null, a)))
-                .isInstanceOf(DiagramServiceImpl.DiagramVersionConflictException.class);
+                .isInstanceOf(DiagramVersionConflictException.class);
         assertThat(persistedIris()).containsExactlyInAnyOrder(a, b);
     }
 

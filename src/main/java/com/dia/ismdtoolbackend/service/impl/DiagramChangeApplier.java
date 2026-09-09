@@ -7,6 +7,9 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramEdgeKind;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
+import com.dia.ismdtoolbackend.exception.DiagramCascadeConflictException;
+import com.dia.ismdtoolbackend.exception.DiagramForeignConceptException;
+import com.dia.ismdtoolbackend.exception.DiagramStaleBaseException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
@@ -93,10 +96,10 @@ public class DiagramChangeApplier {
             return new Outcome(op, Outcome.Kind.SKIPPED_STALE);
         }
         String ontologyGraphName = staged.getOntologyMetadata().getGraphName();
-        requireSameGraph(ontologyGraphName, concept.getGraphName(), concept.getConceptIri());
+        requireGraphMatches(ontologyGraphName, concept.getGraphName(), concept.getConceptIri());
 
         if (isStaleBase(concept, overlay)) {
-            throw new StaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
+            throw new DiagramStaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
         }
 
         // Captured before the edit: a triple edge's id embeds its endpoints, so once RDF moves them the
@@ -107,7 +110,7 @@ public class DiagramChangeApplier {
             applyConvertToHierarchy(overlay, concept, ontologyGraphName);
         } else {
             // Re-asserted here: a row staged earlier could name a concept that has since moved graphs.
-            requireSameGraphIri(ontologyGraphName, overlay.getDomain());
+            requireResolvedIriIsOwnGraph(ontologyGraphName, overlay.getDomain());
             conceptService.editConcept(concept.getId(), buildEdit(overlay, concept.getConceptType()));
         }
         applyEdgeRekeys(rekeys);
@@ -214,7 +217,7 @@ public class DiagramChangeApplier {
         List<String> related =
                 jenaTDB2Repository.findRelatedConceptUris(vztah.getConceptIri(), vztah.getGraphName());
         if (related != null && !related.isEmpty()) {
-            throw new CascadeConflictException(
+            throw new DiagramCascadeConflictException(
                     "Vztah nelze převést — jiný pojem na něj odkazuje (smazání by kaskádovalo).");
         }
 
@@ -222,7 +225,7 @@ public class DiagramChangeApplier {
                 .orElseThrow(() -> new ConceptValidationException(
                         "Cílová třída " + marker.getAddBroaderOn() + " nebyla nalezena."));
         // addBroaderOn is EDITED and must be ours; broader is only referenced, so it may be foreign.
-        requireSameGraph(diagramGraphName, targetClass.getGraphName(), targetClass.getConceptIri());
+        requireGraphMatches(diagramGraphName, targetClass.getGraphName(), targetClass.getConceptIri());
 
         ClassConceptEditModel addBroader = new ClassConceptEditModel();
         addBroader.setConceptType(ConceptType.TRIDA.getValue());
@@ -262,36 +265,53 @@ public class DiagramChangeApplier {
     /**
      * A concept outside the diagram's own graph is a rejected request, not a stale reference: the endpoints
      * authorize the ontology slug, so writing another ontology's concept would escape that check.
+     *
+     * <p>Takes an already-resolved graph name. To check a bare IRI instead, use
+     * {@link #requireResolvedIriIsOwnGraph} — the two differ in whether an unresolvable IRI is tolerated,
+     * which is why they are not one method.
      */
-    private void requireSameGraph(String diagramGraphName, String conceptGraphName, String conceptIri) {
+    private void requireGraphMatches(String diagramGraphName, String conceptGraphName, String conceptIri) {
         if (!Objects.equals(diagramGraphName, conceptGraphName)) {
             log.warn("Rejected diagram write to foreign concept {} (graph {}) from a diagram on graph {}",
                     conceptIri, conceptGraphName, diagramGraphName);
-            throw new ForeignConceptException(
+            throw new DiagramForeignConceptException(
                     "Pojem " + conceptIri + " nepatří do slovníku tohoto diagramu.");
         }
     }
 
     /**
-     * The same check for a raw overlay IRI that need not have a PG row; an unresolvable IRI passes, since it
-     * becomes an ordinary triple object. Applied to {@code domain} only — a {@code range} or hierarchy
-     * target is referenced rather than written, so a foreign one is legitimate.
+     * The same check for a raw overlay IRI that need not have a PG row. An IRI that resolves to nothing
+     * <em>passes</em>, since it becomes an ordinary triple object — that tolerance is the whole difference
+     * from {@link #requireGraphMatches}, which is given a graph and cannot express it.
+     *
+     * <p>Applied to {@code domain} only — a {@code range} or hierarchy target is referenced rather than
+     * written, so a foreign one is legitimate.
      */
-    private void requireSameGraphIri(String diagramGraphName, String conceptIri) {
+    private void requireResolvedIriIsOwnGraph(String diagramGraphName, String conceptIri) {
         if (conceptIri == null) {
             return;
         }
         conceptMetadataRepository.findByConceptIri(conceptIri)
                 .map(ConceptMetadataEntity::getGraphName)
-                .ifPresent(graphName -> requireSameGraph(diagramGraphName, graphName, conceptIri));
+                .ifPresent(graphName -> requireGraphMatches(diagramGraphName, graphName, conceptIri));
     }
 
     // ---- op classification ----------------------------------------------------------------------
 
     /**
-     * Infers the op from the overlay's fields. Op 4 and 5 (change-parent, set-domain) are indistinguishable
-     * from the overlay alone — both carry only a domain on a VLASTNOST — and both report as
-     * {@code CHANGE_PROPERTY_PARENT}.
+     * Infers the op from the overlay's fields alone — the concept's type is deliberately not consulted,
+     * since the work-list classifies staged rows in one read and reaching the type would cost a query per
+     * row (see {@code DiagramMaterializeService.orderedWorkList}).
+     *
+     * <p>That makes the last branch a fallthrough bucket rather than a precise label. Op 4 and 5
+     * (change-parent, set-domain) are genuinely indistinguishable here — both carry only a domain on a
+     * VLASTNOST — but a <em>domain-only edit on a VZTAH</em> also lands there and reports as
+     * {@code CHANGE_PROPERTY_PARENT}, which names the wrong shape.
+     *
+     * <p><b>Label only.</b> The op is reporting metadata; the RDF written is driven by
+     * {@code buildEdit(overlay, conceptType)}, which does see the type, so nothing is misapplied. Fixing the
+     * label properly needs a new {@code DiagramOp} constant plus a concept-type lookup in the ordering path
+     * — a real trade against that single-read design, not a rename.
      */
     DiagramOp classify(DiagramPendingEdit overlay) {
         if (overlay.getConvertToHierarchy() != null) {
@@ -346,26 +366,5 @@ public class DiagramChangeApplier {
             return false;
         }
         return !Objects.equals(staged, concept.getUpdatedAt());
-    }
-
-    /** The referenced concept changed since the overlay was staged (409 STALE_BASE). */
-    public static class StaleBaseException extends RuntimeException {
-        public StaleBaseException(String message) {
-            super(message);
-        }
-    }
-
-    /** A concept IRI in the request is outside the diagram's own ontology graph (400). */
-    public static class ForeignConceptException extends RuntimeException {
-        public ForeignConceptException(String message) {
-            super(message);
-        }
-    }
-
-    /** Op 6 blocked: deleting the VZTAH would cascade to concepts pointing at it (409). */
-    public static class CascadeConflictException extends RuntimeException {
-        public CascadeConflictException(String message) {
-            super(message);
-        }
     }
 }

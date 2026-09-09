@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
+import com.dia.ismdtoolbackend.enums.DiagramFailureCode;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
@@ -421,7 +422,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
-        assertThat(result.failed().get(0).error()).isEqualTo("STALE_BASE");
+        assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.STALE_BASE);
         assertThat(result.failed().get(0).status()).isEqualTo(409);
     }
 
@@ -586,7 +587,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.failed()).singleElement().satisfies(f -> {
-            assertThat(f.error()).isEqualTo("STALE_BASE");
+            assertThat(f.error()).isEqualTo(DiagramFailureCode.STALE_BASE);
             assertThat(f.op()).as("a failure must still name its op").isEqualTo(DiagramOp.CHANGE_HIERARCHY_TYPE);
         });
     }
@@ -653,7 +654,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.failed()).hasSize(1);
-        assertThat(result.failed().get(0).error()).isEqualTo("CASCADE_CONFLICT");
+        assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.CASCADE_CONFLICT);
         assertThat(result.failed().get(0).status()).isEqualTo(409);
         // All-or-nothing: V is NOT deleted, and no broader was added on A.
         assertThat(graph().containsResource(graph().getResource(v.getConceptIri())))
@@ -845,7 +846,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(result.materialized())
                 .as("a foreign concept must never be materialized").isEmpty();
         assertThat(result.failed()).hasSize(1);
-        assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
+        assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.FOREIGN_CONCEPT);
         assertThat(result.failed().get(0).status()).isEqualTo(400);
         // The victim's RDF is byte-identical — the edit never reached their graph.
         assertThat(triplesOf(victimGraph(), victimConcept.getConceptIri()))
@@ -878,7 +879,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
-        assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
+        assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.FOREIGN_CONCEPT);
         // The victim's class was not edited...
         assertThat(triplesOf(victimGraph(), victimClass.getConceptIri()))
                 .as("victim class untouched by the refused op-6").isEqualTo(victimBefore);
@@ -941,7 +942,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
 
         assertThat(result.failed()).hasSize(1);
-        assertThat(result.failed().get(0).error()).isEqualTo("FOREIGN_CONCEPT");
+        assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.FOREIGN_CONCEPT);
         assertThat(broaderOf(victimBefore)).doesNotContain(a.getConceptIri());
         assertThat(graph().containsResource(graph().getResource(v.getConceptIri())))
                 .as("all-or-nothing: the VZTAH survives a refused convert").isTrue();

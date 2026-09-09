@@ -64,7 +64,7 @@ Reads stay strictly read-only, which is deliberate: a non-owner opening someone 
 
 Two ways to surface diagrams to the user:
 
-- **List:** `GET /api/diagram/{ontologySlug}/list` → `List<DiagramSummaryDto>` (`diagramId`, `name`, `ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`) for one ontology; `GET /api/diagram/all` for every ontology. Any authenticated user; lightweight (no live-content join).
+- **List:** `GET /api/diagram/{ontologySlug}/list` → `List<DiagramSummaryDto>` (`diagramId`, `name`, `ontologySlug`, `graphName`, `nodeCount`, `updatedAt`) for one ontology; `GET /api/diagram/all` for every ontology. Any authenticated user; lightweight (no live-content join).
 - **Search:** `GET /api/search?type=DIAGRAM` returns **one `SearchResultDto` per diagram** — an ontology with three canvases contributes three rows, matched on the ontology slug **or the diagram's own name**. On a default search (`type` omitted) diagram rows appear alongside `ONTOLOGY`/`CONCEPT` rows; NKD is skipped for `type=DIAGRAM`. `SearchResponseDto.totalDiagrams` carries the total.
 
 **Routing a DIAGRAM search result → diagram detail (bypassing ontology detail).** A DIAGRAM `SearchResultDto` is:
@@ -290,7 +290,7 @@ One call carries everything: layout **and** the structural overlays. Strip React
 |---|---|---|
 | `version` | **400** — always required | — |
 | `nodes` | **400** — always required | canvas emptied (staged edits are untouched — a separate table) |
-| `nodes[].properties` | that class renders **no** property rows | same |
+| `nodes[].visibleProperties` | that class's rendered rows **kept** | that class renders **no** property rows |
 | `edges` | **edge membership untouched** | every edge removed from the canvas |
 | `edges[].segments` | that edge's stored routing **kept** | routing cleared to default |
 | **`overlays`** | **staged edits untouched** | **staged edits untouched** |
@@ -319,14 +319,14 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
   "nodes": [
     { "id": "iri:https://…/pojem/zamestnanec",
       "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false,
-      // the VLASTNOST rows this class renders — a flat IRI array, full-replace like `position`
-      "properties": ["https://…/pojem/datum-narozeni"] },
+      // the VLASTNOST rows this class renders — a flat IRI array; omit the key to leave them untouched
+      "visibleProperties": ["https://…/pojem/datum-narozeni"] },
     // parentId/collapsed are optional — omitted or null means no parent / not collapsed
     { "id": "iri:https://…/pojem/organizace",
-      "position": { "x": 720, "y": 80 }, "properties": [] },
+      "position": { "x": 720, "y": 80 }, "visibleProperties": [] },
     // a concept from ANOTHER ontology — placed like any other node; the server marks it read-only
     { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
-      "position": { "x": 1100, "y": 80 }, "properties": [] }
+      "position": { "x": 1100, "y": 80 }, "visibleProperties": [] }
   ],
   // waypoints only — echo the id you were given on read; endpoints are derived, never sent
   "edges": [
@@ -347,7 +347,7 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
 
 **`nodes[]` is authoritative for canvas membership.** A node present is kept (or **added** if its IRI is new to the canvas; the response hydrates its live content), a node omitted is **removed from the canvas** (the concept is untouched, and so is any edit staged on it). Adding a node needs only `{id, position}`; the backend joins the rest from live RDF.
 
-**Classes only.** A VZTAH travels in `edges[]` and a VLASTNOST inside its class's `properties[]` — never as a node, in either direction.
+**Classes only.** A VZTAH travels in `edges[]` and a VLASTNOST inside its class's `visibleProperties[]` — never as a node, in either direction.
 
 **Placing a concept from another ontology needs nothing special.** Send the node like any other; a concept belonging to a *different* ontology (or to NKD) is accepted and stored read-only, so the user can draw a relationship from a concept they own to one they do not. It renders with `data.readOnly: true` and its label fetched from the graph that owns it.
 
@@ -368,9 +368,11 @@ A concept absent from `overlays` keeps whatever is staged on it. The **only** wa
 
 So a VZTAH your ontology owns may point **at** a foreign class (`range`), but a VZTAH may never hang **off** one (`domain`). Both are checked at save and re-checked at materialize.
 
-### `nodes[].properties` — the rows a class renders
+### `nodes[].visibleProperties` — the rows a class renders
 
-**A flat array of VLASTNOST IRIs.** A property renders as a row inside a class only while that class lists it. Membership is **curated, not derived**: a class with `"properties": []` shows no rows even when its VLASTNOSTi exist in RDF, and the backend never falls back to "show all".
+> ⚠️ **Renamed.** This key was `properties` on the write side. It is now **`visibleProperties`**, matching the column it writes and no longer colliding with the read side's `data.properties`, which is a different shape (whole `PropertyRow` objects, not IRIs). Its semantics changed in the same release — see the table below.
+
+**A flat array of VLASTNOST IRIs.** A property renders as a row inside a class only while that class lists it. Membership is **curated, not derived**: a class with `"visibleProperties": []` shows no rows even when its VLASTNOSTi exist in RDF, and the backend never falls back to "show all".
 
 **The key is three-way, like `overlays` and edge `segments` — it is NOT a plain full replace:**
 
@@ -382,7 +384,7 @@ So a VZTAH your ontology owns may point **at** a foreign class (`range`), but a 
 
 Omitting the key and sending `[]` are **different**. A client that does not manage property visibility can leave the key out of every node and never disturb the curated rows; only an explicit `[]` clears them. (This changed — omitting the key previously cleared the rows, so a Save built from a partial node shape silently blanked them.)
 
-Note the read and write shapes differ: the read returns rich `PropertyRow` objects, the write takes bare IRIs, so a Save maps `node.data.properties.map(p => p.iri)`.
+Note the read and write shapes differ, which is why they no longer share a name: the read returns rich `PropertyRow` objects under `data.properties`, the write takes bare IRIs under `visibleProperties`, so a Save maps `node.data.properties.map(p => p.iri)`.
 
 **Adding** a row = include its IRI; **removing** = omit it and resend the rest. **Moving a property to another class needs both**: list it under the new host *and* stage `{"domain": "<new class>"}` on its overlay. The overlay alone renders nothing — placement and structure are separate instructions.
 
@@ -535,7 +537,7 @@ Applies every staged change. One entry per staged **change** (a change may span 
 
 **Flip (op 2) materializes as two independent edits.** Reversing a hierarchy (B⊐A → A⊐B) is staged as a `broaderConcept` overlay on *both* concepts; each materializes independently as a `CHANGE_HIERARCHY_TYPE`. There is no atomic two-node flip unit — neither half corrupts RDF on its own, and a half-applied flip is reported per-concept in `failed` for the user to re-run. Only `CONVERT_TO_HIERARCHY` (op 6) is a genuinely gated two-call unit.
 
-**Error cases the FE handles:**
+**Error cases the FE handles.** `error` is a closed enum (`DiagramFailureCode`), so a generated client gets a union type rather than a bare `String`; `status` is derived from it and the two can never disagree. The wire values are unchanged:
 
 - `error: "VALIDATION"` (HTTP 400) — the concept edit failed validation; overlay retained, fix and retry.
 - `error: "STALE_BASE"` (HTTP 409) — the underlying concept was edited (via normal `/api/concept`) since the overlay was staged. Overlay retained. **See the recovery rule below.**

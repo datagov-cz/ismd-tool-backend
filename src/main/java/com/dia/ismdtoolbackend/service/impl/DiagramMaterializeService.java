@@ -2,15 +2,16 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
+import com.dia.ismdtoolbackend.enums.DiagramFailureCode;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
+import com.dia.ismdtoolbackend.exception.DiagramCascadeConflictException;
+import com.dia.ismdtoolbackend.exception.DiagramForeignConceptException;
+import com.dia.ismdtoolbackend.exception.DiagramStaleBaseException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
-import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.CascadeConflictException;
-import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.ForeignConceptException;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.Outcome;
-import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier.StaleBaseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -43,8 +44,13 @@ public class DiagramMaterializeService {
         List<MaterializeResultDto.Failed> failed = new ArrayList<>();
         List<MaterializeResultDto.SkippedStale> skippedStale = new ArrayList<>();
 
-        for (StagedChange change : orderedWorkList(diagramId)) {
+        List<StagedChange> workList = orderedWorkList(diagramId);
+        log.debug("Materializing diagram {}: {} staged change(s), ops {}",
+                diagramId, workList.size(), workList.stream().map(StagedChange::op).toList());
+
+        for (StagedChange change : workList) {
             String conceptIri = change.conceptIri();
+            log.debug("Applying {} on concept {} (diagram {})", change.op(), conceptIri, diagramId);
             try {
                 Outcome outcome = changeApplier.applyChange(diagramId, conceptIri);
                 switch (outcome.kind()) {
@@ -58,21 +64,21 @@ public class DiagramMaterializeService {
                     case MATERIALIZED ->
                             materialized.add(new MaterializeResultDto.Materialized(conceptIri, outcome.op()));
                 }
-            } catch (StaleBaseException e) {
-                failed.add(fail(change, "STALE_BASE", e.getMessage(), 409));
-            } catch (CascadeConflictException e) {
-                failed.add(fail(change, "CASCADE_CONFLICT", e.getMessage(), 409));
-            } catch (ForeignConceptException e) {
-                failed.add(fail(change, "FOREIGN_CONCEPT", e.getMessage(), 400));
+            } catch (DiagramStaleBaseException e) {
+                failed.add(fail(change, DiagramFailureCode.STALE_BASE, e.getMessage()));
+            } catch (DiagramCascadeConflictException e) {
+                failed.add(fail(change, DiagramFailureCode.CASCADE_CONFLICT, e.getMessage()));
+            } catch (DiagramForeignConceptException e) {
+                failed.add(fail(change, DiagramFailureCode.FOREIGN_CONCEPT, e.getMessage()));
             } catch (ConceptValidationException | OntologyValidationException e) {
-                failed.add(fail(change, "VALIDATION", e.getMessage(), 400));
+                failed.add(fail(change, DiagramFailureCode.VALIDATION, e.getMessage()));
             } catch (AccessDeniedException e) {
                 // The caller owns the ontology but not this concept: a per-change 403, not a 500.
-                failed.add(fail(change, "FORBIDDEN",
-                        "Nemáte oprávnění upravit tento pojem.", 403));
+                failed.add(fail(change, DiagramFailureCode.FORBIDDEN,
+                        "Nemáte oprávnění upravit tento pojem."));
             } catch (RuntimeException e) {
                 log.error("Materialize failed for concept {}", conceptIri, e);
-                failed.add(fail(change, "ERROR", "Nastala neočekávaná chyba.", 500));
+                failed.add(fail(change, DiagramFailureCode.ERROR, "Nastala neočekávaná chyba."));
             }
         }
 
@@ -110,8 +116,8 @@ public class DiagramMaterializeService {
      * then (a concurrent discard, or an ambiguous failure at commit), which reported {@code op: null} on
      * exactly the failures a client most needs to identify.
      */
-    private MaterializeResultDto.Failed fail(StagedChange change, String error,
-                                             String message, int status) {
-        return new MaterializeResultDto.Failed(change.conceptIri(), change.op(), error, message, status);
+    private MaterializeResultDto.Failed fail(StagedChange change, DiagramFailureCode error,
+                                             String message) {
+        return new MaterializeResultDto.Failed(change.conceptIri(), change.op(), error, message);
     }
 }

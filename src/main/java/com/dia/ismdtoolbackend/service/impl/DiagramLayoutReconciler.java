@@ -271,8 +271,8 @@ public class DiagramLayoutReconciler {
         node.setCollapsed(in.collapsed());
         // Null is a no-op, so a client that does not manage property visibility keeps what is stored;
         // an explicit [] clears the rows.
-        if (in.properties() != null) {
-            node.setVisibleProperties(in.properties().stream()
+        if (in.visibleProperties() != null) {
+            node.setVisibleProperties(in.visibleProperties().stream()
                     .map(mapper::conceptIriFromNodeId)
                     .distinct()
                     .toList());

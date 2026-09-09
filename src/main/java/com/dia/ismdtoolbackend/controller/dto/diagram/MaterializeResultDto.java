@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto.diagram;
 
+import com.dia.ismdtoolbackend.enums.DiagramFailureCode;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -22,18 +23,22 @@ public record MaterializeResultDto(
     }
 
     /**
-     * A change that failed, whose staged edit is retained. {@code error} is one of {@code VALIDATION} (400),
-     * {@code FOREIGN_CONCEPT} (400), {@code FORBIDDEN} (403), {@code STALE_BASE} (409),
-     * {@code CASCADE_CONFLICT} (409) or {@code ERROR} (500).
+     * A change that failed, whose staged edit is retained. {@code error} is a {@link DiagramFailureCode} and
+     * {@code status} is that code's own status, so the pair cannot disagree.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Failed(
             String conceptIri,
             DiagramOp op,
-            String error,
+            DiagramFailureCode error,
             String message,
             Integer status
     ) {
+
+        /** The status always comes from the code; only the message varies per occurrence. */
+        public Failed(String conceptIri, DiagramOp op, DiagramFailureCode error, String message) {
+            this(conceptIri, op, error, message, error.getStatus());
+        }
     }
 
     /** A change whose referenced concept no longer exists, so it cannot be applied. */

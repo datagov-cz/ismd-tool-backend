@@ -74,7 +74,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void getAll_returnsDiagramSummaries() throws Exception {
         when(diagramService.listAll()).thenReturn(List.of(
-                new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer", "pracovni-pomer",
+                new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
                         "https://x/pracovni-pomer", 7, "2026-07-21T10:00:00")));
 
         mockMvc.perform(get("/api/diagram/all"))
@@ -100,7 +100,7 @@ class DiagramControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void rename_passesTheNewNameThrough() throws Exception {
         when(diagramService.renameDiagram(eq("pracovni-pomer"), eq(5L), eq("Pohled HR")))
-                .thenReturn(new DiagramSummaryDto(5L, "Pohled HR", "pracovni-pomer", "pracovni-pomer",
+                .thenReturn(new DiagramSummaryDto(5L, "Pohled HR", "pracovni-pomer",
                         "https://x/g", 3, null));
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")

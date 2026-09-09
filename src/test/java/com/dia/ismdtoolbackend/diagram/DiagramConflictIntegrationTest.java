@@ -8,6 +8,7 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.DiagramConflictResolutionException;
 import com.dia.ismdtoolbackend.exception.DiagramEditConflictException;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
@@ -480,7 +481,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThatThrownBy(() ->
                 diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, null))
-                .isInstanceOf(DiagramServiceImpl.DiagramConflictResolutionException.class);
+                .isInstanceOf(DiagramConflictResolutionException.class);
 
         assertThat(pendingEditRepo.findByDiagramId(mine)).as("nothing discarded").hasSize(1);
         assertThat(pendingEditRepo.findByDiagramId(theirs)).as("nothing discarded").hasSize(1);
@@ -503,7 +504,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThatThrownBy(() ->
                 diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, uninvolved))
-                .isInstanceOf(DiagramServiceImpl.DiagramConflictResolutionException.class);
+                .isInstanceOf(DiagramConflictResolutionException.class);
 
         assertThat(pendingEditRepo.findByDiagramId(theirs))
                 .as("the real conflict is left exactly as it was, for the user to answer again")
@@ -525,7 +526,7 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
 
         assertThatThrownBy(() ->
                 diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs))
-                .isInstanceOf(DiagramServiceImpl.DiagramConflictResolutionException.class);
+                .isInstanceOf(DiagramConflictResolutionException.class);
 
         verify(materializeService, never()).materialize(any(), any());
     }

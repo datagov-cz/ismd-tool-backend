@@ -1,12 +1,9 @@
 package com.dia.ismdtoolbackend.entity;
 
+import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -81,10 +78,19 @@ public class DiagramNodeEntity {
         }
     }
 
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final TypeReference<List<String>> IRI_LIST = new TypeReference<>() {
+    };
+
+    /**
+     * Parsed {@link #visiblePropertiesJson}, memoized against the exact string it was parsed from. The
+     * getter is called once per node per read and the column does not change under a loaded entity, but
+     * keying on the source string means a JPA reload or a {@code setVisibleProperties} still re-parses
+     * rather than serving a stale list. Transient: never persisted, and not part of entity state.
+     */
+    @Transient
+    private String parsedFrom;
+    @Transient
+    private List<String> parsedVisibleProperties;
 
     /**
      * The property IRIs this class cell renders, empty on absent or malformed JSON. Empty is a meaningful
@@ -94,8 +100,14 @@ public class DiagramNodeEntity {
         if (visiblePropertiesJson == null || visiblePropertiesJson.isBlank()) {
             return List.of();
         }
+        if (parsedVisibleProperties != null && visiblePropertiesJson.equals(parsedFrom)) {
+            return parsedVisibleProperties;
+        }
         try {
-            return objectMapper.readValue(visiblePropertiesJson, new TypeReference<List<String>>() {});
+            List<String> parsed = List.copyOf(DiagramJson.MAPPER.readValue(visiblePropertiesJson, IRI_LIST));
+            parsedVisibleProperties = parsed;
+            parsedFrom = visiblePropertiesJson;
+            return parsed;
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize visible-properties JSON for diagram node id={}", id, e);
             return List.of();
@@ -104,12 +116,14 @@ public class DiagramNodeEntity {
 
     /** Stores the rendered property IRIs; null or empty clears the column. */
     public void setVisibleProperties(List<String> properties) {
+        parsedVisibleProperties = null;
+        parsedFrom = null;
         if (properties == null || properties.isEmpty()) {
             this.visiblePropertiesJson = null;
             return;
         }
         try {
-            this.visiblePropertiesJson = objectMapper.writeValueAsString(properties);
+            this.visiblePropertiesJson = DiagramJson.MAPPER.writeValueAsString(properties);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize visible properties for diagram node id=" + id, e);

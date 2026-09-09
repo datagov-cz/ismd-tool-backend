@@ -1,11 +1,8 @@
 package com.dia.ismdtoolbackend.entity;
 
+import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -69,18 +66,13 @@ public class DiagramPendingEditEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
     /** The overlay, or {@code null} on malformed JSON. */
     public DiagramPendingEdit getPendingEdit() {
         if (pendingEditJson == null || pendingEditJson.isBlank()) {
             return null;
         }
         try {
-            return objectMapper.readValue(pendingEditJson, DiagramPendingEdit.class);
+            return DiagramJson.MAPPER.readValue(pendingEditJson, DiagramPendingEdit.class);
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize pending-edit JSON for row id={}, concept {}",
                     id, conceptIri, e);
@@ -96,7 +88,7 @@ public class DiagramPendingEditEntity {
                             + conceptIri + ")");
         }
         try {
-            this.pendingEditJson = objectMapper.writeValueAsString(edit);
+            this.pendingEditJson = DiagramJson.MAPPER.writeValueAsString(edit);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize pending edit for concept " + conceptIri, e);

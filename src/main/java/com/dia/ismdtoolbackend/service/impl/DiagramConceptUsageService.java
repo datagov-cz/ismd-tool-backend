@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageKind;
@@ -10,10 +11,6 @@ import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,12 +39,6 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class DiagramConceptUsageService {
-
-    /** Mirrors the entity's own mapper, since overlays are written by it and must be read the same way. */
-    private static final ObjectMapper OVERLAY_MAPPER = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private final DiagramRepository diagramRepository;
     private final DiagramPendingEditRepository pendingEditRepository;
@@ -119,7 +110,7 @@ public class DiagramConceptUsageService {
             return null;
         }
         try {
-            return OVERLAY_MAPPER.readValue(json, DiagramPendingEdit.class);
+            return DiagramJson.MAPPER.readValue(json, DiagramPendingEdit.class);
         } catch (JsonProcessingException e) {
             log.error("Skipping malformed pending-edit JSON on diagram {}", row.getDiagramId(), e);
             return null;

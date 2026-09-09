@@ -20,15 +20,11 @@ public record DiagramLayoutDto(
         @NotNull Long version,
         ViewportDto viewport,
         @NotNull @Valid List<Node> nodes,
-        /* Authoritative canvas membership for edges, like `nodes`: an edge present is on the canvas, one
-         * omitted is taken off it. A projectable edge the user has never added is not drawn, waiting in the
-         * sidebar like a new class. Null is the exception, a no-op that leaves the edge set untouched, so a
-         * client that never edits edges need not echo them. */
+        /* Authoritative canvas membership for edges */
         @Valid List<Edge> edges,
-        /* Optional and additive ACROSS concepts, unlike `edges` above: a concept absent from the array keeps
+        /* Optional and additive ACROSS concepts: a concept absent from the array keeps
          * what is already staged, so null and [] both mean "not touching overlays", and discarding is
-         * explicit (an entry carrying only conceptIri).
-         *
+         * explicit.
          * WITHIN one concept an entry is the whole overlay, not a per-field delta — it REPLACES that
          * concept's staged edit, so a field the entry omits is dropped. Send a concept's full staged intent
          * every time. */
@@ -49,15 +45,12 @@ public record DiagramLayoutDto(
             @NotNull @Valid PositionDto position,
             String parentId,
             Boolean collapsed,
-            /* The VLASTNOST rows this class cell renders. Three-way, like `overlays` and edge `segments`:
-             * null leaves the stored rows untouched, so a client that does not manage property visibility
-             * cannot wipe it, `[]` renders none, and a list replaces the set wholesale. */
-            List<String> properties
+            List<String> visibleProperties
     ) {
 
         public Node {
             collapsed = collapsed != null && collapsed;
-            properties = properties != null ? List.copyOf(properties) : null;
+            visibleProperties = visibleProperties != null ? List.copyOf(visibleProperties) : null;
         }
     }
 

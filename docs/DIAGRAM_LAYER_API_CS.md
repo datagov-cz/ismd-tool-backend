@@ -64,7 +64,7 @@ Dříve `GET …/detail` vrátil prázdné náhradní plátno pro slovník bez d
 
 Dvě cesty, jak diagramy uživateli nabídnout:
 
-- **Seznam:** `GET /api/diagram/{ontologySlug}/list` → `List<DiagramSummaryDto>` (`diagramId`, `name`, `ontologySlug`, `ontologyName`, `graphName`, `nodeCount`, `updatedAt`) pro jeden slovník; `GET /api/diagram/all` pro všechny. Libovolný přihlášený uživatel; odlehčené (bez spojení s živým obsahem).
+- **Seznam:** `GET /api/diagram/{ontologySlug}/list` → `List<DiagramSummaryDto>` (`diagramId`, `name`, `ontologySlug`, `graphName`, `nodeCount`, `updatedAt`) pro jeden slovník; `GET /api/diagram/all` pro všechny. Libovolný přihlášený uživatel; odlehčené (bez spojení s živým obsahem).
 - **Hledání:** `GET /api/search?type=DIAGRAM` vrací **jeden `SearchResultDto` na každý diagram** — slovník se třemi plátny přispěje třemi řádky, se shodou na slugu slovníku **nebo na názvu diagramu**. Při výchozím hledání (`type` vynecháno) se řádky diagramů objeví vedle řádků `ONTOLOGY`/`CONCEPT`; pro `type=DIAGRAM` se NKD přeskakuje. Celkový počet nese `SearchResponseDto.totalDiagrams`.
 
 **Směrování výsledku hledání DIAGRAM → detail diagramu (s obejitím detailu slovníku).** `SearchResultDto` typu DIAGRAM je:
@@ -290,7 +290,7 @@ Jedno volání nese vše: rozvržení **i** strukturální overlays. Odstraňte 
 |---|---|---|
 | `version` | **400** — vždy povinné | — |
 | `nodes` | **400** — vždy povinné | plátno vyprázdněno (nasazené úpravy nedotčeny — jsou v jiné tabulce) |
-| `nodes[].properties` | daná třída nevykreslí **žádné** řádky vlastností | totéž |
+| `nodes[].visibleProperties` | vykreslené řádky dané třídy **zůstávají** | daná třída nevykreslí **žádné** řádky vlastností |
 | `edges` | **členství hran nedotčeno** | všechny hrany odebrány z plátna |
 | `edges[].segments` | uložené vedení dané hrany **zachováno** | vedení vyčištěno na výchozí |
 | **`overlays`** | **nasazené úpravy nedotčeny** | **nasazené úpravy nedotčeny** |
@@ -320,13 +320,13 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
     { "id": "iri:https://…/pojem/zamestnanec",
       "position": { "x": 240, "y": 80 }, "parentId": null, "collapsed": false,
       // řádky VLASTNOSTí, které tato třída vykreslí — ploché pole IRI, úplná náhrada jako `position`
-      "properties": ["https://…/pojem/datum-narozeni"] },
+      "visibleProperties": ["https://…/pojem/datum-narozeni"] },
     // parentId/collapsed jsou volitelné — vynechané nebo null znamená bez rodiče / nesbaleno
     { "id": "iri:https://…/pojem/organizace",
-      "position": { "x": 720, "y": 80 }, "properties": [] },
+      "position": { "x": 720, "y": 80 }, "visibleProperties": [] },
     // pojem z JINÉHO slovníku — umísťuje se jako každý jiný uzel; server jej označí jen ke čtení
     { "id": "iri:https://…/jiny-slovnik/pojem/osoba",
-      "position": { "x": 1100, "y": 80 }, "properties": [] }
+      "position": { "x": 1100, "y": 80 }, "visibleProperties": [] }
   ],
   // jen body lomu — pošlete zpět id, které jste dostali při čtení; konce se odvozují, neposílají
   "edges": [
@@ -347,7 +347,7 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
 
 **`nodes[]` je autoritativní pro členství na plátně.** Přítomný uzel zůstává (nebo je **přidán**, je-li jeho IRI na plátně nové; odpověď doplní jeho živý obsah), vynechaný uzel je **odebrán z plátna** (pojem zůstává nedotčen, a stejně tak jakákoli úprava na něm nasazená). K přidání uzlu stačí `{id, position}`; zbytek backend doplní z živého RDF.
 
-**Pouze třídy.** VZTAH cestuje v `edges[]` a VLASTNOST uvnitř `properties[]` své třídy — nikdy jako uzel, v žádném směru.
+**Pouze třídy.** VZTAH cestuje v `edges[]` a VLASTNOST uvnitř `visibleProperties[]` své třídy — nikdy jako uzel, v žádném směru.
 
 **Umístění pojmu z jiného slovníku nevyžaduje nic zvláštního.** Pošlete uzel jako každý jiný; pojem patřící *jinému* slovníku (nebo NKD) je přijat a uložen jen ke čtení, aby uživatel mohl nakreslit vztah od pojmu, který vlastní, k pojmu, který nevlastní. Vykreslí se s `data.readOnly: true` a názvem načteným z grafu, který jej vlastní.
 
@@ -368,9 +368,11 @@ Pojem chybějící v `overlays` si ponechá, co je na něm nasazeno. **Jediný**
 
 VZTAH vlastněný vaším slovníkem tedy smí mířit **na** cizí třídu (`range`), ale nikdy nesmí viset **na** ní (`domain`). Obojí se kontroluje při uložení i znovu při materializaci.
 
-### `nodes[].properties` — řádky, které třída vykresluje
+### `nodes[].visibleProperties` — řádky, které třída vykresluje
 
-**Ploché pole IRI vlastností.** Vlastnost se vykreslí jako řádek uvnitř třídy jen tehdy, dokud ji ta třída uvádí. Členství je **kurátorované, ne odvozené**: třída s `"properties": []` nezobrazí žádné řádky, i když její VLASTNOSTi v RDF existují, a backend se nikdy nevrací k „zobraz všechny".
+> ⚠️ **Přejmenováno.** Na straně zápisu se tento klíč jmenoval `properties`. Nyní je to **`visibleProperties`** — podle sloupce, který zapisuje, a bez kolize s `data.properties` na straně čtení, což je jiný tvar (celé objekty `PropertyRow`, ne IRI). Ve stejném vydání se změnila i jeho sémantika — viz tabulku níže.
+
+**Ploché pole IRI vlastností.** Vlastnost se vykreslí jako řádek uvnitř třídy jen tehdy, dokud ji ta třída uvádí. Členství je **kurátorované, ne odvozené**: třída s `"visibleProperties": []` nezobrazí žádné řádky, i když její VLASTNOSTi v RDF existují, a backend se nikdy nevrací k „zobraz všechny".
 
 **Klíč je trojstavový, stejně jako `overlays` a `segments` u hran — NEJDE o prostou úplnou náhradu:**
 
@@ -382,7 +384,7 @@ VZTAH vlastněný vaším slovníkem tedy smí mířit **na** cizí třídu (`ra
 
 Vynechat klíč a poslat `[]` jsou **dvě různé věci**. Klient, který viditelnost vlastností neřídí, může klíč u všech uzlů vynechávat a kurátorované řádky tím nikdy nenaruší; smaže je jen explicitní `[]`. (Toto se změnilo — dříve vynechání klíče řádky smazalo, takže uložení sestavené z částečného tvaru uzlu je tiše vyprázdnilo.)
 
-Tvar pro čtení a zápis se liší: čtení vrací bohaté objekty `PropertyRow`, zápis bere holá IRI, takže uložení mapuje `node.data.properties.map(p => p.iri)`.
+Tvar pro čtení a zápis se liší — proto už nesdílejí název: čtení vrací bohaté objekty `PropertyRow` pod `data.properties`, zápis bere holá IRI pod `visibleProperties`, takže uložení mapuje `node.data.properties.map(p => p.iri)`.
 
 **Přidání** řádku = zahrnout jeho IRI; **odebrání** = vynechat ho a zbytek poslat znovu. **Přesun vlastnosti k jiné třídě vyžaduje obojí**: uvést ji u nové hostitelské třídy *a* nasadit `{"domain": "<nová třída>"}` na její overlay. Samotný overlay nevykreslí nic — umístění a struktura jsou oddělené pokyny.
 
@@ -536,6 +538,8 @@ Aplikuje každou nasazenou změnu. Jeden záznam na nasazenou **změnu** (změna
 **Otočení (op 2) se materializuje jako dvě nezávislé editace.** Obrácení hierarchie (B⊐A → A⊐B) se nasazuje jako overlay `broaderConcept` na *obou* pojmech; každý se materializuje samostatně jako `CHANGE_HIERARCHY_TYPE`. Neexistuje atomická dvouuzlová jednotka otočení — ani jedna polovina sama o sobě RDF nepoškodí a napůl aplikované otočení se hlásí po pojmech v `failed`, aby ho uživatel spustil znovu. Jedinou skutečně hlídanou dvouvolánovou jednotkou je `CONVERT_TO_HIERARCHY` (op 6).
 
 **Chybové stavy, které FE řeší:**
+
+`error` je uzavřený výčet (`DiagramFailureCode`), takže generovaný klient dostane union typ místo holého `String`; `status` se z něj odvozuje, takže si ty dva nemohou odporovat. Hodnoty na drátě zůstávají beze změny:
 
 - `error: "VALIDATION"` (HTTP 400) — editace pojmu neprošla validací; overlay zůstává, opravit a zkusit znovu.
 - `error: "STALE_BASE"` (HTTP 409) — podkladový pojem byl od nasazení overlaye editován (běžným `/api/concept`). Overlay zůstává. **Viz pravidlo nápravy níže.**
