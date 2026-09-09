@@ -426,6 +426,62 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(result.failed().get(0).status()).isEqualTo(409);
     }
 
+    // The overlay's SUBJECT survives, but the own-graph concept its `domain` points at was deleted after
+    // staging. Nothing downstream catches that — ConceptInputValidator has no domain/range rule and
+    // validateConceptInGraph asserts only the subject — so without the guard the edit writes a dangling
+    // rdfs:domain and the canvas draws the property on a class that no longer exists.
+    @Test
+    void materialize_domainTargetDeletedFromOwnGraph_reportsStaleBaseAndWritesNoDanglingTriple() {
+        ConceptMetadataEntity owner = create(classModel("Domain Owner", true));
+        ConceptMetadataEntity doomed = create(classModel("Doomed Target", true));
+        ConceptMetadataEntity prop = create(propModel("má vlastnost", owner.getConceptIri()));
+        String propIri = prop.getConceptIri();
+        String doomedIri = doomed.getConceptIri();
+
+        // Stage a repoint of the property's domain onto the class that is about to be deleted.
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setDomain(doomedIri);
+        stageNode(propIri, overlay);
+
+        // The target is deleted through the REAL service — the exact state a normal /api/concept delete
+        // leaves behind: PG row gone, TDB2 delete enqueued on the outbox.
+        conceptService.deleteConcept(doomed.getId());
+        assertThat(conceptRepo.findByConceptIri(doomedIri)).isEmpty();
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.materialized()).isEmpty();
+        assertThat(result.failed()).hasSize(1);
+        assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.STALE_BASE);
+        assertThat(result.failed().get(0).status()).isEqualTo(409);
+
+        // The property's domain still points at the live owner, not at the deleted class.
+        assertThat(graph().getResource(propIri).listProperties(RDFS.domain).toList())
+                .as("no dangling rdfs:domain to the deleted class")
+                .noneMatch(s -> doomedIri.equals(s.getObject().toString()));
+        // The staged edit is retained so the user can re-point and restage.
+        assertThat(stagedEdit(propIri)).as("a failed change leaves its overlay staged").isNotNull();
+    }
+
+    // The mirror of the above: an unresolvable FOREIGN domain stays tolerated. It becomes an ordinary triple
+    // object, so tightening the guard to "must resolve" would break legitimate cross-vocabulary references.
+    @Test
+    void materialize_domainTargetForeignAndUnresolvable_isStillApplied() {
+        ConceptMetadataEntity owner = create(classModel("Foreign Owner", true));
+        ConceptMetadataEntity prop = create(propModel("má cizí vlastnost", owner.getConceptIri()));
+        String propIri = prop.getConceptIri();
+        String foreignIri = "https://slovnik.gov.cz/datovy/cizi/pojem/trida";
+
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setDomain(foreignIri);
+        stageNode(propIri, overlay);
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.failed()).as("a foreign, unresolvable domain is not a stale reference").isEmpty();
+        assertThat(result.materialized()).hasSize(1);
+    }
+
     // skippedStale: the referenced concept no longer exists.
     @Test
     void materialize_missingConcept_reportedSkippedStale() {

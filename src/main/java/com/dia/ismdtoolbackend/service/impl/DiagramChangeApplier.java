@@ -280,9 +280,16 @@ public class DiagramChangeApplier {
     }
 
     /**
-     * The same check for a raw overlay IRI that need not have a PG row. An IRI that resolves to nothing
-     * <em>passes</em>, since it becomes an ordinary triple object — that tolerance is the whole difference
-     * from {@link #requireGraphMatches}, which is given a graph and cannot express it.
+     * The same check for a raw overlay IRI that need not have a PG row. An IRI that resolves to nothing is
+     * tolerated <em>only</em> when it is foreign, since it then becomes an ordinary triple object — that
+     * tolerance is the whole difference from {@link #requireGraphMatches}, which is given a graph and cannot
+     * express it.
+     *
+     * <p>An unresolvable IRI carrying our own graph's scheme is a different thing entirely: it was ours and
+     * the concept has since been deleted. Nothing downstream would catch it — {@code ConceptInputValidator}
+     * has no {@code domain}/{@code range} rule, and {@code validateConceptInGraph} asserts only the subject
+     * — so the edit would write a dangling {@code rdfs:domain} and the canvas would draw the property on a
+     * class that no longer exists. Staled instead, which tells the user to re-point and restage.
      *
      * <p>Applied to {@code domain} only — a {@code range} or hierarchy target is referenced rather than
      * written, so a foreign one is legitimate.
@@ -291,9 +298,26 @@ public class DiagramChangeApplier {
         if (conceptIri == null) {
             return;
         }
-        conceptMetadataRepository.findByConceptIri(conceptIri)
-                .map(ConceptMetadataEntity::getGraphName)
-                .ifPresent(graphName -> requireGraphMatches(diagramGraphName, graphName, conceptIri));
+        ConceptMetadataEntity target = conceptMetadataRepository.findByConceptIri(conceptIri).orElse(null);
+        if (target == null) {
+            requireForeignIri(diagramGraphName, conceptIri);
+            return;
+        }
+        requireGraphMatches(diagramGraphName, target.getGraphName(), conceptIri);
+    }
+
+    /**
+     * Guards the unresolvable case: an IRI prefixed by the diagram's own graph name was owned by this
+     * ontology, so its missing PG row means deletion, not foreignness. Scheme-prefix is the same
+     * owned-vs-external test {@code NkdLinkDetector} applies.
+     */
+    private void requireForeignIri(String diagramGraphName, String conceptIri) {
+        if (diagramGraphName != null && conceptIri.startsWith(diagramGraphName)) {
+            log.warn("Staged edit references deleted own-graph concept {} (graph {})",
+                    conceptIri, diagramGraphName);
+            throw new DiagramStaleBaseException(
+                    "Pojem " + conceptIri + " byl mezitím smazán; upravte vazbu a uložte diagram znovu.");
+        }
     }
 
     // ---- op classification ----------------------------------------------------------------------
