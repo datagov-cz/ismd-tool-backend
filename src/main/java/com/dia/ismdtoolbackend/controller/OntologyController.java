@@ -8,6 +8,10 @@ import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
@@ -123,6 +127,18 @@ public class OntologyController {
     }
 
     @Operation(
+            summary = "Ověření IRI nového slovníku",
+            description = "Sestaví IRI z názvu a namespace stejným způsobem jako vytvoření slovníku. "
+                    + "Vrací valid a available; dostupnost ověřuje pouze v lokální databázi. "
+                    + "Neplatné IRI má oba příznaky false. Nic neukládá ani nerezervuje. Vyžaduje autentizaci."
+    )
+    @PostMapping("/check-iri")
+    public ResponseEntity<ApiResponseDto<OntologyIriCheckResponseDto>> checkIri(
+            @Valid @RequestBody OntologyIriCheckRequestDto request) {
+        return ResponseEntity.ok(ApiResponseDto.success(ontologyService.checkIri(request), "Kontrola IRI dokončena."));
+    }
+
+    @Operation(
             summary = "Vytvoření nového slovníku",
             description = "Vytvoří nový prázdný slovník s definovaným jmenným prostorem, názvem a popisem. Slovník je uložen do RDF úložiště. Vyžaduje autentizaci."
     )
@@ -144,6 +160,20 @@ public class OntologyController {
         log.info("Ontology create successful: {}", createdOntology);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdOntology, "Slovník úspěšně vytvořen: " + createdOntology.getGraphName()));
+    }
+
+    @Operation(
+            summary = "Vytvoření slovníku s vybranými pojmy",
+            description = "Přijme nový slovník a vybrané pojmy. Sestaví finální IRI a převede refs na vazby. "
+                    + "Používá stejné validace a RDF tvorbu jako běžné vytvoření. "
+                    + "Obsazené IRI slovníku vrací 409. Nic nepřidává do existujícího slovníku. Vyžaduje autentizaci."
+    )
+    @PostMapping("/create-with-concepts")
+    public ResponseEntity<ApiResponseDto<OntologyCreateWithConceptsResponseDto>> createWithConcepts(
+            @Valid @RequestBody OntologyCreateWithConceptsRequestDto request,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        return ResponseEntity.status(201).body(ApiResponseDto.success(
+                ontologyService.createWithConcepts(request, securityUser.getUserId()), "Slovník a pojmy byly vytvořeny."));
     }
 
     @Operation(

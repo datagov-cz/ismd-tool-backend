@@ -47,19 +47,19 @@ public class SecurityConfig {
         if (!StringUtils.hasText(clientId)) {
             throw new IllegalStateException(
                     "Keycloak client ID is not configured. " +
-                    "Set KEYCLOAK_CLIENT_ID environment variable or application property.");
+                            "Set KEYCLOAK_CLIENT_ID environment variable or application property.");
         }
 
         if (!StringUtils.hasText(clientSecret)) {
             throw new IllegalStateException(
                     "Keycloak client secret is not configured. " +
-                    "Set KEYCLOAK_CLIENT_SECRET environment variable or application property.");
+                            "Set KEYCLOAK_CLIENT_SECRET environment variable or application property.");
         }
 
         if (!StringUtils.hasText(issuerUri)) {
             throw new IllegalStateException(
                     "Keycloak issuer URI is not configured. " +
-                    "Set KEYCLOAK_ISSUER_URI environment variable or application property.");
+                            "Set KEYCLOAK_ISSUER_URI environment variable or application property.");
         }
 
         log.info("Keycloak configuration validated successfully.");
@@ -199,6 +199,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/user/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/upload").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/create").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/ontology/check-iri").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/ontology/create-with-concepts").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/ontology/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/*/validate").authenticated()

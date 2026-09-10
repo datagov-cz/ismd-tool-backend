@@ -89,6 +89,22 @@ class OutboxWriterTest extends PostgresIntegrationTestBase {
     }
 
     @Test
+    void createGraphSerializesEntireModelBeforeClose() {
+        Model model = ModelFactory.createDefaultModel();
+        var shared = model.createResource();
+        model.add(model.createResource(GRAPH), model.createProperty(PREF_LABEL), "Vocabulary");
+        model.add(model.createResource(IRI), model.createProperty(DEFINITION), shared);
+        model.add(shared, model.createProperty(PREF_LABEL), "Shared definition");
+        Model expected = ModelFactory.createDefaultModel().add(model);
+        txTemplate.executeWithoutResult(tx -> writer.enqueueCreateGraph(GRAPH, model));
+        model.close();
+        var row = repository.findAll().get(0);
+        assertThat(row.getOperation()).isEqualTo(OutboxOperation.CREATE_GRAPH);
+        assertThat(row.getAggregateIri()).isEqualTo(GRAPH);
+        assertThat(OutboxTriples.parse(row.getInsertTriples()).isIsomorphicWith(expected)).isTrue();
+    }
+
+    @Test
     void enqueueUpsert_writesOneRowWithRoundTrippablePayload() {
         Statement add1 = literalTriple(PREF_LABEL, "Label");
         Statement add2 = literalTriple(DEFINITION, "Def");

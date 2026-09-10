@@ -1,11 +1,15 @@
 package com.dia.ismdtoolbackend.client.ai;
 
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyRegenerationRequestDto;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiClassJobRequest;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiFeedbackRequest;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiSelectedClassJobRequest;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,6 +31,9 @@ public class IsmdAiClient {
             "/legal-acts/{year}/{number}/{date}/property-suggestions-top-k-extraction-jobs";
     private static final String RELATIONSHIP_START_PATH =
             "/legal-acts/{year}/{number}/{date}/relationship-suggestions-top-k-extraction-jobs";
+    private static final String VOCABULARY_START_PATH =
+            "/legal-acts/{year}/{number}/{date}/vocabulary-suggestions-jobs";
+    private static final String VOCABULARY_JOBS_PATH = "/legal-acts/vocabulary-suggestions-jobs";
     private static final String CLASS_JOBS_PATH = "/legal-acts/class-suggestions-jobs";
     private static final String PROPERTY_JOBS_PATH = "/legal-acts/property-suggestions-jobs";
     private static final String RELATIONSHIP_JOBS_PATH = "/legal-acts/relationship-suggestions-jobs";
@@ -135,6 +142,45 @@ public class IsmdAiClient {
                 .retrieve()
                 .body(AiRelationshipSuggestionsJobResponseDto[].class);
         if (responses == null) {
+            throw invalidResponse();
+        }
+        return Arrays.asList(responses);
+    }
+
+    public AiJobStartResponseDto startVocabularySuggestions(
+            String bearerToken, int year, int number, LocalDate date, AiVocabularySuggestionRequestDto request
+    ) {
+        return startVocabularyRequest(bearerToken, VOCABULARY_START_PATH, year, number, date, request);
+    }
+
+    public AiJobStartResponseDto expandVocabulary(String bearerToken, int year, int number, LocalDate date,
+                                                  AiVocabularyExpansionRequestDto request) {
+        return startVocabularyRequest(bearerToken, VOCABULARY_START_PATH + "/expand", year, number, date, request);
+    }
+
+    public AiJobStartResponseDto regenerateVocabularyConcept(String bearerToken, int year, int number, LocalDate date,
+                                                             AiVocabularyRegenerationRequestDto request) {
+        return startVocabularyRequest(bearerToken, VOCABULARY_START_PATH + "/regenerate", year, number, date, request);
+    }
+
+    private AiJobStartResponseDto startVocabularyRequest(String bearerToken, String path, int year, int number,
+                                                         LocalDate date, Object request) {
+        AiJobStartResponseDto response = restClient.post()
+                .uri(path, year, number, date)
+                .headers(headers -> headers.setBearerAuth(bearerToken))
+                .body(request).retrieve().body(AiJobStartResponseDto.class);
+        if (response == null || response.jobId() == null || response.status() == null) throw invalidResponse();
+        return response;
+    }
+
+    public List<AiVocabularySuggestionsJobResponseDto> getVocabularySuggestions(String bearerToken, List<UUID> jobIds) {
+        AiVocabularySuggestionsJobResponseDto[] responses = restClient.get()
+                .uri(uriBuilder -> uriBuilder.path(VOCABULARY_JOBS_PATH).queryParam(JOB_IDS, jobIds).build())
+                .headers(headers -> headers.setBearerAuth(bearerToken))
+                .retrieve()
+                .body(AiVocabularySuggestionsJobResponseDto[].class);
+        if (responses == null || Arrays.stream(responses).anyMatch(response -> response == null
+                || response.jobId() == null || response.status() == null || response.draft() == null)) {
             throw invalidResponse();
         }
         return Arrays.asList(responses);

@@ -81,6 +81,27 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
         txTemplate.executeWithoutResult(tx -> repository.deleteAll());
     }
 
+    @Test
+    void failedInitialGraphBlocksDifferentAggregatesUntilAdminRetry() {
+        var initial = upsert(GRAPH, Set.of(), Set.of(triple(GRAPH, "Vocabulary")));
+        initial.setOperation(OutboxOperation.CREATE_GRAPH);
+        initial.setStatus(OutboxStatus.FAILED);
+        var saved = save(initial);
+        save(upsert(A, Set.of(), Set.of(triple(A, "A"))));
+        save(upsert(B, Set.of(), Set.of(triple(B, "B"))));
+        assertThat(drain()).isZero();
+        assertThat(tdb2.graphHasData(GRAPH)).isFalse();
+        txTemplate.executeWithoutResult(tx -> {
+            var retry = repository.findById(saved.getId()).orElseThrow();
+            retry.setStatus(OutboxStatus.PENDING);
+            repository.save(retry);
+        });
+        assertThat(drain()).isEqualTo(3);
+        assertThat(graphHas(A, "A")).isTrue();
+        assertThat(graphHas(B, "B")).isTrue();
+        assertThat(drain()).isZero();
+    }
+
     // ---- helpers ----
 
     private static Statement triple(String subject, String literal) {

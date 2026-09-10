@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Persistence for {@link OutboxEntry}. The relay (T5) uses the claim/barrier queries here; the
@@ -57,6 +58,17 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
               AND e.seq < :seq
             """)
     boolean existsEarlierUnappliedForAggregate(@Param("aggregateIri") String aggregateIri, @Param("seq") long seq);
+
+    /** Includes FAILED and rows currently claimed by another transaction. */
+    @Query("""
+            SELECT COUNT(e) > 0 FROM OutboxEntry e
+            WHERE e.graphName = :graphName AND e.operation = com.dia.ismdtoolbackend.outbox.OutboxOperation.CREATE_GRAPH
+              AND e.status <> com.dia.ismdtoolbackend.outbox.OutboxStatus.DONE AND e.seq < :seq
+            """)
+    boolean existsEarlierUnappliedCreateGraph(@Param("graphName") String graphName, @Param("seq") long seq);
+
+    Optional<OutboxEntry> findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
+            String graphName, OutboxOperation operation, OutboxStatus status);
 
     /**
      * Next value of the {@code outbox_seq} sequence — the monotonic per-row ordering key, assigned

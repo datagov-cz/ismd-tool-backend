@@ -2,6 +2,10 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -10,12 +14,26 @@ import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
+import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
+import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
+import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
+import com.dia.ismdtoolbackend.utility.creator.VocabularyConceptBuilder;
+import org.springframework.dao.DataIntegrityViolationException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.outbox.OutboxOperation;
+import com.dia.ismdtoolbackend.outbox.OutboxStatus;
+import com.dia.ismdtoolbackend.outbox.OutboxTriples;
+import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
@@ -26,13 +44,11 @@ import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
-import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
-import com.dia.models.OFNBaseModel;
+import com.dia.ismdtoolbackend.utility.creator.OntologyModelFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
@@ -47,7 +63,6 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -80,6 +95,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final PublishedResourceUtil deviationChecker;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
+    private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final NkdConceptSnapshotRepository nkdSnapshotRepository;
     private final NkdSnapshotWarmer nkdSnapshotWarmer;
@@ -99,6 +115,7 @@ public class OntologyServiceImpl implements OntologyService {
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
+        requireInitialGraphApplied(graphName);
 
         Optional<ValidationReportEntity> validationReport =
                 validationReportRepository.findByOntologyMetadataId(ontologyId);
@@ -138,47 +155,140 @@ public class OntologyServiceImpl implements OntologyService {
     public OntologyMetadataModel createOntology(OntologyCreateModel ontologyCreateModel, String userId) {
         validateOntologyCreateModel(ontologyCreateModel);
 
-        URIGenerator uriGenerator = new URIGenerator();
-        String nameForURI = getNameForUriGeneration(ontologyCreateModel.getNameModel());
-        String ontologyIRI = uriGenerator.generateVocabularyURIFromGivenNamespace(nameForURI, ontologyCreateModel.getNamespace());
+        String ontologyIRI = generateOntologyIri(ontologyCreateModel.getNameModel(), ontologyCreateModel.getNamespace());
 
         if (!UtilityMethods.isValidIRI(ontologyIRI)) {
             log.error("ontologyIRI {} not valid", ontologyCreateModel.getNameModel().getName());
             throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
-        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
-        if (ontologyMetadataOpt.isPresent()) {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = findLocalCollision(ontologyIRI);
+        if (ontologyMetadataOpt.isPresent() && ontologyIRI.equals(ontologyMetadataOpt.get().getGraphName())) {
             log.error("ontologyId {} already present", ontologyIRI);
             OntologyMetadataEntity existingEntity = ontologyMetadataOpt.get();
             OntologyMetadataModel model = ontologyMetadataMapper.toDto(existingEntity);
-            enrichMetadataFromRDF(model, existingEntity);
-            return model;
-        }
-
-        try {
-            createOFNBaseModel(ontologyIRI, ontologyCreateModel);
-            log.info("Successfully saved RDF model to TDB2 with graph name: {}", ontologyIRI);
-        } catch (Exception e) {
-            log.error("Failed to save RDF model to TDB2", e);
-            throw new OntologyException("Nepodařilo se uložit RDF model: " + e.getMessage());
-        }
-
-        try {
-            OntologyMetadataEntity metadataEntity = createOntologyMetadata(ontologyIRI, userId);
-            log.info("Successfully created ontology with ID: {}", metadataEntity.getId());
-            OntologyMetadataModel model = ontologyMetadataMapper.toDto(metadataEntity);
-            enrichMetadataFromRDF(model, metadataEntity);
-            return model;
-        } catch (Exception e) {
-            log.warn("PostgreSQL save failed, cleaning up TDB2 data for graph: {}", ontologyIRI);
-            try {
-                cleanupTDB2Graph(ontologyIRI);
-            } catch (Exception cleanupException) {
-                log.error("Failed to cleanup TDB2 graph {}: {}", ontologyIRI, cleanupException.getMessage());
+            var pending = outboxRepository.findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
+                    ontologyIRI, OutboxOperation.CREATE_GRAPH, OutboxStatus.DONE);
+            if (pending.isPresent()) {
+                Model initial = OutboxTriples.parse(pending.get().getInsertTriples());
+                try {
+                    enrichMetadataFromModel(model, existingEntity, initial);
+                } finally {
+                    initial.close();
+                }
+            } else {
+                enrichMetadataFromRDF(model, existingEntity);
             }
-            throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+            return model;
         }
+
+        requireCreationOutbox();
+        if (ontologyMetadataOpt.isPresent()) {
+            throw new OntologyCreationConflictException("Slovník s tímto IRI nebo identifikátorem již existuje: " + ontologyIRI);
+        }
+        Model graphModel = OntologyModelFactory.create(ontologyIRI, ontologyCreateModel);
+        try {
+            OntologyMetadataEntity metadataEntity;
+            try {
+                metadataEntity = createOntologyMetadata(ontologyIRI, userId);
+                ontologyMetadataRepository.flush();
+            } catch (Exception e) {
+                throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+            }
+            outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
+            outboxRelayTrigger.nudgeAfterCommit();
+            OntologyMetadataModel result = ontologyMetadataMapper.toDto(metadataEntity);
+            enrichMetadataFromModel(result, metadataEntity, graphModel);
+            return result;
+        } finally {
+            graphModel.close();
+        }
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
+            WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
+    public OntologyCreateWithConceptsResponseDto createWithConcepts(OntologyCreateWithConceptsRequestDto request, String userId) {
+        validateOntologyCreateModel(request.ontology());
+        if (userId == null || userId.isBlank()) throw new OntologyValidationException("ID uživatele je povinné.");
+        String graph = generateOntologyIri(request.ontology().getNameModel(), request.ontology().getNamespace());
+        if (!UtilityMethods.isValidIRI(graph)) throw new OntologyValidationException("Neplatné IRI slovníku: " + graph);
+        requireCreationOutbox();
+        if (findLocalCollision(graph).isPresent()) {
+            throw new OntologyCreationConflictException("Slovník s tímto IRI nebo identifikátorem již existuje: " + graph);
+        }
+
+        var prepared = VocabularyConceptBuilder.prepare(request, graph, userId);
+        for (String iri : prepared.conceptIris().values()) {
+            if (conceptMetadataRepository.findByConceptIri(iri).isPresent()) {
+                throw new ConceptValidationException("Pojem s tímto IRI již existuje: " + iri);
+            }
+        }
+        // Build the whole graph with the existing creators before the first write.
+        // ConceptCreator holds a mutable model, so this batch uses its own instance.
+        Model graphModel = OntologyModelFactory.create(graph, request.ontology());
+        try {
+            ConceptCreator creator = new ConceptCreator();
+            for (ConceptCreateModel concept : prepared.concepts()) {
+                Resource resource = creator.createSingleConcept(concept);
+                graphModel.add(resource.getModel());
+                resource.getModel().close();
+                creator.getOntModel().close();
+            }
+            // Metadata and the serialized graph task commit together. The unique slug arbitrates concurrent creates.
+            OntologyMetadataEntity ontology;
+            try {
+                ontology = createOntologyMetadata(graph, userId);
+                ontologyMetadataRepository.flush();
+                saveDraftConceptMetadata(prepared.concepts(), ontology, userId);
+                conceptMetadataRepository.flush();
+            } catch (DataIntegrityViolationException e) {
+                throw new OntologyCreationConflictException("IRI nebo identifikátor slovníku či pojmu již existuje.");
+            }
+
+            OntologyMetadataModel result = ontologyMetadataMapper.toDto(ontology);
+            Resource vocabulary = graphModel.getResource(graph);
+            result.setName(extractMultilingualValue(vocabulary, SKOS.prefLabel));
+            result.setPopis(extractMultilingualValue(vocabulary, DCTerms.description));
+            result.setConceptCount(prepared.concepts().size());
+
+            outboxWriter.enqueueCreateGraph(graph, graphModel);
+            outboxRelayTrigger.nudgeAfterCommit();
+            return new OntologyCreateWithConceptsResponseDto(result, prepared.conceptIris());
+        } finally {
+            graphModel.close();
+        }
+    }
+
+    private void saveDraftConceptMetadata(List<ConceptCreateModel> concepts, OntologyMetadataEntity ontology, String userId) {
+        Set<String> slugs = new HashSet<>();
+        List<ConceptMetadataEntity> entities = new ArrayList<>();
+        for (ConceptCreateModel concept : concepts) {
+            ConceptMetadataEntity entity = ConceptMetadataFactory.create(concept, concept.getIdentifier(), userId,
+                    ontology, slug -> conceptMetadataRepository.findBySlug(slug).isPresent(), slugs);
+            entities.add(entity);
+        }
+        conceptMetadataRepository.saveAll(entities);
+    }
+
+    private void requireCreationOutbox() {
+        if (!outboxConfig.isEnabled()) {
+            throw new OntologyException("Vytvoření slovníku vyžaduje zapnutý outbox (outbox.enabled=true).");
+        }
+    }
+
+    // Direct PUT/rename/delete cannot race a retry of the initial PUT, including after a restart
+    // with outbox disabled. Seeing DONE means the relay's transaction and its row lock completed.
+    private void requireInitialGraphApplied(String graph) {
+        if (outboxRepository.existsEarlierUnappliedCreateGraph(graph, Long.MAX_VALUE)) {
+            throw new OntologyCreationConflictException("Počáteční zápis slovníku ještě nebyl dokončen: " + graph);
+        }
+    }
+
+    private Optional<OntologyMetadataEntity> findLocalCollision(String graph) {
+        return ontologyMetadataRepository.findByGraphName(graph)
+                .or(() -> ontologyMetadataRepository.findBySlug(UtilityMethods.extractNameFromIRI(graph)));
     }
 
     @Override
@@ -399,19 +509,36 @@ public class OntologyServiceImpl implements OntologyService {
         return nkdDetailService.listOntologyConcepts(ontologyIri);
     }
 
-    private void validateOntologyCreateModel(OntologyCreateModel model) {
-        if (model == null) {
-            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
-        }
+    @Override
+    @Transactional(readOnly = true)
+    public OntologyIriCheckResponseDto checkIri(OntologyIriCheckRequestDto request) {
+        validateOntologyName(request.nameModel());
+        String iri = generateOntologyIri(request.nameModel(), request.namespace());
+        boolean valid = UtilityMethods.isValidIRI(iri);
+        boolean available = valid && findLocalCollision(iri).isEmpty();
+        return new OntologyIriCheckResponseDto(iri, valid, available);
+    }
 
-        // name is required and must include a non-blank cs variant
-        Map<String, String> name = model.getNameModel() != null ? model.getNameModel().getName() : null;
+    private String generateOntologyIri(NameModel nameModel, String namespace) {
+        return new URIGenerator().generateVocabularyURIFromGivenNamespace(getNameForUriGeneration(nameModel), namespace);
+    }
+
+    private void validateOntologyName(NameModel nameModel) {
+        Map<String, String> name = nameModel != null ? nameModel.getName() : null;
         if (name == null || name.isEmpty()) {
             throw new OntologyValidationException("Název slovníku je povinný.");
         }
         if (isBlank(name.get(DEFAULT_LANG))) {
             throw new OntologyValidationException("Název slovníku musí obsahovat českou variantu (cs).");
         }
+    }
+
+    private void validateOntologyCreateModel(OntologyCreateModel model) {
+        if (model == null) {
+            throw new OntologyException("Data pro vytvoření slovníku jsou prázdná");
+        }
+
+        validateOntologyName(model.getNameModel());
 
         // description is optional, but if present it must include a non-blank cs variant
         Map<String, String> description = model.getDescriptionModel() != null
@@ -425,56 +552,6 @@ public class OntologyServiceImpl implements OntologyService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
-    }
-
-    private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
-        OFNBaseModel ofnModel = new OFNBaseModel();
-
-        OntModel model = ofnModel.getOntModel();
-        model.createOntology(ontologyIRI);
-        Resource ontologyResource = model.getResource(ontologyIRI);
-
-        Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
-        if (ontologyCreateModel.getNameModel() != null && ontologyCreateModel.getNameModel().getName() != null) {
-            for (Map.Entry<String, String> entry : ontologyCreateModel.getNameModel().getName().entrySet()) {
-                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
-                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                            ? entry.getKey()
-                            : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(ontologyResource, prefLabel,
-                            entry.getValue().trim(), languageTag, model);
-                }
-            }
-        }
-        ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
-        ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-        ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
-
-        if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null) {
-            Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            for (Map.Entry<String, String> entry : ontologyCreateModel.getDescriptionModel().getDescription().entrySet()) {
-                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
-                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                            ? entry.getKey()
-                            : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(ontologyResource, descProperty,
-                            entry.getValue().trim(), languageTag, model);
-                }
-            }
-        }
-
-        String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
-        Resource temporalMoment = model.createResource(temporalMomentIRI);
-        temporalMoment.addProperty(RDF.type, model.createResource(CAS_NS + CASOVY_OKAMZIK));
-
-        Property datumACasProperty = model.createProperty(CAS_NS + DATUM_A_CAS);
-        String currentDateTime = LocalDateTime.now().toString();
-        temporalMoment.addProperty(datumACasProperty, currentDateTime);
-
-        Property okamzikVytvoreniProperty = model.createProperty(SLOVNIKY_NS + OKAMZIK_VYTVORENI);
-        ontologyResource.addProperty(okamzikVytvoreniProperty, temporalMoment);
-
-        jenaTDB2Repository.saveOntologyModel(ontologyIRI, model);
     }
 
     private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) {
@@ -498,6 +575,7 @@ public class OntologyServiceImpl implements OntologyService {
         }
         OntologyMetadataEntity metadataEntity = fetchOntologyMetadata(id);
         String oldOntologyIRI = metadataEntity.getGraphName();
+        requireInitialGraphApplied(oldOntologyIRI);
         Model model = fetchOntologyModel(oldOntologyIRI);
 
         String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
@@ -703,6 +781,7 @@ public class OntologyServiceImpl implements OntologyService {
     private OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
                                                            Model model, OntologyMetadataEntity metadataEntity)
             throws OntologyException {
+        requireInitialGraphApplied(newOntologyIRI);
         log.info("Starting ontology IRI change: {} -> {}", oldOntologyIRI, newOntologyIRI);
 
         try {

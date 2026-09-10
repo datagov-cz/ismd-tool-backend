@@ -18,7 +18,7 @@ import java.util.Collection;
  * <p>N-Triples is chosen deliberately: it is line-based, order-independent, and has no prefix
  * state, so a serialized statement set round-trips exactly and two payloads are comparable.
  */
-final class OutboxTriples {
+public final class OutboxTriples {
 
     private OutboxTriples() {
     }
@@ -32,11 +32,12 @@ final class OutboxTriples {
         model.add(statements.toArray(new Statement[0]));
         StringWriter out = new StringWriter();
         RDFDataMgr.write(out, model, Lang.NTRIPLES);
+        model.close();
         return out.toString();
     }
 
     /** Parses N-Triples back into a Model. Blank/null → empty model. */
-    static Model parse(String nTriples) {
+    public static Model parse(String nTriples) {
         Model model = ModelFactory.createDefaultModel();
         if (nTriples == null || nTriples.isBlank()) {
             return model;

@@ -222,7 +222,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
         @Bean ConceptServiceImpl conceptServiceImpl(
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
                 MetadataTouchService touchService, ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
-                OutboxConfig outboxConfig, OutboxWriter writer, OutboxRelayTrigger trigger) {
+                OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger) {
             return new ConceptServiceImpl(
                     conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
@@ -232,7 +232,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
                     mock(ConceptDeviationComparator.class),
                     mock(RppSnapshotHolder.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, trigger,
+                    outboxConfig, writer, outboxRepository, trigger,
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
                     new NkdLinkDetector(),
                     new WorkingCopySyncFields(),

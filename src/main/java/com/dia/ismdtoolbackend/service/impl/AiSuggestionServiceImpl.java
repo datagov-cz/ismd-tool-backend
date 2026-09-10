@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyRegenerationRequestDto;
 import com.dia.ismdtoolbackend.client.ai.IsmdAiClient;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiClassJobRequest;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiSelectedClassJobRequest;
@@ -8,6 +10,8 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDt
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
@@ -106,6 +110,31 @@ public class AiSuggestionServiceImpl implements AiSuggestionService {
     ) {
         validateJobIds(jobIds);
         return aiClient.getRelationshipSuggestions(bearerToken, jobIds);
+    }
+
+    @Override
+    public AiJobStartResponseDto startVocabularySuggestions(
+            String bearerToken, int year, int number, LocalDate date, AiVocabularySuggestionRequestDto request
+    ) {
+        return aiClient.startVocabularySuggestions(bearerToken, year, number, date, request);
+    }
+
+    @Override
+    public AiJobStartResponseDto expandVocabulary(String bearerToken, int year, int number, LocalDate date,
+                                                  AiVocabularyExpansionRequestDto request) {
+        return aiClient.expandVocabulary(bearerToken, year, number, date, request);
+    }
+
+    @Override
+    public AiJobStartResponseDto regenerateVocabularyConcept(String bearerToken, int year, int number, LocalDate date,
+                                                             AiVocabularyRegenerationRequestDto request) {
+        return aiClient.regenerateVocabularyConcept(bearerToken, year, number, date, request);
+    }
+
+    @Override
+    public List<AiVocabularySuggestionsJobResponseDto> getVocabularySuggestions(String bearerToken, List<UUID> jobIds) {
+        validateJobIds(jobIds);
+        return aiClient.getVocabularySuggestions(bearerToken, jobIds);
     }
 
     @Override
