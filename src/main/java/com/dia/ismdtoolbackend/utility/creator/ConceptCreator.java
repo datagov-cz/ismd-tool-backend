@@ -336,12 +336,7 @@ public class ConceptCreator {
             propertyURI = uriGenerator.generateConceptURI(name, propModel.getIdentifier());
         }
 
-        OntProperty propertyResource;
-        if (isObjectProperty(propModel)) {
-            propertyResource = ontModel.createObjectProperty(propertyURI);
-        } else {
-            propertyResource = ontModel.createDatatypeProperty(propertyURI);
-        }
+        OntProperty propertyResource = ontModel.createDatatypeProperty(propertyURI);
 
         propertyResource.addProperty(RDF.type, SKOS.Concept);
         propertyResource.addProperty(RDF.type, OWL2.DatatypeProperty);
@@ -874,31 +869,6 @@ public class ConceptCreator {
         }
 
         propertyResource.addProperty(RDFS.range, ontModel.createResource(RDFS.Literal.getURI()));
-    }
-
-    private boolean isObjectProperty(PropertyConceptModel propModel) {
-        String dataType = propModel.getDataType();
-        if (dataType != null && !dataType.trim().isEmpty()) {
-            String trimmed = dataType.trim();
-            return !trimmed.startsWith("xsd:") &&
-                    !trimmed.startsWith("http://www.w3.org/2001/XMLSchema#") &&
-                    !isValidDataType(trimmed);
-        }
-        return false;
-    }
-
-    private boolean isValidDataType(String type) {
-        String[] validTypes = {
-                "Ano či ne", "Datum", "Čas", "Datum a čas",
-                "Celé číslo", "Desetinné číslo", "URI, IRI, URL",
-                "Řetězec", "Text"
-        };
-        for (String validType : validTypes) {
-            if (validType.equalsIgnoreCase(type)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private String determineEffectiveNamespace(String namespace) {

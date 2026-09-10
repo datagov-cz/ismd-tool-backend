@@ -12,6 +12,22 @@ permissions:
   packages: write
 
 jobs:
+  # Fails a PR whose migrations the previous app version cannot tolerate, so rolling the container
+  # image back to the prior tag never needs a database rollback. See docs/MIGRATION_ROLLBACK_AUDIT.md
+  check-migration-compat:
+    name: Migration Backward Compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check migrations are backward-compatible
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=0 2>/dev/null || true
+          .github/scripts/check-migration-compat.sh "origin/${{ github.base_ref }}"
+
   run-tests:
     uses: ./.github/workflows/reusable-test.yml
     with:
