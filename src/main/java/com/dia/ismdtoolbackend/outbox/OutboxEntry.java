@@ -51,7 +51,7 @@ public class OutboxEntry {
     @Column(name = "delete_triples", columnDefinition = "text")
     private String deleteTriples;
 
-    /** N-Triples to add (UPSERT_CONCEPT); null otherwise. */
+    /** N-Triples to add (UPSERT_CONCEPT) or the complete initial model (CREATE_GRAPH). */
     @Column(name = "insert_triples", columnDefinition = "text")
     private String insertTriples;
 

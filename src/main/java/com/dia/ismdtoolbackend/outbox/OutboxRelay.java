@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.apache.jena.rdf.model.Model;
+
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -25,7 +27,9 @@ import java.util.Set;
  *   <li><b>Per-aggregate strict order:</b> a row is applied only if no earlier-{@code seq} unapplied
  *       row exists for its aggregate ({@link OutboxEntryRepository#existsEarlierUnappliedForAggregate}).
  *       A blocked row is left PENDING for a later pass (self-correcting).</li>
- *   <li><b>DELETE_GRAPH barrier:</b> additionally gated on no earlier unapplied row for the graph
+ *   <li><b>CREATE_GRAPH barrier:</b> later operations in the same graph wait for the initial PUT
+ *       to commit DONE, including when it is FAILED or claimed by another worker.</li>
+ *   <li><b>DELETE_GRAPH / CREATE_GRAPH barrier:</b> additionally gated on no earlier unapplied row for the graph
  *       ({@link OutboxEntryRepository#existsEarlierUnappliedForGraph}).</li>
  *   <li><b>Idempotent apply:</b> {@code DELETE DATA}/{@code INSERT DATA} and delete-by-target are
  *       safe to re-run, so a crash between Fuseki 2xx and the DONE commit just re-applies next pass.</li>
@@ -86,8 +90,14 @@ public class OutboxRelay {
                 haltedAggregates.add(aggregate);
                 continue;
             }
-            // DELETE_GRAPH barrier: no earlier unapplied row anywhere in the graph.
-            if (row.getOperation() == OutboxOperation.DELETE_GRAPH
+            // Initial PUT must commit DONE before any later operation in this graph can apply.
+            // A different worker still sees the creator as unapplied until its transaction commits.
+            if (repository.existsEarlierUnappliedCreateGraph(row.getGraphName(), row.getSeq())) {
+                haltedAggregates.add(aggregate);
+                continue;
+            }
+            // DELETE_GRAPH / CREATE_GRAPH barrier: no earlier unapplied row anywhere in the graph.
+            if ((row.getOperation() == OutboxOperation.DELETE_GRAPH || row.getOperation() == OutboxOperation.CREATE_GRAPH)
                     && repository.existsEarlierUnappliedForGraph(row.getGraphName(), row.getSeq())) {
                 haltedAggregates.add(aggregate);
                 continue;
@@ -134,6 +144,14 @@ public class OutboxRelay {
 
     private void apply(OutboxEntry row) {
         switch (row.getOperation()) {
+            case CREATE_GRAPH -> {
+                Model model = OutboxTriples.parse(row.getInsertTriples());
+                try {
+                    jenaTDB2Repository.saveOntologyModel(row.getGraphName(), model);
+                } finally {
+                    model.close();
+                }
+            }
             case UPSERT_CONCEPT -> jenaTDB2Repository.applyConceptDelta(
                     row.getAggregateIri(),
                     row.getGraphName(),
