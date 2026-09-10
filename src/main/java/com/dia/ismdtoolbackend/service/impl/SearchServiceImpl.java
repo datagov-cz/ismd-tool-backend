@@ -47,7 +47,9 @@ public class SearchServiceImpl implements SearchService {
         String userId = isAuthenticated ? user.getUserId() : null;
         boolean isAdmin = isAuthenticated && user.isAdmin();
 
-        boolean searchNkd = effectiveSource == SearchSource.NKD || effectiveSource == SearchSource.ALL;
+        // NKD owns no diagrams — a DIAGRAM-only request never touches it (reported SKIPPED below).
+        boolean searchNkd = (effectiveSource == SearchSource.NKD || effectiveSource == SearchSource.ALL)
+                && type != SearchType.DIAGRAM;
         // UNPUBLISHED is an ISMD dispatch with the is_published=false filter applied.
         boolean searchIsmd = effectiveSource == SearchSource.ISMD
                 || effectiveSource == SearchSource.ALL
@@ -128,6 +130,7 @@ public class SearchServiceImpl implements SearchService {
         // "actually zero".
         Integer totalOntologies = sumNullable(sourceStatuses.values(), SourceStatusDto::getTotalOntologies);
         Integer totalConcepts = sumNullable(sourceStatuses.values(), SourceStatusDto::getTotalConcepts);
+        Integer totalDiagrams = sumNullable(sourceStatuses.values(), SourceStatusDto::getTotalDiagrams);
 
         return SearchResponseDto.builder()
                 .results(dedupedResults)
@@ -137,6 +140,7 @@ public class SearchServiceImpl implements SearchService {
                 .sourceStatuses(sourceStatuses)
                 .totalOntologies(totalOntologies)
                 .totalConcepts(totalConcepts)
+                .totalDiagrams(totalDiagrams)
                 .build();
     }
 
@@ -174,6 +178,7 @@ public class SearchServiceImpl implements SearchService {
                                         .returnedCount(result.results().size())
                                         .totalOntologies(result.totalOntologies())
                                         .totalConcepts(result.totalConcepts())
+                                        .totalDiagrams(result.totalDiagrams())
                                         .message(result.statusMessage())
                                         .build());
                     }

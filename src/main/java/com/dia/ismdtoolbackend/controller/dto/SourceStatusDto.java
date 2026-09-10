@@ -23,5 +23,10 @@ public class SourceStatusDto {
      * pages). Nullable when the source could not produce a count (timeout / error).
      */
     private Integer totalConcepts;
+    /**
+     * Total diagram matches in this source for the current query (across all
+     * pages). Only ISMD contributes; nullable when uncounted. NKD is always null.
+     */
+    private Integer totalDiagrams;
     private String message;
 }

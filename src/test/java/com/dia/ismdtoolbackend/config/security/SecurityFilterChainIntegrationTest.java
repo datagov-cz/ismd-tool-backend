@@ -158,6 +158,7 @@ class SecurityFilterChainIntegrationTest {
         var requestBuilder = switch (method) {
             case "GET" -> get(path);
             case "POST" -> post(path);
+            case "PUT" -> put(path);
             case "PATCH" -> patch(path);
             case "DELETE" -> delete(path);
             default -> throw new IllegalArgumentException("Unsupported HTTP method: " + method);
@@ -192,7 +193,51 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("DELETE", "/api/concept/test/delete"),
                 Arguments.of("POST", "/api/comment/post"),
                 Arguments.of("DELETE", "/api/comment/test/delete"),
+                Arguments.of("GET", "/api/diagram/all"),
+                Arguments.of("GET", "/api/diagram/test/list"),
+                Arguments.of("POST", "/api/diagram/test/create"),
+                Arguments.of("GET", "/api/diagram/test/5/detail"),
+                Arguments.of("PUT", "/api/diagram/test/5/layout"),
+                Arguments.of("PATCH", "/api/diagram/test/5/rename"),
+                Arguments.of("POST", "/api/diagram/test/5/materialize"),
+                Arguments.of("DELETE", "/api/diagram/test/5"),
                 Arguments.of("POST", "/api/ai/accept-suggestion")
+        );
+    }
+
+    // ── Matched endpoints reach the controller ────────────────────────────
+
+    /**
+     * An authenticated request to a MATCHED path gets past the chain; an unmatched one is 403'd by
+     * {@code denyAll} before {@code @PreAuthorize} runs. The anonymous test above cannot tell those apart
+     * — both 401 — so a missing matcher only shows up here.
+     */
+    @ParameterizedTest(name = "[{index}] {0} {1} is matched by an authenticated chain rule")
+    @MethodSource("diagramEndpoints")
+    @WithMockSecurityUser
+    void diagramEndpoint_isMatched_notDeniedByDenyAll(String method, String path) throws Exception {
+        int status = mockMvc.perform(request(org.springframework.http.HttpMethod.valueOf(method), path)
+                        .with(testSecurityContext())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+
+        assertThat(status)
+                .as("%s %s must be matched by a requestMatcher; 403 means denyAll rejected it first "
+                        + "(a single-* matcher does not span two path segments)", method, path)
+                .isNotEqualTo(403);
+    }
+
+    static Stream<Arguments> diagramEndpoints() {
+        return Stream.of(
+                Arguments.of("GET", "/api/diagram/test/list"),
+                Arguments.of("POST", "/api/diagram/test/create"),
+                Arguments.of("GET", "/api/diagram/test/5/detail"),
+                Arguments.of("PUT", "/api/diagram/test/5/layout"),
+                Arguments.of("PATCH", "/api/diagram/test/5/rename"),
+                Arguments.of("POST", "/api/diagram/test/5/materialize"),
+                Arguments.of("DELETE", "/api/diagram/test/5")
         );
     }
 

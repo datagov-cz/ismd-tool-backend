@@ -1,0 +1,89 @@
+databaseChangeLog:
+  # "Which diagrams show this concept?" reverses the diagram->concept direction every existing index serves.
+  # uq_diagram_nodes_diagram_concept leads with diagram_id and cannot answer a bare concept_iri lookup, so
+  # without this the usage endpoint seq-scans diagram_nodes on every concept detail view.
+  - changeSet:
+      id: 022-diagram-nodes-concept-iri-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_diagram_nodes_concept_iri
+                schemaName: ismd_schema
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            indexName: idx_diagram_nodes_concept_iri
+            columns:
+              - column:
+                  name: concept_iri
+      rollback:
+        - dropIndex:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            indexName: idx_diagram_nodes_concept_iri
+
+  # A VZTAH is never a node row — its canvas membership is an edge row keyed by its own concept IRI.
+  - changeSet:
+      id: 022-diagram-edges-edge-key-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+        - not:
+            - indexExists:
+                indexName: idx_diagram_edges_edge_key
+                schemaName: ismd_schema
+      changes:
+        # edge_key is TEXT holding up to two IRIs, which can exceed the ~2704-byte btree limit, so the
+        # index is on its md5. Postgres matches an expression index only when the query repeats the
+        # expression, so DiagramRepository.findConceptUsage filters on md5(edge_key) = md5(:iri) and keeps
+        # the raw equality beside it as the collision recheck. A query on the raw column alone would not
+        # use this index.
+        - sql:
+            dbms: postgresql
+            sql: >-
+              CREATE INDEX idx_diagram_edges_edge_key
+              ON ismd_schema.diagram_edges (md5(edge_key))
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP INDEX ismd_schema.idx_diagram_edges_edge_key
+
+  # A VLASTNOST is neither a node nor an edge: it renders as a row inside its domain class's node, so its
+  # membership lives in that node's visible_properties_json array.
+  #
+  # The column stays VARCHAR — a GIN index over a jsonb cast gives indexed containment without the
+  # irreversible type change an ALTER would be, and without touching the entity's read/write path.
+  - changeSet:
+      id: 022-diagram-nodes-visible-properties-gin
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+        - not:
+            - indexExists:
+                indexName: idx_diagram_nodes_visible_properties
+                schemaName: ismd_schema
+      changes:
+        # The `LIKE '[%'` predicate is load-bearing and must stay a pure text test: a casting predicate
+        # (`jsonb_typeof(... ::jsonb) = 'array'`) evaluates the cast on every row, so one malformed row
+        # fails the whole CREATE INDEX, and `pg_input_is_valid` is only STABLE and rejected outright.
+        #
+        # Queries must repeat `LIKE '[%'` alongside the containment test, or the planner cannot match this
+        # partial index.
+        - sql:
+            dbms: postgresql
+            sql: >-
+              CREATE INDEX idx_diagram_nodes_visible_properties
+              ON ismd_schema.diagram_nodes
+              USING GIN ((visible_properties_json::jsonb))
+              WHERE visible_properties_json LIKE '[%'
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP INDEX ismd_schema.idx_diagram_nodes_visible_properties

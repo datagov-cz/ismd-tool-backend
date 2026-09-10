@@ -11,8 +11,11 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 
 import java.util.*;
 import java.util.concurrent.Executor;
@@ -33,11 +36,21 @@ class IsmdSearchProviderTest {
     @Mock
     private JenaTDB2Repository jenaTDB2Repository;
 
+    @Mock
+    private DiagramSearchLookup diagramSearchLookup;
+
+    @Mock
+    private OntologyLabelLookup ontologyLabelLookup;
+
     private IsmdSearchProvider createProvider() {
         Executor directExecutor = Runnable::run;
+        // Baseline: labels resolve to nothing. An unstubbed mock would return null and NPE,
+        // making "Fuseki is down" the fixture default rather than a case a test opts into.
+        lenient().when(ontologyLabelLookup.labelsByGraph(any())).thenReturn(Map.of());
         return new IsmdSearchProvider(
                 ontologyMetadataRepository, conceptMetadataRepository,
-                jenaTDB2Repository, directExecutor, 10_000L, 10_000L);
+                jenaTDB2Repository, diagramSearchLookup, ontologyLabelLookup,
+                directExecutor, 10_000L, 10_000L);
     }
 
     // --- Phase 3 tests ---
@@ -497,6 +510,93 @@ class IsmdSearchProviderTest {
         assertEquals(SearchType.ONTOLOGY, dto.getType());
         assertNull(dto.getOntologyIri(),
                 "Ontology Fuseki hits must not carry a self-referential ontologyIri");
+    }
+
+    /**
+     * The provider passes DIAGRAM rows through from {@link DiagramSearchLookup} untouched. Entity→DTO
+     * mapping (and the graphless {@code diagram:<id>} dedup key) now lives in that bean, where it runs
+     * inside an open session — it is covered by {@code DiagramSearchLookupIntegrationTest} against a
+     * real database, which is the only place a detached-proxy regression can be caught.
+     */
+    /**
+     * A failing diagram lookup must not abort the whole ISMD provider. An uncaught throw here
+     * discarded the ontology and concept results already gathered and reported the entire source as
+     * ERROR — finding F4's blast radius, which outlived the fix to its lazy-proxy cause.
+     */
+    @Test
+    void diagramLookupFailure_degradesButKeepsOntologyAndConceptResults() {
+        OntologyMetadataEntity ontology = createOntology(
+                "https://example.org/ontology/1", "osoba-ontology", true);
+        when(ontologyMetadataRepository.searchByText("osoba")).thenReturn(List.of(ontology));
+        when(conceptMetadataRepository.searchByText(eq("osoba"), eq(false), anyList(), eq(false), isNull()))
+                .thenReturn(List.of(createConcept("https://example.org/concept/osoba", "osoba", "Osoba",
+                        ConceptType.TRIDA, "https://example.org/ontology/1", true)));
+        when(diagramSearchLookup.search("osoba", null, 20, 0))
+                .thenThrow(new RuntimeException("simulated diagram-lookup failure"));
+        lenient().when(diagramSearchLookup.count("osoba", null))
+                .thenThrow(new RuntimeException("simulated diagram-count failure"));
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "osoba", null, 20, 0, "cs", null, null, "user1", false, null);
+
+        // The ontology and concept rows survive; only the diagram slice is missing.
+        assertEquals(2, result.results().size());
+        assertNull(result.totalDiagrams(), "a failed diagram count reports null, not a wrong number");
+    }
+
+    @Test
+    void diagramResults_passThroughFromLookup() {
+        SearchResultDto diagramRow = SearchResultDto.builder()
+                .id(42L)
+                .iri("diagram:42")
+                .slug("bez-grafu")
+                .label("bez-grafu")
+                .type(SearchType.DIAGRAM)
+                .source(SearchSource.ISMD)
+                .build();
+
+        when(diagramSearchLookup.search("bez-grafu", null, 20, 0)).thenReturn(List.of(diagramRow));
+        lenient().when(diagramSearchLookup.count("bez-grafu", null)).thenReturn(1L);
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+
+        SearchProvider.SearchProviderResult result = createProvider().search(
+                "bez-grafu", SearchType.DIAGRAM, 20, 0, "cs", null, null, "user1", false, null);
+
+        assertEquals(1, result.results().size());
+        SearchResultDto dto = result.results().get(0);
+        assertNotNull(dto.getIri(), "a graphless diagram must still carry a dedup key");
+        assertEquals("diagram:42", dto.getIri());
+        assertEquals(SearchType.DIAGRAM, dto.getType());
+    }
+
+    /**
+     * A {@code type=null} pass cannot page diagrams in SQL, so it fetches {@code offset + limit} rows. That
+     * sum must saturate rather than wrap: {@code offset} is validated non-negative but has no upper bound,
+     * so a plain {@code int} addition overflows to a NEGATIVE row limit. Postgres rejects it, the failure is
+     * swallowed as "no diagram results" — and diagrams silently disappear from the page instead of erroring.
+     */
+    @Test
+    void hugeOffset_doesNotOverflowIntoANegativeDiagramFetch() {
+        stubVisibleGraphs("user1", List.of());
+        stubEmptyFusekiSearch();
+        stubEmptyFetchConceptLabels();
+        when(ontologyMetadataRepository.searchByText("osoba")).thenReturn(List.of());
+        when(diagramSearchLookup.search(eq("osoba"), isNull(), anyInt(), eq(0))).thenReturn(List.of());
+        lenient().when(diagramSearchLookup.count("osoba", null)).thenReturn(0L);
+
+        createProvider().search("osoba", null, 20, Integer.MAX_VALUE, "cs", null, null, "user1",
+                false, null);
+
+        ArgumentCaptor<Integer> fetch = ArgumentCaptor.forClass(Integer.class);
+        verify(diagramSearchLookup).search(eq("osoba"), isNull(), fetch.capture(), eq(0));
+        assertTrue(fetch.getValue() > 0,
+                "a wrapped offset+limit would ask the database for a negative number of rows");
+        assertEquals(Integer.MAX_VALUE, fetch.getValue());
     }
 
     // --- Helpers ---

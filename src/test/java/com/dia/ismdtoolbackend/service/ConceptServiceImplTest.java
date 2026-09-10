@@ -46,6 +46,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -495,6 +496,91 @@ class ConceptServiceImplTest {
         // Aggregate = OLD IRI (TEST_CONCEPT_IRI), NOT the new one — this is the #4 fix.
         verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
         verify(outboxWriter, never()).enqueueUpsert(anyString(), eq(newIri), anySet(), anySet());
+    }
+
+    // ---- updatedAt stamping (finding F3) --------------------------------------------------------
+    // The diagram layer's stale-base guard reads concepts.updated_at as "when the concept last
+    // changed". @LastModifiedDate alone only fires when a mapped column is dirty, so an edit that
+    // touches ONLY RDF would leave it at its creation value and the guard would never trip. These
+    // three pin the contract: stamp on a real change, leave it alone otherwise.
+    //
+    // The stamp itself lives in MetadataTouchService (which also propagates to the parent ontology),
+    // so these assert the call, not the field — the service is mocked here. That the touch really
+    // moves both timestamps is proven against real Postgres in UpdatedAtPropagationIntegrationTest.
+
+    /** An RDF-only edit (no PG column changes) must still move updatedAt. */
+    @Test
+    void editConcept_rdfOnlyChange_stampsUpdatedAt() {
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        org.apache.jena.rdf.model.Statement add = testModel.createStatement(
+                testModel.createResource(TEST_CONCEPT_IRI),
+                testModel.createProperty("http://www.w3.org/2004/02/skos/core#definition"),
+                "Nová definice");
+        ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of(add));
+
+        testConceptEntity.setUpdatedAt(LocalDateTime.now().minusDays(1));
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
+                .thenReturn(editResult);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(metadataTouchService).touchConceptAndOntology(testConceptEntity);
+    }
+
+    /** A valid edit that resolves to no triple change must NOT move updatedAt. */
+    @Test
+    void editConcept_noOpEdit_leavesUpdatedAtUntouched() {
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+        // Empty change sets on both sides => nothing actually changed.
+        ConceptEditor.EditResult noOp = new ConceptEditor.EditResult(
+                TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
+
+        LocalDateTime before = LocalDateTime.now().minusDays(1);
+        testConceptEntity.setUpdatedAt(before);
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
+                .thenReturn(noOp);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(metadataTouchService, never()).touchConceptAndOntology(any());
+        assertEquals(before, testConceptEntity.getUpdatedAt(),
+                "a no-op edit must not bump updatedAt — it would falsely invalidate staged overlays");
+    }
+
+    /** A failed edit must not persist a stamp: it throws before the save, and the tx rolls back. */
+    @Test
+    void editConcept_failedEdit_neverStampsUpdatedAt() {
+        ConceptEditModel editModel = createValidConceptEditModel();
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+
+        LocalDateTime before = LocalDateTime.now().minusDays(1);
+        testConceptEntity.setUpdatedAt(before);
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
+                .thenThrow(new ConceptValidationException("neplatný vstup"));
+
+        assertThrows(ConceptValidationException.class,
+                () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
+
+        verify(conceptMetadataRepository, never()).save(any(ConceptMetadataEntity.class));
+        verify(metadataTouchService, never()).touchConceptAndOntology(any());
+        assertEquals(before, testConceptEntity.getUpdatedAt(),
+                "a failed edit must leave updatedAt untouched");
     }
 
     /**

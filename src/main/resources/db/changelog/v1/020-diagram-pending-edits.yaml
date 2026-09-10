@@ -1,0 +1,159 @@
+databaseChangeLog:
+  # Split staged RDF intent out of the layout table. `diagram_nodes` conflated two concerns in one row —
+  # layout (visual) and `pending_edit_json` (a staged edit to a real concept) — and because canvas
+  # membership is "which node rows exist", staging an edit pinned its concept to the canvas: a purely
+  # visual action (removing a node) was blocked by a purely semantic one.
+
+  - changeSet:
+      id: 020-create-diagram-pending-edits
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: diagram_pending_edits
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: ontology_metadata_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: concept_iri
+                  type: VARCHAR(1024)
+                  constraints:
+                    nullable: false
+              # Serialized DiagramPendingEdit. NOT NULL: a row exists only while there is an edit to
+              # apply, so discarding deletes the row rather than blanking it.
+              - column:
+                  name: pending_edit_json
+                  type: VARCHAR
+                  constraints:
+                    nullable: false
+              # Stale-base fingerprint, server-stamped. Null for edits migrated from diagram_nodes,
+              # which predate it being carried outside the JSON payload.
+              - column:
+                  name: base_updated_at
+                  type: TIMESTAMP
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_pending_edits
+            baseColumnNames: ontology_metadata_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: ontologies
+            referencedColumnNames: id
+            constraintName: fk_diagram_pending_edits_ontology
+            onDelete: CASCADE
+        # One staged edit per concept per ontology — staging twice updates, never duplicates.
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnNames: ontology_metadata_id, concept_iri
+            constraintName: uq_diagram_pending_edits_ontology_concept
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            indexName: idx_diagram_pending_edits_ontology
+            columns:
+              - column:
+                  name: ontology_metadata_id
+
+  # Move every staged overlay across, resolving the ontology through the node's diagram. Runs before the
+  # layout rows are pruned so nothing is read from a row that is about to disappear.
+  - changeSet:
+      id: 020-migrate-pending-edits-from-nodes
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - and:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_nodes
+                columnName: pending_edit_json
+            - tableExists:
+                schemaName: ismd_schema
+                tableName: diagram_pending_edits
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              INSERT INTO ismd_schema.diagram_pending_edits
+                  (ontology_metadata_id, concept_iri, pending_edit_json, created_at, updated_at)
+              SELECT d.ontology_metadata_id, n.concept_iri, n.pending_edit_json,
+                     COALESCE(d.created_at, now()), now()
+              FROM ismd_schema.diagram_nodes n
+              JOIN ismd_schema.diagrams d ON d.id = n.diagram_id
+              WHERE n.pending_edit_json IS NOT NULL
+              ON CONFLICT (ontology_metadata_id, concept_iri) DO NOTHING
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DELETE FROM ismd_schema.diagram_pending_edits
+
+  # Drop the layout rows that only ever existed to carry an overlay. Discriminate on concept_type.
+  # A row whose concept has no metadata (stale) is kept: it is still on the canvas
+  # and the user needs to be able to remove it.
+  - changeSet:
+      id: 020-prune-overlay-only-node-rows
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: pending_edit_json
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              DELETE FROM ismd_schema.diagram_nodes n
+              USING ismd_schema.concepts c
+              WHERE c.concept_iri = n.concept_iri
+                AND c.concept_type IN ('VZTAH', 'VLASTNOST')
+      # Irreversible by design: the pruned rows held positions the split cannot reconstruct — a VZTAH or
+      # VLASTNOST row only ever carried an overlay, anchored at the origin, never a real layout.
+      rollback: [ ]
+
+  # The column's contents now live in diagram_pending_edits.
+  - changeSet:
+      id: 020-drop-pending-edit-json-from-nodes
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: pending_edit_json
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: pending_edit_json
+      rollback:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columns:
+              - column:
+                  name: pending_edit_json
+                  type: VARCHAR

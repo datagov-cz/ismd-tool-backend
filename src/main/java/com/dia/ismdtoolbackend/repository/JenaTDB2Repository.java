@@ -1049,6 +1049,74 @@ public class JenaTDB2Repository {
     }
 
     /**
+     * The hierarchy links of a single concept: {@code rdfs:subClassOf} / {@code skos:broader} and
+     * {@code skos:exactMatch}, as raw target IRIs. Deliberately narrow — {@link #fetchConceptResolutions}
+     * already carries label, slug, domain and range, but not these, and fetching them was otherwise only
+     * possible by pulling the whole named graph.
+     *
+     * <p>Returns targets, not resolved concepts: the caller feeds them straight back into
+     * {@code ReferencedConceptResolutionEngine.resolveAll}, whose per-IRI cache usually already holds
+     * them. Scoped to the concept's own graph so a stray cross-graph triple cannot inject a link.
+     *
+     * @return {@code subClassOf} and {@code exactMatch} target IRIs; empty lists when the concept has none
+     */
+    public ConceptHierarchyLinks fetchConceptHierarchy(String conceptIri, String graphName) {
+        if (conceptIri == null || graphName == null || !SparqlIriValidator.isSafeHttpIri(conceptIri)) {
+            return ConceptHierarchyLinks.empty();
+        }
+
+        return executor.execute(
+                "fetching hierarchy links for " + conceptIri,
+                "Failed to fetch concept hierarchy from Fuseki",
+                conn -> {
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
+                    pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+                    pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+                    pss.append("SELECT ?broader ?exact WHERE { GRAPH ");
+                    pss.appendIri(graphName);
+                    pss.append(" { ");
+                    pss.append("  OPTIONAL { ");
+                    pss.appendIri(conceptIri);
+                    pss.append("    rdfs:subClassOf ?broader . FILTER(isIRI(?broader)) } ");
+                    pss.append("  OPTIONAL { ");
+                    pss.appendIri(conceptIri);
+                    pss.append("    skos:broader ?broader . FILTER(isIRI(?broader)) } ");
+                    pss.append("  OPTIONAL { ");
+                    pss.appendIri(conceptIri);
+                    pss.append("    skos:exactMatch ?exact . FILTER(isIRI(?exact)) } ");
+                    pss.append("} }");
+
+                    List<String> broader = new ArrayList<>();
+                    List<String> exact = new ArrayList<>();
+                    try (QueryExecution qExec = conn.query(pss.asQuery())) {
+                        ResultSet rs = qExec.execSelect();
+                        while (rs.hasNext()) {
+                            QuerySolution row = rs.next();
+                            collectIri(broader, row, "broader");
+                            collectIri(exact, row, "exact");
+                        }
+                    }
+                    return new ConceptHierarchyLinks(List.copyOf(broader), List.copyOf(exact));
+                });
+    }
+
+    /** Append one solution's URI binding, skipping absent bindings and duplicates. */
+    private static void collectIri(List<String> target, QuerySolution row, String var) {
+        RDFNode node = row.get(var);
+        if (node != null && node.isURIResource() && !target.contains(node.asResource().getURI())) {
+            target.add(node.asResource().getURI());
+        }
+    }
+
+    /** One concept's hierarchy link targets, as raw IRIs. */
+    public record ConceptHierarchyLinks(List<String> broader, List<String> exactMatch) {
+
+        public static ConceptHierarchyLinks empty() {
+            return new ConceptHierarchyLinks(List.of(), List.of());
+        }
+    }
+
+    /**
      * Batched ISMD concept-reference resolver. For each input IRI present in the
      * local store, returns its {@code skos:inScheme} (ontology IRI) and the
      * scheme's multilingual {@code dcterms:description}. IRIs not in any local

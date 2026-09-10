@@ -1,0 +1,336 @@
+databaseChangeLog:
+  # Diagrams 1.1: an ontology gains many diagrams. Three shifts, in dependency order —
+  #   1. `diagrams` loses its one-per-ontology unique constraint and gains a name.
+  #   2. `diagram_pending_edits` re-keys from the ontology to the DIAGRAM, so two canvases can hold
+  #      competing staged edits on one concept. That is what makes a cross-diagram conflict a real,
+  #      detectable state rather than a shared row silently overwritten.
+  #   3. `diagram_nodes` gains `is_foreign`, marking a node that references a concept outside this
+  #      ontology's graph — placed for context and rendered read-only.
+
+  - changeSet:
+      id: 021-diagrams-add-name
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagrams
+                columnName: name
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columns:
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: name
+
+  # Name every pre-existing diagram before the NOT NULL lands. Each ontology has exactly one at this
+  # point (the unique constraint below is still in force), so a single fixed name cannot collide.
+  - changeSet:
+      id: 021-diagrams-backfill-name
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: name
+      changes:
+        - update:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columns:
+              - column:
+                  name: name
+                  value: "Původní diagram"
+            where: name IS NULL
+      rollback: [ ]
+
+  - changeSet:
+      id: 021-diagrams-name-not-null
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: name
+      changes:
+        - addNotNullConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: name
+            columnDataType: VARCHAR(255)
+      rollback:
+        - dropNotNullConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: name
+            columnDataType: VARCHAR(255)
+
+  # The one-diagram-per-ontology constraint. Dropping it IS the feature.
+  - changeSet:
+      id: 021-diagrams-drop-unique-ontology
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                schemaName: ismd_schema
+                indexName: idx_diagrams_ontology_metadata
+      changes:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            constraintName: uq_diagrams_ontology_metadata
+      rollback:
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnNames: ontology_metadata_id
+            constraintName: uq_diagrams_ontology_metadata
+
+  # The dropped unique constraint was also the index backing every lookup by ontology. That lookup is
+  # now a list query and runs on every diagram list/read, so it needs an index of its own.
+  - changeSet:
+      id: 021-diagrams-ontology-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                schemaName: ismd_schema
+                indexName: idx_diagrams_ontology_metadata
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagrams
+            indexName: idx_diagrams_ontology_metadata
+            columns:
+              - column:
+                  name: ontology_metadata_id
+
+  # --- pending edits: ontology-scoped -> diagram-scoped -------------------------------------------
+
+  - changeSet:
+      id: 021-pending-edits-add-diagram-id
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_pending_edits
+                columnName: diagram_id
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columns:
+              - column:
+                  name: diagram_id
+                  type: BIGINT
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnName: diagram_id
+
+  # Resolve each staged edit to its ontology's diagram. Unambiguous by construction: this runs after
+  # the unique constraint is dropped but before any second diagram can exist, so the subquery matches
+  # at most one row. A staged edit whose ontology has NO diagram row cannot be re-homed and is deleted
+  # by the next changeset — it was unreachable already (nothing could display or materialize it).
+  - changeSet:
+      id: 021-pending-edits-backfill-diagram-id
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnName: diagram_id
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              UPDATE ismd_schema.diagram_pending_edits pe
+              SET diagram_id = d.id
+              FROM ismd_schema.diagrams d
+              WHERE d.ontology_metadata_id = pe.ontology_metadata_id
+                AND pe.diagram_id IS NULL
+      rollback: [ ]
+
+  # Orphans: a staged edit for an ontology that never had a diagram. NOT NULL cannot be applied while
+  # they exist, and they have no canvas to belong to. Gated to postgresql like the backfill above: on
+  # any other engine the backfill is skipped, so every row still reads NULL and this would empty the
+  # table rather than drop orphans.
+  - changeSet:
+      id: 021-pending-edits-drop-orphans
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnName: diagram_id
+      changes:
+        - delete:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            where: diagram_id IS NULL
+      rollback: [ ]
+
+  - changeSet:
+      id: 021-pending-edits-diagram-id-not-null
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnName: diagram_id
+      changes:
+        - addNotNullConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnName: diagram_id
+            columnDataType: BIGINT
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_pending_edits
+            baseColumnNames: diagram_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: diagrams
+            referencedColumnNames: id
+            constraintName: fk_diagram_pending_edits_diagram
+            onDelete: CASCADE
+      rollback:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_pending_edits
+            constraintName: fk_diagram_pending_edits_diagram
+        - dropNotNullConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnName: diagram_id
+            columnDataType: BIGINT
+
+  # The re-key itself. Under the old constraint two diagrams shared one staged edit per concept, so a
+  # conflict between them was not representable; under the new one each canvas stages independently.
+  # `ontology_metadata_id` is deliberately KEPT — it is the cheap scope check and the join key for the
+  # conflict query, which looks for the same concept staged on SIBLING diagrams of one ontology.
+  # Not hashed, unlike 017's edge_key: that column is TEXT and concatenates two IRIs, so it can exceed
+  # Postgres's ~2704-byte btree row limit. concept_iri is VARCHAR(1024), which caps the value at ~1345
+  # bytes even when every character is a two-byte Czech accent, so a plain index is always in range.
+  - changeSet:
+      id: 021-pending-edits-rekey-to-diagram
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                schemaName: ismd_schema
+                indexName: idx_diagram_pending_edits_diagram
+      changes:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            constraintName: uq_diagram_pending_edits_ontology_concept
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnNames: diagram_id, concept_iri
+            constraintName: uq_diagram_pending_edits_diagram_concept
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            constraintName: uq_diagram_pending_edits_diagram_concept
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            columnNames: ontology_metadata_id, concept_iri
+            constraintName: uq_diagram_pending_edits_ontology_concept
+
+  - changeSet:
+      id: 021-pending-edits-diagram-index
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                schemaName: ismd_schema
+                indexName: idx_diagram_pending_edits_diagram
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_pending_edits
+            indexName: idx_diagram_pending_edits_diagram
+            columns:
+              - column:
+                  name: diagram_id
+
+  # --- foreign nodes -----------------------------------------------------------------------------
+
+  # A node referencing a concept OUTSIDE this ontology's graph: placed for context, rendered read-only,
+  # never editable. The flag is what lets the ingress graph guard stay strict — a foreign IRI is
+  # accepted only on a row that claims to be foreign, and never on an overlay target.
+  - changeSet:
+      id: 021-diagram-nodes-is-foreign
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_nodes
+                columnName: is_foreign
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columns:
+              - column:
+                  name: is_foreign
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: is_foreign
+
+  # Diagram names identify a canvas to the user and are now searchable, so they must be distinguishable
+  # WITHIN an ontology. Scoped per ontology, not globally: two unrelated slovníky may each hold a
+  # "Hlavní diagram", and a global constraint would be violated by this changelog's own backfill.
+  - changeSet:
+      id: 021-diagrams-unique-name-per-ontology
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                schemaName: ismd_schema
+                indexName: uq_diagrams_ontology_name
+      changes:
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnNames: ontology_metadata_id, name
+            constraintName: uq_diagrams_ontology_name
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            constraintName: uq_diagrams_ontology_name

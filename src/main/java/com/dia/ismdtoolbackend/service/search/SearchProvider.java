@@ -40,27 +40,37 @@ public interface SearchProvider {
                                 boolean isAdmin, Boolean publishedFilter);
 
     /**
-     * @param totalCount       total matches (ontologies + concepts) for this query
-     *                         in this source, across all pages
+     * @param totalCount       total matches (ontologies + concepts + diagrams) for this
+     *                         query in this source, across all pages
      * @param totalOntologies  ontology-only subtotal; {@code null} when the source
      *                         couldn't produce a count (e.g. partial degradation)
      * @param totalConcepts    concept-only subtotal; {@code null} when unknown
+     * @param totalDiagrams    diagram-only subtotal; {@code null} when unknown. Only
+     *                         ISMD contributes; NKD always passes {@code null}.
      */
     record SearchProviderResult(List<SearchResultDto> results, int totalCount,
                                 Integer totalOntologies, Integer totalConcepts,
+                                Integer totalDiagrams,
                                 SearchSourceStatus status, String statusMessage) {
         public SearchProviderResult(List<SearchResultDto> results, int totalCount) {
-            this(results, totalCount, null, null, SearchSourceStatus.OK, null);
+            this(results, totalCount, null, null, null, SearchSourceStatus.OK, null);
         }
 
         public SearchProviderResult(List<SearchResultDto> results, int totalCount,
                                      SearchSourceStatus status, String statusMessage) {
-            this(results, totalCount, null, null, status, statusMessage);
+            this(results, totalCount, null, null, null, status, statusMessage);
         }
 
         public SearchProviderResult(List<SearchResultDto> results, int totalCount,
                                      Integer totalOntologies, Integer totalConcepts) {
-            this(results, totalCount, totalOntologies, totalConcepts, SearchSourceStatus.OK, null);
+            this(results, totalCount, totalOntologies, totalConcepts, null, SearchSourceStatus.OK, null);
+        }
+
+        public SearchProviderResult(List<SearchResultDto> results, int totalCount,
+                                     Integer totalOntologies, Integer totalConcepts,
+                                     Integer totalDiagrams) {
+            this(results, totalCount, totalOntologies, totalConcepts, totalDiagrams,
+                    SearchSourceStatus.OK, null);
         }
     }
 }
