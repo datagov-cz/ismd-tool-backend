@@ -51,16 +51,19 @@ public class DiagramController {
     @Operation(
             summary = "Seznam diagramů",
             description = "Vrací odlehčený seznam všech diagramů (identita + počet uzlů), např. pro výběr diagramu. "
-                    + "Vyžaduje oprávnění přihlášeného uživatele."
+                    + "Volitelný parametr `userId` omezí výsledek na diagramy slovníků daného uživatele; "
+                    + "bez něj se vrací všechny. Vyžaduje oprávnění přihlášeného uživatele."
     )
     @GetMapping("/all")
     @PreAuthorize("@ontologySecurityService.canViewResource()")
     public ResponseEntity<ApiResponseDto<List<DiagramSummaryDto>>> getAllDiagrams(
+            @Parameter(description = "Vrátí jen diagramy slovníků tohoto uživatele. Bez parametru se vrací všechny.")
+            @RequestParam(required = false) String userId,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Diagram list requested, userId: {}", securityUser.getUserId());
+        log.info("Diagram list requested by userId: {}, filter userId: {}", securityUser.getUserId(), userId);
 
-        List<DiagramSummaryDto> diagrams = diagramService.listAll();
+        List<DiagramSummaryDto> diagrams = diagramService.listAll(userId);
         return ResponseEntity.ok().body(ApiResponseDto.success(diagrams, "Seznam diagramů byl úspěšně načten."));
     }
 

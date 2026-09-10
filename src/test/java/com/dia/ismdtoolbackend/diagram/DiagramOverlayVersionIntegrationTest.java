@@ -23,6 +23,7 @@ import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -593,14 +594,18 @@ class DiagramOverlayVersionIntegrationTest extends PostgresIntegrationTestBase {
          * {@code self} would leave each {@code saveAndFlush} autocommitting on its own and the layout
          * reconcile would violate the node unique constraint.
          */
+        @Bean OntologyLabelLookup ontologyLabelLookup() {
+            return mock(OntologyLabelLookup.class);
+        }
+
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
                 JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
                 DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
-                @Lazy DiagramServiceImpl self) {
+                OntologyLabelLookup labelLookup, @Lazy DiagramServiceImpl self) {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, self);
+                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, labelLookup, self);
         }
     }
 

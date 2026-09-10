@@ -34,6 +34,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.service.DiagramService.ConflictResolution;
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -85,6 +86,8 @@ public class DiagramServiceImpl implements DiagramService {
      */
     private final DiagramServiceImpl self;
 
+    private final OntologyLabelLookup ontologyLabelLookup;
+
     public DiagramServiceImpl(DiagramRepository diagramRepository,
                               OntologyMetadataRepository ontologyMetadataRepository,
                               ConceptMetadataRepository conceptMetadataRepository,
@@ -94,6 +97,7 @@ public class DiagramServiceImpl implements DiagramService {
                               DiagramLayoutReconciler layoutReconciler,
                               DiagramPendingEditRepository pendingEditRepository,
                               DiagramMapper mapper,
+                              OntologyLabelLookup ontologyLabelLookup,
                               @Lazy DiagramServiceImpl self) {
         this.diagramRepository = diagramRepository;
         this.ontologyMetadataRepository = ontologyMetadataRepository;
@@ -104,32 +108,49 @@ public class DiagramServiceImpl implements DiagramService {
         this.layoutReconciler = layoutReconciler;
         this.pendingEditRepository = pendingEditRepository;
         this.mapper = mapper;
+        this.ontologyLabelLookup = ontologyLabelLookup;
         this.self = self;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<DiagramSummaryDto> listAll() {
-        return diagramRepository.findSummaries(null).stream()
-                .map(this::toSummary)
-                .toList();
+    public List<DiagramSummaryDto> listAll(String userId) {
+        // Blank is treated as absent: an omitted query param and `?userId=` should both mean
+        // "no filter" rather than "match the empty user", which would return nothing.
+        String filter = userId == null || userId.isBlank() ? null : userId.trim();
+        return withOntologyLabels(diagramRepository.findSummaries(null, filter));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<DiagramSummaryDto> listForOntology(String ontologySlug) {
         OntologyMetadataEntity ontology = requireOntology(ontologySlug);
-        return diagramRepository.findSummaries(ontology.getId()).stream()
-                .map(this::toSummary)
+        return withOntologyLabels(diagramRepository.findSummaries(ontology.getId(), null));
+    }
+
+    /**
+     * Maps a page of rows, resolving every ontology's prefLabel in ONE batched RDF fetch. A
+     * per-row lookup here would turn a single list into N Fuseki round-trips.
+     */
+    private List<DiagramSummaryDto> withOntologyLabels(List<DiagramRepository.DiagramSummaryRow> rows) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Map<String, String>> labels = ontologyLabelLookup.labelsByGraph(
+                rows.stream().map(DiagramRepository.DiagramSummaryRow::getGraphName).toList());
+        return rows.stream()
+                .map(row -> toSummary(row, labels == null ? null : labels.get(row.getGraphName())))
                 .toList();
     }
 
-    private DiagramSummaryDto toSummary(DiagramRepository.DiagramSummaryRow row) {
+    private DiagramSummaryDto toSummary(DiagramRepository.DiagramSummaryRow row,
+                                        Map<String, String> ontologyLabel) {
         return new DiagramSummaryDto(
                 row.getDiagramId(),
                 row.getName(),
                 row.getSlug(),
                 row.getGraphName(),
+                ontologyLabel,
                 (int) row.getNodeCount(),
                 row.getUpdatedAt() != null ? row.getUpdatedAt().toString() : null);
     }
@@ -198,6 +219,7 @@ public class DiagramServiceImpl implements DiagramService {
                 diagram.getName(),
                 ontology.getSlug(),
                 ontology.getGraphName(),
+                ontologyLabelLookup.labelFor(ontology.getGraphName()),
                 diagram.getNodes().size(),
                 diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
     }

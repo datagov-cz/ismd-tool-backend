@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -26,6 +28,12 @@ public class SearchResultDto {
     private SearchSource source;
     private ConceptType conceptType;
     private String ontologyIri;
+    /**
+     * The owning ontology's {@code skos:prefLabel} as a language→value map. Sourced from RDF, since
+     * Postgres holds no ontology name; null when the ontology carries no label or Fuseki is
+     * unreachable. Currently populated for {@code type=DIAGRAM} rows.
+     */
+    private Map<String, String> ontologyLabel;
     private Boolean isPublished;
     private MatchedBy matchedBy;
     /**

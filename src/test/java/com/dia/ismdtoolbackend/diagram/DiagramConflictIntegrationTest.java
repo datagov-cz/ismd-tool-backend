@@ -22,6 +22,7 @@ import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.DiagramService.ConflictResolution;
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
@@ -674,14 +675,21 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
             return mock(DiagramMaterializeService.class);
         }
 
+        @Bean OntologyLabelLookup ontologyLabelLookup() {
+
+            return mock(OntologyLabelLookup.class);
+
+        }
+
+
         @Bean DiagramServiceImpl diagramServiceImpl(
                 DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
                 JenaTDB2Repository tdb2, DiagramMaterializeService materializeService,
                 DiagramLayoutReconciler reconciler, DiagramPendingEditRepository pendingEditRepo,
-                DiagramMapper mapper, @Lazy DiagramServiceImpl self) {
+                DiagramMapper mapper, OntologyLabelLookup labelLookup, @Lazy DiagramServiceImpl self) {
             return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    materializeService, reconciler, pendingEditRepo, mapper, self);
+                    materializeService, reconciler, pendingEditRepo, mapper, labelLookup, self);
         }
     }
 }

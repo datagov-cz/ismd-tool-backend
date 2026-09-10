@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.enums.SearchType;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -64,6 +65,7 @@ public class IsmdSearchProvider implements SearchProvider {
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final DiagramSearchLookup diagramSearchLookup;
+    private final OntologyLabelLookup ontologyLabelLookup;
     private final Executor searchExecutor;
     private final long fusekiTimeoutMs;
     private final long pgTimeoutMs;
@@ -72,6 +74,7 @@ public class IsmdSearchProvider implements SearchProvider {
                               ConceptMetadataRepository conceptMetadataRepository,
                               JenaTDB2Repository jenaTDB2Repository,
                               DiagramSearchLookup diagramSearchLookup,
+                              OntologyLabelLookup ontologyLabelLookup,
                               @Qualifier("searchExecutor") Executor searchExecutor,
                               @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
                               @Value("${search.pg-timeout-ms:10000}") long pgTimeoutMs) {
@@ -79,6 +82,7 @@ public class IsmdSearchProvider implements SearchProvider {
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
         this.diagramSearchLookup = diagramSearchLookup;
+        this.ontologyLabelLookup = ontologyLabelLookup;
         this.searchExecutor = searchExecutor;
         this.fusekiTimeoutMs = fusekiTimeoutMs;
         this.pgTimeoutMs = pgTimeoutMs;
@@ -369,11 +373,35 @@ public class IsmdSearchProvider implements SearchProvider {
 
     private List<SearchResultDto> searchDiagrams(String query, Boolean publishedFilter,
                                                  int limit, int offset) {
+        List<SearchResultDto> rows;
         try {
-            return diagramSearchLookup.search(query, publishedFilter, limit, offset);
+            rows = diagramSearchLookup.search(query, publishedFilter, limit, offset);
         } catch (RuntimeException e) {
             log.warn("PG diagram search failed, continuing without diagram results: {}", e.getMessage());
             return List.of();
+        }
+        // Deliberately OUTSIDE diagramSearchLookup's transaction: the ontology label comes from
+        // Fuseki, and holding a pooled PG connection across that HTTP call is what the lookup's
+        // own doc warns against. One batched fetch for the page, not one per row.
+        attachOntologyLabels(rows);
+        return rows;
+    }
+
+    /**
+     * Fills in each diagram row's owning-ontology prefLabel. Names live only in RDF, so this is one
+     * batched CONSTRUCT for the whole page; rows whose ontology has no label simply keep a null.
+     */
+    private void attachOntologyLabels(List<SearchResultDto> rows) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        Map<String, Map<String, String>> labels = ontologyLabelLookup.labelsByGraph(
+                rows.stream().map(SearchResultDto::getOntologyIri).toList());
+        if (labels == null || labels.isEmpty()) {
+            return;
+        }
+        for (SearchResultDto row : rows) {
+            row.setOntologyLabel(labels.get(row.getOntologyIri()));
         }
     }
 

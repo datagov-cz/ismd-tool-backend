@@ -28,6 +28,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,14 +74,60 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void getAll_returnsDiagramSummaries() throws Exception {
-        when(diagramService.listAll()).thenReturn(List.of(
+        when(diagramService.listAll(null)).thenReturn(List.of(
                 new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
-                        "https://x/pracovni-pomer", 7, "2026-07-21T10:00:00")));
+                        "https://x/pracovni-pomer", Map.of("cs", "Pracovní poměr", "en", "Employment"),
+                        7, "2026-07-21T10:00:00")));
 
         mockMvc.perform(get("/api/diagram/all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].ontologySlug").value("pracovni-pomer"))
+                .andExpect(jsonPath("$.data[0].ontologyLabel.cs").value("Pracovní poměr"))
+                .andExpect(jsonPath("$.data[0].ontologyLabel.en").value("Employment"))
                 .andExpect(jsonPath("$.data[0].nodeCount").value(7));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getAll_omitsOntologyLabelWhenUnavailable() throws Exception {
+        // Fuseki unreachable, or the slovník simply carries no prefLabel: the list still answers,
+        // with the field absent rather than null (@JsonInclude(NON_NULL)).
+        when(diagramService.listAll(null)).thenReturn(List.of(
+                new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
+                        "https://x/pracovni-pomer", null, 7, "2026-07-21T10:00:00")));
+
+        mockMvc.perform(get("/api/diagram/all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].ontologySlug").value("pracovni-pomer"))
+                .andExpect(jsonPath("$.data[0].ontologyLabel").doesNotExist());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getAll_passesTheUserIdFilterThrough() throws Exception {
+        when(diagramService.listAll("someone-else")).thenReturn(List.of(
+                new DiagramSummaryDto(5L, "Hlavní diagram", "pracovni-pomer",
+                        "https://x/pracovni-pomer", null, 7, null)));
+
+        mockMvc.perform(get("/api/diagram/all").param("userId", "someone-else"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].diagramId").value(5));
+
+        // The filter is the parameter's value, never the caller's own id — this endpoint lists
+        // any user's diagrams (reads are canViewResource(), not ownership-gated).
+        verify(diagramService).listAll("someone-else");
+        verify(diagramService, never()).listAll("user123");
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void getAll_withoutTheParam_doesNotFilter() throws Exception {
+        when(diagramService.listAll(null)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/diagram/all"))
+                .andExpect(status().isOk());
+
+        verify(diagramService).listAll(null);
     }
 
     @Test
@@ -101,7 +148,7 @@ class DiagramControllerTest {
     void rename_passesTheNewNameThrough() throws Exception {
         when(diagramService.renameDiagram(eq("pracovni-pomer"), eq(5L), eq("Pohled HR")))
                 .thenReturn(new DiagramSummaryDto(5L, "Pohled HR", "pracovni-pomer",
-                        "https://x/g", 3, null));
+                        "https://x/g", Map.of("cs", "Pracovní poměr"), 3, null));
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")
                         .contentType(MediaType.APPLICATION_JSON)

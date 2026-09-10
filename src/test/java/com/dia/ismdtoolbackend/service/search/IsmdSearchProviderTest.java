@@ -15,6 +15,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
+
 import java.util.*;
 import java.util.concurrent.Executor;
 
@@ -37,11 +39,17 @@ class IsmdSearchProviderTest {
     @Mock
     private DiagramSearchLookup diagramSearchLookup;
 
+    @Mock
+    private OntologyLabelLookup ontologyLabelLookup;
+
     private IsmdSearchProvider createProvider() {
         Executor directExecutor = Runnable::run;
+        // Baseline: labels resolve to nothing. An unstubbed mock would return null and NPE,
+        // making "Fuseki is down" the fixture default rather than a case a test opts into.
+        lenient().when(ontologyLabelLookup.labelsByGraph(any())).thenReturn(Map.of());
         return new IsmdSearchProvider(
                 ontologyMetadataRepository, conceptMetadataRepository,
-                jenaTDB2Repository, diagramSearchLookup,
+                jenaTDB2Repository, diagramSearchLookup, ontologyLabelLookup,
                 directExecutor, 10_000L, 10_000L);
     }
 

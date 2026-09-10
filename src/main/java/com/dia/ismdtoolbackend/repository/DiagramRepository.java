@@ -27,6 +27,9 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
     /**
      * Diagram list rows, joined to the ontology and counting nodes in one query. The entity path would
      * lazy-load {@code nodes}, and for the all-diagrams list {@code ontologyMetadata}, once per row.
+     *
+     * <p>Both filters are null-means-unfiltered. {@code userId} matches the OWNING ONTOLOGY's user: a
+     * diagram carries no owner of its own, so "my diagrams" means the diagrams of my slovníky.
      */
     @Query("""
             select d.id as diagramId, d.name as name, o.slug as slug, o.graphName as graphName,
@@ -35,10 +38,12 @@ public interface DiagramRepository extends JpaRepository<DiagramEntity, Long> {
             join d.ontologyMetadata o
             left join d.nodes n
             where (:ontologyMetadataId is null or o.id = :ontologyMetadataId)
+              and (:userId is null or o.userId = :userId)
             group by d.id, d.name, o.slug, o.graphName, d.updatedAt
             order by d.id asc
             """)
-    List<DiagramSummaryRow> findSummaries(@Param("ontologyMetadataId") Long ontologyMetadataId);
+    List<DiagramSummaryRow> findSummaries(@Param("ontologyMetadataId") Long ontologyMetadataId,
+                                          @Param("userId") String userId);
 
     /**
      * A diagram, resolved only if it belongs to the given ontology. The endpoints authorize the slug and

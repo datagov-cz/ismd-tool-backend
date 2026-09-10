@@ -14,8 +14,13 @@ import java.util.List;
  */
 public interface DiagramService {
 
-    /** Every diagram's identity and node count, for a diagram picker. */
-    List<DiagramSummaryDto> listAll();
+    /**
+     * Every diagram's identity and node count, for a diagram picker.
+     *
+     * @param userId when non-null and non-blank, keeps only diagrams whose OWNING SLOVNÍK belongs to
+     *               that user — a diagram has no owner of its own. Null or blank returns them all.
+     */
+    List<DiagramSummaryDto> listAll(String userId);
 
     /** The ontology's diagrams, oldest first; identity and node count only. */
     List<DiagramSummaryDto> listForOntology(String ontologySlug);
