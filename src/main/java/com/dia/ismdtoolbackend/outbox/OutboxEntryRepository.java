@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Persistence for {@link OutboxEntry}. The relay (T5) uses the claim/barrier queries here; the
@@ -66,7 +67,7 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
             """)
     boolean existsEarlierUnappliedCreateGraph(@Param("graphName") String graphName, @Param("seq") long seq);
 
-    java.util.Optional<OutboxEntry> findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
+    Optional<OutboxEntry> findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
             String graphName, OutboxOperation operation, OutboxStatus status);
 
     /**
