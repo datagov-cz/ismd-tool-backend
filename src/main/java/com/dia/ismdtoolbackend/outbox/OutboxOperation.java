@@ -15,6 +15,9 @@ public enum OutboxOperation {
      */
     UPSERT_CONCEPT,
 
+    /** Initial whole-graph PUT; later graph mutations wait until this row is DONE. */
+    CREATE_GRAPH,
+
     /** Delete a set of concept IRIs (and their related triples) from a graph. */
     DELETE_CONCEPTS,
 

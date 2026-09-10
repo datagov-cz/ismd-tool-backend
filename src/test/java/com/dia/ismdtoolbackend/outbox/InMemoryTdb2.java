@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.springframework.mock.env.MockEnvironment;
 
@@ -39,6 +40,13 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
     @Override
     protected RDFConnection createConnection() {
         return RDFConnection.connect(dataset);
+    }
+
+    @Override
+    public Model fetchGraph(String graphName) {
+        // Remote Fuseki returns a detached model. RDFConnectionLocal returns a live graph view:
+        // PUTting that view back into itself clears its source, and snapshots would change on replay.
+        return ModelFactory.createDefaultModel().add(super.fetchGraph(graphName));
     }
 
     public Dataset dataset() {

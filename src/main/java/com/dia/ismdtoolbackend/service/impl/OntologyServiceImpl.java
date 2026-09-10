@@ -20,8 +20,6 @@ import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.creator.VocabularyConceptBuilder;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -31,6 +29,11 @@ import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.outbox.OutboxOperation;
+import com.dia.ismdtoolbackend.outbox.OutboxStatus;
+import com.dia.ismdtoolbackend.outbox.OutboxTriples;
+import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
@@ -92,6 +95,7 @@ public class OntologyServiceImpl implements OntologyService {
     private final PublishedResourceUtil deviationChecker;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
+    private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final NkdConceptSnapshotRepository nkdSnapshotRepository;
     private final NkdSnapshotWarmer nkdSnapshotWarmer;
@@ -111,6 +115,7 @@ public class OntologyServiceImpl implements OntologyService {
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
+        requireInitialGraphApplied(graphName);
 
         Optional<ValidationReportEntity> validationReport =
                 validationReportRepository.findByOntologyMetadataId(ontologyId);
@@ -157,34 +162,47 @@ public class OntologyServiceImpl implements OntologyService {
             throw new OntologyException("IRI slovníku " + ontologyIRI + " není platné.");
         }
 
-        Optional<OntologyMetadataEntity> ontologyMetadataOpt = ontologyMetadataRepository.findByGraphName(ontologyIRI);
-        if (ontologyMetadataOpt.isPresent()) {
+        Optional<OntologyMetadataEntity> ontologyMetadataOpt = findLocalCollision(ontologyIRI);
+        if (ontologyMetadataOpt.isPresent() && ontologyIRI.equals(ontologyMetadataOpt.get().getGraphName())) {
             log.error("ontologyId {} already present", ontologyIRI);
             OntologyMetadataEntity existingEntity = ontologyMetadataOpt.get();
             OntologyMetadataModel model = ontologyMetadataMapper.toDto(existingEntity);
-            enrichMetadataFromRDF(model, existingEntity);
+            var pending = outboxRepository.findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
+                    ontologyIRI, OutboxOperation.CREATE_GRAPH, OutboxStatus.DONE);
+            if (pending.isPresent()) {
+                Model initial = OutboxTriples.parse(pending.get().getInsertTriples());
+                try {
+                    enrichMetadataFromModel(model, existingEntity, initial);
+                } finally {
+                    initial.close();
+                }
+            } else {
+                enrichMetadataFromRDF(model, existingEntity);
+            }
             return model;
         }
 
-        // The ordinary create endpoint must claim the same unique slug before writing RDF too,
-        // otherwise a concurrent loser could overwrite or delete a create-with-concepts graph.
-        OntologyMetadataEntity metadataEntity;
-        try {
-            metadataEntity = createOntologyMetadata(ontologyIRI, userId);
-            ontologyMetadataRepository.flush();
-        } catch (Exception e) {
-            throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+        requireCreationOutbox();
+        if (ontologyMetadataOpt.isPresent()) {
+            throw new OntologyCreationConflictException("Slovník s tímto IRI nebo identifikátorem již existuje: " + ontologyIRI);
         }
-
-        registerNewGraphRollback(ontologyIRI);
+        Model graphModel = OntologyModelFactory.create(ontologyIRI, ontologyCreateModel);
         try {
-            createOFNBaseModel(ontologyIRI, ontologyCreateModel);
-        } catch (Exception e) {
-            throw new OntologyException("Nepodařilo se uložit RDF model: " + e.getMessage());
+            OntologyMetadataEntity metadataEntity;
+            try {
+                metadataEntity = createOntologyMetadata(ontologyIRI, userId);
+                ontologyMetadataRepository.flush();
+            } catch (Exception e) {
+                throw new OntologyException("Nepodařilo se uložit metadata slovníku: " + e.getMessage());
+            }
+            outboxWriter.enqueueCreateGraph(ontologyIRI, graphModel);
+            outboxRelayTrigger.nudgeAfterCommit();
+            OntologyMetadataModel result = ontologyMetadataMapper.toDto(metadataEntity);
+            enrichMetadataFromModel(result, metadataEntity, graphModel);
+            return result;
+        } finally {
+            graphModel.close();
         }
-        OntologyMetadataModel model = ontologyMetadataMapper.toDto(metadataEntity);
-        enrichMetadataFromRDF(model, metadataEntity);
-        return model;
     }
 
     @Override
@@ -196,9 +214,8 @@ public class OntologyServiceImpl implements OntologyService {
         if (userId == null || userId.isBlank()) throw new OntologyValidationException("ID uživatele je povinné.");
         String graph = generateOntologyIri(request.ontology().getNameModel(), request.ontology().getNamespace());
         if (!UtilityMethods.isValidIRI(graph)) throw new OntologyValidationException("Neplatné IRI slovníku: " + graph);
-        String slug = UtilityMethods.extractNameFromIRI(graph);
-        if (ontologyMetadataRepository.findByGraphName(graph).isPresent()
-                || ontologyMetadataRepository.findBySlug(slug).isPresent()) {
+        requireCreationOutbox();
+        if (findLocalCollision(graph).isPresent()) {
             throw new OntologyCreationConflictException("Slovník s tímto IRI nebo identifikátorem již existuje: " + graph);
         }
 
@@ -219,12 +236,7 @@ public class OntologyServiceImpl implements OntologyService {
                 resource.getModel().close();
                 creator.getOntModel().close();
             }
-            if (jenaTDB2Repository.graphHasData(graph)) {
-                throw new OntologyCreationConflictException("RDF graf slovníku již existuje: " + graph);
-            }
-
-            // Claim the unique ontology slug and flush all metadata BEFORE touching RDF.
-            // A concurrent request for the same IRI loses here without deleting the winner's graph.
+            // Metadata and the serialized graph task commit together. The unique slug arbitrates concurrent creates.
             OntologyMetadataEntity ontology;
             try {
                 ontology = createOntologyMetadata(graph, userId);
@@ -241,8 +253,8 @@ public class OntologyServiceImpl implements OntologyService {
             result.setPopis(extractMultilingualValue(vocabulary, DCTerms.description));
             result.setConceptCount(prepared.concepts().size());
 
-            registerNewGraphRollback(graph);
-            jenaTDB2Repository.saveOntologyModel(graph, graphModel);
+            outboxWriter.enqueueCreateGraph(graph, graphModel);
+            outboxRelayTrigger.nudgeAfterCommit();
             return new OntologyCreateWithConceptsResponseDto(result, prepared.conceptIris());
         } finally {
             graphModel.close();
@@ -253,41 +265,30 @@ public class OntologyServiceImpl implements OntologyService {
         Set<String> slugs = new HashSet<>();
         List<ConceptMetadataEntity> entities = new ArrayList<>();
         for (ConceptCreateModel concept : concepts) {
-            String baseSlug = ontology.getSlug() + "-" + UtilityMethods.extractNameFromIRI(concept.getIdentifier());
-            String slug = baseSlug;
-            int suffix = 1;
-            while (slugs.contains(slug) || conceptMetadataRepository.findBySlug(slug).isPresent()) slug = baseSlug + "-" + suffix++;
-            slugs.add(slug);
-            ConceptMetadataEntity entity = new ConceptMetadataEntity();
-            entity.setSlug(slug);
-            entity.setConceptName(concept.getNameModel().getName().get("cs"));
-            entity.setConceptType(concept.getConceptTypeEnum());
-            entity.setConceptIri(concept.getIdentifier());
-            entity.setGraphName(ontology.getGraphName());
-            entity.setUserId(userId);
-            entity.setIsPublished(false);
-            entity.setInTezaurus(concept.getInTezaurus());
-            entity.setOntologyMetadata(ontology);
+            ConceptMetadataEntity entity = ConceptMetadataFactory.create(concept, concept.getIdentifier(), userId,
+                    ontology, slug -> conceptMetadataRepository.findBySlug(slug).isPresent(), slugs);
             entities.add(entity);
         }
         conceptMetadataRepository.saveAll(entities);
     }
 
-    private void registerNewGraphRollback(String graph) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
-        // Includes a failure of the actual DB commit, after the service method has returned.
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCompletion(int status) {
-                if (status == STATUS_ROLLED_BACK) {
-                    try {
-                        jenaTDB2Repository.deleteGraph(graph);
-                    } catch (RuntimeException e) {
-                        log.error("Failed to clean up RDF graph after vocabulary creation rolled back: {}", graph, e);
-                    }
-                }
-            }
-        });
+    private void requireCreationOutbox() {
+        if (!outboxConfig.isEnabled()) {
+            throw new OntologyException("Vytvoření slovníku vyžaduje zapnutý outbox (outbox.enabled=true).");
+        }
+    }
+
+    // Direct PUT/rename/delete cannot race a retry of the initial PUT, including after a restart
+    // with outbox disabled. Seeing DONE means the relay's transaction and its row lock completed.
+    private void requireInitialGraphApplied(String graph) {
+        if (outboxRepository.existsEarlierUnappliedCreateGraph(graph, Long.MAX_VALUE)) {
+            throw new OntologyCreationConflictException("Počáteční zápis slovníku ještě nebyl dokončen: " + graph);
+        }
+    }
+
+    private Optional<OntologyMetadataEntity> findLocalCollision(String graph) {
+        return ontologyMetadataRepository.findByGraphName(graph)
+                .or(() -> ontologyMetadataRepository.findBySlug(UtilityMethods.extractNameFromIRI(graph)));
     }
 
     @Override
@@ -514,7 +515,7 @@ public class OntologyServiceImpl implements OntologyService {
         validateOntologyName(request.nameModel());
         String iri = generateOntologyIri(request.nameModel(), request.namespace());
         boolean valid = UtilityMethods.isValidIRI(iri);
-        boolean available = valid && ontologyMetadataRepository.findByGraphName(iri).isEmpty();
+        boolean available = valid && findLocalCollision(iri).isEmpty();
         return new OntologyIriCheckResponseDto(iri, valid, available);
     }
 
@@ -553,10 +554,6 @@ public class OntologyServiceImpl implements OntologyService {
         return value == null || value.trim().isEmpty();
     }
 
-    private void createOFNBaseModel(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
-        jenaTDB2Repository.saveOntologyModel(ontologyIRI, OntologyModelFactory.create(ontologyIRI, ontologyCreateModel));
-    }
-
     private OntologyMetadataEntity createOntologyMetadata(String ontologyIRI, String userId) {
         OntologyMetadataEntity metadataEntity = new OntologyMetadataEntity();
         String slug = UtilityMethods.extractNameFromIRI(ontologyIRI);
@@ -578,6 +575,7 @@ public class OntologyServiceImpl implements OntologyService {
         }
         OntologyMetadataEntity metadataEntity = fetchOntologyMetadata(id);
         String oldOntologyIRI = metadataEntity.getGraphName();
+        requireInitialGraphApplied(oldOntologyIRI);
         Model model = fetchOntologyModel(oldOntologyIRI);
 
         String oldNamespace = UtilityMethods.ensureNamespaceEndsWithDelimiter(oldOntologyIRI);
@@ -783,6 +781,7 @@ public class OntologyServiceImpl implements OntologyService {
     private OntologyMetadataEntity handleOntologyIRIChange(String oldOntologyIRI, String newOntologyIRI,
                                                            Model model, OntologyMetadataEntity metadataEntity)
             throws OntologyException {
+        requireInitialGraphApplied(newOntologyIRI);
         log.info("Starting ontology IRI change: {} -> {}", oldOntologyIRI, newOntologyIRI);
 
         try {

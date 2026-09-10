@@ -70,6 +70,22 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
     }
 
     @Test
+    void initialGraphBarrierIncludesFailedButExcludesDoneAndOtherGraphs() {
+        var create = pending("https://g", "https://g", 10L);
+        create.setOperation(OutboxOperation.CREATE_GRAPH);
+        repository.saveAndFlush(create);
+        assertThat(repository.existsEarlierUnappliedCreateGraph("https://g", 10L)).isFalse();
+        assertThat(repository.existsEarlierUnappliedCreateGraph("https://g", 11L)).isTrue();
+        assertThat(repository.existsEarlierUnappliedCreateGraph("https://other", 11L)).isFalse();
+        create.setStatus(OutboxStatus.FAILED);
+        repository.saveAndFlush(create);
+        assertThat(repository.existsEarlierUnappliedCreateGraph("https://g", 11L)).isTrue();
+        create.setStatus(OutboxStatus.DONE);
+        repository.saveAndFlush(create);
+        assertThat(repository.existsEarlierUnappliedCreateGraph("https://g", 11L)).isFalse();
+    }
+
+    @Test
     void barrierAndOrderingHelpers() {
         repository.save(pending("https://x/pojem/a", "https://g", 10L));
         repository.save(pending("https://x/pojem/a", "https://g", 11L));

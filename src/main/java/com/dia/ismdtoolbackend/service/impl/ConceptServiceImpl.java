@@ -34,6 +34,9 @@ import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
+import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
@@ -90,6 +93,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
+    private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final NkdSnapshotService nkdSnapshotService;
     private final NkdLinkDetector nkdLinkDetector;
@@ -126,6 +130,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptMetadataMapper.toDto(savedEntity);
         }
 
+        requireInitialGraphApplied(ontologyGraphName);
         saveConceptToTDB2(conceptResource, ontologyGraphName);
         return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
     }
@@ -146,6 +151,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         String graphName = conceptMetadataOpt.get().getGraphName();
+        requireInitialGraphApplied(graphName);
         String conceptUri = conceptMetadataOpt.get().getConceptIri();
 
         if (!jenaTDB2Repository.graphHasData(graphName)) {
@@ -210,6 +216,7 @@ public class ConceptServiceImpl implements ConceptService {
         // window in which a concurrent edit could enqueue an out-of-order same-aggregate outbox row.
         ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
         String graphName = metadata.getGraphName();
+        requireInitialGraphApplied(graphName);
 
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
@@ -644,27 +651,14 @@ public class ConceptServiceImpl implements ConceptService {
                     return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
                 });
 
-        String baseSlug = UtilityMethods.extractNameFromIRI(ontologyGraphName) + "-" + UtilityMethods.extractNameFromIRI(conceptIri);
-        String slug = baseSlug;
-        int counter = 1;
+        return ConceptMetadataFactory.create(createModel, conceptIri, userId, ontologyMetadata,
+                slug -> conceptMetadataRepository.findBySlug(slug).isPresent(), new HashSet<>());
+    }
 
-        while (conceptMetadataRepository.findBySlug(slug).isPresent()) {
-            slug = baseSlug + "-" + counter;
-            counter++;
+    private void requireInitialGraphApplied(String graph) {
+        if (outboxRepository.existsEarlierUnappliedCreateGraph(graph, Long.MAX_VALUE)) {
+            throw new OntologyCreationConflictException("Počáteční zápis slovníku ještě nebyl dokončen: " + graph);
         }
-
-        ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setSlug(slug);
-        entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
-        entity.setConceptType(createModel.getConceptTypeEnum());
-        entity.setConceptIri(conceptIri);
-        entity.setGraphName(createModel.getOntologyGraphName());
-        entity.setUserId(userId);
-        entity.setIsPublished(false);
-        entity.setInTezaurus(createModel.getInTezaurus());
-        entity.setOntologyMetadata(ontologyMetadata);
-
-        return entity;
     }
 
     private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {
@@ -850,7 +844,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
-            metadata.setConceptName(getNameForMetadata(conceptEditModel.getNameModel()));
+            metadata.setConceptName(ConceptMetadataFactory.nameForMetadata(conceptEditModel.getNameModel()));
         }
 
         if (conceptEditModel.getInTezaurus() != null) {
@@ -943,17 +937,6 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
-    }
-
-    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey("cs")) {
-            return names.get("cs");
-        }
-        return names.values().iterator().next();
     }
 
     /**

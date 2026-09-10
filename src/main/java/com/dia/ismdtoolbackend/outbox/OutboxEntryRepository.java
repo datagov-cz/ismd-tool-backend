@@ -58,6 +58,17 @@ public interface OutboxEntryRepository extends JpaRepository<OutboxEntry, Long> 
             """)
     boolean existsEarlierUnappliedForAggregate(@Param("aggregateIri") String aggregateIri, @Param("seq") long seq);
 
+    /** Includes FAILED and rows currently claimed by another transaction. */
+    @Query("""
+            SELECT COUNT(e) > 0 FROM OutboxEntry e
+            WHERE e.graphName = :graphName AND e.operation = com.dia.ismdtoolbackend.outbox.OutboxOperation.CREATE_GRAPH
+              AND e.status <> com.dia.ismdtoolbackend.outbox.OutboxStatus.DONE AND e.seq < :seq
+            """)
+    boolean existsEarlierUnappliedCreateGraph(@Param("graphName") String graphName, @Param("seq") long seq);
+
+    java.util.Optional<OutboxEntry> findFirstByGraphNameAndOperationAndStatusNotOrderBySeqAsc(
+            String graphName, OutboxOperation operation, OutboxStatus status);
+
     /**
      * Next value of the {@code outbox_seq} sequence — the monotonic per-row ordering key, assigned
      * by {@link OutboxWriter} at enqueue time (decoupled from the PK). Runs in the caller's

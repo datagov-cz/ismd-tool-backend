@@ -178,7 +178,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         @Bean ConceptServiceImpl conceptServiceImpl(
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
-                OutboxConfig outboxConfig, OutboxWriter writer, OutboxRelayTrigger trigger,
+                OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
                 MetadataTouchService touchService) {
             return new ConceptServiceImpl(
                     conceptRepo, ontologyRepo, touchService, mapper,
@@ -189,7 +189,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     mock(ConceptDeviationComparator.class),
                     mock(RppSnapshotHolder.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, trigger,
+                    outboxConfig, writer, outboxRepository, trigger,
                     // No external NKD links in this flow's test data → real detector returns empty and the
                     // mocked snapshot service is never called; reconcileNkdLinks is a no-op here.
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
