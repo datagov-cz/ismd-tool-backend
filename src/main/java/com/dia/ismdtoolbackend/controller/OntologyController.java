@@ -9,8 +9,10 @@ import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
+import com.dia.ismdtoolbackend.exception.OntologyDownloadBlockedException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
@@ -171,7 +173,9 @@ public class OntologyController {
 
     @Operation(
             summary = "Stažení slovníku",
-            description = "Umožňuje stáhnout slovník v požadovaném formátu (TTL, JSON-LD). Pokud je povoleno omezení stahování slovníků s chybami, slovníky s validačními chybami nelze stáhnout. Veřejný endpoint."
+            description = "Umožňuje stáhnout slovník v požadovaném formátu (TTL, JSON-LD). Pokud je povoleno omezení stahování slovníků s chybami, "
+                    + "slovníky s validačními chybami nelze stáhnout a endpoint vrací 400 s kódem ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION "
+                    + "a seznamem blokujících chyb. Veřejný endpoint."
     )
     @GetMapping("/{ontologyId}/download")
     public ResponseEntity<Resource> downloadFile(
@@ -187,9 +191,21 @@ public class OntologyController {
         }
 
         if (!validationConfig.isEnableOntologyViolationDownload()) {
-            ValidationReportDto validationReport = validationService.getValidationReport(ontologyService.getOntologyMetadata(ontologyId));
-            if (validationReport != null && validationReport.getResults().stream().anyMatch(ValidationResult::isError)) {
-                return ResponseEntity.badRequest().build();
+            OntologyMetadataModel metadata = ontologyService.getOntologyMetadata(ontologyId);
+            ValidationReportDto validationReport = validationService.getValidationReport(metadata);
+            if (validationReport != null) {
+                List<ValidationResult> errors = validationReport.getResults().stream()
+                        .filter(ValidationResult::isError)
+                        .toList();
+                if (!errors.isEmpty()) {
+                    throw new OntologyDownloadBlockedException(
+                            metadata.getGraphName(),
+                            errors.size(),
+                            errors.stream()
+                                    .limit(OntologyDownloadBlockedException.MAX_LISTED_ERRORS)
+                                    .map(OntologyController::toErrorSummary)
+                                    .toList());
+                }
             }
         }
 
@@ -333,6 +349,15 @@ public class OntologyController {
         });
 
         return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecord, "Žádost o katalogizační záznam proběhla úspěšně."));
+    }
+
+    private static ValidationErrorSummaryDto toErrorSummary(ValidationResult result) {
+        return new ValidationErrorSummaryDto(
+                result.ruleName(),
+                result.message(),
+                result.focusNodeUri(),
+                result.getFocusNodeName(),
+                result.resultPathUri());
     }
 
     private String getFileExtension(String format) {

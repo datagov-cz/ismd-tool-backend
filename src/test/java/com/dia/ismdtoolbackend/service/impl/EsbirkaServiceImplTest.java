@@ -7,10 +7,12 @@ import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -38,12 +40,12 @@ class EsbirkaServiceImplTest {
 
     private EsbirkaServiceImpl service;
 
-    @org.junit.jupiter.api.BeforeEach
-    void buildService() {
+    @BeforeEach
+    void setUp() {
         // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
-        // the one-arg delegation without the caching layer.
+        // the same delegation path without a Spring context.
         service = new EsbirkaServiceImpl(client, null, null);
-        org.springframework.test.util.ReflectionTestUtils.setField(service, "self", service);
+        ReflectionTestUtils.setField(service, "self", service);
     }
 
     // -------- searchLaws --------
@@ -481,6 +483,46 @@ class EsbirkaServiceImplTest {
         assertEquals(2, out.getVersions().size());
         assertEquals(1, out.getFragments().size());
         assertEquals("<var>§ 1</var>", out.getFragments().get(0).getBodyHtml());
+    }
+
+    @Test
+    void contentNavigationTreeIsFullyLabelled() {
+        // The navigation tree is built from /law/content, not /law/fragments. This walks the
+        // real 49/1997 shape through getLawContent to prove the labels reach that response:
+        // the document root and its containers used to render blank, taking the top two
+        // navigation levels with them.
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
+        String dokument = VERSION_IRI + "/dokument";
+        String norma = dokument + "/norma";
+        String cast = norma + "/cast_1";
+        String par = cast + "/par_1";
+        String textBlock = par + "/frag_3304837";
+        when(client.fetchVersionContent(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(dokument, null, null, "dokument", "0001", null),
+                new FragmentModel(norma, dokument, null, "norma", "0002", null),
+                new FragmentModel(dokument + "/prefix", dokument, null, "prefix", "0003", null),
+                new FragmentModel(cast, norma, "Část 1", "cast", "0004", null),
+                new FragmentModel(par, cast, "§ 1", "par", "0005", null),
+                new FragmentModel(textBlock, par, null, "frag", "0006", "<p>text</p>")));
+
+        com.dia.ismdtoolbackend.controller.dto.LawContentDto out = service.getLawContent("49/1997");
+
+        FragmentDto root = out.getFragments().get(0);
+        assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
+        assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
+        assertEquals("Úvodní ustanovení", root.getChildren().get(1).getCitation());
+
+        // The unnumbered text block stays in the body but is flagged out of the navigation,
+        // rather than surfacing its internal id as "§ 1 frag 3304837".
+        FragmentDto leaf = root.getChildren().get(0).getChildren().get(0)
+                .getChildren().get(0).getChildren().get(0);
+        assertNull(leaf.getCitation());
+        assertFalse(leaf.isNavigable());
+        assertTrue(out.getBodyHtml().contains("<p>text</p>"),
+                "a non-navigable node must still contribute its text to the rendered body");
     }
 
     @Test

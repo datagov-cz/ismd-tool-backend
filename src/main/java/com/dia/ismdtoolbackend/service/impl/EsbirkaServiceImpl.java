@@ -305,8 +305,13 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      * the latest version (má-poslední-znění). A supplied IRI is accepted only when it appears
      * in the resolved law's own version list.
      *
-     * <p>Cached by normalized {@code number/year} plus the selected version, so each znění
-     * gets its own entry.
+     * <p>The returned {@link LawContentDto} carries the law/version header and the full version
+     * list (for an FE switcher) alongside the fragment tree, whose nodes each carry their
+     * rendered HTML body for in-document browsing.
+     *
+     * <p>Cached by normalized {@code number/year} plus the selected version, so each znění gets
+     * its own entry — both the resolution and the (~2 MB) content payload are expensive, and a
+     * published version's text is immutable.
      */
     @Override
     @Cacheable(cacheNames = "esbirkaLawContent",
@@ -375,9 +380,14 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Assemble the whole-version HTML body from the fragment tree: each fragment becomes a
-     * {@code <section>} carrying its ELI path, IRI and kind as data attributes, with its own
-     * {@code bodyHtml} (null for structural fragments) ahead of its children.
+     * Assemble the whole-version HTML body server-side from the fragment tree.
+     *
+     * <p>Each fragment is wrapped in a {@code <section>} carrying its ELI path, full IRI and kind
+     * as data attributes ({@code data-eli} path + {@code data-iri} full IRI — FE hooks for
+     * deep-linking / navigation / styling); the fragment's own {@code bodyHtml}
+     * (null for structural fragments) precedes its children, so the output is a nested,
+     * document-ordered tree. Order is the tree's order — the server-side {@code ORDER BY ?order}
+     * preserved by {@link #assembleTree}.
      */
     private static String renderBodyHtml(List<FragmentDto> roots) {
         StringBuilder sb = new StringBuilder();
@@ -409,8 +419,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Latest version = the one flagged via má-poslední-znění, falling back to the first row
-     * (fetchVersions orders newest-first by účinnost-znění-od) when no row is flagged.
+     * Latest version = the one flagged via má-poslední-znění. Falls back to the first row
+     * (fetchVersions orders newest-first by účinnost-znění-od) when no row is flagged —
+     * defensive against upstream data without the flag.
      */
     private static LawVersionDto pickLatest(List<LawVersionDto> versions) {
         if (versions.isEmpty()) {
@@ -480,8 +491,10 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Tree assembly. A fragment is a root when its parent is a structural document container
-     * ({@code <versionIri>/dokument/<container>}); multiple roots are supported.
+     * Tree assembly. A fragment is a <em>root</em> when its parent is a structural document
+     * container — {@code <versionIri>/dokument/<container>} for any container (norma = the
+     * body, poznamkypodcarou = footnotes, prilohy = annexes, …); roots are detected
+     * structurally. Multi-root is supported.
      *
      * <p>{@code lawCitation}, when present, labels the otherwise-blank {@code dokument} root.
      */

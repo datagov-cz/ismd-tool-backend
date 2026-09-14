@@ -28,7 +28,7 @@ public class LawContentDto {
     /** Official citation of the law, e.g. "49/1997 Sb." */
     private String citace;
 
-    /** IRI of the version whose content is in {@link #fragments} (the latest version). */
+    /** IRI of the version whose content is in {@link #fragments}. */
     private String versionIri;
 
     /** ELI path of that version, e.g. /eli/cz/sb/1997/49/2025-11-01 */

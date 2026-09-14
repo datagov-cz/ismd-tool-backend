@@ -30,10 +30,13 @@ public class EsbirkaSPARQLQuery {
 
     /**
      * Search laws by citation substring (server-side CONTAINS on citace-právního-aktu).
-     * Blank q omits the FILTER and orders rok desc, číslo asc.
+     * citace is ASCII-only so plain LCASE works. Blank q omits the FILTER and orders
+     * rok desc, číslo asc.
      *
      * <p>With q, rows are ranked by where the needle matched: 0 = číslo equals it,
-     * 1 = citace starts with it, 2 = anything else; then rok desc, citace.
+     * 1 = citace starts with it, 2 = anything else; then rok desc, citace. Ordering by citace
+     * alone sorted lexicographically, so "49" put 1/1949 and 10/1949 ahead of 49/1997 — the
+     * act the user asked for ranked below every unrelated act of that year.
      */
     public static String buildLawSearchQuery(String q, int limit) {
         boolean hasFilter = q != null && !q.isBlank();

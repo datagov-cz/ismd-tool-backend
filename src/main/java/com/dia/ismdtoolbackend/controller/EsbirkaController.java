@@ -127,10 +127,12 @@ public class EsbirkaController {
     @Operation(
             summary = "Celé znění právního aktu podle reference číslo/rok",
             description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\") a vrací celé " +
-                    "znění daného aktu: hlavičku, seznam všech znění (pro přepínač) a strom fragmentů, " +
-                    "kde každý uzel nese své HTML tělo. Bez parametru \"versionIri\" se vrací poslední " +
-                    "znění; s ním zvolené znění (IRI musí patřit k danému aktu, jinak 400). " +
-                    "Pro částečný vstup (např. \"49\") použijte /law/search."
+                    "znění daného aktu: hlavičku (IRI aktu, citace, znění, datum účinnosti), seznam " +
+                    "všech znění (pro přepínač) a strom fragmentů, kde každý uzel nese své HTML " +
+                    "\"obsah\" tělo pro interaktivní procházení a výběr sekcí. Bez parametru " +
+                    "\"versionIri\" se vrací poslední znění; s ním zvolené znění (IRI musí patřit " +
+                    "k danému aktu, jinak 400). Pro částečný vstup (např. \"49\") použijte " +
+                    "/law/search. Výsledek je cachován (znění je neměnné)."
     )
     @GetMapping("/law/content")
     public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(
