@@ -125,14 +125,16 @@ public class EsbirkaController {
     }
 
     @Operation(
-            summary = "Celé znění právního aktu podle reference číslo/rok",
-            description = "Přijímá referenci ve tvaru \"číslo/rok\" (např. \"49/1997\") a vrací celé " +
-                    "znění daného aktu: hlavičku (IRI aktu, citace, znění, datum účinnosti), seznam " +
-                    "všech znění (pro přepínač) a strom fragmentů, kde každý uzel nese své HTML " +
-                    "\"obsah\" tělo pro interaktivní procházení a výběr sekcí. Bez parametru " +
-                    "\"versionIri\" se vrací poslední znění; s ním zvolené znění (IRI musí patřit " +
-                    "k danému aktu, jinak 400). Pro částečný vstup (např. \"49\") použijte " +
-                    "/law/search. Výsledek je cachován (znění je neměnné)."
+            summary = "Celé znění právního aktu podle reference číslo/rok nebo ELI IRI",
+            description = "Parametr \"law\" přijímá referenci ve tvaru \"číslo/rok\" (např. " +
+                    "\"49/1997\") nebo ELI IRI aktu, znění či fragmentu. Vrací celé znění daného " +
+                    "aktu: hlavičku (IRI aktu, citace, znění, datum účinnosti), seznam všech znění " +
+                    "(pro přepínač) a strom fragmentů, kde každý uzel nese své HTML \"obsah\" tělo " +
+                    "pro interaktivní procházení a výběr sekcí. IRI znění (nebo fragmentu) volí " +
+                    "zároveň znění, takže IRI z /law/versions nebo /resolve stačí předat samotné; " +
+                    "explicitní \"versionIri\" má přednost. Bez volby se vrací poslední znění; " +
+                    "zvolené znění musí patřit k danému aktu, jinak 400. Pro částečný vstup " +
+                    "(např. \"49\") použijte /law/search. Výsledek je cachován (znění je neměnné)."
     )
     @GetMapping("/law/content")
     public ResponseEntity<ApiResponseDto<LawContentDto>> getLawContent(

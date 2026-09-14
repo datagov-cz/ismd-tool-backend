@@ -50,6 +50,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     /** Infix of a version's structural document containers, {@code <versionIri>/dokument/<container>}. */
     private static final String DOKUMENT_INFIX = "/dokument/";
 
+    /** Cheap tell that a law reference is an IRI rather than a číslo/rok, before full parsing. */
+    private static final String ELI_MARKER = "/eli/";
+
     /** Kind of the document root, the single parentless node of a version's fragment tree. */
     private static final String DOKUMENT_KIND = "dokument";
 
@@ -305,6 +308,11 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      * the latest version (má-poslední-znění). A supplied IRI is accepted only when it appears
      * in the resolved law's own version list.
      *
+     * <p>{@code lawRef} accepts either a {@code číslo/rok} reference or a law/version/fragment
+     * ELI IRI. An IRI at version level or below also supplies the znění, so callers holding an
+     * IRI from {@code /law/versions}, {@code /resolve} or a stored legal source can pass it
+     * alone; an explicit {@code versionIri} still wins over the one carried by the IRI.
+     *
      * <p>The returned {@link LawContentDto} carries the law/version header and the full version
      * list (for an FE switcher) alongside the fragment tree, whose nodes each carry their
      * rendered HTML body for in-document browsing.
@@ -316,9 +324,10 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     @Override
     @Cacheable(cacheNames = "esbirkaLawContent",
             key = "#root.target.normalizeLawRef(#lawRef) + '@' "
-                    + "+ (#versionIri == null ? '' : #root.target.canonicalizeEsbirkaIri(#versionIri))")
+                    + "+ #root.target.resolveContentVersionIri(#lawRef, #versionIri)")
     public LawContentDto getLawContent(String lawRef, String versionIri) {
         NumberYear ny = parseNumberYear(lawRef);
+        String effectiveVersionIri = resolveContentVersionIri(lawRef, versionIri);
 
         LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -327,7 +336,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         // Through the proxy so the esbirkaLawVersions cache is used across the N content-cache
         // misses of a user stepping through one law's znění.
         List<LawVersionDto> versionDtos = self.getVersions(law.getIri());
-        LawVersionDto selected = selectVersion(versionDtos, versionIri, ny);
+        LawVersionDto selected = selectVersion(versionDtos, effectiveVersionIri, ny);
 
         String selectedIri = selected.getIri();
         List<FragmentModel> rows = client.fetchVersionContent(selectedIri);
@@ -436,13 +445,23 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Parse a "number/year" reference into its parts, tolerating surrounding whitespace and a
-     * trailing " Sb.". Partial input (e.g. "49") is rejected; callers use /law/search for that.
+     * Parse a law reference into its parts, accepting either a "number/year" reference
+     * (tolerating surrounding whitespace and a trailing " Sb.") or an e-Sbírka ELI IRI at law,
+     * version or fragment level. Partial input (e.g. "49") is rejected; callers use /law/search
+     * for that.
+     *
+     * <p>An IRI is delegated to {@link EsbirkaEliParser}, not split here: its path is
+     * {@code .../{rok}/{číslo}/...} — year before number, the reverse of the human reference —
+     * and it carries legacy hosts that need canonicalizing first.
      */
     static NumberYear parseNumberYear(String lawRef) {
         if (lawRef == null || lawRef.isBlank()) {
             throw new IllegalArgumentException(
                     "Zadejte referenci právního aktu ve tvaru číslo/rok (např. 49/1997).");
+        }
+        NumberYear fromIri = numberYearFromIri(lawRef);
+        if (fromIri != null) {
+            return fromIri;
         }
         String cleaned = lawRef.trim();
         int sb = cleaned.indexOf(" Sb");
@@ -471,9 +490,50 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
+     * The číslo/rok of an e-Sbírka ELI IRI, or null when {@code lawRef} is not one — including
+     * an IRI-shaped string the parser rejects, which falls through to the číslo/rok parse and
+     * its message rather than being reported as a bad IRI.
+     */
+    private static NumberYear numberYearFromIri(String lawRef) {
+        String trimmed = lawRef.trim();
+        if (!trimmed.contains(ELI_MARKER)) {
+            return null;
+        }
+        ParsedEli parsed = EsbirkaEliParser.parse(trimmed);
+        if (parsed.level() == null || parsed.lawNumber() == null || parsed.lawYear() == null) {
+            return null;
+        }
+        return new NumberYear(parsed.lawNumber(), parsed.lawYear());
+    }
+
+    /**
+     * The znění to render: an explicit {@code versionIri} wins, else the one carried by
+     * {@code lawRef} when it is a version- or fragment-level IRI, else null for "latest".
+     *
+     * <p>A fragment IRI yields its parent version — the content payload is whole-version, and
+     * the fragment is addressable within the returned tree.
+     *
+     * <p>Called reflectively by the {@code @Cacheable} SpEL key on {@link #getLawContent} so
+     * that a version IRI passed as {@code lawRef} keys its own entry instead of colliding with
+     * the law's latest znění; it must stay {@code public}, and returns "" rather than null
+     * because the key concatenates it.
+     */
+    public String resolveContentVersionIri(String lawRef, String versionIri) {
+        if (versionIri != null && !versionIri.isBlank()) {
+            return canonicalizeEsbirkaIri(versionIri);
+        }
+        if (lawRef == null || !lawRef.contains(ELI_MARKER)) {
+            return "";
+        }
+        ParsedEli parsed = EsbirkaEliParser.parse(lawRef.trim());
+        return parsed.versionIri() == null ? "" : parsed.versionIri();
+    }
+
+    /**
      * Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a
-     * cache entry. Called reflectively by the {@code @Cacheable} SpEL key on
-     * {@link #getLawContent}, so it must stay {@code public} despite having no Java caller.
+     * cache entry — an IRI and the číslo/rok it denotes collapse to the same key. Called
+     * reflectively by the {@code @Cacheable} SpEL key on {@link #getLawContent}, so it must
+     * stay {@code public} despite having no Java caller.
      */
     public String normalizeLawRef(String lawRef) {
         NumberYear ny = parseNumberYear(lawRef);
@@ -549,18 +609,26 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     /**
      * Flag the nodes that carry no navigable label.
+     *
+     * <p>Resolved bottom-up: an unnumbered {@code frag} is non-navigable when it has no
+     * navigable descendant either. Judging it on childlessness alone left wrappers whose every
+     * child is itself non-navigable — they carry no citation and no body of their own, so they
+     * render as a blank navigation row that expands to nothing.
+     *
+     * @return whether {@code nodes} contains anything navigable, directly or deeper
      */
-    private static void markNavigable(List<FragmentDto> nodes) {
+    private static boolean markNavigable(List<FragmentDto> nodes) {
+        boolean anyNavigable = false;
         for (FragmentDto n : nodes) {
-            boolean textOnly = FRAG_KIND.equals(n.getKind()) && n.getChildren().isEmpty();
+            boolean navigableBelow = markNavigable(n.getChildren());
+            boolean textOnly = FRAG_KIND.equals(n.getKind()) && !navigableBelow;
             n.setNavigable(!textOnly);
             if (textOnly) {
                 n.setCitation(null);
             }
-            if (!n.getChildren().isEmpty()) {
-                markNavigable(n.getChildren());
-            }
+            anyNavigable |= !textOnly;
         }
+        return anyNavigable;
     }
 
     /**
