@@ -22,43 +22,61 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Renders a canvas's edges and property rows, driven by <b>membership</b>: the traversal walks the placed
- * rows and asks {@code live ⊕ overlay} only for what a row cannot say about itself. Every element type — node,
- * VZTAH edge, hierarchy or equivalence edge, property row — answers the same three questions in the same
- * order: is it placed, are its endpoints on the canvas, and what is its {@link Backing}?
+ * Resolves a canvas's edges and property rows: membership says what exists, and live RDF ⊕ overlay
+ * supplies the content a row cannot carry for itself. This is the same contract node rows already
+ * follow — a {@code diagram_nodes} row puts the class on the canvas, and its label, type and
+ * {@link Backing} are read from the graph so the diagram tables never store concept content.
  *
- * <p><b>Membership decides existence; RDF never does.</b> A {@code diagram_edges} row means the user put that
- * edge on the canvas, and an edge the graph could support but no row names is deliberately off it, waiting in
- * the sidebar like an unplaced class. The traversal used to run the other way — iterate the graph, keep what
- * happened to be placed — which silently coupled the two: an element existed on the canvas only while its RDF
- * did, so a concept deleted elsewhere took the element with it, unannounced.
+ * <p><b>Membership decides existence; RDF and overlays only decorate.</b> A {@code diagram_edges} row
+ * means the user put that edge on the canvas, and it renders as long as both endpoints are there. The
+ * traversal used to run the other way — iterate the graph, keep what happened to be placed — which
+ * coupled the two: an element existed only while its RDF did, so a concept deleted elsewhere took the
+ * element with it, unannounced. Driving from the rows is what lets a deleted element still render,
+ * flagged.
+ *
+ * <p>Edges reached that conclusion later than nodes did, and for a while kept two gates that let
+ * content decide existence: a row was dropped when an overlay on its source did not name its target,
+ * and again when nothing asserted the triple. Both are gone. The first discarded hierarchy edges that
+ * RDF fully asserted, because it ran before the live targets were read; the second meant a freshly
+ * drawn edge never rendered until something else asserted it. Removal reaches us as the row's
+ * omission from {@code edges[]} — the same client state change that stages the removal overlay — so
+ * membership already expresses it and read-time suppression bought nothing. See
+ * {@code .planning/diagram-hierarchy-edge-projection-FINDINGS.md}.
  *
  * <p><b>Divergence is shown, not resolved.</b> A placed element whose backing concept was deleted keeps
- * rendering with {@code stale} set, because that deletion came from outside and the user must not lose work
- * without being told. A change the user staged on this canvas is the opposite case and applies at once: an
- * overlay that drops a hierarchy target un-draws that edge immediately, since removing it is what they asked
- * for. Only materialization treats a divergence as a conflict.
+ * rendering with {@code stale} set, because that deletion came from outside and the user must not lose
+ * work without being told. {@code pending} reports the other direction — staged on this canvas but not
+ * yet asserted — and likewise only annotates. Only materialization treats a divergence as a conflict.
  *
- * <p>Endpoints and kind are still derived rather than trusted from storage, so they cannot contradict RDF.
- * A triple edge's row key already encodes them; a VZTAH's does not, and falls back to the row's tombstone
- * only once its concept is gone — never while it is live.
+ * <p>Those two do not cover a third case: a placed triple edge that nothing asserts and nothing stages.
+ * It arises when an edge is drawn without staging the RDF, and when the triple is deleted underneath
+ * the canvas by an edit elsewhere — the concept survives, so {@code stale} stays false, and nothing is
+ * staged, so {@code pending} stays false. Reporting it needs its own flag, {@code asserted}, because
+ * suppressing the row instead is precisely the {@code ORPHANED_ROW} mistake above. A hierarchy
+ * destroyed by a bad overlay used to render identically to an intact one; see
+ * {@code .planning/diagram-hierarchy-edge-projection-FINDINGS.md}.
+ *
+ * <p>Endpoints and kind are still derived rather than trusted from storage, so they cannot contradict
+ * RDF. A triple edge's row key already encodes them; a VZTAH's does not, and falls back to the row's
+ * tombstone only once its concept is gone — never while it is live.
  *
  * <p>Three kinds are rendered:
  * <ul>
  *   <li>{@code VZTAH} — one edge per relationship concept, from its {@code rdfs:domain} class to its
  *       {@code rdfs:range} class, carrying the concept's own identity. The relationship is the edge, not a
- *       node with an edge to each endpoint.</li>
+ *       node with an edge to each endpoint. Its endpoints are genuinely derived: they live on the
+ *       concept and move when an overlay repoints it.</li>
  *   <li>{@code SUBCLASS_OF} and {@code EXACT_MATCH} — bare triples between two classes, no backing
  *       concept.</li>
  * </ul>
  *
- * <p>VLASTNOSTi are not projected: a property renders as a row inside its domain class (see
- * {@link #propertyRows}). Sub-property and sub-relation hierarchy is not projected either, neither endpoint
+ * <p>VLASTNOSTi are not edges: a property renders as a row inside its domain class (see
+ * {@link #propertyRows}). Sub-property and sub-relation hierarchy is not rendered either, neither endpoint
  * being a node. Every edge is asserted from a concept this ontology owns — a foreign node may be an edge's
  * target, never its source. See {@code .planning/diagram-edge-model-REDESIGN.md}.
  */
 @Slf4j
-class EdgeProjector {
+class DiagramContentResolver {
 
     /** Marks a composite edge id, distinguishing it from a VZTAH's concept IRI. */
     static final String COMPOSITE_ID_PREFIX = "edge|";
@@ -71,8 +89,8 @@ class EdgeProjector {
     /** Foreign node IRIs: valid edge targets, never edge sources. */
     private final Set<String> foreignIris;
     /**
-     * The projected edge ids the user has placed on this canvas. Projection decides an edge's endpoints and
-     * kind; this decides whether it is drawn at all.
+     * The edge ids the user has placed on this canvas — the sole authority on which edges are drawn.
+     * Resolution supplies an edge's endpoints, kind and flags; it never removes one.
      */
     private final Set<String> onCanvasEdges;
     /** The one verdict source: is a placed element's backing concept live, deleted or unreadable? */
@@ -86,10 +104,10 @@ class EdgeProjector {
      */
     private Set<String> onCanvasMemo;
 
-    EdgeProjector(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints,
-                  Map<String, DiagramPendingEdit> overlays, Set<String> foreignIris,
-                  Set<String> onCanvasEdges, BackingResolver backing,
-                  Map<String, String[]> tombstones) {
+    DiagramContentResolver(DiagramMapper mapper, Map<String, List<EdgeWaypoint>> waypoints,
+                           Map<String, DiagramPendingEdit> overlays, Set<String> foreignIris,
+                           Set<String> onCanvasEdges, BackingResolver backing,
+                           Map<String, String[]> tombstones) {
         this.mapper = mapper;
         this.waypoints = waypoints != null ? waypoints : Map.of();
         this.overlays = overlays != null ? overlays : Map.of();
@@ -132,12 +150,13 @@ class EdgeProjector {
 
     /**
      * One placed hierarchy or equivalence edge. Kind and both endpoints come from the row's own key, so the
-     * edge survives its target's deletion; RDF is consulted only to say whether the triple is still asserted
-     * ({@code pending}) and whether the target concept is still there ({@code stale}).
+     * edge survives its target's deletion; RDF and the overlay are consulted only to annotate it — whether
+     * the triple is in RDF ({@code asserted}), whether an overlay will write it ({@code pending}), and
+     * whether the target concept is still there ({@code stale}).
      *
-     * <p>A staged removal is the one case where an overlay un-draws an edge, and legitimately so: the user
-     * asked for it on this canvas, so the canvas reflects it at once. That is the opposite of an external
-     * deletion, which the user did not ask for and must not lose silently.
+     * <p>The row alone decides that the edge is drawn. Neither a missing assertion nor an overlay that omits
+     * this target suppresses it: removal arrives as the row's omission from {@code edges[]}, which
+     * {@code reconcileEdges} already honours, so there is nothing left for a read-time gate to do.
      */
     private DiagramDto.Edge tripleEdge(String edgeKey, Set<String> onCanvas) {
         String[] parts = edgeKey.split("\\|", 4);
@@ -164,20 +183,11 @@ class EdgeProjector {
             return null;
         }
 
+        // Content, never existence: the row is already the statement that this edge is on the canvas.
         List<String> live = liveTargets(source, kind);
         List<String> staged = stagedTargets(source, kind);
-        if (staged != null && !staged.contains(target)) {
-            // The user staged this link away on this canvas; drawing it would contradict their own intent.
-            return null;
-        }
         boolean asserted = live.contains(target);
-        boolean pending = staged != null && staged.contains(target) && !asserted;
-        // A row for a triple neither RDF nor an overlay asserts is orphaned — the link is simply not there,
-        // and drawing it would invent an edge. Distinct from a STALE target, where the link is still
-        // asserted and it is the concept at the far end that is gone.
-        if (!asserted && !pending && !backing.of(source).stale() && !backing.of(target).stale()) {
-            return null;
-        }
+        boolean pending = !asserted && staged != null && staged.contains(target);
 
         return new DiagramDto.Edge(
                 edgeKey,
@@ -185,7 +195,7 @@ class EdgeProjector {
                 mapper.nodeId(target),
                 mapper.edgeType(kind),
                 waypoints.get(edgeKey),
-                DiagramDto.EdgeData.triple(kind, pending, backing.of(target)));
+                DiagramDto.EdgeData.triple(kind, asserted, pending, backing.of(target)));
     }
 
     /** The targets a concept's predicate currently asserts in RDF; empty when the concept is gone. */
@@ -339,7 +349,7 @@ class EdgeProjector {
             }
         }
         byClass.values().forEach(rows -> rows.sort(
-                Comparator.comparing(EdgeProjector::rowSortKey)));
+                Comparator.comparing(DiagramContentResolver::rowSortKey)));
         return byClass;
     }
 

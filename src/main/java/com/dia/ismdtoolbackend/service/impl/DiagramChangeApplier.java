@@ -178,8 +178,8 @@ public class DiagramChangeApplier {
             if (oldTarget == null || newTarget == null || oldTarget.equals(newTarget)) {
                 continue;
             }
-            String oldKey = EdgeProjector.projectedEdgeId(kind, source, oldTarget);
-            String newKey = EdgeProjector.projectedEdgeId(kind, source, newTarget);
+            String oldKey = DiagramContentResolver.projectedEdgeId(kind, source, oldTarget);
+            String newKey = DiagramContentResolver.projectedEdgeId(kind, source, newTarget);
             rows.stream()
                     .filter(r -> oldKey.equals(r.getEdgeKey()))
                     .findFirst()

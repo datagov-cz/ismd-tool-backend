@@ -25,12 +25,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Pins the model: a VZTAH is ONE edge between its two classes carrying its own concept identity, a
  * VLASTNOST is a row inside its domain class, and a concept missing an endpoint is simply not drawn.
  */
-class EdgeProjectorTest {
+class DiagramContentResolverTest {
 
     private static final String REL = "https://x/pojem/rel";
     private static final String A = "https://x/pojem/a";
     private static final String B = "https://x/pojem/b";
     private static final String C = "https://x/pojem/c";
+    private static final String D = "https://x/pojem/d";
     private static final String PROP = "https://x/pojem/prop";
 
     /**
@@ -43,16 +44,16 @@ class EdgeProjectorTest {
 
     /** The membership row for one hierarchy link, which a test must place to see it drawn. */
     private static Set<String> placedSubclass(String source, String target) {
-        return Set.of(EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, source, target));
+        return Set.of(DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, source, target));
     }
 
     /** A projector over the given live graph, with everything placed and nothing staged. */
-    private EdgeProjector projecting(Map<String, ConceptDetailModel> live) {
+    private DiagramContentResolver resolving(Map<String, ConceptDetailModel> live) {
         return builder(live).build();
     }
 
     /** A projector whose staged edits are the given (conceptIri -> overlay) pair. */
-    private EdgeProjector projectorStaging(String conceptIri, DiagramPendingEdit overlay,
+    private DiagramContentResolver resolverStaging(String conceptIri, DiagramPendingEdit overlay,
                                            Map<String, ConceptDetailModel> live) {
         return builder(live).overlay(conceptIri, overlay).build();
     }
@@ -105,8 +106,8 @@ class EdgeProjectorTest {
             return this;
         }
 
-        EdgeProjector build() {
-            return new EdgeProjector(new DiagramMapper(), waypoints, overlays, foreign, placed,
+        DiagramContentResolver build() {
+            return new DiagramContentResolver(new DiagramMapper(), waypoints, overlays, foreign, placed,
                     new BackingResolver(live, unavailable), tombstones);
         }
     }
@@ -152,7 +153,7 @@ class EdgeProjectorTest {
 
     @Test
     void vztahProjectsOneEdgeBetweenItsClasses_carryingItsOwnIdentity() {
-        List<DiagramDto.Edge> edges = projecting(live(A, B)).project(
+        List<DiagramDto.Edge> edges = resolving(live(A, B)).project(
                 List.of(node(A), node(B)),
                 types(Map.of(REL, ConceptType.VZTAH)), Map.of(REL, "x-rel"));
 
@@ -164,13 +165,16 @@ class EdgeProjectorTest {
             assertThat(e.data().iri()).isEqualTo(REL);
             assertThat(e.data().slug()).isEqualTo("x-rel");
             assertThat(e.data().pending()).isFalse();
+            assertThat(e.data().asserted())
+                    .as("a VZTAH exists because its concept does; absence is reported as stale instead")
+                    .isTrue();
         });
     }
 
     /** The relationship itself need not be a canvas node — only its two endpoint classes. */
     @Test
     void vztahProjects_evenThoughItIsNotItselfANode() {
-        List<DiagramDto.Edge> edges = projecting(live(A, B)).project(
+        List<DiagramDto.Edge> edges = resolving(live(A, B)).project(
                 List.of(node(A), node(B)),
                 types(Map.of(REL, ConceptType.VZTAH)), Map.of());
 
@@ -182,7 +186,7 @@ class EdgeProjectorTest {
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setRange(C);
         // The overlay is keyed by the VZTAH's IRI and supplied to the projector; the VZTAH is not a node.
-        List<DiagramDto.Edge> edges = projectorStaging(REL, overlay, live(A, B)).project(
+        List<DiagramDto.Edge> edges = resolverStaging(REL, overlay, live(A, B)).project(
                 List.of(node(A), node(B), node(C)),
                 types(Map.of(REL, ConceptType.VZTAH)), Map.of());
 
@@ -195,13 +199,13 @@ class EdgeProjectorTest {
     /** Incomplete concepts live off-canvas: no endpoint, no edge. */
     @Test
     void vztahMissingAnEndpoint_isNotDrawn() {
-        assertThat(projecting(live(A, null)).project(List.of(node(A), node(B)),
+        assertThat(resolving(live(A, null)).project(List.of(node(A), node(B)),
                 types(Map.of(REL, ConceptType.VZTAH)), Map.of())).isEmpty();
     }
 
     @Test
     void vztahPointingOffCanvas_isNotDrawn() {
-        assertThat(projecting(live(A, "https://x/pojem/off-canvas")).project(List.of(node(A), node(B)),
+        assertThat(resolving(live(A, "https://x/pojem/off-canvas")).project(List.of(node(A), node(B)),
                 types(Map.of(REL, ConceptType.VZTAH)), Map.of())).isEmpty();
     }
 
@@ -255,8 +259,17 @@ class EdgeProjectorTest {
                 .satisfies(e -> assertThat(e.id()).isEqualTo("edge|SUBCLASS_OF|" + A + "|" + B));
     }
 
+    /**
+     * A staged clear does not un-draw a placed edge: membership alone decides that. Removal reaches us as
+     * the row's omission from {@code edges[]} — the same client state change that stages the clear — so the
+     * row's continued presence means the edge is still on the canvas, and the overlay only annotates it.
+     *
+     * <p>This used to assert the opposite. The read-time suppression it guarded also discarded hierarchy
+     * edges that RDF fully asserted, because that gate ran before the live targets were consulted; see
+     * {@code .planning/diagram-hierarchy-edge-projection-FINDINGS.md}.
+     */
     @Test
-    void emptyListOverlay_clearsHierarchyEdge() {
+    void emptyListOverlay_doesNotUnDrawAPlacedHierarchyEdge() {
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of());                  // "remove all superclasses"
 
@@ -264,9 +277,18 @@ class EdgeProjectorTest {
         live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
         live.put(B, concept(B));
 
-        assertThat(builder(live).overlay(A, overlay).placed(placedSubclass(A, B)).build()
-                .project(List.of(node(A), node(B)), types(Map.of()), Map.of()))
-                .isEmpty();
+        List<DiagramDto.Edge> edges = builder(live).overlay(A, overlay).placed(placedSubclass(A, B)).build()
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of());
+
+        assertThat(edges).as("the row still places the edge; the staged clear applies at materialize")
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.data().pending())
+                            .as("RDF still asserts the link, so it is settled rather than pending").isFalse();
+                    assertThat(e.data().asserted())
+                            .as("the clear has not been materialized yet, so the triple is still there")
+                            .isTrue();
+                });
     }
 
     /**
@@ -288,34 +310,92 @@ class EdgeProjectorTest {
         live.put(C, concept(C));
 
         Set<String> placed = Set.of(
-                EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B),
-                EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
 
         List<DiagramDto.Edge> edges = builder(live).overlay(A, overlay).placed(placed).build()
                 .project(List.of(node(A), node(B), node(C)), types(Map.of()), Map.of());
 
         assertThat(edges).hasSize(2);
         assertThat(edges).filteredOn(e -> e.target().equals("iri:" + B)).singleElement()
-                .satisfies(e -> assertThat(e.data().pending())
-                        .as("B is already in RDF, so it is settled, not pending").isFalse());
+                .satisfies(e -> {
+                    assertThat(e.data().pending())
+                            .as("B is already in RDF, so it is settled, not pending").isFalse();
+                    assertThat(e.data().asserted()).as("B is in RDF").isTrue();
+                });
         assertThat(edges).filteredOn(e -> e.target().equals("iri:" + C)).singleElement()
-                .satisfies(e -> assertThat(e.data().pending())
-                        .as("C is staged and not yet asserted").isTrue());
+                .satisfies(e -> {
+                    assertThat(e.data().pending())
+                            .as("C is staged and not yet asserted").isTrue();
+                    assertThat(e.data().asserted()).as("C is not in RDF yet").isFalse();
+                });
     }
 
     /**
-     * A row for a triple that neither RDF nor an overlay asserts is orphaned — the link is simply not there,
-     * and drawing it would invent an edge and label it a pending edit the user never made.
+     * A newly drawn edge renders from its row alone, before anything asserts the triple. The user put it on
+     * the canvas; that is what a row means. RDF says only whether the link is settled yet.
+     *
+     * <p>This used to assert the opposite — a row nothing asserted was discarded as orphaned — which meant a
+     * hierarchy edge drawn without an accompanying overlay never appeared at all.
      */
     @Test
-    void placedRowForATripleNothingAsserts_isNotDrawn() {
+    void placedRowForATripleNothingAssertsYet_isStillDrawn() {
         Map<String, ConceptDetailModel> live = new HashMap<>();
         live.put(A, concept(A));                               // A asserts no broader at all
         live.put(B, concept(B));
 
-        assertThat(builder(live).placed(placedSubclass(A, B)).build()
-                .project(List.of(node(A), node(B)), types(Map.of()), Map.of()))
-                .isEmpty();
+        List<DiagramDto.Edge> edges = builder(live).placed(placedSubclass(A, B)).build()
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.id()).isEqualTo(
+                    DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B));
+            assertThat(e.data().pending())
+                    .as("nothing asserts or stages it, so it is drawn but not marked pending").isFalse();
+            assertThat(e.data().asserted())
+                    .as("and nothing backs it in RDF either — the flag that says so").isFalse();
+        });
+    }
+
+    /**
+     * A settled edge and one whose triple was deleted underneath the canvas must not read alike. Both are
+     * drawn from their rows, both have live endpoints so neither is {@code stale}, and neither is staged so
+     * neither is {@code pending} — {@code asserted} is the only thing separating them.
+     *
+     * <p>This is the live reproduction of 2026-09-14 reduced to a unit test. A bad overlay cleared every
+     * superclass of a class that had two, and afterwards the canvas rendered the surviving edges exactly as
+     * it had rendered the intact ones: {@code pending: false, stale: false}. The user's hierarchy was gone
+     * and the diagram looked unchanged. Deleting {@code ORPHANED_ROW} was right — suppressing those rows
+     * lost the user's work silently — but it left no way to say "drawn, backed by nothing" until this flag.
+     */
+    @Test
+    void anEdgeWhoseTripleWasDeleted_isDistinguishableFromASettledOne() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+        live.put(C, concept(C));                               // A ⊐ C was deleted; C itself survives
+
+        Set<String> placed = Set.of(
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
+
+        List<DiagramDto.Edge> edges = builder(live).placed(placed).build()
+                .project(List.of(node(A), node(B), node(C)), types(Map.of()), Map.of());
+
+        assertThat(edges).as("membership still draws both").hasSize(2);
+
+        assertThat(edges).filteredOn(e -> e.target().equals("iri:" + C)).singleElement()
+                .satisfies(e -> {
+                    assertThat(e.data().asserted()).as("the triple is gone").isFalse();
+                    assertThat(e.data().stale())
+                            .as("C the concept is alive, so staleness cannot report this").isFalse();
+                    assertThat(e.data().pending())
+                            .as("nothing is staged, so pending cannot report it either").isFalse();
+                });
+
+        assertThat(edges).filteredOn(e -> e.target().equals("iri:" + B)).singleElement()
+                .satisfies(e -> assertThat(e.data().asserted())
+                        .as("the intact edge, identical on every other flag").isTrue());
     }
 
     /**
@@ -334,7 +414,7 @@ class EdgeProjectorTest {
                 .project(List.of(node(A), node(B)), types(Map.of()), Map.of());
 
         assertThat(edges).singleElement().satisfies(e -> {
-            assertThat(e.id()).isEqualTo(EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B));
+            assertThat(e.id()).isEqualTo(DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B));
             assertThat(e.data().stale()).isTrue();
             assertThat(e.data().unavailable()).isFalse();
         });
@@ -388,11 +468,153 @@ class EdgeProjectorTest {
                 .project(List.of(node("https://x/pojem/gone")), types(Map.of()), Map.of())).isEmpty();
     }
 
+    // ---- membership decides existence: N rows in, N edges out ------------------------------------
+    //
+    // These four were written as diagnostics for "three hierarchy edges sent, two returned" and passed
+    // against the un-fixed code, characterizing the two gates that let content decide existence. They now
+    // assert the fixed contract: a placed row with both endpoints on the canvas is drawn, and RDF ⊕ overlay
+    // only sets `pending`. See .planning/diagram-hierarchy-edge-projection-FINDINGS.md.
+
+    /**
+     * Three brand-new hierarchy edges sharing one source, with an overlay naming one target. All three are
+     * drawn — the overlay speaks for the source's RDF, not for its edges' membership.
+     *
+     * <p>Previously only the named target survived: {@code stagedTargets} is looked up per SOURCE, so one
+     * overlay on C spoke for every edge leaving C and un-drew the siblings it did not repeat.
+     */
+    @Test
+    void threeNewEdgesFromOneSource_overlayStagingOneTarget_drawsAllThree() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(A));                 // stages only C -> A
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(C, concept(C));                               // brand-new hierarchy: nothing asserted
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+        live.put(D, concept(D));
+
+        Set<String> placed = Set.of(
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, A),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, B),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, D));
+
+        List<DiagramDto.Edge> edges = builder(live).overlay(C, overlay).placed(placed).build()
+                .project(List.of(node(C), node(A), node(B), node(D)),
+                        types(Map.of(D, ConceptType.TRIDA)), Map.of());
+
+        assertThat(edges).as("three placed rows in, three edges out").hasSize(3);
+        assertThat(edges).extracting(DiagramDto.Edge::id).containsExactlyInAnyOrderElementsOf(placed);
+        assertThat(edges)
+                .filteredOn(e -> e.id().endsWith("|" + A)).singleElement()
+                .satisfies(e -> assertThat(e.data().pending())
+                        .as("the staged target is pending until materialize").isTrue());
+        assertThat(edges)
+                .filteredOn(e -> !e.id().endsWith("|" + A))
+                .allSatisfy(e -> assertThat(e.data().pending())
+                        .as("drawn from their rows, neither asserted nor staged").isFalse());
+    }
+
+    /**
+     * The same three new edges, each from a DIFFERENT source, one overlay among them. All three are drawn:
+     * an edge no overlay mentions is still on the canvas because its row says so.
+     *
+     * <p>Previously the two unstaged edges vanished as "orphaned" — nothing asserted them yet.
+     */
+    @Test
+    void threeNewEdgesFromThreeSources_overlayStagingOne_drawsAllThree() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(D));                 // stages only A -> D
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));                               // all three children assert nothing
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+        live.put(D, concept(D));
+
+        Set<String> placed = Set.of(
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, D),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, B, D),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, D));
+
+        List<DiagramDto.Edge> edges = builder(live).overlay(A, overlay).placed(placed).build()
+                .project(List.of(node(A), node(B), node(C), node(D)),
+                        types(Map.of(D, ConceptType.TRIDA)), Map.of());
+
+        assertThat(edges).hasSize(3);
+        assertThat(edges).extracting(DiagramDto.Edge::id).containsExactlyInAnyOrderElementsOf(placed);
+    }
+
+    /**
+     * THE REPORTED BUG, at its core. A class with a parent asserted in RDF gains a second one, and the
+     * overlay names only the new parent — the shape the client actually sends. Both edges must be drawn:
+     * the asserted one settled, the staged one pending.
+     *
+     * <p>Previously the asserted edge was discarded, because the gate that compared the overlay's targets
+     * ran <em>before</em> the live targets were read. Backing RDF gave the edge no protection, and the same
+     * overlay was staged to delete that triple at materialize.
+     */
+    @Test
+    void classGainingASecondParent_keepsTheOneAssertedInRdf() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(C));                 // names only the newly drawn parent
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+
+        Set<String> placed = Set.of(
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
+
+        List<DiagramDto.Edge> edges = builder(live).overlay(A, overlay).placed(placed).build()
+                .project(List.of(node(A), node(B), node(C)), types(Map.of()), Map.of());
+
+        assertThat(edges).as("two placed rows in, two edges out").hasSize(2);
+        assertThat(edges).filteredOn(e -> e.target().equals("iri:" + B)).singleElement()
+                .satisfies(e -> assertThat(e.data().pending())
+                        .as("asserted in RDF and not named by the overlay — still drawn, settled").isFalse());
+        assertThat(edges).filteredOn(e -> e.target().equals("iri:" + C)).singleElement()
+                .satisfies(e -> assertThat(e.data().pending())
+                        .as("staged, not yet asserted").isTrue());
+    }
+
+    /**
+     * Live RDF asserts all three parents and the overlay names one. All three stay drawn: an overlay that
+     * omits a target states an intent to remove it at materialize, not that it has left the canvas.
+     */
+    @Test
+    void threeAssertedEdgesFromOneSource_overlayNamingOne_keepsAllThreeDrawn() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setBroaderConcept(List.of(A));                 // names only A of the three live parents
+
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(C, ConceptDetailModel.builder().iri(C)
+                .broaderClasses(List.of(A, B, D)).build());    // all three asserted in RDF
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+        live.put(D, concept(D));
+
+        Set<String> placed = Set.of(
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, A),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, B),
+                DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, C, D));
+
+        List<DiagramDto.Edge> edges = builder(live).overlay(C, overlay).placed(placed).build()
+                .project(List.of(node(C), node(A), node(B), node(D)),
+                        types(Map.of(D, ConceptType.TRIDA)), Map.of());
+
+        assertThat(edges).hasSize(3);
+        assertThat(edges).extracting(DiagramDto.Edge::id).containsExactlyInAnyOrderElementsOf(placed);
+        assertThat(edges).allSatisfy(e -> assertThat(e.data().pending())
+                .as("every target is asserted in RDF, so none is pending").isFalse());
+    }
+
     // ---- waypoints ------------------------------------------------------------------------------
 
     @Test
     void persistedWaypointsAreJoinedOntoTheProjectedEdge() {
-        EdgeProjector withGeometry = builder(live(A, B))
+        DiagramContentResolver withGeometry = builder(live(A, B))
                 .waypoints(Map.of(REL, List.of(new EdgeWaypoint(40, 80)))).build();
 
         List<DiagramDto.Edge> edges = withGeometry.project(
@@ -422,7 +644,7 @@ class EdgeProjectorTest {
                 .project(List.of(node(A), node(B), node(C)), types(Map.of()), Map.of());
 
         assertThat(edges).singleElement().satisfies(e -> {
-            assertThat(e.id()).isEqualTo(EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
+            assertThat(e.id()).isEqualTo(DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, C));
             assertThat(e.target()).isEqualTo("iri:" + C);
             assertThat(e.data().pending()).isTrue();
         });
@@ -431,7 +653,7 @@ class EdgeProjectorTest {
     /** Geometry drawn for an endpoint the edge no longer has must not follow it to the new one. */
     @Test
     void repointedEndpoint_dropsTheSavedWaypoints() {
-        String staleKey = EdgeProjector.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B);
+        String staleKey = DiagramContentResolver.projectedEdgeId(DiagramEdgeKind.SUBCLASS_OF, A, B);
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of(C));
 
@@ -480,9 +702,9 @@ class EdgeProjectorTest {
                 .name(Map.of("cs", "datum narození")).build());
         Map<String, ConceptType> types = types(Map.of(PROP, ConceptType.VLASTNOST));
 
-        assertThat(projecting(live).project(List.of(node(A)), types, Map.of())).isEmpty();
+        assertThat(resolving(live).project(List.of(node(A)), types, Map.of())).isEmpty();
 
-        Map<String, List<DiagramDto.PropertyRow>> rows = projecting(live)
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolving(live)
                 .propertyRows(List.of(nodeWith(A, PROP)), types, Map.of(PROP, "x-prop"));
 
         assertThat(rows.get(A)).singleElement().satisfies(r -> {
@@ -504,7 +726,7 @@ class EdgeProjectorTest {
                 "https://x/pojem/p1", ConceptType.VLASTNOST,
                 "https://x/pojem/p2", ConceptType.VLASTNOST));
 
-        Map<String, List<DiagramDto.PropertyRow>> rows = projecting(live).propertyRows(
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolving(live).propertyRows(
                 List.of(nodeWith(A, "https://x/pojem/p1", "https://x/pojem/p2")), types, Map.of());
 
         assertThat(rows.get(A)).extracting(r -> r.label().get("cs"))
@@ -523,7 +745,7 @@ class EdgeProjectorTest {
         live.put(A, concept(A));
         // PROP is gone from the graph, and with it its PG row: no type, no domain, no label.
 
-        Map<String, List<DiagramDto.PropertyRow>> rows = projecting(live)
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolving(live)
                 .propertyRows(List.of(nodeWith(A, PROP)), types(Map.of()), Map.of());
 
         assertThat(rows.get(A)).singleElement().satisfies(r -> {
@@ -541,7 +763,7 @@ class EdgeProjectorTest {
         live.put(A, concept(A));
         live.put(PROP, ConceptDetailModel.builder().iri(PROP).build());
 
-        assertThat(projecting(live).propertyRows(List.of(node(A)),
+        assertThat(resolving(live).propertyRows(List.of(node(A)),
                 types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of())).isEmpty();
     }
 
@@ -555,7 +777,7 @@ class EdgeProjectorTest {
         live.put(B, concept(B));
         live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A).build());
 
-        Map<String, List<DiagramDto.PropertyRow>> rows = projectorStaging(PROP, overlay, live)
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolverStaging(PROP, overlay, live)
                 .propertyRows(List.of(nodeWith(A, PROP), nodeWith(B, PROP)),
                 types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of());
 

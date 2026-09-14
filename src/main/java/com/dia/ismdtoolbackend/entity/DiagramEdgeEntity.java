@@ -18,7 +18,7 @@ import java.util.List;
  * can sit on the canvas with none of its relationships shown.
  *
  * <p>An edge's kind and endpoints are re-projected on every load from {@code live ⊕ overlay} by
- * {@code EdgeProjector}, the semantics always living on a concept — a VZTAH's
+ * {@code DiagramContentResolver}, the semantics always living on a concept — a VZTAH's
  * {@code rdfs:domain}/{@code rdfs:range}, a hierarchy target, an {@code skos:exactMatch}. So this row holds
  * only what RDF cannot express: that the user placed the link, and how it is routed.
  *

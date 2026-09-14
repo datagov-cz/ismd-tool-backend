@@ -169,12 +169,38 @@ public record DiagramDto(
      * concept fields are populated only for a {@code VZTAH}, where the edge is a concept —
      * {@code SUBCLASS_OF} and {@code EXACT_MATCH} are bare triples and leave them null, so a non-null
      * {@code iri} is the FE's signal that the edge can be selected, staged and deep-linked.
+     *
+     * <p><b>{@code asserted} and {@code pending} are independent, and all four combinations occur.</b>
+     * Membership decides that a placed edge is drawn, so the flags describe what backs it rather than
+     * whether it renders:
+     *
+     * <table border="1">
+     *   <caption>What each combination means</caption>
+     *   <tr><th>{@code asserted}</th><th>{@code pending}</th><th>Meaning</th></tr>
+     *   <tr><td>true</td><td>false</td><td>settled — the triple is in RDF and nothing is staged</td></tr>
+     *   <tr><td>false</td><td>true</td><td>staged — Převzít will write the triple</td></tr>
+     *   <tr><td>true</td><td>true</td><td>cannot occur: {@code pending} is defined as staged ∧ ¬asserted</td></tr>
+     *   <tr><td>false</td><td>false</td><td><b>drawn but backed by nothing</b> — see below</td></tr>
+     * </table>
+     *
+     * <p>That last row is the one worth rendering distinctly. It means the user placed the edge and no
+     * triple asserts it: either it was drawn without staging the RDF, or — the case that motivated this
+     * flag — the triple was deleted underneath the canvas by an edit elsewhere. Before {@code asserted}
+     * existed the FE could not tell it from the settled row above, so a hierarchy destroyed by a bad
+     * overlay looked identical to one that was intact. {@code stale} does not cover it: that answers
+     * whether the <em>concept</em> is gone, and a triple can vanish while both endpoints live on.
+     *
+     * <p>Always {@code true} for a {@code VZTAH}, whose existence is its concept — a deleted relationship
+     * is reported through {@code stale} instead. See
+     * {@code .planning/diagram-hierarchy-edge-projection-FINDINGS.md}.
      */
     @Schema(name = "DiagramEdgeData")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record EdgeData(
             DiagramEdgeKind edgeKind,
             boolean pending,
+            /* The triple is in RDF right now. Independent of pending; see the class javadoc's table. */
+            boolean asserted,
             ConceptType conceptType,
             String iri,
             String slug,
@@ -192,20 +218,29 @@ public record DiagramDto(
          * placed row, and a target whose concept was deleted makes the edge stale rather than making it
          * vanish.
          *
-         * <p>There is deliberately no constructor that omits the verdict. The one that used to exist is how
-         * hierarchy edges came to skip staleness entirely, silently disappearing when their target was
-         * deleted while nodes in the same response were correctly flagged.
+         * <p>There is deliberately no constructor that omits the verdict, nor one that omits
+         * {@code asserted}. The first is how hierarchy edges came to skip staleness entirely, silently
+         * disappearing when their target was deleted while nodes in the same response were correctly
+         * flagged; the second would let an edge backed by nothing read as settled, which is the divergence
+         * this flag exists to surface.
          */
-        public static EdgeData triple(DiagramEdgeKind edgeKind, boolean pending, Backing backing) {
-            return new EdgeData(edgeKind, pending, null, null, null, null,
+        public static EdgeData triple(DiagramEdgeKind edgeKind, boolean asserted, boolean pending,
+                                      Backing backing) {
+            return new EdgeData(edgeKind, pending, asserted, null, null, null, null,
                     backing.stale(), backing.unavailable(), false, null);
         }
 
-        /** A VZTAH: the edge is a relationship concept, so it carries that concept's identity and overlay. */
+        /**
+         * A VZTAH: the edge is a relationship concept, so it carries that concept's identity and overlay.
+         *
+         * <p>{@code asserted} is always true — a relationship edge exists because its concept does, and a
+         * deleted one is reported through {@code stale}. There is no state where the edge is drawn and the
+         * relationship is merely unasserted, the way a bare triple can be.
+         */
         public static EdgeData relationship(boolean pending, String iri, String slug, Backing backing,
                                             DiagramPendingEdit pendingEdit) {
             ConceptDetailModel detail = backing.detailOrNull();
-            return new EdgeData(DiagramEdgeKind.VZTAH, pending, ConceptType.VZTAH, iri, slug,
+            return new EdgeData(DiagramEdgeKind.VZTAH, pending, true, ConceptType.VZTAH, iri, slug,
                     detail != null ? detail.getName() : null,
                     backing.stale(), backing.unavailable(), pendingEdit != null, pendingEdit);
         }

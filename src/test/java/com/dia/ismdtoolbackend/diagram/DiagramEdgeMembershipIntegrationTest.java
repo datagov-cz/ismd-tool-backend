@@ -90,7 +90,7 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
     private static final String CLASS_B = GRAPH + "/pojem/trida-b";
     /** A VZTAH, live domain A → range B; its edge id is its own concept IRI. */
     private static final String REL = GRAPH + "/pojem/vztah-a-b";
-    /** The composite id of the hierarchy edge A ⊑ B (EdgeProjector is package-private). */
+    /** The composite id of the hierarchy edge A ⊑ B (DiagramContentResolver is package-private). */
     private static final String SUBCLASS_EDGE = "edge|SUBCLASS_OF|" + CLASS_A + "|" + CLASS_B;
 
     @Autowired private ConceptMetadataRepository conceptRepo;

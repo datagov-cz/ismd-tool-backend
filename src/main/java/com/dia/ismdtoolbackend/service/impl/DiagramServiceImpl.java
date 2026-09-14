@@ -680,7 +680,7 @@ public class DiagramServiceImpl implements DiagramService {
 
     /** Joins layout rows to live content, applies overlays, projects edges and property rows. */
     private DiagramDto assemble(String ontologySlug, DiagramSnapshot snapshot, BackingResolver live) {
-        EdgeProjector projector = new EdgeProjector(mapper, snapshot.edgeWaypoints(),
+        DiagramContentResolver projector = new DiagramContentResolver(mapper, snapshot.edgeWaypoints(),
                 snapshot.overlays(), new HashSet<>(foreignIris(snapshot.nodes())),
                 snapshot.onCanvasEdges(), live, snapshot.edgeTombstones());
         Map<String, List<DiagramDto.PropertyRow>> rows =

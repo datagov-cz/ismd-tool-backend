@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.ViewportDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
@@ -989,6 +990,115 @@ class DiagramLayoutReconcilerTest extends PostgresIntegrationTestBase {
                 .as("staging after a discard re-reads the concept's current updatedAt")
                 .isEqualTo(afterEdit)
                 .isNotEqualTo(staged);
+    }
+
+    /**
+     * Reported as "a node cannot have multiple hierarchy edges — the last one overwrites the rest".
+     * One class with TWO parents in a SINGLE save: both composite edge rows must survive (they are keyed
+     * by {@code (diagram_id, edge_key)}, so two distinct targets are two distinct rows), and the one
+     * overlay entry naming both parents must keep both.
+     */
+    @Test
+    void twoParentsInOneSave_keepBothEdgeRowsAndBothBroaderConcepts() {
+        DiagramEntity diagram = newDiagram("multi-parent");
+        diagramRepository.saveAndFlush(diagram);
+        String child = "https://x/multi-parent/pojem/dite";
+        String parent1 = "https://x/multi-parent/pojem/rodic-1";
+        String parent2 = "https://x/multi-parent/pojem/rodic-2";
+        seedConcept(diagram, child);
+        seedConcept(diagram, parent1);
+        seedConcept(diagram, parent2);
+        em.clear();
+
+        String toParent1 = "edge|SUBCLASS_OF|" + child + "|" + parent1;
+        String toParent2 = "edge|SUBCLASS_OF|" + child + "|" + parent2;
+
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null,
+                List.of(node(child, 0, 0), node(parent1, 100, 0), node(parent2, 200, 0)),
+                List.of(
+                        new DiagramLayoutDto.Edge(toParent1, DiagramEdgeKind.SUBCLASS_OF,
+                                "iri:" + child, "iri:" + parent1, null),
+                        new DiagramLayoutDto.Edge(toParent2, DiagramEdgeKind.SUBCLASS_OF,
+                                "iri:" + child, "iri:" + parent2, null)),
+                List.of(new DiagramLayoutDto.Overlay("iri:" + child,
+                        null, null, List.of(parent1, parent2), null, null))));
+        em.clear();
+
+        // (a) membership: both hierarchy edges are on the canvas, neither overwrote the other.
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .as("both hierarchy edge rows must survive one save naming both parents")
+                .extracting(DiagramEdgeEntity::getEdgeKey)
+                .containsExactlyInAnyOrder(toParent1, toParent2);
+
+        // (b) overlay: the staged structural intent keeps both parents.
+        DiagramEntity reloaded = diagramRepository.findById(diagram.getId()).orElseThrow();
+        assertThat(stagedEdit(reloaded, child).getBroaderConcept())
+                .as("one overlay entry listing both parents must stage both")
+                .containsExactlyInAnyOrder(parent1, parent2);
+    }
+
+    /**
+     * The same canvas staged one edge at a time, which is what a client does when it sends only the parent
+     * it just drew. An overlay entry is that concept's WHOLE staged edit and replaces the previous one, so
+     * the second save's {@code broaderConcept: [P2]} drops P1 — while BOTH edge rows stay on the canvas.
+     * Membership and structural intent therefore disagree, which is what reads as "the last one wins".
+     */
+    @Test
+    void stagingParentsOneAtATime_secondOverlayReplacesTheFirstParent() {
+        DiagramEntity diagram = newDiagram("multi-parent-staged");
+        diagramRepository.saveAndFlush(diagram);
+        String child = "https://x/multi-parent-staged/pojem/dite";
+        String parent1 = "https://x/multi-parent-staged/pojem/rodic-1";
+        String parent2 = "https://x/multi-parent-staged/pojem/rodic-2";
+        seedConcept(diagram, child);
+        seedConcept(diagram, parent1);
+        seedConcept(diagram, parent2);
+        em.clear();
+
+        String toParent1 = "edge|SUBCLASS_OF|" + child + "|" + parent1;
+        String toParent2 = "edge|SUBCLASS_OF|" + child + "|" + parent2;
+        List<DiagramLayoutDto.Node> nodes =
+                List.of(node(child, 0, 0), node(parent1, 100, 0), node(parent2, 200, 0));
+        List<DiagramLayoutDto.Edge> bothEdges = List.of(
+                new DiagramLayoutDto.Edge(toParent1, DiagramEdgeKind.SUBCLASS_OF,
+                        "iri:" + child, "iri:" + parent1, null),
+                new DiagramLayoutDto.Edge(toParent2, DiagramEdgeKind.SUBCLASS_OF,
+                        "iri:" + child, "iri:" + parent2, null));
+
+        // First save stages only P1.
+        DiagramEntity managed = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(managed, new DiagramLayoutDto(null, null, nodes, bothEdges,
+                List.of(new DiagramLayoutDto.Overlay("iri:" + child,
+                        null, null, List.of(parent1), null, null))));
+        em.clear();
+
+        DiagramEntity afterFirst = diagramRepository.findById(diagram.getId()).orElseThrow();
+        assertThat(stagedEdit(afterFirst, child).getBroaderConcept())
+                .as("the first save stages P1, or the second save proves nothing")
+                .containsExactly(parent1);
+        em.clear();
+
+        // Second save stages only P2 — both edges are still on the canvas.
+        DiagramEntity again = diagramRepository.findById(diagram.getId()).orElseThrow();
+        save(again, new DiagramLayoutDto(again.getVersion(), null, nodes, bothEdges,
+                List.of(new DiagramLayoutDto.Overlay("iri:" + child,
+                        null, null, List.of(parent2), null, null))));
+        em.clear();
+
+        // Membership is unaffected: both rows are still there.
+        assertThat(diagramRepository.findById(diagram.getId()).orElseThrow().getEdges())
+                .as("both edge rows stay on the canvas across both saves")
+                .extracting(DiagramEdgeEntity::getEdgeKey)
+                .containsExactlyInAnyOrder(toParent1, toParent2);
+
+        // The diagnostic: an entry is the whole overlay, so P2 REPLACES P1 rather than adding to it.
+        DiagramEntity reloaded = diagramRepository.findById(diagram.getId()).orElseThrow();
+        assertThat(stagedEdit(reloaded, child).getBroaderConcept())
+                .as("an overlay entry replaces the concept's whole staged edit — P1 is dropped, "
+                        + "so a client staging one parent at a time loses the earlier parent")
+                .containsExactly(parent2)
+                .doesNotContain(parent1);
     }
 
     /** Waypoints survive a node being removed: the row is keyed by edge id, not by endpoint FKs. */

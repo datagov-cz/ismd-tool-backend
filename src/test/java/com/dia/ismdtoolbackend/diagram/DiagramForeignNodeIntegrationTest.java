@@ -178,9 +178,13 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
                 node(FOREIGN_CLASS, 300, 0),
                 node(FOREIGN_PARENT, 600, 0));
 
+        // Scoped to edges leaving a foreign concept, because save() deliberately places every edge these
+        // fixtures could draw — including MY_CLASS -> FOREIGN_CLASS, which is an owned source and is
+        // supposed to render (see the next test). Membership alone now draws a placed row, so asserting
+        // the whole list empty would be asserting that rule away rather than this one.
         assertThat(read.edges())
                 .as("the foreign graph's own hierarchy is not this diagram's to draw")
-                .isEmpty();
+                .noneMatch(e -> e.source().equals(DiagramMapper.NODE_ID_PREFIX + FOREIGN_CLASS));
     }
 
     /**
@@ -448,7 +452,7 @@ class DiagramForeignNodeIntegrationTest extends PostgresIntegrationTestBase {
      * never projects is harmless — the row simply matches nothing — but omitting one would make
      * "not drawn" vacuously true and hide a projection regression.
      */
-    /** The projector's composite key for a hierarchy edge; EdgeProjector itself is package-private. */
+    /** The projector's composite key for a hierarchy edge; DiagramContentResolver itself is package-private. */
     private static String subclassEdgeId(String source, String target) {
         return "edge|SUBCLASS_OF|" + source + "|" + target;
     }

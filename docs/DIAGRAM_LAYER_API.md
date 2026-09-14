@@ -164,6 +164,7 @@ The backend has already joined layout rows to live concept content and applied e
       "data": {
         "edgeKind": "VZTAH",
         "pending": true,                     // an endpoint comes from an unmaterialized overlay
+        "asserted": true,                    // always true for a VZTAH; see the table below
         "conceptType": "VZTAH",
         "iri": "https://…/pojem/je-zamestnan-u",
         "slug": "pracovni-pomer-je-zamestnan-u",
@@ -183,7 +184,8 @@ The backend has already joined layout rows to live concept content and applied e
       "type": "hierarchyEdge",
       // stale/unavailable/hasPendingEdits are ALWAYS present here, as on every other placed element.
       // stale: true ⇒ the target concept was deleted underneath the canvas; the edge keeps its place.
-      "data": { "edgeKind": "SUBCLASS_OF", "pending": false,
+      // asserted: is the TRIPLE in RDF right now? Distinct from stale, which is about the CONCEPT.
+      "data": { "edgeKind": "SUBCLASS_OF", "pending": false, "asserted": true,
                 "stale": false, "unavailable": false, "hasPendingEdits": false }
     }
   ],
@@ -229,7 +231,24 @@ Both mean "no live content for this IRI", and they are **never both true**. They
 
 This is a behaviour change. Previously a deleted concept took its edge or property row off the canvas with no signal at all, while a deleted *class* was correctly flagged — the same event was reported for one element type and hidden for three.
 
-**Changes the user makes on this canvas are the opposite case and apply immediately.** Staging an overlay that drops a hierarchy target un-draws that edge at once, because removing it is exactly what they asked for. The direction of the change decides: **from outside → flag it; from this canvas → apply it.**
+**Changes the user makes on this canvas are the opposite case and apply immediately.** Dragging a class off the canvas, or omitting an edge from `edges[]`, takes it off at once, because that is exactly what they asked for. The direction of the change decides: **from outside → flag it; from this canvas → apply it.** Note that for a hierarchy edge the canvas-side instruction is the row's **omission**, not an overlay — staging `broaderConcept` without also dropping the row leaves the edge drawn and merely `pending`.
+
+#### `asserted` vs `pending` — is the triple there, and is one on its way?
+
+A `SUBCLASS_OF`/`EXACT_MATCH` edge is drawn because a row places it, so these two flags describe what *backs* it, not whether it renders. They are independent, and three of the four combinations occur:
+
+| `asserted` | `pending` | Meaning | Render as |
+|---|---|---|---|
+| `true` | `false` | settled — in RDF, nothing staged | a normal edge |
+| `false` | `true` | staged — Převzít will write the triple | provisional (dashed, badged) |
+| `false` | `false` | **drawn, backed by nothing** | see below |
+| `true` | `true` | cannot occur — `pending` is defined as staged ∧ ¬asserted | — |
+
+**The third row is the one that needs its own treatment.** It means the user placed the edge and no triple asserts it: either it was drawn without staging the RDF, or the triple was **deleted underneath the canvas** by an edit elsewhere. `stale` does not cover that second case — that flag answers whether the *concept* is gone, and a triple can vanish while both endpoints live on perfectly well.
+
+Without `asserted` these edges were indistinguishable from settled ones, which is how a hierarchy destroyed by a bad overlay could render exactly like an intact one. Give the user *some* signal here — at minimum a tooltip — so an unbacked edge cannot pass for a real one.
+
+`asserted` is always `true` for a `VZTAH`: a relationship edge exists because its concept does, and a deleted one is reported through `stale` instead.
 
 A stale element carries no live content — no `label`, no `rangeResolved` — since there is nothing left to read. Its identity (`iri`) and its place on the canvas are intact, which is enough to render it and offer remove-or-recreate.
 
@@ -401,11 +420,16 @@ Note the read and write shapes differ, which is why they no longer share a name:
 
 ### Edges — explicit canvas membership
 
-**An edge persists exactly two things: `id` and `segments`.** Its existence, endpoints and kind are re-derived from `live ⊕ overlay` on every read, so `source`, `target` and `edgeKind` are **never stored** and never read back as truth. This is deliberate: a stored endpoint could silently contradict the projection it duplicates, which is precisely the drift the diagram layer is built to prevent. To change where a relationship points, stage `{domain, range}` on its overlay; the edge follows.
+**An edge persists exactly two things: `id` and `segments`.** `source`, `target` and `edgeKind` are **never stored as separate columns** and never read back from one: a stored endpoint could silently contradict the edge it duplicates, which is precisely the drift the diagram layer is built to prevent.
+
+Where they *are* read from differs by kind, and it follows from the id:
+
+- `SUBCLASS_OF` / `EXACT_MATCH` — the id **is** `edge|KIND|source|target`, so kind and both endpoints are recovered from it. They cannot drift from the row because they are the row. Live RDF ⊕ overlay is consulted only to annotate the edge (`pending`, `stale`), never to decide it exists.
+- `VZTAH` — the id is just the relationship's IRI and encodes nothing about endpoints, so they are re-derived from `live ⊕ overlay` on every read. To change where a relationship points, stage `{domain, range}` on its overlay; the edge follows. (A deleted VZTAH falls back to the row's last-known endpoints so it can still be drawn, flagged `stale`, rather than vanishing.)
 
 #### Drawing a *new* hierarchy or equivalence edge — build the id with `diagramEdgeId()`
 
-A class node's id is its own IRI, but a `SUBCLASS_OF`/`EXACT_MATCH` edge is a **bare triple with no concept behind it**, so it has no identity of its own — its id is built from its endpoints. An edge the user has just drawn therefore has no id from a previous read, and a ReactFlow uuid is **rejected with 400**: it would key a row that matches no projection, and the edge would silently vanish on the next read.
+A class node's id is its own IRI, but a `SUBCLASS_OF`/`EXACT_MATCH` edge is a **bare triple with no concept behind it**, so it has no identity of its own — its id is built from its endpoints. An edge the user has just drawn therefore has no id from a previous read, and a ReactFlow uuid is **rejected with 400**: the id is the only place a triple edge's kind and endpoints are recorded, so a uuid would store a row nothing can resolve.
 
 Assemble the same id the server projects, and use it from the very first save. It then matches on write and on every read after, so there is nothing to re-map when the response comes back:
 
@@ -440,18 +464,40 @@ const id = diagramEdgeId('SUBCLASS_OF', childNode.id, parentNode.id)
 // → "edge|SUBCLASS_OF|https://…/pojem/zamestnanec|https://…/pojem/osoba"
 
 edges.push({ id, edgeKind: 'SUBCLASS_OF', source: childNode.id, target: parentNode.id })
+
+// `broaderConcept` is a FULL REPLACE of the child's superclasses — never just the new one.
+// `existingBroader` is the child's CURRENT parent set: its staged overlay if it has one,
+// otherwise its asserted `nadřazená-třída` from the ontology detail. It must include parents
+// that are NOT on this canvas — they are still real, and omitting them deletes them at Převzít.
+const existingBroader = stagedOverlay?.broaderConcept ?? childConcept['nadřazená-třída'] ?? []
 overlays.push({ conceptIri: childNode.id, broaderConcept: [...existingBroader, parentIri] })
 ```
 
+**Removing one parent is the same call with a filter, not `[]`.** `broaderConcept: []` means *clear
+every superclass* — correct only when the user removed the last one:
+
+```ts
+overlays.push({ conceptIri: childNode.id,
+                broaderConcept: existingBroader.filter(p => p !== parentIri) })
+```
+
+Do not source `existingBroader` from the canvas's own edges: it only sees parents that were placed,
+so a class with an off-canvas parent would silently lose it. The diagram read does not carry the
+parent set either — `DiagramNodeData` has no `broaderConcept`, by design, since the client already
+holds the ontology detail and duplicating it on the hot read path would only create a second version
+to disagree with.
+
 **`edgeKind`, `source` and `target` are an optional cross-check, not a second way to key the edge.** When you send them, the server recomputes the id and returns **400** if it disagrees — catching a hand-built or stale id at the boundary instead of persisting a row that never renders. Send them when you mint an id; omit them when echoing one we gave you. They are ignored for a `VZTAH`, whose endpoints are its `rdfs:domain`/`rdfs:range` and encode nothing about its id.
 
-**Membership and overlays stay independent.** The `edges[]` entry says the link is *on the canvas*; the `overlays[]` entry stages the *RDF*. A new hierarchy edge normally needs both in the same Save — the entry alone draws nothing until the triple exists (live or staged), since projection still governs what *can* be drawn.
+**Membership and overlays stay independent.** The `edges[]` entry says the link is *on the canvas*; the `overlays[]` entry stages the *RDF*. For a hierarchy or equivalence edge the two are genuinely separable: **the `edges[]` entry alone draws the edge**, immediately and on every later read, whether or not anything asserts the triple. An edge drawn with no assertion behind it comes back with `pending: false` and no staged edit — it is on the canvas and changes nothing in RDF. Send the overlay in the same Save when you also mean to *assert* the triple; that is what makes it `pending: true` and what Převzít later writes.
 
-**`edges` is canvas membership, exactly like `nodes` — echo back every edge you want to keep drawn.** An edge present is on the canvas; an edge omitted from a present `edges` array is taken off it. Removing an edge this way is **pure presentation**: the triple is untouched, so the edge stays projectable and can be re-added later.
+**`edges` is canvas membership, exactly like `nodes` — echo back every edge you want to keep drawn.** An edge present is on the canvas; an edge omitted from a present `edges` array is taken off it. Removing an edge this way is **pure presentation**: the triple is untouched, so the edge can be re-added later by sending the row again. Taking a hierarchy edge off the canvas is *not* how you delete its `subClassOf` triple — that is an overlay carrying the concept's remaining parents, and the two are independent choices the client makes together.
 
-**A projectable edge that was never placed is not drawn.** Like a class that exists in the ontology but has not been dragged onto the canvas, it waits in the sidebar until the user adds it. This is what lets two classes sit on a canvas *without* the relationship between them — impossible while edges were drawn purely by projection.
+**An edge that RDF asserts but nobody placed is not drawn.** Like a class that exists in the ontology but has not been dragged onto the canvas, it waits in the sidebar until the user adds it. This is what lets two classes sit on a canvas *without* the relationship between them — impossible while edges were drawn purely by projection.
 
-**Projection still governs what CAN be drawn, so an edge is never orphaned on one end.** If an endpoint class leaves the canvas, or an overlay repoints the relationship, the edge stops projecting and is not drawn whatever its membership says. Membership can hide a projectable edge; it can never resurrect an unprojectable one.
+**Membership decides existence; RDF and overlays only decorate.** For `SUBCLASS_OF` and `EXACT_MATCH` the row's key already carries the kind and both endpoints, so the row is the whole answer: it is drawn because you placed it, and live RDF ⊕ overlay only supply `pending` and `stale`. Neither a missing assertion nor an overlay that omits this target takes it off the canvas — **removal travels as the row's omission from `edges[]`, never as an overlay.** Two gates that used to work the other way (an unasserted edge dropped as orphaned; a sibling edge dropped because one overlay spoke for every edge leaving that concept) were removed in `aaa474a`; the second was silently discarding hierarchy edges that RDF fully asserted. See `.planning/diagram-hierarchy-edge-projection-FINDINGS.md`.
+
+**Two things still override membership, and neither is content.** An edge is never orphaned on one end: if an endpoint class leaves the canvas, the edge is not drawn whatever its membership says. And a foreign concept is an edge *target*, never a *source* — its own triples belong to its owning graph. A `VZTAH` is the remaining exception to the paragraph above: its row key is just the relationship's IRI, so its endpoints are genuinely derived from the concept's `rdfs:domain`/`rdfs:range` and it stops being drawn when an overlay repoints it off-canvas.
 
 `segments` is three-way, and independent of membership:
 

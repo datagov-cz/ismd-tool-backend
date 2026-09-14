@@ -355,7 +355,7 @@ public class DiagramLayoutReconciler {
     private void recordTombstone(DiagramEdgeEntity edge, DiagramLayoutDto.Edge in, String edgeKey) {
         String source = in.source();
         String target = in.target();
-        if (edgeKey.startsWith(EdgeProjector.COMPOSITE_ID_PREFIX)) {
+        if (edgeKey.startsWith(DiagramContentResolver.COMPOSITE_ID_PREFIX)) {
             String[] parts = edgeKey.split("\\|", 4);
             source = parts[2];
             target = parts[3];
@@ -385,7 +385,7 @@ public class DiagramLayoutReconciler {
      */
     private String edgeKey(DiagramLayoutDto.Edge in) {
         String id = in.id();
-        boolean composite = id.startsWith(EdgeProjector.COMPOSITE_ID_PREFIX);
+        boolean composite = id.startsWith(DiagramContentResolver.COMPOSITE_ID_PREFIX);
         if (!composite && !isIri(mapper.conceptIriFromNodeId(id))) {
             log.warn("Rejected diagram edge id {} — neither a composite id nor a concept IRI", id);
             throw new ConceptValidationException(
@@ -412,7 +412,7 @@ public class DiagramLayoutReconciler {
                     "Hranu " + in.id() + " nelze uložit: hrana druhu " + in.edgeKind()
                             + " vyžaduje složený identifikátor.");
         }
-        String derived = EdgeProjector.projectedEdgeId(
+        String derived = DiagramContentResolver.projectedEdgeId(
                 in.edgeKind(),
                 mapper.conceptIriFromNodeId(in.source()),
                 mapper.conceptIriFromNodeId(in.target()));
