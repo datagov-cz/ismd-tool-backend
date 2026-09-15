@@ -17,6 +17,7 @@ import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaFragmentHtml;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
@@ -25,7 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import org.springframework.web.util.HtmlUtils;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -61,15 +61,18 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
+    private final EsbirkaSubtreeBodyCache subtreeBodyCache;
 
     /** Self-reference through the Spring proxy, so internal calls still hit {@code @Cacheable}. */
     private final EsbirkaService self;
 
     public EsbirkaServiceImpl(EsbirkaSparqlClient client,
                               EsbirkaFragmentResolutionCache resolutionCache,
+                              EsbirkaSubtreeBodyCache subtreeBodyCache,
                               @Lazy EsbirkaService self) {
         this.client = client;
         this.resolutionCache = resolutionCache;
+        this.subtreeBodyCache = subtreeBodyCache;
         this.self = self;
     }
 
@@ -371,41 +374,10 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     /**
      * Assemble the whole-version HTML body server-side from the fragment tree.
-     *
-     * <p>Each fragment is wrapped in a {@code <section>} carrying its ELI path, full IRI and kind
-     * as data attributes ({@code data-eli} path + {@code data-iri} full IRI — FE hooks for
-     * deep-linking / navigation / styling); the fragment's own {@code bodyHtml}
-     * (null for structural fragments) precedes its children, so the output is a nested,
-     * document-ordered tree. Order is the tree's order — the server-side {@code ORDER BY ?order}
-     * preserved by {@link #assembleTree}.
+     * Delegates to {@link EsbirkaFragmentHtml}, shared with the {@code /resolve} body fallback.
      */
     private static String renderBodyHtml(List<FragmentDto> roots) {
-        StringBuilder sb = new StringBuilder();
-        for (FragmentDto root : roots) {
-            appendFragmentHtml(sb, root);
-        }
-        return sb.toString();
-    }
-
-    private static void appendFragmentHtml(StringBuilder sb, FragmentDto node) {
-        sb.append("<section data-eli=\"")
-                .append(HtmlUtils.htmlEscape(nullToEmpty(node.getEliPath())))
-                .append("\" data-iri=\"")
-                .append(HtmlUtils.htmlEscape(nullToEmpty(node.getIri())))
-                .append("\" data-kind=\"")
-                .append(HtmlUtils.htmlEscape(nullToEmpty(node.getKind())))
-                .append("\">");
-        if (node.getBodyHtml() != null) {
-            sb.append(node.getBodyHtml());
-        }
-        for (FragmentDto child : node.getChildren()) {
-            appendFragmentHtml(sb, child);
-        }
-        sb.append("</section>");
-    }
-
-    private static String nullToEmpty(String s) {
-        return s == null ? "" : s;
+        return EsbirkaFragmentHtml.render(roots);
     }
 
     /**
@@ -527,7 +499,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      * Tree assembly without a law citation, so the document root stays unlabelled. Used by the
      * lean fragment-tree endpoint, which resolves no law metadata.
      */
-    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
+    static List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
         return assembleTree(rows, versionIri, null);
     }
 
@@ -539,7 +511,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      *
      * <p>{@code lawCitation}, when present, labels the otherwise-blank {@code dokument} root.
      */
-    List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri, String lawCitation) {
+    static List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri, String lawCitation) {
         if (rows.isEmpty()) {
             return List.of();
         }
@@ -665,7 +637,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         return !rest.isEmpty() && rest.indexOf('/') < 0;
     }
 
-    private void capDepth(List<FragmentDto> nodes, int depth, String versionIri) {
+    private static void capDepth(List<FragmentDto> nodes, int depth, String versionIri) {
         if (depth > MAX_FRAGMENT_DEPTH) {
             int trimmed = nodes.size();
             for (FragmentDto n : nodes) {
@@ -800,10 +772,11 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                         .build();
             }
             FragmentResolutionModel m = opt.get();
+            String bodyHtml = m.bodyHtml() != null ? m.bodyHtml() : assembledSubtreeBody(parsed);
             return baseDtoBuilder(parsed)
                     .fragmentCitation(m.citation())
-                    .fragmentBodyHtml(m.bodyHtml())
-                    .fragmentBody(EsbirkaHtmlText.toPlainText(m.bodyHtml()))
+                    .fragmentBodyHtml(bodyHtml)
+                    .fragmentBody(EsbirkaHtmlText.toPlainText(bodyHtml))
                     .versionValidUntil(m.versionValidUntil())
                     .isLatestVersion(m.isLatest())
                     .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, m.citation()))
@@ -815,6 +788,27 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .displayLabel(EsbirkaCzechCitationFormatter.buildDisplayLabel(parsed, null))
                     .enrichmentStatus(EnrichmentStatus.UNAVAILABLE)
                     .build();
+        }
+    }
+
+    /**
+     * Body for a structural fragment that carries no {@code obsah} of its own — the document root
+     * and the containers (norma, poznamkypodcarou, postfix, …) — assembled from its descendants,
+     * so resolving one yields the text under it rather than an empty body.
+     *
+     * <p>Only structural fragments reach this: a fragment with its own {@code obsah} short-circuits
+     * before the call. Fails soft — a body is an enrichment, so an outage or an absent subtree
+     * returns null and leaves the rest of the resolution (citation, version metadata) intact.
+     */
+    private String assembledSubtreeBody(ParsedEli parsed) {
+        try {
+            String body = subtreeBodyCache.bodiesByFragmentIri(parsed.versionIri())
+                    .get(parsed.fragmentIri());
+            return body == null || body.isBlank() ? null : body;
+        } catch (SparqlEndpointUnavailableException e) {
+            log.warn("e-Sbírka unavailable while assembling subtree body for {}: {}",
+                    parsed.fragmentIri(), e.getMessage());
+            return null;
         }
     }
 

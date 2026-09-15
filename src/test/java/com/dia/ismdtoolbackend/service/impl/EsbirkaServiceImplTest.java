@@ -44,7 +44,7 @@ class EsbirkaServiceImplTest {
     void setUp() {
         // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
         // the same delegation path without a Spring context.
-        service = new EsbirkaServiceImpl(client, null, null);
+        service = new EsbirkaServiceImpl(client, null, null, null);
         ReflectionTestUtils.setField(service, "self", service);
     }
 

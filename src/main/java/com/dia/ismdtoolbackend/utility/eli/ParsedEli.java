@@ -36,6 +36,14 @@ public record ParsedEli(
      * as a {@link Level#FRAGMENT} carrying no {@code fragmentSegments}.
      */
     public boolean isContainerRoot() {
-        return isFragment() && fragmentSegments.isEmpty();
+        return isFragment() && container != null && fragmentSegments.isEmpty();
+    }
+
+    /**
+     * True when the IRI names the document root ({@code .../dokument}) — the single parentless node
+     * of a version's fragment tree, sitting above every container.
+     */
+    public boolean isDocumentRoot() {
+        return isFragment() && container == null && fragmentSegments.isEmpty();
     }
 }

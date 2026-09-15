@@ -39,7 +39,7 @@ class EsbirkaGroupedSearchTest {
     void buildService() {
         // In production `self` is the Spring proxy that adds @Cacheable; here it is a plain
         // self-reference, so the one-arg delegation is exercised without the caching layer.
-        service = new EsbirkaServiceImpl(client, null, null);
+        service = new EsbirkaServiceImpl(client, null, null, null);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "self", service);
     }
 

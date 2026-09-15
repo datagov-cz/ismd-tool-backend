@@ -65,12 +65,15 @@ public final class EsbirkaEliParser {
                     versionDate, List.of(), ParsedEli.Level.VERSION, null);
         }
 
-        if (segs.length < 7 || !DOKUMENT_SEGMENT.equals(segs[5]) || segs[6].isBlank()) {
+        if (!DOKUMENT_SEGMENT.equals(segs[5])) {
             return invalid(url);
         }
 
-        // segs[6] is the structural container (norma, poznamkypodcarou, postfix, novela, prilohy, …).
-        // It may stand alone: a container root is itself a citable target, with no fragment below it.
+        // segs[5] is the document root, the single parentless node of a version's fragment tree —
+        // itself a real, typed node, so `<versionIri>/dokument` resolves with no container below it.
+        // segs[6], when present, is the structural container (norma, poznamkypodcarou, postfix, …),
+        // which may likewise stand alone: a container root is a citable target in its own right.
+        String container = segs.length > 6 && !segs[6].isBlank() ? stripSiblingSuffix(segs[6]) : null;
         List<ParsedEli.FragmentSegment> fragmentSegments = new ArrayList<>();
         for (int i = 7; i < segs.length; i++) {
             fragmentSegments.add(splitSegment(segs[i]));
@@ -79,7 +82,7 @@ public final class EsbirkaEliParser {
         return new ParsedEli(url, CANONICAL_DOMAIN, eliPath,
                 lawIri, versionIri, fragmentIri, lawNumber, lawYear, sbirkaCode,
                 versionDate, List.copyOf(fragmentSegments), ParsedEli.Level.FRAGMENT,
-                stripSiblingSuffix(segs[6]));
+                container);
     }
 
     /**

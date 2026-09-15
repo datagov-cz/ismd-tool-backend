@@ -129,6 +129,17 @@ class EsbirkaCzechCitationFormatterTest {
     }
 
     @Test
+    void buildDisplayLabel_documentRootLabelsWholeText() {
+        ParsedEli p = new ParsedEli(
+                "url", "domain", "path",
+                "lawIri", "verIri", "fragIri",
+                "23", 2024, "sb", null,
+                List.of(), ParsedEli.Level.FRAGMENT, null);
+        assertEquals("Zákon č. 23/2024 Sb., úplné znění",
+                EsbirkaCzechCitationFormatter.buildDisplayLabel(p, null));
+    }
+
+    @Test
     void buildDisplayLabel_unknownContainerRootOmitsFragmentPart() {
         ParsedEli p = new ParsedEli(
                 "url", "domain", "path",

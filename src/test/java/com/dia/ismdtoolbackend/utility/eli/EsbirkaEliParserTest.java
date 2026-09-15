@@ -171,6 +171,7 @@ class EsbirkaEliParserTest {
         assertTrue(p.isValid(), "container root must resolve: " + container);
         assertEquals(ParsedEli.Level.FRAGMENT, p.level());
         assertTrue(p.isContainerRoot());
+        assertFalse(p.isDocumentRoot());
         assertEquals(container, p.container());
         assertTrue(p.fragmentSegments().isEmpty());
         assertEquals(url, p.fragmentIri());
@@ -202,9 +203,42 @@ class EsbirkaEliParserTest {
         assertTrue(p.isContainerRoot());
     }
 
+    /**
+     * {@code <versionIri>/dokument} is the document root — a real, typed node with its own
+     * {@code pořadí} and children, so it resolves rather than being rejected as a truncated IRI.
+     */
     @Test
-    void parse_dokumentWithoutContainer_returnsInvalid() {
-        ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION + "/dokument");
+    void parse_documentRoot_isValidFragmentWithNoContainer() {
+        String url = CANONICAL_VERSION + "/dokument";
+
+        ParsedEli p = EsbirkaEliParser.parse(url);
+
+        assertTrue(p.isValid());
+        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
+        assertTrue(p.isDocumentRoot());
+        assertFalse(p.isContainerRoot());
+        assertNull(p.container());
+        assertTrue(p.fragmentSegments().isEmpty());
+        assertEquals(url, p.fragmentIri());
+        assertEquals(CANONICAL_VERSION, p.versionIri());
+    }
+
+    /** The promulgated-text version ({@code VYHLZNE}) is a real version whose date is not a date. */
+    @Test
+    void parse_documentRootOnZeroDateVersion_isValid() {
+        String url = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2024/23/0000-00-00/dokument";
+
+        ParsedEli p = EsbirkaEliParser.parse(url);
+
+        assertTrue(p.isValid());
+        assertTrue(p.isDocumentRoot());
+        assertNull(p.versionDate());
+        assertEquals(url, p.fragmentIri());
+    }
+
+    @Test
+    void parse_nonDokumentSixthSegment_returnsInvalid() {
+        ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION + "/neco");
         assertFalse(p.isValid());
     }
 

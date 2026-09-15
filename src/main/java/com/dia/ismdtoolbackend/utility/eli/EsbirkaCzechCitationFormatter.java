@@ -42,6 +42,9 @@ public final class EsbirkaCzechCitationFormatter {
             "postfix", "Závěrečná ustanovení",
             "zaver", "Závěr");
 
+    /** Fragment part for the document root, which sits above every container and has no label upstream. */
+    private static final String DOCUMENT_ROOT_LABEL = "úplné znění";
+
     /** Label for a structural container kind ({@code poznamkypodcarou}), or null when not a container. */
     public static String containerLabel(String bareKind) {
         return bareKind == null ? null : CONTAINER_LABELS.get(bareKind);
@@ -77,6 +80,9 @@ public final class EsbirkaCzechCitationFormatter {
      * container root ({@code "Poznámky pod čarou"}), otherwise a citation built from the segments.
      */
     private static String fallbackFragmentPart(ParsedEli p) {
+        if (p.isDocumentRoot()) {
+            return DOCUMENT_ROOT_LABEL;
+        }
         if (p.isContainerRoot()) {
             String label = containerLabel(p.container());
             return label == null ? "" : label;
@@ -100,7 +106,7 @@ public final class EsbirkaCzechCitationFormatter {
         StringBuilder sb = new StringBuilder();
         for (ParsedEli.FragmentSegment s : segments) {
             if (hasPar && isStructuralAncestor(s.kind())) continue;
-            if (sb.length() > 0) sb.append(' ');
+            if (!sb.isEmpty()) sb.append(' ');
             sb.append(formatSegment(s));
         }
         return sb.toString();
