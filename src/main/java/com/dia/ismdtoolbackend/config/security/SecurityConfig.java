@@ -148,6 +148,8 @@ public class SecurityConfig {
                         "/api/nkd/ontology/all",
                         "/api/nkd/ontology/download",
                         "/api/nkd/concept/detail",
+                        "/api/nkod/dataset/all",
+                        "/api/nkod/dataset/detail",
                         "/api/rpp/agenda/search",
                         "/api/rpp/ais/search",
                         "/api/eli/law/search",

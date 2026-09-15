@@ -151,6 +151,28 @@ public final class HttpSparqlExecutor {
     }
 
     /**
+     * Run an ASK and return its boolean result.
+     *
+     * <p>Useful where a SELECT of all-OPTIONAL fields cannot distinguish "resource absent"
+     * from "resource present but unannotated" — both yield no usable bindings.
+     */
+    public boolean ask(String operationLabel, String query) {
+        requireConfigured();
+        return withPermit(operationLabel, () -> SparqlExceptionMapper.strict(
+                operationLabel,
+                SparqlEndpointUnavailableException.class,
+                () -> {
+                    try (QueryExecution qe = service()
+                            .query(query)
+                            .timeout(timeoutMs, TimeUnit.MILLISECONDS)
+                            .build()) {
+                        return qe.execAsk();
+                    }
+                },
+                (msg, cause) -> new SparqlEndpointUnavailableException(endpointLabel, msg, cause)));
+    }
+
+    /**
      * Run a CONSTRUCT and return the result {@link Model}. Empty/null result models
      * are returned as {@link Optional#empty()}.
      */
