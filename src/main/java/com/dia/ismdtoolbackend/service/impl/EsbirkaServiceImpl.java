@@ -59,25 +59,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     /** Kind of an unnumbered fragment: a text block when childless, a structural parent otherwise. */
     private static final String FRAG_KIND = "frag";
 
-    /**
-     * Display labels for the structural containers that sit between the document root and the
-     * first citable unit. Upstream carries no citace-označení-fragmentu for these, and they are
-     * not fragments in the ELI sense, so without this map the top two levels of the navigation
-     * tree render blank.
-     *
-     * <p>Keyed by kind with any {@code :N} sibling suffix stripped — real IRIs include
-     * {@code postfix:2}, {@code prilohy:4} and the like, which {@code parseKindFromIri} passes
-     * through verbatim.
-     */
-    private static final Map<String, String> CONTAINER_LABELS = Map.of(
-            "prefix", "Úvodní ustanovení",
-            "norma", "Text předpisu",
-            "novela", "Novelizační ustanovení",
-            "prilohy", "Přílohy",
-            "poznamkypodcarou", "Poznámky pod čarou",
-            "postfix", "Závěrečná ustanovení",
-            "zaver", "Závěr");
-
     private final EsbirkaSparqlClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
 
@@ -783,7 +764,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
         int colon = kind.indexOf(':');
         String base = colon > 0 ? kind.substring(0, colon) : kind;
-        String label = CONTAINER_LABELS.get(base);
+        String label = EsbirkaCzechCitationFormatter.containerLabel(base);
         if (label == null) {
             return null;
         }

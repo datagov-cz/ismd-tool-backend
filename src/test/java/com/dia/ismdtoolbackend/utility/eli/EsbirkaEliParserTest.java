@@ -161,6 +161,53 @@ class EsbirkaEliParserTest {
         assertEquals("1", p.fragmentSegments().get(0).number());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"norma", "poznamkypodcarou", "postfix", "novela", "prilohy", "prefix", "zaver"})
+    void parse_containerRoot_isValidFragmentWithNoSegments(String container) {
+        String url = CANONICAL_VERSION + "/dokument/" + container;
+
+        ParsedEli p = EsbirkaEliParser.parse(url);
+
+        assertTrue(p.isValid(), "container root must resolve: " + container);
+        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
+        assertTrue(p.isContainerRoot());
+        assertEquals(container, p.container());
+        assertTrue(p.fragmentSegments().isEmpty());
+        assertEquals(url, p.fragmentIri());
+        assertEquals(CANONICAL_VERSION, p.versionIri());
+        assertEquals(CANONICAL_LAW, p.lawIri());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"poznamkypodcarou", "postfix", "novela", "prilohy"})
+    void parse_nonNormaContainerWithFragment_isValid(String container) {
+        String url = CANONICAL_VERSION + "/dokument/" + container + "/par_2";
+
+        ParsedEli p = EsbirkaEliParser.parse(url);
+
+        assertTrue(p.isValid(), "non-norma container must resolve: " + container);
+        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
+        assertFalse(p.isContainerRoot());
+        assertEquals(container, p.container());
+        assertEquals(1, p.fragmentSegments().size());
+        assertEquals(new ParsedEli.FragmentSegment("par", "2"), p.fragmentSegments().get(0));
+    }
+
+    @Test
+    void parse_containerWithSiblingSuffix_stripsSuffixFromContainer() {
+        ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION + "/dokument/prilohy:4");
+
+        assertTrue(p.isValid());
+        assertEquals("prilohy", p.container());
+        assertTrue(p.isContainerRoot());
+    }
+
+    @Test
+    void parse_dokumentWithoutContainer_returnsInvalid() {
+        ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION + "/dokument");
+        assertFalse(p.isValid());
+    }
+
     @Test
     void parse_preservesOriginalUrlVerbatim() {
         String original = "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2000/361";

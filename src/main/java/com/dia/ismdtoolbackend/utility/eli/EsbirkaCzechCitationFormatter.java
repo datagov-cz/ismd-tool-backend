@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.utility.eli;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds Czech display labels for {@link ParsedEli} values.
@@ -25,6 +26,27 @@ public final class EsbirkaCzechCitationFormatter {
 
     private static final DateTimeFormatter CZECH_DATE = DateTimeFormatter.ofPattern("d. M. yyyy");
 
+    /**
+     * Display labels for the structural containers that sit between the document root and the
+     * first citable unit. Upstream carries no citace-označení-fragmentu for these, so without
+     * this map a container-root reference renders with no fragment part at all.
+     *
+     * <p>Keyed by bare kind — callers strip any {@code :N} sibling suffix first.
+     */
+    private static final Map<String, String> CONTAINER_LABELS = Map.of(
+            "prefix", "Úvodní ustanovení",
+            "norma", "Text předpisu",
+            "novela", "Novelizační ustanovení",
+            "prilohy", "Přílohy",
+            "poznamkypodcarou", "Poznámky pod čarou",
+            "postfix", "Závěrečná ustanovení",
+            "zaver", "Závěr");
+
+    /** Label for a structural container kind ({@code poznamkypodcarou}), or null when not a container. */
+    public static String containerLabel(String bareKind) {
+        return bareKind == null ? null : CONTAINER_LABELS.get(bareKind);
+    }
+
     private EsbirkaCzechCitationFormatter() {
     }
 
@@ -39,7 +61,7 @@ public final class EsbirkaCzechCitationFormatter {
         if (p.isFragment()) {
             String fragmentPart = sparqlCitation != null && !sparqlCitation.isBlank()
                     ? sparqlCitation
-                    : buildFragmentCitationFromSegments(p.fragmentSegments());
+                    : fallbackFragmentPart(p);
             if (!fragmentPart.isBlank()) {
                 sb.append(", ").append(fragmentPart);
             }
@@ -48,6 +70,18 @@ public final class EsbirkaCzechCitationFormatter {
             sb.append(" (znění od ").append(formatCzechDate(p.versionDate())).append(")");
         }
         return sb.toString();
+    }
+
+    /**
+     * Fragment portion when no SPARQL citation is available: the container's own label for a
+     * container root ({@code "Poznámky pod čarou"}), otherwise a citation built from the segments.
+     */
+    private static String fallbackFragmentPart(ParsedEli p) {
+        if (p.isContainerRoot()) {
+            String label = containerLabel(p.container());
+            return label == null ? "" : label;
+        }
+        return buildFragmentCitationFromSegments(p.fragmentSegments());
     }
 
     /**

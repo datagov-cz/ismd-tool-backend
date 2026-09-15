@@ -15,7 +15,7 @@ public final class EsbirkaEliParser {
     private static final String BARE_LEGACY_HOST_PREFIX = "://eselpoint.cz/";
 
     private static final String ELI_MARKER = "/eli/";
-    private static final String DOKUMENT_NORMA = "dokument/norma";
+    private static final String DOKUMENT_SEGMENT = "dokument";
 
     private EsbirkaEliParser() {
     }
@@ -51,7 +51,7 @@ public final class EsbirkaEliParser {
         if (segs.length == 4) {
             return new ParsedEli(url, CANONICAL_DOMAIN, lawEliPath,
                     lawIri, null, null, lawNumber, lawYear, sbirkaCode,
-                    null, List.of(), ParsedEli.Level.LAW);
+                    null, List.of(), ParsedEli.Level.LAW, null);
         }
 
         String dateSeg = segs[4];
@@ -62,24 +62,24 @@ public final class EsbirkaEliParser {
         if (segs.length == 5) {
             return new ParsedEli(url, CANONICAL_DOMAIN, versionEliPath,
                     lawIri, versionIri, null, lawNumber, lawYear, sbirkaCode,
-                    versionDate, List.of(), ParsedEli.Level.VERSION);
+                    versionDate, List.of(), ParsedEli.Level.VERSION, null);
         }
 
-        if (segs.length < 7 || !DOKUMENT_NORMA.equals(segs[5] + "/" + segs[6])) {
+        if (segs.length < 7 || !DOKUMENT_SEGMENT.equals(segs[5]) || segs[6].isBlank()) {
             return invalid(url);
         }
 
+        // segs[6] is the structural container (norma, poznamkypodcarou, postfix, novela, prilohy, …).
+        // It may stand alone: a container root is itself a citable target, with no fragment below it.
         List<ParsedEli.FragmentSegment> fragmentSegments = new ArrayList<>();
         for (int i = 7; i < segs.length; i++) {
             fragmentSegments.add(splitSegment(segs[i]));
         }
-        if (fragmentSegments.isEmpty()) {
-            return invalid(url);
-        }
         String fragmentIri = CANONICAL_DOMAIN + eliPath;
         return new ParsedEli(url, CANONICAL_DOMAIN, eliPath,
                 lawIri, versionIri, fragmentIri, lawNumber, lawYear, sbirkaCode,
-                versionDate, List.copyOf(fragmentSegments), ParsedEli.Level.FRAGMENT);
+                versionDate, List.copyOf(fragmentSegments), ParsedEli.Level.FRAGMENT,
+                stripSiblingSuffix(segs[6]));
     }
 
     /**
@@ -105,7 +105,7 @@ public final class EsbirkaEliParser {
     }
 
     private static ParsedEli invalid(String url) {
-        return new ParsedEli(url, null, null, null, null, null, null, null, null, null, List.of(), null);
+        return new ParsedEli(url, null, null, null, null, null, null, null, null, null, List.of(), null, null);
     }
 
     private static Integer parseIntOrNull(String s) {
@@ -122,6 +122,12 @@ public final class EsbirkaEliParser {
         } catch (DateTimeParseException e) {
             return null;
         }
+    }
+
+    /** Drops the {@code :N} sibling suffix real container IRIs carry ({@code postfix:2} → {@code postfix}). */
+    private static String stripSiblingSuffix(String seg) {
+        int colon = seg.indexOf(':');
+        return colon < 0 ? seg : seg.substring(0, colon);
     }
 
     private static ParsedEli.FragmentSegment splitSegment(String seg) {
