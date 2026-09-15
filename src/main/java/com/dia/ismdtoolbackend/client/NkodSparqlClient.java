@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.config.NkodConfig;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetDetail;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
+import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
 import com.dia.ismdtoolbackend.query.NKODSPARQLDatasetQuery;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
@@ -106,30 +107,91 @@ public class NkodSparqlClient {
             return Optional.empty();
         }
 
-        return Optional.of(executor.select("NKOD dataset detail", detailQuery,
-                rs -> mapDetailRows(datasetIri, rs)));
+        NkodDatasetDetail detail = executor.select("NKOD dataset detail", detailQuery,
+                rs -> mapDetailRows(datasetIri, rs));
+
+        return Optional.of(withDistributions(datasetIri, detail));
+    }
+
+    /**
+     * Adds the dataset's distributions in a second round-trip.
+     *
+     * <p>Separate from the detail query because both distributions and {@code týká-se-pojmu}
+     * are multi-valued and would otherwise cross-product.
+     *
+     * <p>Fails soft: distributions are supplementary to the concept list this page exists
+     * for, so a failure here returns the detail without them rather than 503-ing the whole
+     * page.
+     */
+    private NkodDatasetDetail withDistributions(String datasetIri, NkodDatasetDetail detail) {
+        String query = NKODSPARQLDatasetQuery.buildDatasetDistributionsQuery(datasetIri);
+        if (query == null) {
+            return detail;
+        }
+        List<NkodDistribution> distributions;
+        try {
+            distributions = executor.select("NKOD dataset distributions", query,
+                    NkodSparqlClient::mapDistributionRows);
+        } catch (RuntimeException e) {
+            log.warn("Could not load distributions for NKOD dataset {}: {}",
+                    datasetIri, e.toString());
+            distributions = List.of();
+        }
+        return new NkodDatasetDetail(detail.iri(), detail.name(), detail.description(),
+                detail.conceptIris(), distributions);
+    }
+
+    /**
+     * Collapses one row per distribution per title language into one entry per distribution.
+     */
+    private static List<NkodDistribution> mapDistributionRows(ResultSet rs) {
+        Map<String, Map<String, String>> namesByDist = new LinkedHashMap<>();
+        Map<String, QuerySolution> firstRowByDist = new LinkedHashMap<>();
+
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String iri = SparqlSolutions.resourceUri(sol, "dist");
+            if (iri == null) {
+                continue;
+            }
+            firstRowByDist.putIfAbsent(iri, sol);
+            putLangValue(namesByDist.computeIfAbsent(iri, k -> new LinkedHashMap<>()),
+                    sol, "nazev", "nazevLang");
+        }
+
+        List<NkodDistribution> result = new ArrayList<>(firstRowByDist.size());
+        firstRowByDist.forEach((iri, sol) -> {
+            String downloadUrl = SparqlSolutions.resourceUri(sol, "stahovaciUrl");
+            String accessUrl = SparqlSolutions.resourceUri(sol, "pristupoveUrl");
+            boolean isService = SparqlSolutions.resourceUri(sol, "sluzba") != null
+                    || downloadUrl == null;
+            result.add(new NkodDistribution(
+                    iri,
+                    namesByDist.getOrDefault(iri, Map.of()),
+                    downloadUrl != null ? downloadUrl : accessUrl,
+                    SparqlSolutions.resourceUri(sol, "format"),
+                    SparqlSolutions.resourceUri(sol, "mediaTyp"),
+                    isService));
+        });
+        return result;
     }
 
     private NkodDatasetDetail mapDetailRows(String datasetIri, ResultSet rs) {
         Map<String, String> name = new LinkedHashMap<>();
         Map<String, String> description = new LinkedHashMap<>();
         LinkedHashSet<String> conceptIris = new LinkedHashSet<>();
-        String landingPage = null;
 
         while (rs.hasNext()) {
             QuerySolution sol = rs.next();
             putLangValue(name, sol, "nazev", "nazevLang");
             putLangValue(description, sol, "popis", "popisLang");
-            if (landingPage == null) {
-                landingPage = SparqlSolutions.resourceUri(sol, "vstupniStranka");
-            }
             String pojem = SparqlSolutions.resourceUri(sol, "pojem");
             if (pojem != null) {
                 conceptIris.add(pojem);
             }
         }
-        return new NkodDatasetDetail(datasetIri, name, description, landingPage,
-                List.copyOf(conceptIris));
+        return new NkodDatasetDetail(datasetIri, name, description,
+                List.copyOf(conceptIris), List.of());
     }
 
     /**

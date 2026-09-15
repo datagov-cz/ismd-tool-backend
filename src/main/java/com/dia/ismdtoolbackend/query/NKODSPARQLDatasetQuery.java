@@ -59,8 +59,8 @@ public final class NKODSPARQLDatasetQuery {
     }
 
     /**
-     * Full detail of one dataset: labels, descriptions, landing page, and the concepts it is
-     * annotated with via {@code týká-se-pojmu}.
+     * Full detail of one dataset: labels, descriptions, and the concepts it is annotated with
+     * via {@code týká-se-pojmu}.
      *
      * <p>Returns null when {@code datasetIri} is not a safe HTTP IRI, so callers surface a
      * 400 rather than interpolating unvalidated input. Note the IRI is publisher-hosted
@@ -72,18 +72,48 @@ public final class NKODSPARQLDatasetQuery {
             return null;
         }
         return PREFIXES + """
-                SELECT ?nazev ?nazevLang ?popis ?popisLang ?vstupniStranka ?pojem WHERE {
+                SELECT ?nazev ?nazevLang ?popis ?popisLang ?pojem WHERE {
                   GRAPH ?g {
                     <%1$s> a dcat:Dataset .
                     OPTIONAL { <%1$s> dcterms:title ?nazev }
                     OPTIONAL { <%1$s> dcterms:description ?popis }
-                    OPTIONAL { <%1$s> dcat:landingPage ?vstupniStranka }
                     OPTIONAL { <%1$s> <%2$s> ?pojem }
                   }
                   BIND(LANG(?nazev) AS ?nazevLang)
                   BIND(LANG(?popis) AS ?popisLang)
                 }
                 """.formatted(datasetIri, TYKA_SE_POJMU);
+    }
+
+    /**
+     * The distributions of one dataset: the link to offer, its format, and whether it is a
+     * service rather than a file.
+     *
+     * <p>Kept separate from {@link #buildDatasetDetailQuery} on purpose. Distributions and
+     * {@code týká-se-pojmu} are both multi-valued, so folding them into one flat SELECT
+     * cross-products them.
+     *
+     * <p>Both URL variants are projected because neither alone is sufficient.
+     */
+    public static String buildDatasetDistributionsQuery(String datasetIri) {
+        if (!SparqlIriValidator.isSafeHttpIri(datasetIri)) {
+            return null;
+        }
+        return PREFIXES + """
+                SELECT ?dist ?nazev ?nazevLang ?pristupoveUrl ?stahovaciUrl
+                       ?format ?mediaTyp ?sluzba WHERE {
+                  GRAPH ?g {
+                    <%1$s> dcat:distribution ?dist .
+                    OPTIONAL { ?dist dcterms:title ?nazev }
+                    OPTIONAL { ?dist dcat:accessURL ?pristupoveUrl }
+                    OPTIONAL { ?dist dcat:downloadURL ?stahovaciUrl }
+                    OPTIONAL { ?dist dcterms:format ?format }
+                    OPTIONAL { ?dist dcat:mediaType ?mediaTyp }
+                    OPTIONAL { ?dist dcat:accessService ?sluzba }
+                  }
+                  BIND(LANG(?nazev) AS ?nazevLang)
+                }
+                """.formatted(datasetIri);
     }
 
     /**

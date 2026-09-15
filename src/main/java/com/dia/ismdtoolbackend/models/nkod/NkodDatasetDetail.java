@@ -9,12 +9,13 @@ import java.util.Map;
  * @param iri          dataset IRI
  * @param name         language tag to title
  * @param description  language tag to description
- * @param landingPage  {@code dcat:landingPage}, or null — the "open in NKD" target
  * @param conceptIris  IRIs from {@code týká-se-pojmu}, deduplicated, in query order.
+ * @param distributions the dataset's distributions, in query order; empty when it has none.
+ *                      Carries the links to the data.
  */
 public record NkodDatasetDetail(String iri,
                                 Map<String, String> name,
                                 Map<String, String> description,
-                                String landingPage,
-                                List<String> conceptIris) {
+                                List<String> conceptIris,
+                                List<NkodDistribution> distributions) {
 }

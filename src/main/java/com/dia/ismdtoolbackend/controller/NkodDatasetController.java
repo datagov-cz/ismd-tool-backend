@@ -51,8 +51,10 @@ public class NkodDatasetController {
     @Operation(
             summary = "Detail datové sady z NKOD",
             description = "Vrací detail datové sady z Národního katalogu otevřených dat (NKOD) podle IRI, "
-                    + "včetně seznamu pojmů, kterými je datová sada anotována (týká se pojmu). "
-                    + "Seznam pojmů může být prázdný, pokud datová sada anotace zatím neobsahuje. "
+                    + "včetně seznamu pojmů, kterými je datová sada anotována (týká se pojmu), "
+                    + "a seznamu distribucí. Seznam pojmů může být prázdný, pokud datová sada "
+                    + "anotace zatím neobsahuje. Každá distribuce nese jeden odkaz; příznak "
+                    + "je-služba rozlišuje soubor ke stažení od API či mapové služby. "
                     + "Veřejný endpoint."
     )
     @GetMapping("/dataset/detail")

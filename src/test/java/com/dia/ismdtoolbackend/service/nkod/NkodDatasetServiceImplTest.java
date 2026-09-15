@@ -7,7 +7,9 @@ import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
+import com.dia.ismdtoolbackend.controller.dto.NkodDistributionDto;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetDetail;
+import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetSnapshot;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
@@ -145,8 +147,8 @@ class NkodDatasetServiceImplTest {
     @Test
     void detailResolvesConceptNames() {
         when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(new NkodDatasetDetail(
-                "urn:ds", Map.of("cs", "Registr"), Map.of(), "https://nkd/ds",
-                List.of("urn:pojem"))));
+                "urn:ds", Map.of("cs", "Registr"), Map.of(),
+                List.of("urn:pojem"), List.of())));
         when(resolutionEngine.resolveAll(anyList(), eq(SearchSource.NKD))).thenReturn(Map.of(
                 "urn:pojem", ResolvedConceptDto.builder()
                         .iri("urn:pojem")
@@ -164,7 +166,7 @@ class NkodDatasetServiceImplTest {
     @Test
     void detailKeepsUnresolvedConceptsAsIriOnlyRows() {
         when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(new NkodDatasetDetail(
-                "urn:ds", Map.of(), Map.of(), null, List.of("urn:unknown"))));
+                "urn:ds", Map.of(), Map.of(), List.of("urn:unknown"), List.of())));
         when(resolutionEngine.resolveAll(anyList(), eq(SearchSource.NKD))).thenReturn(Map.of());
 
         GetNkodDatasetDto dto = service.getDatasetDetail("urn:ds");
@@ -178,13 +180,71 @@ class NkodDatasetServiceImplTest {
     @Test
     void detailWithNoConceptsSkipsResolution() {
         when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(new NkodDatasetDetail(
-                "urn:ds", Map.of("cs", "Prázdná"), Map.of(), null, List.of())));
+                "urn:ds", Map.of("cs", "Prázdná"), Map.of(), List.of(), List.of())));
 
         GetNkodDatasetDto dto = service.getDatasetDetail("urn:ds");
 
         assertThat(dto.getConcepts()).isEmpty();
         assertThat(dto.getConceptCount()).isZero();
         verify(resolutionEngine, never()).resolveAll(anyList(), eq(SearchSource.NKD));
+    }
+
+    private static NkodDatasetDetail detailWith(NkodDistribution... distributions) {
+        return new NkodDatasetDetail("urn:ds", Map.of("cs", "Sada"), Map.of(),
+                List.of(), List.of(distributions));
+    }
+
+    /**
+     * The whole point of the single {@code odkaz} field: downloadURL wins, and the
+     * near-always-identical accessURL is not surfaced a second time.
+     */
+    @Test
+    void distributionPrefersDownloadUrlOverAccessUrl() {
+        when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(detailWith(
+                new NkodDistribution("urn:d1", Map.of("cs", "CSV"), "https://host/data.csv",
+                        "urn:fmt:CSV", "urn:mt:csv", false))));
+
+        GetNkodDatasetDto dto = service.getDatasetDetail("urn:ds");
+
+        assertThat(dto.getDistributions()).hasSize(1);
+        assertThat(dto.getDistributions().get(0).getLink()).isEqualTo("https://host/data.csv");
+        assertThat(dto.getDistributions().get(0).isSluzba()).isFalse();
+    }
+
+    /** An API/WMS/SPARQL distribution must reach the FE flagged, so it reads "Otevřít". */
+    @Test
+    void serviceDistributionIsFlagged() {
+        when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(detailWith(
+                new NkodDistribution("urn:d1", Map.of(), "https://host/sparql",
+                        null, null, true))));
+
+        GetNkodDatasetDto dto = service.getDatasetDetail("urn:ds");
+
+        assertThat(dto.getDistributions()).hasSize(1);
+        assertThat(dto.getDistributions().get(0).isSluzba()).isTrue();
+    }
+
+    /** Neither URL published — there is nothing to link to, so the row is dropped. */
+    @Test
+    void distributionWithoutAnyLinkIsDropped() {
+        when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(detailWith(
+                new NkodDistribution("urn:d1", Map.of("cs", "Bez odkazu"), null, null, null, false),
+                new NkodDistribution("urn:d2", Map.of(), "https://host/ok.csv", null, null, false))));
+
+        GetNkodDatasetDto dto = service.getDatasetDetail("urn:ds");
+
+        assertThat(dto.getDistributions()).extracting(NkodDistributionDto::getIri)
+                .containsExactly("urn:d2");
+    }
+
+    /** A dataset with no distributions serializes an empty list, never a missing field. */
+    @Test
+    void datasetWithNoDistributionsYieldsEmptyList() {
+        when(client.fetchDatasetDetail("urn:ds")).thenReturn(Optional.of(detailWith()));
+
+        GetNkodDatasetDto dto = service.getDatasetDetail("urn:ds");
+
+        assertThat(dto.getDistributions()).isNotNull().isEmpty();
     }
 
     @Test

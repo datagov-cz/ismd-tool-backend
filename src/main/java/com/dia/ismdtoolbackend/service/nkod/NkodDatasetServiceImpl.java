@@ -6,12 +6,14 @@ import com.dia.ismdtoolbackend.controller.dto.GetNkodDatasetDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListDto;
 import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListItemDto;
+import com.dia.ismdtoolbackend.controller.dto.NkodDistributionDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetDetail;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetSnapshot;
+import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,10 +70,28 @@ public class NkodDatasetServiceImpl implements NkodDatasetService {
                 .iri(detail.iri())
                 .name(detail.name())
                 .description(detail.description())
-                .landingPage(detail.landingPage())
                 .concepts(concepts)
                 .conceptCount(concepts.size())
+                .distributions(toDistributions(detail.distributions()))
                 .build();
+    }
+
+    /**
+     * Drops distributions with no usable link: the publisher supplied neither
+     * {@code downloadURL} nor {@code accessURL}, so there is nothing for the FE to render.
+     */
+    private List<NkodDistributionDto> toDistributions(List<NkodDistribution> distributions) {
+        return distributions.stream()
+                .filter(d -> d.link() != null && !d.link().isBlank())
+                .map(d -> NkodDistributionDto.builder()
+                        .iri(d.iri())
+                        .name(d.name())
+                        .link(d.link())
+                        .format(d.format())
+                        .mediaType(d.mediaType())
+                        .sluzba(d.isService())
+                        .build())
+                .toList();
     }
 
     /**

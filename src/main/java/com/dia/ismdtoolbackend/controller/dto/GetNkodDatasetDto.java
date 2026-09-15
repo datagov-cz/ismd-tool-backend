@@ -34,10 +34,6 @@ public class GetNkodDatasetDto {
     @JsonProperty("popis")
     private Map<String, String> description;
 
-    /** {@code dcat:landingPage} — the "open in NKD" target. */
-    @JsonProperty("vstupní-stránka")
-    private String landingPage;
-
     /**
      * Always serialized, even when empty: an empty list is the expected state until
      * publishers populate {@code týká-se-pojmu}, and the FE distinguishes "no concepts"
@@ -48,4 +44,13 @@ public class GetNkodDatasetDto {
 
     @JsonProperty("počet-pojmů")
     private Integer conceptCount;
+
+    /**
+     * Distributions of the dataset — where its data can actually be fetched or accessed.
+     *
+     * <p>Always serialized, even when empty: a dataset may legitimately have none, and an
+     * empty list is also what a failed distribution lookup degrades to.
+     */
+    @JsonProperty("distribuce")
+    private List<NkodDistributionDto> distributions;
 }

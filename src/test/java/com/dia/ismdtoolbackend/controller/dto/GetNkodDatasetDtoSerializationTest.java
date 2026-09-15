@@ -39,9 +39,14 @@ class GetNkodDatasetDtoSerializationTest {
                 .iri("https://data.gov.cz/zdroj/datové-sady/1/a")
                 .name(Map.of("cs", "Testovací sada"))
                 .description(Map.of("cs", "Popis"))
-                .landingPage("https://data.gov.cz/datová-sada?iri=x")
                 .concepts(List.of())
                 .conceptCount(0)
+                .distributions(List.of(NkodDistributionDto.builder()
+                        .iri("urn:d1")
+                        .link("https://host/data.csv")
+                        .format("urn:fmt:CSV")
+                        .sluzba(false)
+                        .build()))
                 .build();
 
         String json = mapper.writeValueAsString(dto);
@@ -49,8 +54,10 @@ class GetNkodDatasetDtoSerializationTest {
         assertThat(json)
                 .contains("\"název\"")
                 .contains("\"popis\"")
-                .contains("\"vstupní-stránka\"")
-                .contains("\"počet-pojmů\"");
+                .contains("\"počet-pojmů\"")
+                .contains("\"distribuce\"")
+                .contains("\"odkaz\"")
+                .contains("\"formát\"");
     }
 
     /** Absent optional fields stay out of the payload rather than shipping as nulls. */
@@ -64,6 +71,39 @@ class GetNkodDatasetDtoSerializationTest {
 
         String json = mapper.writeValueAsString(dto);
 
-        assertThat(json).doesNotContain("vstupní-stránka");
+        assertThat(json).doesNotContain("\"popis\"");
+    }
+
+    /**
+     * {@code je-služba} drives the "Otevřít" vs "Stáhnout" label, so it must survive
+     * serialization even when false — a primitive boolean is not suppressed by NON_NULL.
+     */
+    @Test
+    void serializesServiceFlagWhenFalse() throws Exception {
+        String json = mapper.writeValueAsString(NkodDistributionDto.builder()
+                .iri("urn:d1")
+                .link("https://host/data.csv")
+                .build());
+
+        assertThat(json).contains("\"je-služba\":false");
+    }
+
+    /**
+     * Regression: the flag shipped twice, as {@code je-služba} AND {@code service}. A field
+     * named {@code isService} makes Lombok generate {@code isService()}, which Jackson reads
+     * as a separate bean property — a field-level {@code @JsonProperty} does not suppress it.
+     */
+    @Test
+    void doesNotDuplicateServiceFlagUnderAnEnglishName() throws Exception {
+        String json = mapper.writeValueAsString(NkodDistributionDto.builder()
+                .iri("urn:d1")
+                .link("https://host/sparql")
+                .sluzba(true)
+                .build());
+
+        assertThat(json)
+                .contains("\"je-služba\":true")
+                .doesNotContain("\"service\"")
+                .doesNotContain("\"sluzba\"");
     }
 }
