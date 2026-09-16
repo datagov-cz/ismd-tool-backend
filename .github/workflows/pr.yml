@@ -2,8 +2,11 @@ name: PR Workflow
 
 on:
   pull_request:
-    paths:
-      - '**'
+    # Side images (Fuseki, Keycloak) have their own build/deploy workflows; a PR that
+    # only touches them does not need the backend test suite.
+    paths-ignore:
+      - 'docker/fuseki/**'
+      - 'docker/keycloak/**'
     types: [opened, synchronize, reopened]
 
 permissions:
