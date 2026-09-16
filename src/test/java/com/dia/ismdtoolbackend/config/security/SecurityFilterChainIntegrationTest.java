@@ -113,6 +113,7 @@ class SecurityFilterChainIntegrationTest {
             "/api/ontology/test-slug/download",
             "/api/ontology/test-slug/detail",
             "/api/ontology/concepts",
+            "/api/ontology/concepts/resolve",
             "/api/ontology/list",
             // Concept read endpoints
             "/api/concept/list",

@@ -140,6 +140,7 @@ public class SecurityConfig {
                         "/api/ontology/*/detail",
                         "/api/ontology/*/validation-report",
                         "/api/ontology/concepts",
+                        "/api/ontology/concepts/resolve",
                         "/api/ontology/list",
                         "/api/concept/list",
                         "/api/concept/*/detail",

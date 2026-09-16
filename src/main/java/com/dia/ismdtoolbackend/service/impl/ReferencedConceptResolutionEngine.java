@@ -82,6 +82,28 @@ public class ReferencedConceptResolutionEngine {
     }
 
     /**
+     * Prefix applied to cache keys for display-mode resolutions. The relaxed NKD query can attribute an
+     * IRI to a scheme the strict one rejects, so the two modes must never share a cache slot.
+     */
+    private static final String DISPLAY_CACHE_PREFIX = "display::";
+
+    /**
+     * Resolves IRIs the caller named explicitly, for presentation only. Identical to
+     * {@link #resolveAll(List)} except that the NKD leg tolerates a concept with no
+     * {@code skos:inScheme} — it returns the label and leaves {@code ontologyIri}/{@code ontologyName}
+     * null — rather than dropping it entirely.
+     *
+     * <p>This exists because NKD publishes widely-referenced concepts without an own-vocabulary
+     * membership triple: {@code …/číselníky/pojem/číselník} carries four {@code inScheme} values, every
+     * one a different vocabulary that copied it, so the strict resolver returns nothing for it. The
+     * relaxed attribution is safe only as display data — never route a write or a membership decision
+     * through it.
+     */
+    public Map<String, ResolvedConceptDto> resolveAllForDisplay(List<String> iris) {
+        return resolve(iris, null, true);
+    }
+
+    /**
      * Resolves a batch of concept IRIs, gated by {@code source}.
      *
      * @param source when {@link SearchSource#NKD}, resolve against NKD only
@@ -89,6 +111,10 @@ public class ReferencedConceptResolutionEngine {
      *               keeps the default ISMD-first-then-NKD-fallback behaviour.
      */
     public Map<String, ResolvedConceptDto> resolveAll(List<String> iris, SearchSource source) {
+        return resolve(iris, source, false);
+    }
+
+    private Map<String, ResolvedConceptDto> resolve(List<String> iris, SearchSource source, boolean display) {
         if (iris == null || iris.isEmpty()) {
             return Map.of();
         }
@@ -106,7 +132,7 @@ public class ReferencedConceptResolutionEngine {
         Map<String, ResolvedConceptDto> out = new HashMap<>();
         List<String> misses = new ArrayList<>();
         for (String iri : clean) {
-            ResolvedConceptDto hit = (cache == null) ? null : cache.get(cacheKey(iri, nkdOnly), ResolvedConceptDto.class);
+            ResolvedConceptDto hit = (cache == null) ? null : cache.get(cacheKey(iri, nkdOnly, display), ResolvedConceptDto.class);
             if (hit != null) {
                 out.put(iri, hit);
             } else {
@@ -121,7 +147,7 @@ public class ReferencedConceptResolutionEngine {
         if (nkdOnly) {
             // NKD-only gate: skip ISMD entirely so a doubly-present IRI stays in
             // its NKD context. IRIs NKD can't resolve are simply left unresolved.
-            freshHits = new HashMap<>(nkdSparqlClient.fetchConceptResolutions(misses));
+            freshHits = new HashMap<>(fetchFromNkd(misses, display));
         } else {
             Map<String, ResolvedConceptDto> rawIsmdHits = jenaTDB2Repository.fetchConceptResolutions(misses);
             Map<String, ResolvedConceptDto> ismdHits = rawIsmdHits.isEmpty() ? rawIsmdHits : enrichWithSlugs(rawIsmdHits);
@@ -132,7 +158,7 @@ public class ReferencedConceptResolutionEngine {
                     .filter(iri -> !ismdHits.containsKey(iri))
                     .toList();
             if (!remaining.isEmpty()) {
-                freshHits.putAll(nkdSparqlClient.fetchConceptResolutions(remaining));
+                freshHits.putAll(fetchFromNkd(remaining, display));
             }
         }
 
@@ -141,18 +167,26 @@ public class ReferencedConceptResolutionEngine {
         // Targets are classes (not relationships), so this recursion terminates.
         // The stub expansion inherits the same source gate so an NKD-only detail
         // view resolves its domain/range targets against NKD too.
-        Map<String, ResolvedConceptDto> finalHits = resolveDomainRangeStubs(freshHits, source);
+        Map<String, ResolvedConceptDto> finalHits = resolveDomainRangeStubs(freshHits, source, display);
 
         finalHits.forEach((iri, dto) -> {
-            if (cache != null) cache.put(cacheKey(iri, nkdOnly), dto);
+            if (cache != null) cache.put(cacheKey(iri, nkdOnly, display), dto);
             out.put(iri, dto);
         });
 
         return out;
     }
 
-    private static String cacheKey(String iri, boolean nkdOnly) {
-        return nkdOnly ? NKD_ONLY_CACHE_PREFIX + iri : iri;
+    private Map<String, ResolvedConceptDto> fetchFromNkd(List<String> iris, boolean display) {
+        return display
+                ? nkdSparqlClient.fetchConceptResolutionsForDisplay(iris)
+                : nkdSparqlClient.fetchConceptResolutions(iris);
+    }
+
+    /** Display and NKD-only are independent gates, so their prefixes compose. */
+    private static String cacheKey(String iri, boolean nkdOnly, boolean display) {
+        String key = nkdOnly ? NKD_ONLY_CACHE_PREFIX + iri : iri;
+        return display ? DISPLAY_CACHE_PREFIX + key : key;
     }
 
     /**
@@ -166,7 +200,8 @@ public class ReferencedConceptResolutionEngine {
      * concepts at all. Those are served from {@code hits} directly and only the genuine remainder
      * goes to {@link #resolveAll}, which usually removes the round-trip entirely.
      */
-    private Map<String, ResolvedConceptDto> resolveDomainRangeStubs(Map<String, ResolvedConceptDto> hits, SearchSource source) {
+    private Map<String, ResolvedConceptDto> resolveDomainRangeStubs(
+            Map<String, ResolvedConceptDto> hits, SearchSource source, boolean display) {
         List<String> targetIris = new ArrayList<>();
         for (ResolvedConceptDto dto : hits.values()) {
             collectStubIri(dto.resolvedDomain(), targetIris);
@@ -189,7 +224,8 @@ public class ReferencedConceptResolutionEngine {
             }
         }
         if (!remaining.isEmpty()) {
-            resolvedTargets.putAll(resolveAll(remaining, source));
+            // Inherits the display gate so a relaxed resolve expands its targets the same way.
+            resolvedTargets.putAll(resolve(remaining, source, display));
         }
 
         Map<String, ResolvedConceptDto> out = new HashMap<>(hits.size());

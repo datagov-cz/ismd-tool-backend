@@ -1194,6 +1194,64 @@ public class JenaTDB2Repository {
      * NKD client — co-located here as a static helper so the two callers stay in
      * sync on parsing rules.
      */
+    /**
+     * Display-mode projection: like {@link #projectResolutions(Model, SearchSource)} but driven by the
+     * requested IRIs rather than by {@code skos:inScheme}, so a concept NKD publishes without a scheme
+     * still yields a DTO carrying its label. {@code ontologyIri}/{@code ontologyName} stay null for those.
+     *
+     * <p>Only for IRIs the client named explicitly — see
+     * {@code NKDSPARQLConstructQuery.buildDisplayResolutionConstructQuery}.
+     */
+    public static Map<String, ResolvedConceptDto> projectDisplayResolutions(
+            Model model, SearchSource source, List<String> requestedIris) {
+        if (model == null || model.isEmpty() || requestedIris == null) {
+            return Map.of();
+        }
+        Property inScheme = model.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
+        Property prefLabel = model.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel");
+        Property rdfType = model.createProperty("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+        Property rdfsDomain = model.createProperty("http://www.w3.org/2000/01/rdf-schema#domain");
+        Property rdfsRange = model.createProperty("http://www.w3.org/2000/01/rdf-schema#range");
+        Set<String> relationshipTypeIris = Set.of(OFN_NAMESPACE + VZTAH, OWL_OBJECT_PROPERTY);
+
+        Map<String, ResolvedConceptDto> out = new HashMap<>();
+        for (String conceptIri : requestedIris) {
+            Resource concept = model.getResource(conceptIri);
+            // No type triple means the CONSTRUCT matched nothing for this IRI — absent, not unresolved.
+            if (!concept.hasProperty(rdfType)) {
+                continue;
+            }
+            Map<String, String> conceptLabels = collectMultilingual(concept, prefLabel);
+
+            // Any one of several competing schemes; presentational only, never an ownership claim.
+            Statement schemeStmt = concept.getProperty(inScheme);
+            Resource scheme = schemeStmt != null && schemeStmt.getObject().isURIResource()
+                    ? schemeStmt.getObject().asResource()
+                    : null;
+            Map<String, String> schemeLabels = scheme != null
+                    ? collectMultilingual(scheme, prefLabel)
+                    : Map.of();
+
+            ResolvedConceptDto domainStub = null;
+            ResolvedConceptDto rangeStub = null;
+            if (hasAnyType(concept, rdfType, relationshipTypeIris)) {
+                domainStub = resourceStub(concept, rdfsDomain);
+                rangeStub = resourceStub(concept, rdfsRange);
+            }
+
+            out.put(conceptIri, ResolvedConceptDto.builder()
+                    .iri(conceptIri)
+                    .conceptName(conceptLabels.isEmpty() ? null : conceptLabels)
+                    .ontologyIri(scheme != null ? scheme.getURI() : null)
+                    .ontologyName(schemeLabels.isEmpty() ? null : schemeLabels)
+                    .source(source)
+                    .resolvedDomain(domainStub)
+                    .resolvedRange(rangeStub)
+                    .build());
+        }
+        return out;
+    }
+
     public static Map<String, ResolvedConceptDto> projectResolutions(Model model, SearchSource source) {
         if (model == null || model.isEmpty()) {
             return Map.of();
