@@ -1,0 +1,307 @@
+name: Trigger Keycloak Deployment
+
+concurrency:
+  group: deploy-keycloak-${{ github.event.workflow_run.head_branch || github.event.inputs.environment }}
+  cancel-in-progress: false
+
+on:
+  workflow_run:
+    workflows: [Build Keycloak Image]
+    types: [completed]
+    branches: [main, dev]
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+        default: dev
+      version:
+        description: 'Image version to deploy (leave empty for latest)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+  actions: read
+  packages: read
+
+env:
+  COMPONENT_NAME: keycloak
+
+jobs:
+  determine-params:
+    name: Determine Deployment Parameters
+    runs-on: ubuntu-latest
+    # Build runs from pull requests push nothing, so they must never trigger a deployment
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request') }}
+    outputs:
+      environment: ${{ steps.determine_params.outputs.environment }}
+      image_tag: ${{ steps.determine_params.outputs.image_tag }}
+      ref: ${{ steps.determine_params.outputs.ref }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Determine environment and version
+        id: determine_params
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+            ENVIRONMENT="${ENVIRONMENT^^}"
+
+            if [ -n "${{ github.event.inputs.version }}" ]; then
+              IMAGE_TAG="${{ github.event.inputs.version }}"
+            else
+              REPO_OWNER='${{ github.repository_owner }}'
+              if [ "$ENVIRONMENT" = "DEV" ]; then
+                PACKAGE_NAME="ismd-tool-keycloak-dev"
+              else
+                PACKAGE_NAME="ismd-tool-keycloak"
+              fi
+
+              IMAGE_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/orgs/${REPO_OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=1" 2>/dev/null | \
+                jq -r '.[0].metadata.container.tags[] | select(. != "latest")' | head -1)
+              IMAGE_TAG="${IMAGE_TAG:-latest}"
+            fi
+          else
+            if [ "${{ github.event.workflow_run.head_branch }}" == "main" ]; then
+              ENVIRONMENT="TEST"
+            else
+              ENVIRONMENT="DEV"
+            fi
+
+            REPO_OWNER='${{ github.repository_owner }}'
+            if [ "$ENVIRONMENT" = "DEV" ]; then
+              PACKAGE_NAME="ismd-tool-keycloak-dev"
+            else
+              PACKAGE_NAME="ismd-tool-keycloak"
+            fi
+
+            IMAGE_TAG=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/${REPO_OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=1" 2>/dev/null | \
+              jq -r '.[0].metadata.container.tags[] | select(. != "latest")' | head -1)
+            IMAGE_TAG="${IMAGE_TAG:-latest}"
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            REF="${{ github.event.workflow_run.head_sha }}"
+          else
+            REF="${GITHUB_SHA}"
+          fi
+
+          echo "environment=${ENVIRONMENT}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "ref=${REF}" >> $GITHUB_OUTPUT
+
+  deploy-to-dev:
+    name: Deploy Keycloak to Dev
+    needs: [determine-params]
+    if: needs.determine-params.outputs.environment == 'DEV'
+    runs-on: ubuntu-latest
+    environment:
+      name: DEV
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: DEV
+          ref: ${{ needs.determine-params.outputs.ref }}
+          description: 'Deployment of ${{ env.COMPONENT_NAME }} image ${{ needs.determine-params.outputs.image_tag }} to DEV'
+          auto-merge: false
+
+      - name: Update Deployment Status - Pending
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "pending"
+          description: "Preparing to deploy"
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Keycloak to Azure Container App
+        run: |
+          IMAGE="ghcr.io/datagov-cz/ismd-tool-keycloak-dev:${{ needs.determine-params.outputs.image_tag }}"
+          echo "Deploying $IMAGE to ismd-tool-keycloak-dev"
+
+          az containerapp update \
+            --name ismd-tool-keycloak-dev \
+            --resource-group ismd-tool-dev \
+            --image "$IMAGE" \
+            --output table
+
+          echo "✅ Deployment complete"
+
+      - name: Update Deployment Status - Success
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "success"
+          description: "Deployed successfully"
+
+      - name: Update Deployment Status - Failure
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "failure"
+          description: "Deployment failed"
+
+  deploy-to-test:
+    name: Deploy Keycloak to Test
+    needs: [determine-params]
+    if: needs.determine-params.outputs.environment == 'TEST'
+    runs-on: ubuntu-latest
+    environment:
+      name: TEST
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: TEST
+          ref: ${{ needs.determine-params.outputs.ref }}
+          description: 'Deployment of ${{ env.COMPONENT_NAME }} image ${{ needs.determine-params.outputs.image_tag }} to TEST'
+          auto-merge: false
+
+      - name: Update Deployment Status - Pending
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "pending"
+          description: "Preparing to deploy"
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Keycloak to Azure Container App
+        run: |
+          IMAGE="ghcr.io/datagov-cz/ismd-tool-keycloak:${{ needs.determine-params.outputs.image_tag }}"
+          echo "Deploying $IMAGE to ismd-tool-keycloak-test"
+
+          az containerapp update \
+            --name ismd-tool-keycloak-test \
+            --resource-group ismd-tool-test \
+            --image "$IMAGE" \
+            --output table
+
+          echo "✅ Deployment complete"
+
+      - name: Update Deployment Status - Success
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "success"
+          description: "Deployed successfully"
+
+      - name: Update Deployment Status - Failure
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "failure"
+          description: "Deployment failed"
+
+  deploy-to-prod:
+    name: Deploy Keycloak to Production
+    needs: [determine-params]
+    if: needs.determine-params.outputs.environment == 'PROD'
+    runs-on: ubuntu-latest
+    environment:
+      name: PROD
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create GitHub Deployment
+        id: create_deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: PROD
+          ref: ${{ needs.determine-params.outputs.ref }}
+          description: 'Deployment of ${{ env.COMPONENT_NAME }} image ${{ needs.determine-params.outputs.image_tag }} to PROD'
+          auto-merge: false
+
+      - name: Update Deployment Status - Pending
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "pending"
+          description: "Preparing to deploy"
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Keycloak to Azure Container App
+        run: |
+          IMAGE="ghcr.io/datagov-cz/ismd-tool-keycloak:${{ needs.determine-params.outputs.image_tag }}"
+          echo "Deploying $IMAGE to ismd-tool-keycloak-prod"
+
+          az containerapp update \
+            --name ismd-tool-keycloak-prod \
+            --resource-group ismd-tool-prod \
+            --image "$IMAGE" \
+            --output table
+
+          echo "✅ Deployment complete"
+
+      - name: Update Deployment Status - Success
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "success"
+          description: "Deployed successfully"
+
+      - name: Update Deployment Status - Failure
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.create_deployment.outputs.deployment_id }}
+          state: "failure"
+          description: "Deployment failed"
