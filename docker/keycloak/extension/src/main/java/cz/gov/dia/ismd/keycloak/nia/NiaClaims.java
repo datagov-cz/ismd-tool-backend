@@ -14,6 +14,7 @@ import org.keycloak.broker.provider.IdentityBrokerException;
 final class NiaClaims {
 
     static final String PERSON_IDENTIFIER_CLAIM = "PersonIdentifier";
+    static final String USERNAME_CLAIM = "niaUsername";
     static final String CLAIMS_CONFIG_KEY = "niaClaims";
     static final String CLAIMS_PARAM = "claims";
 
@@ -29,6 +30,18 @@ final class NiaClaims {
                             + " — check that the authorize request carries the claims parameter");
         }
         return personIdentifier.toString();
+    }
+
+    /**
+     * A Keycloak-valid username for a PersonIdentifier. The realm's
+     * username-prohibited-characters validator rejects '/', which eIDAS identifiers
+     * contain ("CZ/CZ/&lt;id&gt;"), and a rejected username forces the "Update Account
+     * Information" page on first login. Only '/' is replaced, so no assumption is made
+     * about the identifier's structure. The federated identity link keeps the original
+     * value; this is the display/login name only.
+     */
+    static String usernameFrom(String personIdentifier) {
+        return personIdentifier.replace('/', '-');
     }
 
     /**
