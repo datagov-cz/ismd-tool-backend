@@ -43,6 +43,17 @@ class NiaClaimsTest {
     }
 
     @Test
+    void usernameReplacesSlashesOnly() {
+        assertEquals("CZ-CZ-ede5bc65-36ad-416c-ac39-6fdb7db11160",
+                NiaClaims.usernameFrom("CZ/CZ/ede5bc65-36ad-416c-ac39-6fdb7db11160"));
+    }
+
+    @Test
+    void usernameWithoutSlashesIsUnchanged() {
+        assertEquals("abc-123", NiaClaims.usernameFrom("abc-123"));
+    }
+
+    @Test
     void claimsAreEncodedWithoutTemplateBracesAndRoundTrip() {
         String json = "{\"id_token\":{\"PersonIdentifier\":null,\"CurrentGivenName\":null,\"CurrentFamilyName\":null}}";
 
