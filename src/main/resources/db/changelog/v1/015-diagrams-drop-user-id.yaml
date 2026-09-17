@@ -1,0 +1,33 @@
+databaseChangeLog:
+  # Ownership of a diagram is the ownership of its ontology, resolved through the NOT NULL
+  # ontology_metadata_id FK. The denormalized copy in diagrams.user_id is read by no code path.
+
+  - changeSet:
+      id: 015-diagrams-drop-user-id
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: user_id
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnName: user_id
+      rollback:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columns:
+              - column:
+                  name: user_id
+                  type: VARCHAR(255)
+        - sql:
+            dbms: postgresql
+            sql: >-
+              UPDATE ismd_schema.diagrams d
+              SET user_id = o.user_id
+              FROM ismd_schema.ontologies o
+              WHERE o.id = d.ontology_metadata_id

@@ -47,8 +47,9 @@ public class SearchController {
             @Parameter(description = "Vyhledávací dotaz (min. 4 znaky — odpovídá frontendové validaci " +
                     "a Virtuoso FT370 minimální délce zástupného znaku pro NKD)", required = true)
             @RequestParam String q,
-            @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT, CLASS, PROPERTY, RELATIONSHIP " +
-                    "(CLASS/PROPERTY/RELATIONSHIP narrow to concepts of the given role)")
+            @Parameter(description = "Typ výsledku: ONTOLOGY, CONCEPT, CLASS, PROPERTY, RELATIONSHIP, DIAGRAM " +
+                    "(CLASS/PROPERTY/RELATIONSHIP narrow to concepts of the given role; DIAGRAM lists ontologies " +
+                    "that have a diagram)")
             @RequestParam(required = false) SearchType type,
             @Parameter(description = "Zdroj dat: NKD, ISMD, ALL")
             @RequestParam(required = false) SearchSource source,

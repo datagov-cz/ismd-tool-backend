@@ -23,4 +23,6 @@ public class SearchResponseDto {
     private Integer totalOntologies;
     /** Sum of {@link SourceStatusDto#getTotalConcepts()} across non-skipped sources. */
     private Integer totalConcepts;
+    /** Sum of {@link SourceStatusDto#getTotalDiagrams()} across non-skipped sources. */
+    private Integer totalDiagrams;
 }

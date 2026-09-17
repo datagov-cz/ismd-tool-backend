@@ -1,0 +1,70 @@
+databaseChangeLog:
+  # Partial unique index.
+  - changeSet:
+      id: 013-diagram-nodes-unique-concept-per-diagram
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+        - not:
+            - indexExists:
+                indexName: uq_diagram_nodes_diagram_concept
+                schemaName: ismd_schema
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              CREATE UNIQUE INDEX uq_diagram_nodes_diagram_concept
+              ON ismd_schema.diagram_nodes (diagram_id, concept_iri)
+              WHERE concept_iri IS NOT NULL
+
+  # Index both edge endpoint FK columns.
+  - changeSet:
+      id: 013-diagram-edges-endpoint-indexes
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - indexExists:
+                indexName: idx_diagram_edges_source_node_id
+                schemaName: ismd_schema
+      changes:
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_source_node_id
+            columns:
+              - column:
+                  name: source_node_id
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_target_node_id
+            columns:
+              - column:
+                  name: target_node_id
+
+  # DB CHECK for the backing <-> content invariant.
+  - changeSet:
+      id: 013-diagram-nodes-backing-check
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              ADD CONSTRAINT ck_diagram_nodes_backing_content CHECK (
+                (backing = 'DRAFT' AND concept_iri IS NULL)
+                OR (backing = 'ISMD_CONCEPT' AND concept_iri IS NOT NULL AND draft_json IS NULL)
+              )
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              DROP CONSTRAINT ck_diagram_nodes_backing_content

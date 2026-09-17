@@ -25,6 +25,8 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
 
     private Dataset dataset = DatasetFactory.createTxnMem();
     private String failingGraph;
+    /** Whole-graph fetches since the last {@link #resetFetchCount()}, for fan-out assertions. */
+    private int fetchGraphCount;
 
     public InMemoryTdb2() {
         super(HttpClient.newHttpClient(), new Semaphore(4), 5000, new MockEnvironment());
@@ -48,6 +50,25 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
     public void reset() {
         dataset = DatasetFactory.createTxnMem();
         failingGraph = null;
+        fetchGraphCount = 0;
+    }
+
+    /**
+     * Counts whole-graph fetches. {@code fetchGraph} is uncached and pulls the entire named graph, so a
+     * per-item fan-out of it is the shape that has caused real timeouts; tests assert a ceiling on it.
+     */
+    @Override
+    public Model fetchGraph(String graphName) {
+        fetchGraphCount++;
+        return super.fetchGraph(graphName);
+    }
+
+    public void resetFetchCount() {
+        fetchGraphCount = 0;
+    }
+
+    public int fetchGraphCount() {
+        return fetchGraphCount;
     }
 
     public void failApplyForGraph(String graphName) {

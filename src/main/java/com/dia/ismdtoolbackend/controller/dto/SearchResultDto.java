@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -26,6 +28,12 @@ public class SearchResultDto {
     private SearchSource source;
     private ConceptType conceptType;
     private String ontologyIri;
+    /**
+     * The owning ontology's {@code skos:prefLabel} as a language→value map. Sourced from RDF, since
+     * Postgres holds no ontology name; null when the ontology carries no label or Fuseki is
+     * unreachable. Currently populated for {@code type=DIAGRAM} rows.
+     */
+    private Map<String, String> ontologyLabel;
     private Boolean isPublished;
     private MatchedBy matchedBy;
     /**
@@ -37,4 +45,10 @@ public class SearchResultDto {
     private String lastModified;
     /** Populated only for {@code type=ONTOLOGY} results. */
     private Integer conceptCount;
+    /**
+     * Populated only for {@code type=DIAGRAM} results — the routing key, used with {@code slug}:
+     * {@code GET /api/diagram/{slug}/{diagramId}/detail}. An ontology may hold many diagrams, so the
+     * slug alone no longer identifies one.
+     */
+    private Long diagramId;
 }

@@ -669,6 +669,15 @@ class ConceptFieldUpdaters {
     void updateDataClassification(Resource newConcept, Boolean isPublic, List<String> privacyProvisions,
                                           Resource oldConcept, Model model, Set<Statement> toRemove,
                                           Set<Statement> toAdd) {
+        boolean hasNonEmptyProvisionsArg = privacyProvisions != null &&
+                privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());
+        // Field-scoped edits (e.g. the diagram overlay) omit the classification entirely. Without this
+        // guard the strip below removes the veřejný/neveřejný rdf:type and never re-adds it, silently
+        // dropping the classification. Leave it untouched when nothing about it is being edited.
+        if (isPublic == null && !hasNonEmptyProvisionsArg) {
+            return;
+        }
+
         Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
         Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
@@ -678,15 +687,13 @@ class ConceptFieldUpdaters {
         if (oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
             removeTypeStatement(newConcept, oldConcept, neverejnyLegal, model, toRemove, toAdd);
         }
-        boolean hasNonEmptyProvisions = privacyProvisions != null &&
-                privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty());
 
         Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
         boolean hasValidProvisions = toAdd.stream().anyMatch(stmt ->
                 stmt.getSubject().equals(newConcept) &&
                 stmt.getPredicate().equals(provisionProperty));
         if (Boolean.TRUE.equals(isPublic)) {
-            if (!hasNonEmptyProvisions) {
+            if (!hasNonEmptyProvisionsArg) {
                 toAdd.add(model.createStatement(newConcept, RDF.type, verejnyLegal));
             }
         } else if (Boolean.FALSE.equals(isPublic)) {

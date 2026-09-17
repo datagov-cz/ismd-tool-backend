@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.Dev
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
@@ -26,6 +27,7 @@ import org.apache.jena.rdf.model.StmtIterator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -42,6 +44,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
     private final NkdConceptSnapshotRepository snapshotRepository;
     private final NkdSnapshotService nkdSnapshotService;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final ConceptMetadataRepository conceptMetadataRepository;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
@@ -65,7 +68,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
         if (refreshed == null) {
             // Upstream-deletion cascade: also remove the owner→nkdIri link edges.
             addOwnerLinkTriplesToRemove(graphName, owner.getConceptIri(), nkdIri, cs);
-            flush(graphName, owner.getConceptIri(), cs);
+            flush(graphName, owner, cs);
             log.info("UPDATE on snapshot {} found NKD concept {} gone — link + copy removed", snapshotId, nkdIri);
             return LinkSnapshotAssembler.fromFreshDeviation(snapshot,
                     PublishedConceptDeviationModel.builder()
@@ -74,7 +77,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
 
         // Evaluate deviation live (the endpoint wants the full per-field diff, unlike the warm path).
         PublishedConceptDeviationModel deviation = nkdSnapshotService.evaluateDeviation(refreshed);
-        flush(graphName, owner.getConceptIri(), cs);
+        flush(graphName, owner, cs);
         return LinkSnapshotAssembler.fromFreshDeviation(refreshed, deviation);
     }
 
@@ -88,7 +91,7 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
         OwnerChangeSet cs = new OwnerChangeSet();
         Set<Statement> ownerOutgoing = ownerOutgoingStatements(graphName, owner.getConceptIri());
         nkdSnapshotService.removeSnapshotAndLink(snapshot, ownerOutgoing, cs);
-        flush(graphName, owner.getConceptIri(), cs);
+        flush(graphName, owner, cs);
         log.info("REMOVE on snapshot {} (owner {}, nkd {}) done", snapshotId, owner.getConceptIri(),
                 snapshot.getNkdIri());
     }
@@ -106,10 +109,12 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
     }
 
     /** Flush the owner change set as one owner-keyed aggregate: outbox upsert, or direct delta when off. */
-    private void flush(String graphName, String ownerIri, OwnerChangeSet cs) {
+    private void flush(String graphName, ConceptMetadataEntity owner, OwnerChangeSet cs) {
         if (cs.toRemove.isEmpty() && cs.toAdd.isEmpty()) {
             return;
         }
+        touchOwner(owner);
+        String ownerIri = owner.getConceptIri();
         if (outboxConfig.isEnabled()) {
             outboxWriter.enqueueUpsert(graphName, ownerIri, cs.toRemove, cs.toAdd);
             outboxRelayTrigger.nudgeAfterCommit();
@@ -118,6 +123,12 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
         Model removeModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toRemove));
         Model addModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toAdd));
         jenaTDB2Repository.applyConceptDelta(ownerIri, graphName, removeModel, addModel);
+    }
+
+    /** Stamp the owner's {@code updatedAt} so the concept row reflects the RDF change just made. */
+    private void touchOwner(ConceptMetadataEntity owner) {
+        owner.setUpdatedAt(LocalDateTime.now());
+        conceptMetadataRepository.save(owner);
     }
 
     /** All of the owner concept's current outgoing statements in its graph (for unlink triple removal). */

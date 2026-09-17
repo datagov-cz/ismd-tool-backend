@@ -4,13 +4,14 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(type = "string", allowableValues = {"ONTOLOGY", "CONCEPT", "CLASS", "PROPERTY", "RELATIONSHIP"})
+@Schema(type = "string", allowableValues = {"ONTOLOGY", "CONCEPT", "CLASS", "PROPERTY", "RELATIONSHIP", "DIAGRAM"})
 public enum SearchType {
     ONTOLOGY("ONTOLOGY"),
     CONCEPT("CONCEPT"),
     CLASS("CLASS"),
     PROPERTY("PROPERTY"),
-    RELATIONSHIP("RELATIONSHIP");
+    RELATIONSHIP("RELATIONSHIP"),
+    DIAGRAM("DIAGRAM");
 
     private final String value;
 
@@ -35,7 +36,7 @@ public enum SearchType {
             }
         }
         throw new IllegalArgumentException(
-                "Unknown search type: " + value + ". Valid values: ONTOLOGY, CONCEPT, CLASS, PROPERTY, RELATIONSHIP"
+                "Unknown search type: " + value + ". Valid values: ONTOLOGY, CONCEPT, CLASS, PROPERTY, RELATIONSHIP, DIAGRAM"
         );
     }
 
@@ -48,7 +49,7 @@ public enum SearchType {
             case CLASS -> ConceptType.TRIDA;
             case PROPERTY -> ConceptType.VLASTNOST;
             case RELATIONSHIP -> ConceptType.VZTAH;
-            case ONTOLOGY, CONCEPT -> null;
+            case ONTOLOGY, CONCEPT, DIAGRAM -> null;
         };
     }
 

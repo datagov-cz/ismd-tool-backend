@@ -1,0 +1,239 @@
+databaseChangeLog:
+  # The diagram layer: a ReactFlow canvas, pure-PG presentation data (positions, viewport, edges) that never
+  # stores real concept content, so there is no outbox or RDF write here. FK to the owning metadata row with
+  # ON DELETE CASCADE, as CommentEntity does, so deleting an ontology drops its diagrams, nodes and edges.
+  #
+  # Superseded in part by later changesets: draft nodes moved to diagram_pending_edits (020) and an ontology
+  # may now hold many diagrams (021). This file records the original shape and must not be edited.
+  - changeSet:
+      id: 012-create-diagrams
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: diagrams
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: ontology_metadata_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: VARCHAR(255)
+              - column:
+                  name: viewport_x
+                  type: DOUBLE PRECISION
+              - column:
+                  name: viewport_y
+                  type: DOUBLE PRECISION
+              - column:
+                  name: viewport_zoom
+                  type: DOUBLE PRECISION
+              # Optimistic-lock guard for concurrent layout saves (@Version). Seed 0, never null.
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+        # One canonical diagram per ontology (relaxed in 021).
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagrams
+            columnNames: ontology_metadata_id
+            constraintName: uq_diagrams_ontology_metadata
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagrams
+            baseColumnNames: ontology_metadata_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: ontologies
+            referencedColumnNames: id
+            constraintName: fk_diagrams_ontology_metadata
+            onDelete: CASCADE
+
+  - changeSet:
+      id: 012-create-diagram-nodes
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: diagram_nodes
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: diagram_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: backing
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              # Czech and percent-encoded concept IRIs exceed 255. Null for draft nodes (dropped in 014).
+              - column:
+                  name: concept_iri
+                  type: VARCHAR(1024)
+              - column:
+                  name: pos_x
+                  type: DOUBLE PRECISION
+                  constraints:
+                    nullable: false
+              - column:
+                  name: pos_y
+                  type: DOUBLE PRECISION
+                  constraints:
+                    nullable: false
+              - column:
+                  name: collapsed
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: hidden
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: parent_node_id
+                  type: BIGINT
+              # Serialized DiagramDraftContent; set only for draft nodes.
+              - column:
+                  name: draft_json
+                  type: VARCHAR
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_nodes
+            baseColumnNames: diagram_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: diagrams
+            referencedColumnNames: id
+            constraintName: fk_diagram_nodes_diagram
+            onDelete: CASCADE
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            indexName: idx_diagram_nodes_diagram_id
+            columns:
+              - column:
+                  name: diagram_id
+
+  - changeSet:
+      id: 012-create-diagram-edges
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - tableExists:
+                tableName: diagram_edges
+                schemaName: ismd_schema
+      changes:
+        - createTable:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: diagram_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_node_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_node_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: edge_kind
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_handle
+                  type: VARCHAR(255)
+              - column:
+                  name: target_handle
+                  type: VARCHAR(255)
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            baseColumnNames: diagram_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: diagrams
+            referencedColumnNames: id
+            constraintName: fk_diagram_edges_diagram
+            onDelete: CASCADE
+        # Endpoint FKs cascade so deleting a node drops the edges touching it at the DB layer too.
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            baseColumnNames: source_node_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: diagram_nodes
+            referencedColumnNames: id
+            constraintName: fk_diagram_edges_source_node
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            baseColumnNames: target_node_id
+            referencedTableSchemaName: ismd_schema
+            referencedTableName: diagram_nodes
+            referencedColumnNames: id
+            constraintName: fk_diagram_edges_target_node
+            onDelete: CASCADE
+        - createIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_diagram_id
+            columns:
+              - column:
+                  name: diagram_id

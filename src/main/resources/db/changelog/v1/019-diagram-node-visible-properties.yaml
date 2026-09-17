@@ -1,0 +1,25 @@
+databaseChangeLog:
+  # Per-class curated property rows the canvas display.
+  - changeSet:
+      id: 019-diagram-nodes-visible-properties
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_nodes
+                columnName: visible_properties_json
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columns:
+              - column:
+                  name: visible_properties_json
+                  type: VARCHAR
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: visible_properties_json

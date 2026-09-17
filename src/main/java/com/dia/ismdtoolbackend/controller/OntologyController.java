@@ -9,6 +9,9 @@ import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsRequest;
+import com.dia.ismdtoolbackend.controller.dto.ResolveConceptsResponse;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
@@ -22,6 +25,7 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
@@ -45,6 +49,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -56,6 +61,10 @@ public class OntologyController {
 
     private static final Set<String> SUPPORTED_DOWNLOAD_FORMATS = Set.of("ttl", "json-ld");
 
+    /** Datatype namespaces; a range pointing here is a datatype, never a concept. */
+    private static final String XSD_NAMESPACE = "http://www.w3.org/2001/XMLSchema#";
+    private static final String RDFS_NAMESPACE = "http://www.w3.org/2000/01/rdf-schema#";
+
     private final OntologyService ontologyService;
     private final OntologyUploadService ontologyUploadService;
     private final OntologyDownloadService ontologyDownloadService;
@@ -63,6 +72,7 @@ public class OntologyController {
     private final ValidationClient validationClient;
     private final ValidationConfig validationConfig;
     private final NkdSnapshotWarmer nkdSnapshotWarmer;
+    private final ReferencedConceptResolutionEngine referencedConceptResolutionEngine;
 
     @Operation(
             summary = "Nahrání slovníku ze souboru",
@@ -265,6 +275,45 @@ public class OntologyController {
         List<MinimalConceptDto> concepts = ontologyService.getConceptsByIri(iri, source);
 
         return ResponseEntity.ok().body(ApiResponseDto.success(concepts, "Seznam pojmů byl úspěšně načten."));
+    }
+
+    @Operation(
+            summary = "Doplnění metadat referencovaných pojmů",
+            description = "Pro zadaná IRI vrací název pojmu, slug, IRI a název mateřského slovníku a zdroj "
+                    + "(ISMD/NKD). Slouží plátnu diagramu k vykreslení pojmů z jiných slovníků, které detail "
+                    + "slovníku vrací jen jako holá IRI. IRI datových typů (xsd:*, rdfs:Literal) se přeskakují "
+                    + "— nejde o pojmy. Nerozpoznaná IRI v odpovědi chybí, nejde o chybu. Veřejný endpoint."
+    )
+    @PostMapping("/concepts/resolve")
+    public ResponseEntity<ApiResponseDto<ResolveConceptsResponse>> resolveConceptReferences(
+            @Valid @RequestBody ResolveConceptsRequest request) {
+
+        List<String> conceptIris = request.iris().stream()
+                .filter(OntologyController::isResolvableConceptIri)
+                .toList();
+        log.info("Concept reference resolution requested, count: {} ({} after dropping datatypes)",
+                request.iris().size(), conceptIris.size());
+
+        Map<String, ResolvedConceptDto> resolved =
+                referencedConceptResolutionEngine.resolveAllForDisplay(conceptIris);
+
+        return ResponseEntity.ok().body(ApiResponseDto.success(
+                new ResolveConceptsResponse(resolved),
+                "Metadata referencovaných pojmů byla úspěšně načtena."));
+    }
+
+    /**
+     * Whether the IRI denotes a concept worth resolving. A property's {@code rdfs:range} is often a
+     * datatype rather than a concept — {@code xsd:string}, {@code rdfs:Literal} — which no vocabulary
+     * defines, so resolving it is a guaranteed miss. Filtered on the namespace rather than an
+     * enumeration of known datatypes, so {@code xsd:date} needs no code change; the CURIE form
+     * ({@code "xsd:string"}, which OFN exports use) fails the absolute-IRI test on its own.
+     */
+    private static boolean isResolvableConceptIri(String iri) {
+        if (iri == null || !(iri.startsWith("http://") || iri.startsWith("https://"))) {
+            return false;
+        }
+        return !iri.startsWith(XSD_NAMESPACE) && !iri.startsWith(RDFS_NAMESPACE);
     }
 
     @Operation(

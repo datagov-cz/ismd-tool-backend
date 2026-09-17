@@ -4,6 +4,8 @@ import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.DownloadBlockedByValidationDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramReadbackFailureDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
@@ -44,6 +46,78 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleAccessDenied(AccessDeniedException e) {
         log.error("Access denied: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
+    }
+
+    /** Another editor saved the diagram first; membership is a full replace, so a stale save would delete. */
+    @ExceptionHandler(DiagramVersionConflictException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramVersionConflict(
+            DiagramVersionConflictException e) {
+        log.warn("Diagram version conflict: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResponseDto.error(null, e.getMessage(), DiagramVersionConflictException.ERROR_CODE));
+    }
+
+    /** A diagram name is already taken within its ontology (names identify a canvas to the user). */
+    @ExceptionHandler(DiagramNameConflictException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramNameConflict(DiagramNameConflictException e) {
+        log.warn("Diagram name conflict: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResponseDto.error(null, e.getMessage(), DiagramNameConflictException.ERROR_CODE));
+    }
+
+    /**
+     * The resolution itself is unusable — {@code ACCEPT_THEIRS} with no {@code winnerDiagramId}, or one
+     * naming a diagram that is not in the conflict set. 400, not 409: re-sending the same request cannot
+     * succeed, so the FE must correct it rather than let the user choose again.
+     */
+    @ExceptionHandler(DiagramConflictResolutionException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramConflictResolution(
+            DiagramConflictResolutionException e) {
+        log.warn("Invalid diagram conflict resolution: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
+                null, e.getMessage(), DiagramConflictResolutionException.ERROR_CODE));
+    }
+
+    /**
+     * Sibling diagrams stage competing edits on the same concept and the caller named no resolution.
+     * 409 with the report: nothing was written, and the FE re-calls with {@code onConflict} once the
+     * user has chosen a side.
+     */
+    @ExceptionHandler(DiagramEditConflictException.class)
+    public ResponseEntity<ApiResponseDto<DiagramConflictDto>> handleDiagramEditConflict(
+            DiagramEditConflictException e) {
+        log.warn("Diagram materialize blocked by cross-diagram conflict: {} concept(s)",
+                e.getReport().conflicts().size());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
+                e.getReport(), e.getMessage(), DiagramEditConflictException.ERROR_CODE));
+    }
+
+    /**
+     * The write COMMITTED; only the Fuseki read that renders it failed. 502 (not 500): the failure is in an
+     * upstream dependency, and the code + version tell the FE to reload rather than retry the save — a retry
+     * would carry the stale version and 409.
+     */
+    @ExceptionHandler(DiagramReadbackFailedException.class)
+    public ResponseEntity<ApiResponseDto<DiagramReadbackFailureDto>> handleDiagramReadbackFailed(
+            DiagramReadbackFailedException e) {
+        log.error("Diagram write committed but content read-back failed (version {}): {}",
+                e.getVersion(), e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
+                new DiagramReadbackFailureDto(e.getVersion()),
+                e.getMessage(),
+                DiagramReadbackFailedException.ERROR_CODE));
+    }
+
+    /**
+     * A diagram read could not reach the ontology's own graph. 502, like the read-back failure above, so one
+     * unreachable Fuseki does not report 500 on a read and 502 on a save.
+     */
+    @ExceptionHandler(DiagramContentUnavailableException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleDiagramContentUnavailable(
+            DiagramContentUnavailableException e) {
+        log.error("Diagram content could not be read: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
+                null, e.getMessage(), DiagramContentUnavailableException.ERROR_CODE));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
