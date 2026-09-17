@@ -57,17 +57,18 @@ jobs:
       - name: Get version info
         id: version
         run: |
+          # <Jena version>-<short commit>: deterministic — the same source always gets the
+          # same tag, different source always a different one — and tied to what is in the
+          # image, not to backend releases. A tag reused for different content would make
+          # `az containerapp update` see no change, create no revision and keep the old
+          # image running.
           GIT_SHA=$(git rev-parse --short HEAD)
-          BRANCH="${{ steps.branch.outputs.branch }}"
-
-          TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*" 2>/dev/null || echo "")
-          BASE_VERSION=$([ -n "$TAG" ] && echo "$TAG" | sed 's/^v//' || echo "0.0.1")
-
-          if [ "$BRANCH" = "main" ]; then
-            VERSION="$BASE_VERSION"
-          else
-            VERSION="${BASE_VERSION}-${GIT_SHA}"
+          JENA_VERSION=$(sed -n 's/^ARG JENA_VERSION=//p' docker/fuseki/Dockerfile | tr -d '\r')
+          if [ -z "$JENA_VERSION" ]; then
+            echo "JENA_VERSION not found in docker/fuseki/Dockerfile" >&2
+            exit 1
           fi
+          VERSION="${JENA_VERSION}-${GIT_SHA}"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -85,6 +86,7 @@ jobs:
 
           docker build \
             -f docker/fuseki/Dockerfile \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
             -t "${IMAGE_NAME}:${VERSION}" \
             -t "${IMAGE_NAME}:latest" \
             .
