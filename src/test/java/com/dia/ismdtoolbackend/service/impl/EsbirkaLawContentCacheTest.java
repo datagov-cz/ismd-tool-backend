@@ -36,7 +36,8 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(classes = {
         CacheConfig.class,
         EsbirkaServiceImpl.class,
-        EsbirkaFragmentResolutionCache.class
+        EsbirkaFragmentResolutionCache.class,
+        EsbirkaSubtreeBodyCache.class
 })
 @Import(EsbirkaLawContentCacheTest.NoOpAppConfig.class)
 class EsbirkaLawContentCacheTest {

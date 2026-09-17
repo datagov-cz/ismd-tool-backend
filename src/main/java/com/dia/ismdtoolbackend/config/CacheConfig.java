@@ -23,6 +23,9 @@ import java.util.concurrent.TimeUnit;
  *       version is published).</li>
  *   <li>{@code esbirkaLawContent} — whole-version content trees (fragment tree + HTML
  *       bodies), 24 h TTL, capped at 200 entries (~2 MB each; published text is immutable).</li>
+ *   <li>{@code esbirkaVersionSubtreeBodies} — per-version fragment IRI → assembled subtree
+ *       HTML, backing the {@code /resolve} body fallback for structural fragments. Same
+ *       TTL/sizing as {@code esbirkaLawContent}.</li>
  * </ul>
  *
  * <p>Per-cache specs require {@code registerCustomCache} rather than the shared
@@ -72,6 +75,15 @@ public class CacheConfig {
                 .build());
 
         mgr.registerCustomCache("esbirkaLawContent", Caffeine.newBuilder()
+                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
+                .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
+                .build());
+
+        // Per-version map of fragment IRI -> assembled subtree HTML, backing the /resolve
+        // body fallback for structural fragments (document root, containers) that carry no
+        // obsah of their own. Keyed by version IRI, so one fetch serves every container of
+        // that znění. Same immutability and sizing model as esbirkaLawContent.
+        mgr.registerCustomCache("esbirkaVersionSubtreeBodies", Caffeine.newBuilder()
                 .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
                 .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
                 .build());

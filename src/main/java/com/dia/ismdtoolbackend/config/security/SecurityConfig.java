@@ -151,6 +151,7 @@ public class SecurityConfig {
                         "/api/rpp/agenda/search",
                         "/api/rpp/ais/search",
                         "/api/eli/law/search",
+                        "/api/eli/law/search/grouped",
                         "/api/eli/law/versions",
                         "/api/eli/law/fragments",
                         "/api/eli/law/content",

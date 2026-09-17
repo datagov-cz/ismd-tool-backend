@@ -15,7 +15,8 @@ public record ParsedEli(
         String sbirkaCode,
         LocalDate versionDate,
         List<FragmentSegment> fragmentSegments,
-        Level level
+        Level level,
+        String container
 ) {
     public enum Level { LAW, VERSION, FRAGMENT }
 
@@ -27,5 +28,22 @@ public record ParsedEli(
 
     public boolean isFragment() {
         return level == Level.FRAGMENT;
+    }
+
+    /**
+     * True when the IRI names a structural container itself ({@code .../dokument/poznamkypodcarou})
+     * with no fragment path below it. Such an IRI is a citable target in its own right, so it parses
+     * as a {@link Level#FRAGMENT} carrying no {@code fragmentSegments}.
+     */
+    public boolean isContainerRoot() {
+        return isFragment() && container != null && fragmentSegments.isEmpty();
+    }
+
+    /**
+     * True when the IRI names the document root ({@code .../dokument}) — the single parentless node
+     * of a version's fragment tree, sitting above every container.
+     */
+    public boolean isDocumentRoot() {
+        return isFragment() && container == null && fragmentSegments.isEmpty();
     }
 }
