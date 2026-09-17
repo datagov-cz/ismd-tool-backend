@@ -1,7 +1,7 @@
-name: Build Fuseki Image
+name: Build Keycloak Image
 
 concurrency:
-  group: build-fuseki-${{ github.ref_name }}
+  group: build-keycloak-${{ github.ref_name }}
   cancel-in-progress: false
 
 on:
@@ -10,7 +10,11 @@ on:
       - dev
       - main
     paths:
-      - 'docker/fuseki/**'
+      - 'docker/keycloak/**'
+  # Build-only on PRs so the extension's Maven tests run before merge (nothing is pushed)
+  pull_request:
+    paths:
+      - 'docker/keycloak/**'
   workflow_dispatch:
     inputs:
       branch:
@@ -27,7 +31,7 @@ permissions:
   packages: write
 
 jobs:
-  build-fuseki:
+  build-keycloak:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -36,6 +40,7 @@ jobs:
           fetch-depth: 0
 
       - name: Login to GitHub Container Registry
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -57,39 +62,47 @@ jobs:
       - name: Get version info
         id: version
         run: |
-          # <Jena version>-<short commit>: deterministic — the same source always gets the
-          # same tag, different source always a different one — and tied to what is in the
-          # image, not to backend releases. A tag reused for different content would make
+          # <Keycloak version>-<short commit>: deterministic — the same source always gets
+          # the same tag, different source always a different one — and tied to what is in
+          # the image, not to backend releases. A tag reused for different content would make
           # `az containerapp update` see no change, create no revision and keep the old
           # image running.
           GIT_SHA=$(git rev-parse --short HEAD)
-          JENA_VERSION=$(sed -n 's/^ARG JENA_VERSION=//p' docker/fuseki/Dockerfile | tr -d '\r')
-          if [ -z "$JENA_VERSION" ]; then
-            echo "JENA_VERSION not found in docker/fuseki/Dockerfile" >&2
+          KEYCLOAK_VERSION=$(sed -n 's/^ARG KEYCLOAK_VERSION=//p' docker/keycloak/Dockerfile | tr -d '\r')
+          if [ -z "$KEYCLOAK_VERSION" ]; then
+            echo "KEYCLOAK_VERSION not found in docker/keycloak/Dockerfile" >&2
             exit 1
           fi
-          VERSION="${JENA_VERSION}-${GIT_SHA}"
+          VERSION="${KEYCLOAK_VERSION}-${GIT_SHA}"
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build and push Fuseki image
+      - name: Build and push Keycloak image
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           BRANCH="${{ steps.branch.outputs.branch }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          if [ "$BRANCH" = "main" ]; then
-            IMAGE_NAME="ghcr.io/${REPO_OWNER}/ismd-tool-fuseki"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # ref_name is "<n>/merge" on PRs — not a valid image name; the image stays local
+            IMAGE_NAME="ismd-tool-keycloak-pr"
+          elif [ "$BRANCH" = "main" ]; then
+            IMAGE_NAME="ghcr.io/${REPO_OWNER}/ismd-tool-keycloak"
           else
-            IMAGE_NAME="ghcr.io/${REPO_OWNER}/ismd-tool-fuseki-${BRANCH}"
+            IMAGE_NAME="ghcr.io/${REPO_OWNER}/ismd-tool-keycloak-${BRANCH}"
           fi
 
           docker build \
-            -f docker/fuseki/Dockerfile \
+            -f docker/keycloak/Dockerfile \
             --label "org.opencontainers.image.revision=${{ github.sha }}" \
             -t "${IMAGE_NAME}:${VERSION}" \
             -t "${IMAGE_NAME}:latest" \
-            .
+            docker/keycloak
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Pull request: image built and tests passed, not pushed."
+            exit 0
+          fi
 
           docker push "${IMAGE_NAME}:${VERSION}"
           docker push "${IMAGE_NAME}:latest"
