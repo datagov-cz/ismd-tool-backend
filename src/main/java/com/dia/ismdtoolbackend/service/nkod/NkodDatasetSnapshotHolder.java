@@ -143,7 +143,7 @@ public class NkodDatasetSnapshotHolder {
         long t0 = System.currentTimeMillis();
         List<NkodDatasetRow> harvested = client.harvestDatasets();
         NkodDatasetSnapshot snapshot = NkodDatasetSnapshot.build(clock.instant(), harvested, SORT_LANG);
-        log.info("[timing] NKOD catalogue harvest: {} datasets in {} ms",
+        log.debug("[timing] NKOD catalogue harvest: {} datasets in {} ms",
                 snapshot.size(), System.currentTimeMillis() - t0);
         return snapshot;
     }
