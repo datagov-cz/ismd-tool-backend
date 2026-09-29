@@ -60,6 +60,8 @@ import static org.mockito.Mockito.*;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ConceptServiceImplTest {
 
+    @Mock private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
+
     @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
 

@@ -8,6 +8,11 @@ on:
   push:
     branches:
       - dev
+    # Side images (Fuseki, Keycloak) are built and deployed by their own workflows;
+    # a push that only touches them must not rebuild and redeploy the backend.
+    paths-ignore:
+      - 'docker/fuseki/**'
+      - 'docker/keycloak/**'
   workflow_dispatch:
     inputs:
       enforce_coverage:
