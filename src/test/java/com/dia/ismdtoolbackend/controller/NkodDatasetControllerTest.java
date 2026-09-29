@@ -104,4 +104,48 @@ class NkodDatasetControllerTest {
         assertThatThrownBy(() -> controller.getDatasetDetail("urn:missing"))
                 .isInstanceOf(NkdResourceNotFoundException.class);
     }
+
+    /**
+     * The concept IRI must reach the service verbatim — no re-encoding on the way through, or
+     * the raw-UTF-8 match in the query silently finds nothing.
+     */
+    @Test
+    void byConceptPassesIriThrough() {
+        String conceptIri = "https://slovník.gov.cz/generický/pojem/číslo";
+        when(nkodDatasetService.listDatasetsByConcept(anyString()))
+                .thenReturn(new NkodDatasetListDto(List.of(), 0));
+
+        controller.listDatasetsByConcept(conceptIri);
+
+        verify(nkodDatasetService).listDatasetsByConcept(eq(conceptIri));
+    }
+
+    /** An unannotated concept is a 200 with an empty list, not a 404. */
+    @Test
+    void byConceptReturnsOkWithEmptyList() {
+        NkodDatasetListDto dto = new NkodDatasetListDto(List.of(), 0);
+        when(nkodDatasetService.listDatasetsByConcept(anyString())).thenReturn(dto);
+
+        ResponseEntity<?> response = controller.listDatasetsByConcept("urn:concept");
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(dto.getDatasets()).isEmpty();
+    }
+
+    @Test
+    void byConceptReturnsEnvelopeWithDatasets() {
+        NkodDatasetListDto dto = new NkodDatasetListDto(
+                List.of(NkodDatasetListItemDto.builder()
+                        .iri("urn:a")
+                        .name(Map.of("cs", "Adresy"))
+                        .build()),
+                1);
+        when(nkodDatasetService.listDatasetsByConcept(anyString())).thenReturn(dto);
+
+        ResponseEntity<?> response = controller.listDatasetsByConcept("urn:concept");
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(dto.getDatasets()).singleElement()
+                .extracting(NkodDatasetListItemDto::getIri).isEqualTo("urn:a");
+    }
 }
