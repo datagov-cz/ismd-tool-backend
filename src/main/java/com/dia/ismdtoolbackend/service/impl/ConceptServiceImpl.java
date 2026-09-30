@@ -35,10 +35,13 @@ import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
+import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
+import com.dia.ismdtoolbackend.utility.validation.ConceptCreateValidator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
@@ -94,6 +97,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
+    private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final NkdSnapshotService nkdSnapshotService;
     private final NkdLinkDetector nkdLinkDetector;
@@ -110,7 +114,7 @@ public class ConceptServiceImpl implements ConceptService {
                 createModel.getConceptType(), createModel.getNameModel(),
                 createModel.getNamespace(), userId);
 
-        validateInput(createModel, userId);
+        ConceptCreateValidator.validate(createModel, userId);
 
         Resource conceptResource = createConceptResource(createModel);
         String conceptUri = conceptResource.getURI();
@@ -130,6 +134,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptMetadataMapper.toDto(savedEntity);
         }
 
+        requireInitialGraphApplied(ontologyGraphName);
         saveConceptToTDB2(conceptResource, ontologyGraphName);
         return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
     }
@@ -151,6 +156,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         String graphName = conceptMetadataOpt.get().getGraphName();
+        requireInitialGraphApplied(graphName);
         String conceptUri = conceptMetadataOpt.get().getConceptIri();
 
         if (!jenaTDB2Repository.graphHasData(graphName)) {
@@ -216,6 +222,7 @@ public class ConceptServiceImpl implements ConceptService {
         // window in which a concurrent edit could enqueue an out-of-order same-aggregate outbox row.
         ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
         String graphName = metadata.getGraphName();
+        requireInitialGraphApplied(graphName);
 
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
@@ -645,59 +652,6 @@ public class ConceptServiceImpl implements ConceptService {
         return relatedConcepts;
     }
 
-    private void validateInput(ConceptCreateModel createModel, String userId) {
-        if (createModel == null) {
-            throw new OntologyException("Data pro vytvoření pojmu jsou prázdná");
-        }
-
-        if (userId == null || userId.trim().isEmpty()) {
-            throw new OntologyException("ID uživatele je povinné");
-        }
-
-        // name is required and must include a non-blank cs variant
-        Map<String, String> name = createModel.getNameModel() != null
-                ? createModel.getNameModel().getName() : null;
-        if (name == null || name.isEmpty()) {
-            throw new ConceptValidationException("Název pojmu je povinný.");
-        }
-        if (isBlankValue(name.get("cs"))) {
-            throw new ConceptValidationException("Název pojmu musí obsahovat českou variantu (cs).");
-        }
-
-        // description is optional, but if present it must include a non-blank cs variant
-        Map<String, String> description = createModel.getDescriptionModel() != null
-                ? createModel.getDescriptionModel().getDescription() : null;
-        if (hasAnyValue(description) && isBlankValue(description.get("cs"))) {
-            throw new ConceptValidationException("Popis pojmu musí obsahovat českou variantu (cs).");
-        }
-
-        // definition is optional, but if present it must include a non-blank cs variant
-        Map<String, String> definition = createModel.getDefinitionModel() != null
-                ? createModel.getDefinitionModel().getDefinition() : null;
-        if (hasAnyValue(definition) && isBlankValue(definition.get("cs"))) {
-            throw new ConceptValidationException("Definice pojmu musí obsahovat českou variantu (cs).");
-        }
-
-        // Reject the whole create (HTTP 400) if any supplied value is invalid, rather than
-        // dropping it silently. Runs the same rule set as the edit path, so identical input
-        // fails identically on both verbs.
-        List<ConceptInputValidator.InvalidInput> invalid = ConceptInputValidator.validate(createModel);
-        if (!invalid.isEmpty()) {
-            String detail = invalid.stream()
-                    .map(ConceptInputValidator.InvalidInput::toString)
-                    .collect(Collectors.joining("; "));
-            throw new ConceptValidationException("Neplatné hodnoty při vytváření pojmu: " + detail);
-        }
-    }
-
-    private static boolean isBlankValue(String value) {
-        return value == null || value.trim().isEmpty();
-    }
-
-    private static boolean hasAnyValue(Map<String, String> map) {
-        return map != null && !map.isEmpty() && map.values().stream().anyMatch(v -> !isBlankValue(v));
-    }
-
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
                                                        String userId,
                                                        String conceptIri) {
@@ -709,27 +663,14 @@ public class ConceptServiceImpl implements ConceptService {
                     return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
                 });
 
-        String baseSlug = UtilityMethods.extractNameFromIRI(ontologyGraphName) + "-" + UtilityMethods.extractNameFromIRI(conceptIri);
-        String slug = baseSlug;
-        int counter = 1;
+        return ConceptMetadataFactory.create(createModel, conceptIri, userId, ontologyMetadata,
+                slug -> conceptMetadataRepository.findBySlug(slug).isPresent(), new HashSet<>());
+    }
 
-        while (conceptMetadataRepository.findBySlug(slug).isPresent()) {
-            slug = baseSlug + "-" + counter;
-            counter++;
+    private void requireInitialGraphApplied(String graph) {
+        if (outboxRepository.existsEarlierUnappliedCreateGraph(graph, Long.MAX_VALUE)) {
+            throw new OntologyCreationConflictException("Počáteční zápis slovníku ještě nebyl dokončen: " + graph);
         }
-
-        ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setSlug(slug);
-        entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
-        entity.setConceptType(createModel.getConceptTypeEnum());
-        entity.setConceptIri(conceptIri);
-        entity.setGraphName(createModel.getOntologyGraphName());
-        entity.setUserId(userId);
-        entity.setIsPublished(false);
-        entity.setInTezaurus(createModel.getInTezaurus());
-        entity.setOntologyMetadata(ontologyMetadata);
-
-        return entity;
     }
 
     /**
@@ -944,7 +885,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
-            metadata.setConceptName(getNameForMetadata(conceptEditModel.getNameModel()));
+            metadata.setConceptName(ConceptMetadataFactory.nameForMetadata(conceptEditModel.getNameModel()));
         }
 
         if (conceptEditModel.getInTezaurus() != null) {
@@ -1045,17 +986,6 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
-    }
-
-    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey("cs")) {
-            return names.get("cs");
-        }
-        return names.values().iterator().next();
     }
 
     /**

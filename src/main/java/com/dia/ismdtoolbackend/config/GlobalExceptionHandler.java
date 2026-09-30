@@ -48,6 +48,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
+    @ExceptionHandler(OntologyCreationConflictException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyCreationConflict(OntologyCreationConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(e.getMessage()));
+    }
+
     /** Another editor saved the diagram first; membership is a full replace, so a stale save would delete. */
     @ExceptionHandler(DiagramVersionConflictException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramVersionConflict(
