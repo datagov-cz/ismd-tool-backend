@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models.nkod;
 
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import lombok.Getter;
 
 import java.time.Clock;
@@ -27,7 +28,7 @@ public final class NkodCodelistSnapshot {
         this.entries = List.copyOf(entries);
         Map<String, NkodCodelistEntry> index = new LinkedHashMap<>();
         for (NkodCodelistEntry entry : this.entries) {
-            index.putIfAbsent(entry.datasetIri(), entry);
+            index.putIfAbsent(SparqlSolutions.toRawUtf8(entry.datasetIri()), entry);
         }
         this.byDatasetIri = Map.copyOf(index);
     }
@@ -41,11 +42,12 @@ public final class NkodCodelistSnapshot {
         return new NkodCodelistSnapshot(loadedAt, entries);
     }
 
+    /** Looks up by dataset IRI; a percent-encoded IRI finds the same entry as its raw UTF-8 form. */
     public Optional<NkodCodelistEntry> find(String datasetIri) {
         if (datasetIri == null) {
             return Optional.empty();
         }
-        return Optional.ofNullable(byDatasetIri.get(datasetIri));
+        return Optional.ofNullable(byDatasetIri.get(SparqlSolutions.toRawUtf8(datasetIri.trim())));
     }
 
     public boolean isEmpty() {

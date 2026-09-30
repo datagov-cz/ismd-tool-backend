@@ -9,11 +9,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * A codelist dataset from the NKOD catalogue: a picker entry, and the resolved form of a
- * concept's {@code instance-definovány-číselníkem}.
+ * A codelist dataset from the NKOD catalogue: a picker entry, and the current catalogue state of a
+ * concept's {@code instance-definovány-číselníkem}. Served only with a resolved {@code codeListIri}.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -23,6 +23,11 @@ public class NkodCodelist {
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank
     private String datasetIri;
+
+    /** Codelist IRI of the dataset's current version, read from its distribution file. */
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank
+    private String codeListIri;
 
     /** Czech title. */
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED)

@@ -53,13 +53,13 @@ public class NkodConfig {
         /** Background refresh cadence; fires inside {@code ttlHours}. */
         private String refreshCron = "0 15 */12 * * *";
 
-        /** TTL of per-dataset codelist IRI resolutions. */
-        private long resolveTtlHours = 24;
-
         /** Bytes read from a distribution file before giving up. */
         private int maxDistributionBytes = 2 * 1024 * 1024;
 
         /** Per-file HTTP timeout when streaming a distribution. */
         private int distributionTimeoutMs = 10000;
+
+        /** Distribution files fetched in parallel during a refresh. */
+        private int distributionConcurrency = 8;
     }
 }

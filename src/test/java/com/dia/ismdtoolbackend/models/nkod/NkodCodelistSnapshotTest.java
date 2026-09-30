@@ -44,6 +44,25 @@ class NkodCodelistSnapshotTest {
     }
 
     @Test
+    void find_percentEncodedIriFindsTheRawEntry() {
+        NkodCodelistSnapshot snap = NkodCodelistSnapshot.of(LOADED, List.of(
+                entry("https://data.gov.cz/zdroj/datové-sady/17651921/b", "Pohlaví")));
+
+        assertThat(snap.find("https://data.gov.cz/zdroj/datov%C3%A9-sady/17651921/b"))
+                .map(e -> e.codelist().getTitle()).contains("Pohlaví");
+        assertThat(snap.find(" https://data.gov.cz/zdroj/datové-sady/17651921/b "))
+                .map(e -> e.codelist().getTitle()).contains("Pohlaví");
+    }
+
+    @Test
+    void find_percentEncodedEntryIsFoundByTheRawIri() {
+        NkodCodelistSnapshot snap = NkodCodelistSnapshot.of(LOADED, List.of(
+                entry("https://data.gov.cz/zdroj/datov%C3%A9-sady/17651921/b", "Pohlaví")));
+
+        assertThat(snap.find("https://data.gov.cz/zdroj/datové-sady/17651921/b")).isPresent();
+    }
+
+    @Test
     void entries_keepTheGivenOrder() {
         NkodCodelistSnapshot snap = NkodCodelistSnapshot.of(LOADED, List.of(
                 entry("https://x/b", "Beta"), entry("https://x/a", "Alfa")));
@@ -91,5 +110,22 @@ class NkodCodelistSnapshotTest {
 
         assertThat(e.downloadUrls()).containsExactly("https://x/a.jsonld");
         assertThat(new NkodCodelistEntry(e.codelist(), null).downloadUrls()).isEmpty();
+    }
+
+    @Test
+    void entry_isUnresolvedUntilGivenACodeListIri() {
+        NkodCodelistEntry e = entry("https://x/a", "A", "https://x/a.jsonld");
+
+        assertThat(e.isResolved()).isFalse();
+        assertThat(e.codeListIri()).isNull();
+
+        NkodCodelistEntry resolved = e.withCodeListIri("https://x/ciselnik/a");
+
+        assertThat(resolved.isResolved()).isTrue();
+        assertThat(resolved.codeListIri()).isEqualTo("https://x/ciselnik/a");
+        assertThat(resolved.codelist().getTitle()).isEqualTo("A");
+        assertThat(resolved.downloadUrls()).containsExactly("https://x/a.jsonld");
+        assertThat(e.isResolved()).as("original untouched").isFalse();
+        assertThat(resolved.withCodeListIri(null).isResolved()).isFalse();
     }
 }
