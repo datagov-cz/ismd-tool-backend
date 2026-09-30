@@ -44,7 +44,7 @@ class EsbirkaServiceImplTest {
     void setUp() {
         // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
         // the same delegation path without a Spring context.
-        service = new EsbirkaServiceImpl(client, null, null);
+        service = new EsbirkaServiceImpl(client, null, null, null);
         ReflectionTestUtils.setField(service, "self", service);
     }
 
@@ -88,6 +88,25 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
+    void getVersionsAcceptsLegacyHostsAndQueriesTheCanonicalIri() {
+        // These used to 400 here while /resolve accepted them. Both legacy spellings must
+        // reach the SPARQL layer canonicalized — the endpoint only knows the .gov.cz host.
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "KONSOL", true)));
+
+        // The bare host carries no /esel-esb/ segment — canonicalization inserts it.
+        for (String legacy : new String[]{
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187",
+                "https://eselpoint.cz/eli/cz/sb/2006/187"}) {
+            List<LawVersionDto> out = service.getVersions(legacy);
+            assertEquals(1, out.size(), "legacy host rejected: " + legacy);
+            assertEquals(VERSION_IRI, out.get(0).getIri(), "canonical IRI echoed back");
+        }
+        // Never the legacy string — e-Sbírka would return nothing for it.
+        verify(client, org.mockito.Mockito.times(2)).fetchVersions(LAW_IRI);
+    }
+
+    @Test
     void getVersionsMapsModelToDtoWithEliPathAndLatest() {
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI,
@@ -110,6 +129,15 @@ class EsbirkaServiceImplTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.getFragments("javascript:alert(1)"));
         assertEquals("Neplatný identifikátor znění právního aktu.", ex.getMessage());
+    }
+
+    @Test
+    void getFragmentsAcceptsLegacyHostAndQueriesTheCanonicalIri() {
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of());
+
+        service.getFragments("https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01");
+
+        verify(client).fetchFragments(VERSION_IRI);
     }
 
     @Test
@@ -228,6 +256,49 @@ class EsbirkaServiceImplTest {
         FragmentDto leaf = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
         assertNull(leaf.getCitation());
         assertFalse(leaf.isNavigable());
+    }
+
+    @Test
+    void fragWrappingOnlyTextBlocksIsNonNavigable() {
+        // Real shape from 49/1997 (.../par_105/frag_1234029045): an unnumbered frag whose every
+        // child is itself an unnumbered text block. Judged on childlessness alone it stayed
+        // navigable, so it rendered as a blank row that expanded to nothing — its children are
+        // all hidden. Navigability has to account for descendants, not just direct children.
+        String par = VERSION_IRI + "/par_105";
+        String wrapper = par + "/frag_1234029045";
+        String text = wrapper + "/frag_2";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 105", "par", "0001"),
+                new FragmentModel(wrapper, par, null, "frag", "0002"),
+                new FragmentModel(text, wrapper, null, "frag", "0003")));
+
+        FragmentDto node = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+
+        assertFalse(node.isNavigable(), "a frag wrapping only text blocks is not a nav target");
+        assertNull(node.getCitation());
+        // Hiding it cannot strand a visible node: everything below is non-navigable too.
+        assertFalse(node.getChildren().get(0).isNavigable());
+    }
+
+    @Test
+    void deeplyNestedNavigableDescendantKeepsAncestorsNavigable() {
+        // The suppression must not be greedy: one citable unit anywhere below keeps the whole
+        // chain reachable, otherwise hiding a wrapper orphans it.
+        String par = VERSION_IRI + "/par_9";
+        String outer = par + "/frag_1";
+        String inner = outer + "/frag_2";
+        String pism = inner + "/pism_b";
+        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+                new FragmentModel(par, NORMA_ROOT, "§ 9", "par", "0001"),
+                new FragmentModel(outer, par, null, "frag", "0002"),
+                new FragmentModel(inner, outer, null, "frag", "0003"),
+                new FragmentModel(pism, inner, "§ 9 písm. b)", "pism", "0004")));
+
+        FragmentDto o = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+        assertTrue(o.isNavigable(), "outer wrapper must stay reachable");
+        FragmentDto i = o.getChildren().get(0);
+        assertTrue(i.isNavigable(), "inner wrapper must stay reachable");
+        assertTrue(i.getChildren().get(0).isNavigable());
     }
 
     @Test
@@ -455,6 +526,125 @@ class EsbirkaServiceImplTest {
         assertEquals(2, out.getVersions().size());
         assertEquals(1, out.getFragments().size());
         assertEquals("<var>§ 1</var>", out.getFragments().get(0).getBodyHtml());
+    }
+
+    // -------- getLawContent: ELI IRI input --------
+
+    /** Law 49/1997's own IRI shape — .../{rok}/{číslo}, year before number. */
+    private static final String LAW_49_IRI =
+            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997/49";
+    private static final String V_2026 = LAW_49_IRI + "/2026-04-01";
+    private static final String V_2020 = LAW_49_IRI + "/2020-01-01";
+
+    private void stubLaw49() {
+        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+                new LawModel(LAW_49_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+        when(client.fetchVersions(LAW_49_IRI)).thenReturn(List.of(
+                new LawVersionModel(V_2026, LocalDate.of(2026, 4, 1), null, "t", true),
+                new LawVersionModel(V_2020, LocalDate.of(2020, 1, 1), null, "t", false)));
+    }
+
+    @Test
+    void getLawContentAcceptsAVersionIriAsTheLawRefAndSelectsThatVersion() {
+        // The FE holds version IRIs (from /law/versions, /resolve, a stored legal source) and
+        // no číslo/rok. Passing one alone must render that znění, not the latest.
+        stubLaw49();
+        when(client.fetchVersionContent(V_2020)).thenReturn(List.of());
+
+        var out = service.getLawContent(V_2020, null);
+
+        assertEquals(LAW_49_IRI, out.getLawIri());
+        assertEquals(V_2020, out.getVersionIri());
+        assertEquals(LocalDate.of(2020, 1, 1), out.getVersionDate());
+        assertFalse(out.isVersionLatest());
+        // The switcher still needs every znění, not just the selected one.
+        assertEquals(2, out.getVersions().size());
+        verify(client, never()).fetchVersionContent(V_2026);
+    }
+
+    @Test
+    void getLawContentAcceptsALawLevelIriAndFallsBackToLatest() {
+        // A law IRI carries no znění, so this must behave exactly like "49/1997".
+        stubLaw49();
+        when(client.fetchVersionContent(V_2026)).thenReturn(List.of());
+
+        var out = service.getLawContent(LAW_49_IRI, null);
+
+        assertEquals(V_2026, out.getVersionIri());
+        assertTrue(out.isVersionLatest());
+    }
+
+    @Test
+    void getLawContentAcceptsAFragmentIriAndRendersItsParentVersion() {
+        // Content is whole-version; the fragment is addressable inside the returned tree.
+        stubLaw49();
+        when(client.fetchVersionContent(V_2020)).thenReturn(List.of());
+
+        var out = service.getLawContent(V_2020 + "/dokument/norma/par_1", null);
+
+        assertEquals(V_2020, out.getVersionIri());
+    }
+
+    @Test
+    void explicitVersionIriWinsOverTheOneCarriedByTheLawIri() {
+        stubLaw49();
+        when(client.fetchVersionContent(V_2026)).thenReturn(List.of());
+
+        var out = service.getLawContent(V_2020, V_2026);
+
+        assertEquals(V_2026, out.getVersionIri());
+    }
+
+    @Test
+    void getLawContentAcceptsALegacyHostVersionIri() {
+        stubLaw49();
+        when(client.fetchVersionContent(V_2020)).thenReturn(List.of());
+
+        var out = service.getLawContent(
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49/2020-01-01", null);
+
+        // Canonicalized on the way in, so membership against the canonical version list holds.
+        assertEquals(V_2020, out.getVersionIri());
+    }
+
+    @Test
+    void aVersionIriFromAnotherLawIsStillRejected() {
+        // The IRI supplies both the act and the znění, so they cannot disagree — but a
+        // mismatched explicit versionIri must still 400 rather than silently render latest.
+        stubLaw49();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent(LAW_49_IRI, VERSION_IRI));
+    }
+
+    @Test
+    void malformedIriShapedRefReportsTheNumberYearMessage() {
+        // Falls through to the číslo/rok parse rather than claiming a bad IRI.
+        assertThrows(IllegalArgumentException.class,
+                () -> service.getLawContent("https://example.com/eli/cz/sb/nope", null));
+    }
+
+    // -------- getLawContent: cache-key derivation --------
+
+    @Test
+    void anIriAndItsNumberYearShareTheLawHalfOfTheCacheKey() {
+        assertEquals("49/1997", service.normalizeLawRef(V_2020));
+        assertEquals("49/1997", service.normalizeLawRef(LAW_49_IRI));
+        assertEquals(service.normalizeLawRef("49/1997"), service.normalizeLawRef(LAW_49_IRI));
+    }
+
+    @Test
+    void versionIriCarriedByTheLawRefKeysItsOwnCacheEntry() {
+        // Without this the version half is "" for every IRI, so two different znění of one act
+        // would collide on the same key and serve each other's ~2 MB payload.
+        assertEquals(V_2020, service.resolveContentVersionIri(V_2020, null));
+        assertEquals(V_2026, service.resolveContentVersionIri(V_2026, null));
+        assertEquals("", service.resolveContentVersionIri(LAW_49_IRI, null));
+        assertEquals("", service.resolveContentVersionIri("49/1997", null));
+        // Explicit parameter wins, and a legacy host collapses onto the canonical entry.
+        assertEquals(V_2026, service.resolveContentVersionIri(V_2020, V_2026));
+        assertEquals(V_2020, service.resolveContentVersionIri("49/1997",
+                "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49/2020-01-01"));
     }
 
     @Test
