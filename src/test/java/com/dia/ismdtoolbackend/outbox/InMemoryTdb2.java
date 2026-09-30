@@ -44,8 +44,13 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
         return RDFConnection.connect(dataset);
     }
 
+    /**
+     * Counts whole-graph fetches. {@code fetchGraph} is uncached and pulls the entire named graph, so a
+     * per-item fan-out of it is the shape that has caused real timeouts; tests assert a ceiling on it.
+     */
     @Override
     public Model fetchGraph(String graphName) {
+        fetchGraphCount++;
         // Remote Fuseki returns a detached model. RDFConnectionLocal returns a live graph view:
         // PUTting that view back into itself clears its source, and snapshots would change on replay.
         return ModelFactory.createDefaultModel().add(super.fetchGraph(graphName));
@@ -59,16 +64,6 @@ public class InMemoryTdb2 extends JenaTDB2Repository {
         dataset = DatasetFactory.createTxnMem();
         failingGraph = null;
         fetchGraphCount = 0;
-    }
-
-    /**
-     * Counts whole-graph fetches. {@code fetchGraph} is uncached and pulls the entire named graph, so a
-     * per-item fan-out of it is the shape that has caused real timeouts; tests assert a ceiling on it.
-     */
-    @Override
-    public Model fetchGraph(String graphName) {
-        fetchGraphCount++;
-        return super.fetchGraph(graphName);
     }
 
     public void resetFetchCount() {
