@@ -123,6 +123,10 @@ class SecurityFilterChainIntegrationTest {
             "/api/nkd/ontology/all",
             "/api/nkd/ontology/download",
             "/api/nkd/concept/detail",
+            // NKOD read endpoints
+            "/api/nkod/dataset/all",
+            "/api/nkod/dataset/detail",
+            "/api/nkod/concept/datasets",
             // RPP read endpoints
             "/api/rpp/agenda/search",
             "/api/rpp/ais/search",

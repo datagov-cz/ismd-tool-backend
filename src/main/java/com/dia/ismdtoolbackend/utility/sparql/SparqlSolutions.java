@@ -3,6 +3,8 @@ package com.dia.ismdtoolbackend.utility.sparql;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.rdf.model.Literal;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 
@@ -70,5 +72,32 @@ public final class SparqlSolutions {
         }
         String lexical = lit.getLexicalForm().trim();
         return "true".equalsIgnoreCase(lexical) || "1".equals(lexical);
+    }
+
+    /**
+     * Decodes percent-escapes so the IRI is in the raw-UTF-8 form the stores hold.
+     *
+     * <p>Idempotent for an already-raw IRI, which is what makes it safe to apply
+     * unconditionally: an IRI with no {@code %} is returned unchanged.
+     *
+     * <p>Decodes once only. A double-encoded IRI is left partly encoded rather than
+     * unwrapped to something the caller never sent — repeated decoding would also corrupt any
+     * IRI whose own path legitimately contains a {@code %}-escape.
+     *
+     * <p>{@code +} is preserved. {@link URLDecoder} is a form-data decoder and would otherwise
+     * turn it into a space; in an IRI path a {@code +} is a literal plus.
+     */
+    public static String toRawUtf8(String iri) {
+        if (iri == null || iri.indexOf('%') < 0) {
+            return iri;
+        }
+        try {
+            return URLDecoder.decode(iri.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            // Malformed escape (e.g. a bare "%" or "%zz"): the IRI is not percent-encoded in
+            // any meaningful sense, so match it as given rather than rejecting it here. The
+            // safety check still runs downstream.
+            return iri;
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.config.NkodConfig;
+import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.ResultSetFactory;
@@ -163,5 +164,77 @@ class NkodSparqlClientTest {
         assertThat(result).singleElement()
                 .extracting(NkodDistribution::name)
                 .isEqualTo(Map.of("cs", "Rozhraní", "en", "Interface"));
+    }
+
+    /**
+     * An unsafe concept IRI must be refused before any round-trip. This client has no endpoint,
+     * so a call that slipped past the guard would throw rather than return empty.
+     */
+    @Test
+    void rejectsUnsafeConceptIriWithoutCallingEndpoint() {
+        NkodSparqlClient client = clientWithEndpoint("");
+
+        assertThat(client.fetchDatasetsByConcept("https://x/a> } UNION { ?ds ?p ?o")).isEmpty();
+        assertThat(client.fetchDatasetsByConcept("not an iri")).isEmpty();
+        assertThat(client.fetchDatasetsByConcept(null)).isEmpty();
+    }
+
+    /**
+     * Builds a real Jena {@link ResultSet} from the harvest/by-concept projection, so the
+     * language-collapsing mapper is exercised on the actual wire format.
+     */
+    private static List<NkodDatasetRow> mapDatasetRows(String bindingsJson) {
+        String json = """
+                {"head":{"vars":["ds","nazev","nazevLang","popis","popisLang"]},
+                 "results":{"bindings":[%s]}}
+                """.formatted(bindingsJson);
+        ResultSet rs = ResultSetFactory.fromJSON(
+                new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
+        return ReflectionTestUtils.invokeMethod(clientWithEndpoint(""), "mapHarvestRows", rs);
+    }
+
+    private static String langLiteral(String var, String lang, String value) {
+        return "\"%s\":{\"type\":\"literal\",\"xml:lang\":\"%s\",\"value\":\"%s\"},\"%sLang\":{\"type\":\"literal\",\"value\":\"%s\"}"
+                .formatted(var, lang, value, var, lang);
+    }
+
+    /**
+     * One dataset annotated in two languages arrives as two rows; collapsing them is what keeps
+     * a single linked dataset from rendering twice on the concept page.
+     */
+    @Test
+    void collapsesMultiLanguageDatasetRowsIntoOneRow() {
+        List<NkodDatasetRow> result = mapDatasetRows(
+                "{" + uri("ds", "urn:ds1") + "," + langLiteral("nazev", "cs", "Adresy") + "},"
+                        + "{" + uri("ds", "urn:ds1") + "," + langLiteral("nazev", "en", "Addresses") + "}");
+
+        assertThat(result).singleElement().satisfies(row -> {
+            assertThat(row.iri()).isEqualTo("urn:ds1");
+            assertThat(row.name()).isEqualTo(Map.of("cs", "Adresy", "en", "Addresses"));
+        });
+    }
+
+    /**
+     * Title and description are OPTIONAL in the query, so an untitled dataset must still be
+     * returned — dropping it would silently understate a concept's dataset count.
+     */
+    @Test
+    void keepsDatasetWithNoTitle() {
+        List<NkodDatasetRow> result = mapDatasetRows("{" + uri("ds", "urn:ds1") + "}");
+
+        assertThat(result).singleElement().satisfies(row -> {
+            assertThat(row.iri()).isEqualTo("urn:ds1");
+            assertThat(row.name()).isEmpty();
+        });
+    }
+
+    /** Several distinct datasets on one concept must stay distinct. */
+    @Test
+    void keepsDistinctDatasetsSeparate() {
+        List<NkodDatasetRow> result = mapDatasetRows(
+                "{" + uri("ds", "urn:ds1") + "," + langLiteral("nazev", "cs", "Adresy") + "},"
+                        + "{" + uri("ds", "urn:ds2") + "," + langLiteral("nazev", "cs", "Budovy") + "}");
+
+        assertThat(result).extracting(NkodDatasetRow::iri).containsExactly("urn:ds1", "urn:ds2");
     }
 }
