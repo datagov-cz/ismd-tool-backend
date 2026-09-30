@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
 import com.dia.ismdtoolbackend.config.security.JwtAuthenticationConverter;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
@@ -8,6 +10,8 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiIdReferenceDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
@@ -445,6 +449,97 @@ class AiSuggestionControllerTest {
                         .content("[null]"))
                 .andExpect(status().isBadRequest());
 
+        verifyNoInteractions(aiSuggestionService);
+    }
+
+    @Test
+    void vocabularyStartMapsCamelCaseAndAcceptsEmptyOptions() throws Exception {
+        when(aiSuggestionService.startVocabularySuggestions(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions")
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"classCount":2,"propertiesPerClass":0,"relationshipsPerClass":1,
+                                 "contextText":"Vozidla","knownConceptualModel":{"classes":[],"attributes":[],"relationships":[]}}
+                                """))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.jobId").value(FIRST_JOB_ID.toString()));
+        verify(aiSuggestionService).startVocabularySuggestions(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 15),
+                new AiVocabularySuggestionRequestDto(2, 0, 1, null, "Vozidla",
+                        new com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto(List.of(), List.of(), List.of())));
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions")
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isAccepted());
+        verify(aiSuggestionService).startVocabularySuggestions(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 15),
+                new AiVocabularySuggestionRequestDto(null, null, null, null, null, null));
+    }
+
+    @Test
+    void vocabularyPollingSerializesDraftInCamelCaseAndKeepsRefValues() throws Exception {
+        var ref = new com.dia.ismdtoolbackend.controller.dto.ai.AiConceptReferenceDto("class-stable", null);
+        var draft = new AiVocabularySuggestionsJobResponseDto.AiVocabularyDraftDto(
+                AiVocabularySuggestionsJobResponseDto.Phase.PROPERTIES, List.of(),
+                List.of(new AiVocabularySuggestionsJobResponseDto.AiDraftAttributeDto(
+                        "attribute-stable", ref, Map.of("cs", "Název"), null, null, "/eli/cz/sb/2024/1")), List.of());
+        when(aiSuggestionService.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID, SECOND_JOB_ID)))
+                .thenReturn(List.of(new AiVocabularySuggestionsJobResponseDto(FIRST_JOB_ID, AiJobStatus.FAILED, draft)));
+        mockMvc.perform(get("/api/ai/legal-acts/vocabulary-suggestions-jobs")
+                        .queryParam("jobIds", FIRST_JOB_ID.toString(), SECOND_JOB_ID.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("failed"))
+                .andExpect(jsonPath("$[0].draft.phase").value("PROPERTIES"))
+                .andExpect(jsonPath("$[0].draft.attributes[0].associatedClass.ref").value("class-stable"))
+                .andExpect(jsonPath("$[0].draft.attributes[0].associatedClass.iri").doesNotExist())
+                .andExpect(jsonPath("$[0].draft.attributes[0].legalAct").value("/eli/cz/sb/2024/1"));
+        verify(aiSuggestionService).getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID, SECOND_JOB_ID));
+    }
+
+    @Test
+    void vocabularyValidatesCountsAndJobIds() throws Exception {
+        for (String body : List.of("{\"classCount\":0}", "{\"propertiesPerClass\":11}",
+                "{\"relationshipsPerClass\":-1}", "{\"structuralElementIds\":[null]}")) {
+            mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions")
+                            .contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(get("/api/ai/legal-acts/vocabulary-suggestions-jobs")).andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/ai/legal-acts/vocabulary-suggestions-jobs").queryParam("jobIds", "invalid"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(aiSuggestionService);
+    }
+
+    @Test
+    void editingEndpointsAcceptCurrentModelAndForwardAuthenticatedRequests() throws Exception {
+        when(aiSuggestionService.expandVocabulary(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
+        when(aiSuggestionService.regenerateVocabularyConcept(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
+        String model = "{\"classes\":[{\"termID\":\"class-draft\",\"name\":{\"cs\":\"Motocykl\"},\"type\":\"CLASS\"}],\"attributes\":[],\"relationships\":[]}";
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions/expand")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"kind\":\"properties\",\"count\":2,\"selectedClassId\":\"class-draft\",\"knownConceptualModel\":" + model + "}"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.jobId").value(FIRST_JOB_ID.toString()));
+        mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions/regenerate")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"conceptRef\":\"class-draft\",\"knownConceptualModel\":" + model + "}"))
+                .andExpect(status().isAccepted());
+        var capture = org.mockito.ArgumentCaptor.forClass(com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto.class);
+        verify(aiSuggestionService).expandVocabulary(eq(BEARER_TOKEN), eq(2024), eq(1), eq(LocalDate.of(2024, 1, 15)), capture.capture());
+        assertEquals("class-draft", capture.getValue().selectedClassId());
+        assertEquals("class-draft", capture.getValue().knownConceptualModel().classes().get(0).termId());
+    }
+
+    @Test
+    void editingEndpointsRejectMissingContextAndInvalidCounts() throws Exception {
+        String base = "/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions";
+        for (String body : List.of("{}", "{\"kind\":\"properties\"}",
+                "{\"kind\":\"classes\",\"count\":0,\"knownConceptualModel\":{}}")) {
+            mockMvc.perform(post(base + "/expand").contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(post(base + "/regenerate").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"conceptRef\":\" \",\"knownConceptualModel\":{}}"))
+                .andExpect(status().isBadRequest());
         verifyNoInteractions(aiSuggestionService);
     }
 

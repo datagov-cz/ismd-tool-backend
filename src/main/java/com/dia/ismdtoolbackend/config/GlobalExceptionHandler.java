@@ -46,6 +46,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
     }
 
+    @ExceptionHandler(OntologyCreationConflictException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyCreationConflict(OntologyCreationConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(e.getMessage()));
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         log.warn("Constraint violation: {}", e.getMessage());
