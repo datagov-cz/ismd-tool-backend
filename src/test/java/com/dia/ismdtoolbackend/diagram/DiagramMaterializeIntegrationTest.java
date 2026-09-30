@@ -550,6 +550,82 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(edgeRepo.findByDiagramId(diagramId())).isEmpty();
     }
 
+    // Op 6 deletes the VZTAH. Its row on the converting canvas used to survive and render stale from the
+    // tombstone, so the relationship appeared to live on beside the hierarchy that replaced it.
+    @Test
+    void op6_movesTheVztahRowToTheNewHierarchyEdge_keepingItsWaypoints() {
+        ConceptMetadataEntity a = create(classModel("Conv A", true));
+        ConceptMetadataEntity b = create(classModel("Conv B", true));
+        ConceptMetadataEntity v = create(relModel("conv-rel", a.getConceptIri(), b.getConceptIri()));
+        placeEdge(v.getConceptIri(), List.of(new EdgeWaypoint(10, 20)));
+        stageNode(v.getConceptIri(), convert(b.getConceptIri(), a.getConceptIri()));
+
+        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(result.failed()).isEmpty();
+        assertThat(edgeRepo.findByDiagramId(diagramId())).singleElement().satisfies(row -> {
+            assertThat(row.getEdgeKey())
+                    .isEqualTo("edge|SUBCLASS_OF|" + b.getConceptIri() + "|" + a.getConceptIri());
+            assertThat(row.getSegments()).containsExactly(new EdgeWaypoint(10, 20));
+        });
+    }
+
+    /** The client already placed the hierarchy edge, so the VZTAH row is dropped rather than colliding. */
+    @Test
+    void op6_withTheHierarchyEdgeAlreadyPlaced_dropsTheVztahRow() {
+        ConceptMetadataEntity a = create(classModel("Both A", true));
+        ConceptMetadataEntity b = create(classModel("Both B", true));
+        ConceptMetadataEntity v = create(relModel("both-rel", a.getConceptIri(), b.getConceptIri()));
+        String hierarchyKey = "edge|SUBCLASS_OF|" + b.getConceptIri() + "|" + a.getConceptIri();
+        placeEdge(v.getConceptIri(), null);
+        placeEdge(hierarchyKey, null);
+        stageNode(v.getConceptIri(), convert(b.getConceptIri(), a.getConceptIri()));
+
+        materializeService.materialize(diagramId(), ontologyId());
+
+        assertThat(edgeRepo.findByDiagramId(diagramId()))
+                .extracting(DiagramEdgeEntity::getEdgeKey)
+                .containsExactly(hierarchyKey);
+    }
+
+    /** Another canvas did not convert anything; the deletion is external to it and must render stale. */
+    @Test
+    void op6_leavesTheVztahRowOnOtherDiagramsForThemToRenderStale() {
+        ConceptMetadataEntity a = create(classModel("Other A", true));
+        ConceptMetadataEntity b = create(classModel("Other B", true));
+        ConceptMetadataEntity v = create(relModel("other-rel", a.getConceptIri(), b.getConceptIri()));
+        // diagramId() is the ontology's FIRST diagram, so it must exist before the other one does.
+        Long convertingDiagramId = diagramId();
+        Long otherDiagramId = txTemplate.execute(tx -> {
+            DiagramEntity d = new DiagramEntity();
+            d.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
+            d.setName("Other diagram");
+            DiagramEntity saved = diagramRepo.saveAndFlush(d);
+            DiagramEdgeEntity row = new DiagramEdgeEntity();
+            row.setDiagram(saved);
+            row.setEdgeKey(v.getConceptIri());
+            edgeRepo.saveAndFlush(row);
+            return saved.getId();
+        });
+        stageNode(v.getConceptIri(), convert(b.getConceptIri(), a.getConceptIri()));
+
+        materializeService.materialize(convertingDiagramId, ontologyId());
+
+        assertThat(otherDiagramId).isNotEqualTo(convertingDiagramId);
+        assertThat(edgeRepo.findByDiagramId(otherDiagramId))
+                .extracting(DiagramEdgeEntity::getEdgeKey)
+                .containsExactly(v.getConceptIri());
+    }
+
+    private DiagramPendingEdit convert(String addBroaderOn, String broader) {
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(addBroaderOn);
+        marker.setBroader(broader);
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        convert.setConvertToHierarchy(marker);
+        return convert;
+    }
+
     /** Place an edge on the canvas: a membership row, optionally routed. */
     private void placeEdge(String edgeKey, List<EdgeWaypoint> segments) {
         txTemplate.executeWithoutResult(tx -> {

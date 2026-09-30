@@ -127,7 +127,8 @@ public class DiagramChangeApplier {
      * Plans the membership moves this edit forces. A {@code SUBCLASS_OF}/{@code EXACT_MATCH} edge is keyed
      * {@code edge|KIND|source|target}, so repointing it changes the edge's identity — without the move the
      * row keeps the old key, stops matching the projection and leaves the canvas with its waypoints. A
-     * VZTAH needs nothing here, its key being its own concept IRI.
+     * VZTAH needs nothing here, its key being its own concept IRI — unless op 6 converts it, when its row
+     * becomes the new {@code SUBCLASS_OF} edge.
      *
      * <p>Targets are matched by position: the n-th staged target replaces the n-th live one. A target the
      * overlay keeps is left alone, and an added one has no row to move.
@@ -135,6 +136,10 @@ public class DiagramChangeApplier {
     private List<EdgeRekey> plannedEdgeRekeys(Long diagramId, ConceptMetadataEntity concept,
                                               DiagramPendingEdit overlay) {
         List<EdgeRekey> rekeys = new ArrayList<>();
+        if (overlay.getConvertToHierarchy() != null) {
+            collectConvertRekey(rekeys, diagramId, concept.getConceptIri(), overlay.getConvertToHierarchy());
+            return rekeys;
+        }
         if (overlay.getBroaderConcept() == null && overlay.getExactMatch() == null) {
             return rekeys;
         }
@@ -185,6 +190,24 @@ public class DiagramChangeApplier {
                     .findFirst()
                     .ifPresent(row -> rekeys.add(new EdgeRekey(row, newKey)));
         }
+    }
+
+    /**
+     * Op 6 deletes the VZTAH, so this diagram's row for it would otherwise render stale from its tombstone
+     * beside the hierarchy that replaced it. Only the converting diagram's row moves: on any other canvas
+     * the deletion came from outside, and rendering it stale is how that canvas is told.
+     */
+    private void collectConvertRekey(List<EdgeRekey> rekeys, Long diagramId, String vztahIri,
+                                     DiagramPendingEdit.ConvertToHierarchy marker) {
+        if (marker.getAddBroaderOn() == null || marker.getBroader() == null) {
+            return;
+        }
+        String newKey = DiagramContentResolver.projectedEdgeId(
+                DiagramEdgeKind.SUBCLASS_OF, marker.getAddBroaderOn(), marker.getBroader());
+        diagramEdgeRepository.findByDiagramId(diagramId).stream()
+                .filter(r -> vztahIri.equals(r.getEdgeKey()))
+                .findFirst()
+                .ifPresent(row -> rekeys.add(new EdgeRekey(row, newKey)));
     }
 
     /**

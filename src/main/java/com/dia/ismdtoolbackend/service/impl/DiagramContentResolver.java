@@ -86,6 +86,11 @@ class DiagramContentResolver {
     private final Map<String, List<EdgeWaypoint>> waypoints;
     /** Staged edits by concept IRI, supplied because an edit need not have a node row. */
     private final Map<String, DiagramPendingEdit> overlays;
+    /**
+     * Super-classes staged by op 6, by the class that gains them. The marker sits on the VZTAH, not on the
+     * class, so a lookup by the edge's source would miss it.
+     */
+    private final Map<String, List<String>> convertedParents;
     /** Foreign node IRIs: valid edge targets, never edge sources. */
     private final Set<String> foreignIris;
     /**
@@ -111,6 +116,7 @@ class DiagramContentResolver {
         this.mapper = mapper;
         this.waypoints = waypoints != null ? waypoints : Map.of();
         this.overlays = overlays != null ? overlays : Map.of();
+        this.convertedParents = convertedParents(this.overlays);
         this.foreignIris = foreignIris != null ? foreignIris : Set.of();
         this.onCanvasEdges = onCanvasEdges != null ? onCanvasEdges : Set.of();
         this.backing = backing != null ? backing : new BackingResolver(Map.of(), Set.of());
@@ -210,13 +216,32 @@ class DiagramContentResolver {
         return targets != null ? targets : List.of();
     }
 
-    /** The targets the overlay stages for a predicate, or null when it stages none. */
+    /**
+     * The targets staged for a predicate, or null when none are: the source's own overlay, plus for
+     * {@code SUBCLASS_OF} any op-6 conversion adding a super-class to it.
+     */
     private List<String> stagedTargets(String source, DiagramEdgeKind kind) {
         DiagramPendingEdit overlay = overlays.get(source);
-        if (overlay == null) {
-            return null;
+        List<String> own = overlay == null ? null
+                : kind == DiagramEdgeKind.SUBCLASS_OF ? overlay.getBroaderConcept() : overlay.getExactMatch();
+        List<String> converted = kind == DiagramEdgeKind.SUBCLASS_OF ? convertedParents.get(source) : null;
+        if (converted == null) {
+            return own;
         }
-        return kind == DiagramEdgeKind.SUBCLASS_OF ? overlay.getBroaderConcept() : overlay.getExactMatch();
+        List<String> staged = new ArrayList<>(own != null ? own : List.of());
+        staged.addAll(converted);
+        return staged;
+    }
+
+    private static Map<String, List<String>> convertedParents(Map<String, DiagramPendingEdit> overlays) {
+        Map<String, List<String>> byClass = new HashMap<>();
+        for (DiagramPendingEdit overlay : overlays.values()) {
+            DiagramPendingEdit.ConvertToHierarchy marker = overlay.getConvertToHierarchy();
+            if (marker != null && marker.getAddBroaderOn() != null && marker.getBroader() != null) {
+                byClass.computeIfAbsent(marker.getAddBroaderOn(), k -> new ArrayList<>()).add(marker.getBroader());
+            }
+        }
+        return byClass;
     }
 
     /** The class nodes on this canvas — the only things an edge may attach to. */

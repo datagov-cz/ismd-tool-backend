@@ -332,6 +332,28 @@ class DiagramContentResolverTest {
     }
 
     /**
+     * Op 6's marker sits on the VZTAH, not on the class gaining the parent, so looking up only the source's
+     * own overlay reported the converted edge as neither pending nor asserted — drawn, backed by nothing.
+     */
+    @Test
+    void hierarchyEdgeStagedByAConversion_isPending() {
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(B);
+        marker.setBroader(A);
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        convert.setConvertToHierarchy(marker);
+
+        List<DiagramDto.Edge> edges = builder(live(A, B)).overlay(REL, convert).placed(placedSubclass(B, A))
+                .build()
+                .project(List.of(node(A), node(B)), types(Map.of(REL, ConceptType.VZTAH)), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.data().pending()).as("the conversion will write B ⊂ A").isTrue();
+            assertThat(e.data().asserted()).as("not in RDF until Převzít").isFalse();
+        });
+    }
+
+    /**
      * A newly drawn edge renders from its row alone, before anything asserts the triple. The user put it on
      * the canvas; that is what a row means. RDF says only whether the link is settled yet.
      *
