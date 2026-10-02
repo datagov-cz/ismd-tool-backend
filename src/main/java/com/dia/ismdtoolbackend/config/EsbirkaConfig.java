@@ -16,6 +16,14 @@ public class EsbirkaConfig {
     public static class Sparql {
         private String endpoint = "";
         private int timeout = 10000;
+        private int maxConcurrentRequests = 8;
+        private CircuitBreaker circuitBreaker = new CircuitBreaker();
+    }
+
+    @Data
+    public static class CircuitBreaker {
+        private int failureThreshold = 5;
+        private long cooldownMs = 30000;
     }
 
     @Data

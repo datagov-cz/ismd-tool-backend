@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,15 +35,21 @@ class EsbirkaServiceImplResolveTest {
 
     private EsbirkaSparqlClient client;
     private EsbirkaFragmentResolutionCache cache;
+    private EsbirkaSubtreeBodyCache subtreeBodyCache;
     private EsbirkaServiceImpl service;
 
     @BeforeEach
     void setUp() {
         client = mock(EsbirkaSparqlClient.class);
         cache = mock(EsbirkaFragmentResolutionCache.class);
+        subtreeBodyCache = mock(EsbirkaSubtreeBodyCache.class);
+        // Working baseline: the version resolves, it simply holds no subtree for this fragment.
+        // Without it the degraded (fallback-unavailable) path would be the fixture default and
+        // every "no body" assertion would pass for the wrong reason.
+        lenient().when(subtreeBodyCache.bodiesByFragmentIri(any())).thenReturn(Map.of());
         // self is only used by the one-arg getLawContent overload, which this suite
         // never exercises; null keeps the constructor honest without a stub.
-        service = new EsbirkaServiceImpl(client, cache, null);
+        service = new EsbirkaServiceImpl(client, cache, subtreeBodyCache, null);
     }
 
     @Test
@@ -102,6 +110,51 @@ class EsbirkaServiceImplResolveTest {
                 "fragmentBodyHtml must be passed verbatim from SPARQL obsah (preserves <var>/<a> tags for FE rendering)");
         assertEquals("1. Předání bude uskutečněno do čtyřiceti pěti (45) dnů.", dto.getFragmentBody(),
                 "fragmentBody is the same obsah with markup stripped to raw text");
+    }
+
+    @Test
+    void resolveLegalSource_containerRoot_noObsah_assemblesSubtreeBody() {
+        String containerUrl = VERSION_URL + "/dokument/poznamkypodcarou";
+        String assembled = "<section data-eli=\"/x\" data-iri=\"\" data-kind=\"ppc\">Poznámka 1</section>";
+        when(cache.fetch(any(), any(), any()))
+                .thenReturn(Optional.of(new FragmentResolutionModel(null, null, true, null)));
+        when(subtreeBodyCache.bodiesByFragmentIri(VERSION_URL))
+                .thenReturn(Map.of(containerUrl, assembled));
+
+        ResolvedLegalSourceDto dto = service.resolveLegalSource(containerUrl);
+
+        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
+        assertEquals(assembled, dto.getFragmentBodyHtml(),
+                "a container carrying no obsah must surface its descendants' assembled body");
+        assertEquals("Poznámka 1", dto.getFragmentBody(),
+                "fragmentBody is the assembled body with markup stripped");
+        assertTrue(dto.getDisplayLabel().contains("Poznámky pod čarou"));
+    }
+
+    @Test
+    void resolveLegalSource_fragmentWithOwnObsah_doesNotAssembleSubtree() {
+        when(cache.fetch(any(), any(), any()))
+                .thenReturn(Optional.of(new FragmentResolutionModel("§ 2", null, true, "<p>vlastní text</p>")));
+
+        ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
+
+        assertEquals("<p>vlastní text</p>", dto.getFragmentBodyHtml());
+        verify(subtreeBodyCache, never()).bodiesByFragmentIri(any());
+    }
+
+    @Test
+    void resolveLegalSource_subtreeAssemblyUnavailable_stillReturnsOk() {
+        when(cache.fetch(any(), any(), any()))
+                .thenReturn(Optional.of(new FragmentResolutionModel("Poznámky pod čarou", null, true, null)));
+        when(subtreeBodyCache.bodiesByFragmentIri(any()))
+                .thenThrow(new SparqlEndpointUnavailableException("e-Sbírka", "down"));
+
+        ResolvedLegalSourceDto dto = service.resolveLegalSource(VERSION_URL + "/dokument/poznamkypodcarou");
+
+        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus(),
+                "a failed body assembly must not downgrade an otherwise-resolved fragment");
+        assertNull(dto.getFragmentBodyHtml());
+        assertEquals("Poznámky pod čarou", dto.getFragmentCitation());
     }
 
     @Test

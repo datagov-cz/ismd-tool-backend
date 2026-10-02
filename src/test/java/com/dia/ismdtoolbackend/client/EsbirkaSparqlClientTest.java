@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.client;
 
+import com.dia.ismdtoolbackend.config.EsbirkaConfig;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
@@ -12,7 +13,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.http.HttpClient;
 import java.time.LocalDate;
@@ -39,6 +39,8 @@ class EsbirkaSparqlClientTest {
     private static final String VERSION_IRI =
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01";
 
+    private static final int BREAKER_THRESHOLD = 3;
+
     private WireMockServer wm;
     private EsbirkaSparqlClient client;
 
@@ -57,9 +59,15 @@ class EsbirkaSparqlClientTest {
     @BeforeEach
     void setUp() {
         wm.resetAll();
-        client = new EsbirkaSparqlClient(HttpClient.newHttpClient());
-        ReflectionTestUtils.setField(client, "endpoint", wm.baseUrl() + "/sparql");
-        ReflectionTestUtils.setField(client, "sparqlTimeout", 2000);
+        client = clientFor(wm.baseUrl() + "/sparql");
+    }
+
+    private static EsbirkaSparqlClient clientFor(String endpoint) {
+        EsbirkaConfig config = new EsbirkaConfig();
+        config.getSparql().setEndpoint(endpoint);
+        config.getSparql().setTimeout(2000);
+        config.getSparql().getCircuitBreaker().setFailureThreshold(BREAKER_THRESHOLD);
+        return new EsbirkaSparqlClient(config, HttpClient.newHttpClient());
     }
 
     @AfterEach
@@ -544,16 +552,33 @@ class EsbirkaSparqlClientTest {
     @Test
     void connectionRefusedThrowsEsbirkaUnavailable() {
         // Point at a port that's not listening — a stopped wiremock instance equivalent.
-        ReflectionTestUtils.setField(client, "endpoint", "http://127.0.0.1:1/sparql");
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
+        EsbirkaSparqlClient down = clientFor("http://127.0.0.1:1/sparql");
+        assertThrows(SparqlEndpointUnavailableException.class, () -> down.searchLaws(null, 20));
     }
 
     @Test
     void unconfiguredEndpointThrowsEsbirkaUnavailable() {
-        ReflectionTestUtils.setField(client, "endpoint", "");
+        EsbirkaSparqlClient unconfigured = clientFor("");
         SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> client.searchLaws(null, 20));
+                () -> unconfigured.searchLaws(null, 20));
         assertTrue(ex.getMessage().contains("not configured"));
+    }
+
+    @Test
+    void breakerOpensAfterConsecutiveFailuresAndStopsCallingUpstream() {
+        stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
+        for (int i = 0; i < BREAKER_THRESHOLD; i++) {
+            assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
+        }
+        int upstreamCalls = wm.getAllServeEvents().size();
+
+        // Every operation shares the breaker, not just the one that failed.
+        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
+                () -> client.fetchVersions(LAW_IRI));
+
+        assertTrue(ex.getMessage().contains("circuit breaker open"));
+        assertEquals(upstreamCalls, wm.getAllServeEvents().size(),
+                "an open breaker must not reach the endpoint");
     }
 
     // --- helpers ------------------------------------------------------------
