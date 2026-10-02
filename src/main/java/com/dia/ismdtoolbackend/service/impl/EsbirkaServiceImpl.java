@@ -38,7 +38,11 @@ import java.util.Optional;
 @Slf4j
 public class EsbirkaServiceImpl implements EsbirkaService {
 
-    static final int MAX_FRAGMENT_DEPTH = 10;
+    /**
+     * Deepest tree e-Sbírka's structure yields: dokument, norma, část, hlava, díl, oddíl,
+     * pododdíl, §, odstavec, písmeno, bod, text block.
+     */
+    static final int MAX_FRAGMENT_DEPTH = 12;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
 
     /** Row cap on the grouped search's act fetch; group size itself is unbounded. */
@@ -81,7 +85,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     // so it is an unambiguous separator.
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch",
-            key = "'flat:' + (#q == null ? '' : #q) + '\u0000' + #limit")
+            key = "'flat:' + (#q == null ? '' : #q) + '\u0000' + #limit",
+            sync = true)
     public List<LawDto> searchLaws(String q, int limit) {
         List<LawModel> rows = client.searchLaws(q, limit);
         List<LawDto> out = new ArrayList<>(rows.size());
@@ -98,7 +103,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      */
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch",
-            key = "'grouped:' + (#q == null ? '' : #q) + '\u0000' + #limit")
+            key = "'grouped:' + (#q == null ? '' : #q) + '\u0000' + #limit",
+            sync = true)
     public LawSearchResultDto searchLawsGrouped(String q, int limit) {
         String needle = q == null ? null : q.trim();
         GroupedNeedle parsed = splitGroupedNeedle(needle);
@@ -255,7 +261,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     // twin rather than issuing an identical second query under its own key.
     @Override
     @Cacheable(cacheNames = "esbirkaLawVersions",
-            key = "#root.target.canonicalizeEsbirkaIri(#lawIri)")
+            key = "#root.target.canonicalizeEsbirkaIri(#lawIri)",
+            sync = true)
     public List<LawVersionDto> getVersions(String lawIri) {
         String iri = requireValidIri(lawIri, "Neplatný identifikátor právního aktu.");
         List<LawVersionModel> rows = client.fetchVersions(iri);
@@ -308,7 +315,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     @Override
     @Cacheable(cacheNames = "esbirkaLawContent",
             key = "#root.target.normalizeLawRef(#lawRef) + '@' "
-                    + "+ #root.target.resolveContentVersionIri(#lawRef, #versionIri)")
+                    + "+ #root.target.resolveContentVersionIri(#lawRef, #versionIri)",
+            sync = true)
     public LawContentDto getLawContent(String lawRef, String versionIri) {
         NumberYear ny = parseNumberYear(lawRef);
         String effectiveVersionIri = resolveContentVersionIri(lawRef, versionIri);

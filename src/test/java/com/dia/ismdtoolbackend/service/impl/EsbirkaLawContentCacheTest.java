@@ -16,8 +16,14 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -115,6 +121,37 @@ class EsbirkaLawContentCacheTest {
         assertFalse(leaf.isNavigable());
         assertTrue(out.getBodyHtml().contains("<p>text</p>"),
                 "a non-navigable node must still contribute its text to the rendered body");
+    }
+
+    @Test
+    void concurrentMissesOnOneKeyShareASingleFetch() throws Exception {
+        cacheManager.getCache("esbirkaLawVersions").clear();
+        int callers = 5;
+        CountDownLatch release = new CountDownLatch(1);
+        when(client.fetchVersionContent(LATEST_IRI)).thenAnswer(inv -> {
+            release.await(5, TimeUnit.SECONDS);
+            return List.of(fragment(LATEST_IRI, "<p>nové znění</p>"));
+        });
+
+        ExecutorService pool = Executors.newFixedThreadPool(callers);
+        try {
+            List<Future<LawContentDto>> results = new ArrayList<>();
+            for (int i = 0; i < callers; i++) {
+                results.add(pool.submit(() -> service.getLawContent("49/1997", LATEST_IRI)));
+            }
+            // Let every caller reach the cache before the first load completes.
+            Thread.sleep(300);
+            release.countDown();
+            for (Future<LawContentDto> r : results) {
+                assertEquals(LATEST_IRI, r.get(10, TimeUnit.SECONDS).getVersionIri());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        verify(client, times(1)).findLawByNumberYear("49", 1997);
+        verify(client, times(1)).fetchVersions(LAW_IRI);
+        verify(client, times(1)).fetchVersionContent(LATEST_IRI);
     }
 
     @Test
