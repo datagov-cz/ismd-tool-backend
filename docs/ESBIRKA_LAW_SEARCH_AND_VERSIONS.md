@@ -425,7 +425,7 @@ re-parenting**: walk the parent IRI up by path segments to the nearest existing 
 because the IRI path provably mirrors `má-předka` (0/2210 mismatches). Unresolvable parents
 surface as roots with a warn-log — never dropped.
 
-Depth is capped at `MAX_FRAGMENT_DEPTH = 10`; >5 000 rows logs a warning.
+Depth is capped at `MAX_FRAGMENT_DEPTH = 12` (deepest observed is 11, e.g. 89/2012); >5 000 rows logs a warning.
 
 ---
 

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.client;
 
+import com.dia.ismdtoolbackend.config.EsbirkaConfig;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
@@ -7,13 +8,13 @@ import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlCircuitBreaker;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
@@ -33,21 +34,32 @@ public class EsbirkaSparqlClient {
      */
     public static final String ESBIRKA_LABEL = "e-Sbírka";
 
-    @Value("${esbirka.sparql.endpoint:}")
-    private String endpoint;
+    private final HttpSparqlExecutor executor;
 
-    @Value("${esbirka.sparql.timeout:10000}")
-    private int sparqlTimeout;
+    /**
+     * Guards every e-Sbírka query: after repeated failures calls fail fast for a cooldown
+     * instead of each waiting out the SPARQL timeout.
+     */
+    private final SparqlCircuitBreaker breaker;
 
-    private final HttpClient httpClient;
-
-    public EsbirkaSparqlClient(@Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
-        this.httpClient = httpClient;
+    public EsbirkaSparqlClient(EsbirkaConfig config,
+                               @Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
+        EsbirkaConfig.Sparql sparql = config.getSparql();
+        this.executor = new HttpSparqlExecutor(
+                ESBIRKA_LABEL,
+                sparql.getEndpoint(),
+                sparql.getTimeout(),
+                httpClient,
+                sparql.getMaxConcurrentRequests());
+        this.breaker = new SparqlCircuitBreaker(
+                ESBIRKA_LABEL,
+                sparql.getCircuitBreaker().getFailureThreshold(),
+                sparql.getCircuitBreaker().getCooldownMs());
     }
 
     @PostConstruct
     void warnIfEndpointMissing() {
-        if (endpoint == null || endpoint.isBlank()) {
+        if (!executor.isConfigured()) {
             log.warn("esbirka.sparql.endpoint is not configured — /api/eli/* endpoints will return 503 until set.");
         }
     }
@@ -132,15 +144,7 @@ public class EsbirkaSparqlClient {
     }
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
-        return executor().select("e-Sbírka " + label, query, mapper);
-    }
-
-    private HttpSparqlExecutor executor() {
-        // Built per call so test reflection (`setField(client, "endpoint", ...)`)
-        // continues to flow through. The executor is a ~24-byte wrapper around two
-        // strings and an int — allocation cost is negligible compared to the SPARQL roundtrip.
-        // The shared, pooled HttpClient is reused across these lightweight wrappers.
-        return new HttpSparqlExecutor(ESBIRKA_LABEL, endpoint, sparqlTimeout, httpClient);
+        return breaker.call(() -> executor.select("e-Sbírka " + label, query, mapper));
     }
 
     private List<LawModel> mapLawRows(ResultSet rs) {

@@ -4,11 +4,8 @@ import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaFragmentHtml;
-import com.dia.ismdtoolbackend.utility.sparql.SparqlCircuitBreaker;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 
@@ -28,8 +25,7 @@ import java.util.Map;
  *
  * <p>Extracted to a dedicated component so Spring's caching proxy intercepts the call —
  * {@code @Cacheable} on a method called from within {@code EsbirkaServiceImpl} would be
- * bypassed. A {@link SparqlCircuitBreaker} guards the fetch so a sustained e-Sbírka outage
- * fast-fails instead of waiting on the SPARQL timeout at every miss.
+ * bypassed. {@code sync} makes concurrent misses on one version share a single fetch.
  */
 @Slf4j
 @Component
@@ -38,27 +34,13 @@ public class EsbirkaSubtreeBodyCache {
 
     private final EsbirkaSparqlClient client;
 
-    @Value("${esbirka.resolve.circuit-breaker.failure-threshold:5}")
-    private int failureThreshold;
-
-    @Value("${esbirka.resolve.circuit-breaker.cooldown-ms:30000}")
-    private long cooldownMillis;
-
-    private SparqlCircuitBreaker breaker;
-
-    @PostConstruct
-    void initBreaker() {
-        this.breaker = new SparqlCircuitBreaker(
-                EsbirkaSparqlClient.ESBIRKA_LABEL, failureThreshold, cooldownMillis);
-    }
-
     /**
      * Assembled subtree HTML for every fragment of {@code versionIri}, keyed by fragment IRI.
      * Empty when the version has no fragments.
      */
-    @Cacheable(cacheNames = "esbirkaVersionSubtreeBodies", key = "#versionIri")
+    @Cacheable(cacheNames = "esbirkaVersionSubtreeBodies", key = "#versionIri", sync = true)
     public Map<String, String> bodiesByFragmentIri(String versionIri) {
-        List<FragmentModel> rows = breaker.call(() -> client.fetchVersionContent(versionIri));
+        List<FragmentModel> rows = client.fetchVersionContent(versionIri);
         if (rows.isEmpty()) {
             return Map.of();
         }

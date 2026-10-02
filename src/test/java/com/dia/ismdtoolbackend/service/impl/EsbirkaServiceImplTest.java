@@ -464,7 +464,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = new ArrayList<>();
         String parent = NORMA_ROOT;
         String tip = null;
-        for (int i = 1; i <= 12; i++) {
+        for (int i = 1; i <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH + 2; i++) {
             String iri = VERSION_IRI + "/level_" + i;
             rows.add(new FragmentModel(iri, parent, "L" + i, "frag", String.format("%04d", i)));
             parent = iri;
