@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.enums.SearchType;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -63,6 +64,8 @@ public class IsmdSearchProvider implements SearchProvider {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final JenaTDB2Repository jenaTDB2Repository;
+    private final DiagramSearchLookup diagramSearchLookup;
+    private final OntologyLabelLookup ontologyLabelLookup;
     private final Executor searchExecutor;
     private final long fusekiTimeoutMs;
     private final long pgTimeoutMs;
@@ -70,12 +73,16 @@ public class IsmdSearchProvider implements SearchProvider {
     public IsmdSearchProvider(OntologyMetadataRepository ontologyMetadataRepository,
                               ConceptMetadataRepository conceptMetadataRepository,
                               JenaTDB2Repository jenaTDB2Repository,
+                              DiagramSearchLookup diagramSearchLookup,
+                              OntologyLabelLookup ontologyLabelLookup,
                               @Qualifier("searchExecutor") Executor searchExecutor,
                               @Value("${search.fuseki-timeout-ms:10000}") long fusekiTimeoutMs,
                               @Value("${search.pg-timeout-ms:10000}") long pgTimeoutMs) {
         this.ontologyMetadataRepository = ontologyMetadataRepository;
         this.conceptMetadataRepository = conceptMetadataRepository;
         this.jenaTDB2Repository = jenaTDB2Repository;
+        this.diagramSearchLookup = diagramSearchLookup;
+        this.ontologyLabelLookup = ontologyLabelLookup;
         this.searchExecutor = searchExecutor;
         this.fusekiTimeoutMs = fusekiTimeoutMs;
         this.pgTimeoutMs = pgTimeoutMs;
@@ -100,11 +107,35 @@ public class IsmdSearchProvider implements SearchProvider {
         List<SearchResultDto> allResults = new ArrayList<>();
         AtomicBoolean fusekiDegraded = new AtomicBoolean(false);
 
+        // DIAGRAM is its own kind: one row per ontology-with-a-diagram, matched on the
+        // ontology slug, keyed by a synthetic IRI so it never dedup-collides with the
+        // ontology's ONTOLOGY row on a type=null pass. A DIAGRAM-only request skips the
+        // ontology and concept branches entirely (they contribute nothing of that kind).
+        if (type == SearchType.DIAGRAM) {
+            // Nothing to merge or dedup against on this branch, so the page is cut in SQL rather than by
+            // fetching every match and slicing it. Total comes from the count query, not the page size.
+            List<SearchResultDto> paged = searchDiagrams(query, publishedFilter, limit, offset);
+            Integer totalDiagrams = countDiagramMatches(query, publishedFilter);
+            return new SearchProviderResult(paged, totalDiagrams != null ? totalDiagrams : paged.size(),
+                    0, 0, totalDiagrams);
+        }
+
         // PG ontology list — matches on slug even for empty ontologies where Fuseki
         // has no indexable labels. Role filters (CLASS/PROPERTY/RELATIONSHIP) are
         // concept-only by definition, so they skip the ontology branch entirely.
         if (type == null || type == SearchType.ONTOLOGY) {
             allResults.addAll(searchOntologies(query, publishedFilter));
+        }
+
+        // On a type=null pass diagrams ride along with ontologies and concepts. The page is cut after the
+        // merge below, so this cannot page in SQL — but it can still be bounded: at most offset+limit
+        // diagram rows can survive into the requested page, however the merge orders them.
+        //
+        // Saturating, not wrapping: `offset` is validated non-negative but has no upper bound, so a plain
+        // sum overflows to a NEGATIVE row limit, which Postgres rejects — and the failure is swallowed as
+        // "no diagram results", silently dropping diagrams from the page rather than erroring.
+        if (type == null) {
+            allResults.addAll(searchDiagrams(query, publishedFilter, boundedFetch(offset, limit), 0));
         }
 
         // Concept-side search hits PG (concepts only) and Fuseki text index (concepts
@@ -168,15 +199,19 @@ public class IsmdSearchProvider implements SearchProvider {
         Integer totalConcepts = SearchProvider.countIfMatches(
                 type == null || type.isAnyConcept(),
                 () -> countConceptMatches(query, publishedFilter, ontologyIris, type));
+        // type is null here (DIAGRAM-only returned early; ONTOLOGY/CONCEPT/role never match).
+        Integer totalDiagrams = SearchProvider.countIfMatches(
+                type == null,
+                () -> countDiagramMatches(query, publishedFilter));
 
         if (fusekiDegraded.get()) {
             return new SearchProviderResult(paged, results.size(),
-                    totalOntologies, totalConcepts,
+                    totalOntologies, totalConcepts, totalDiagrams,
                     SearchSourceStatus.DEGRADED,
                     "Fuseki unavailable, returning PostgreSQL results only");
         }
 
-        return new SearchProviderResult(paged, results.size(), totalOntologies, totalConcepts);
+        return new SearchProviderResult(paged, results.size(), totalOntologies, totalConcepts, totalDiagrams);
     }
 
     private void populateOntologyConceptCounts(List<SearchResultDto> paged) {
@@ -318,6 +353,65 @@ public class IsmdSearchProvider implements SearchProvider {
                         .lastModified(e.getUpdatedAt() != null ? e.getUpdatedAt().toString() : null)
                         .build())
                 .toList();
+    }
+
+    /**
+     * One DIAGRAM result per ontology that has a diagram and whose slug matches the query. Keyed by a
+     * synthetic {@code graphName + "#diagram"} IRI so a type=null pass keeps it distinct from the
+     * ontology's ONTOLOGY row through dedup.
+     */
+    /** One page of diagram rows; a PG failure degrades to no diagram results rather than failing search. */
+    /**
+     * How many rows a branch must fetch to fill a page it cannot cut in SQL: everything up to the end of the
+     * requested window. Saturates instead of overflowing — {@code offset} is validated non-negative but
+     * unbounded above, and a wrapped sum becomes a negative row limit that the database rejects.
+     */
+    private static int boundedFetch(int offset, int limit) {
+        long fetch = (long) offset + limit;
+        return (int) Math.min(fetch, Integer.MAX_VALUE);
+    }
+
+    private List<SearchResultDto> searchDiagrams(String query, Boolean publishedFilter,
+                                                 int limit, int offset) {
+        List<SearchResultDto> rows;
+        try {
+            rows = diagramSearchLookup.search(query, publishedFilter, limit, offset);
+        } catch (RuntimeException e) {
+            log.warn("PG diagram search failed, continuing without diagram results: {}", e.getMessage());
+            return List.of();
+        }
+        // Deliberately OUTSIDE diagramSearchLookup's transaction: the ontology label comes from
+        // Fuseki, and holding a pooled PG connection across that HTTP call is what the lookup's
+        // own doc warns against. One batched fetch for the page, not one per row.
+        attachOntologyLabels(rows);
+        return rows;
+    }
+
+    /**
+     * Fills in each diagram row's owning-ontology prefLabel. Names live only in RDF, so this is one
+     * batched CONSTRUCT for the whole page; rows whose ontology has no label simply keep a null.
+     */
+    private void attachOntologyLabels(List<SearchResultDto> rows) {
+        if (rows.isEmpty()) {
+            return;
+        }
+        Map<String, Map<String, String>> labels = ontologyLabelLookup.labelsByGraph(
+                rows.stream().map(SearchResultDto::getOntologyIri).toList());
+        if (labels == null || labels.isEmpty()) {
+            return;
+        }
+        for (SearchResultDto row : rows) {
+            row.setOntologyLabel(labels.get(row.getOntologyIri()));
+        }
+    }
+
+    private Integer countDiagramMatches(String query, Boolean publishedFilter) {
+        try {
+            return (int) diagramSearchLookup.count(query, publishedFilter);
+        } catch (RuntimeException e) {
+            log.warn("PG diagram total-count failed: {}", e.getMessage());
+            return null;
+        }
     }
 
     private List<SearchResultDto> searchConcepts(String query, String userId,
@@ -700,6 +794,7 @@ public class IsmdSearchProvider implements SearchProvider {
         if (type == null) return true;
         if (type == SearchType.ONTOLOGY) return r.getType() == SearchType.ONTOLOGY;
         if (type == SearchType.CONCEPT) return r.getType() == SearchType.CONCEPT;
+        if (type == SearchType.DIAGRAM) return r.getType() == SearchType.DIAGRAM;
         return r.getType() == SearchType.CONCEPT && r.getConceptType() == type.toConceptType();
     }
 

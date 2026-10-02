@@ -14,6 +14,54 @@ public class NKDSPARQLConstructQuery {
      * {@link #buildConstructQuery(String)} per IRI (that variant pulls the full
      * concept graph + blank-node expansion).
      */
+    /**
+     * Display-only variant of {@link #buildResolutionConstructQuery(List)} for IRIs the client named
+     * explicitly. Two differences, both following from that:
+     *
+     * <ul>
+     *   <li>{@code skos:inScheme} is OPTIONAL rather than required, so a concept NKD publishes without
+     *       one still resolves. Its label is what the caller needs; the scheme is a bonus.</li>
+     *   <li>The {@code STRSTARTS(?concept, ?scheme)} prefix guard is dropped. That guard stops a stray
+     *       {@code inScheme} in an unrelated vocabulary hijacking an IRI during bulk enrichment, where
+     *       the IRI set is derived and a wrong attribution is silent. Here the caller asked for this
+     *       exact IRI, so there is nothing to hijack.</li>
+     * </ul>
+     *
+     * <p>Both concessions are safe only because the result is presentational. A concept genuinely can
+     * carry several {@code inScheme} triples — {@code …/číselníky/pojem/číselník} has four, none of them
+     * its own vocabulary, every one a different vocabulary that copied it — so the scheme reported here
+     * is <em>a</em> vocabulary claiming the concept, not an ownership assertion. Never feed it back into
+     * a write path or a membership decision.
+     */
+    public static String buildDisplayResolutionConstructQuery(List<String> conceptIris) {
+        ParameterizedSparqlString pss = new ParameterizedSparqlString();
+        pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");
+        pss.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ");
+        pss.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+        pss.append("CONSTRUCT { ");
+        pss.append("  ?concept skos:inScheme ?scheme . ");
+        pss.append("  ?concept skos:prefLabel ?conceptLabel . ");
+        pss.append("  ?concept rdf:type ?type . ");
+        pss.append("  ?concept rdfs:domain ?domain . ");
+        pss.append("  ?concept rdfs:range ?range . ");
+        pss.append("  ?scheme skos:prefLabel ?schemeLabel . ");
+        pss.append("} WHERE { VALUES ?concept { ");
+        for (String iri : conceptIris) {
+            pss.appendIri(iri);
+            pss.append(" ");
+        }
+        // rdf:type is the existence anchor: every real NKD resource carries at least one, and unlike
+        // inScheme it is present on concepts whose own vocabulary never published a membership triple.
+        pss.append("} ?concept rdf:type ?type . ");
+        pss.append("OPTIONAL { ?concept skos:inScheme ?scheme . ");
+        pss.append("  OPTIONAL { ?scheme skos:prefLabel ?schemeLabel . } } ");
+        pss.append("OPTIONAL { ?concept skos:prefLabel ?conceptLabel . } ");
+        pss.append("OPTIONAL { ?concept rdfs:domain ?domain . } ");
+        pss.append("OPTIONAL { ?concept rdfs:range ?range . } ");
+        pss.append("}");
+        return pss.toString();
+    }
+
     public static String buildResolutionConstructQuery(List<String> conceptIris) {
         ParameterizedSparqlString pss = new ParameterizedSparqlString();
         pss.append("PREFIX skos: <http://www.w3.org/2004/02/skos/core#> ");

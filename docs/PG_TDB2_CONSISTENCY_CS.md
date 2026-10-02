@@ -2,7 +2,7 @@
 
 > Stav: obě funkce se nasazují ve výchozím stavu vypnuté. Zapnutí kterékoli z nich je
 > volitelné pro dané prostředí. Anglická verze:
-> [`PG_TDB2_CONSISTENCY.md`](./docs/PG_TDB2_CONSISTENCY.md).
+> [`PG_TDB2_CONSISTENCY.md`](./PG_TDB2_CONSISTENCY.md).
 
 ## Jaký problém řešíme
 
