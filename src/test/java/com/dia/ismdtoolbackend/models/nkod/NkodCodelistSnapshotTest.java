@@ -23,12 +23,20 @@ class NkodCodelistSnapshotTest {
     }
 
     @Test
-    void empty_isEmptyAndFindsNothing() {
-        NkodCodelistSnapshot snap = NkodCodelistSnapshot.empty();
+    void notLoaded_isNotLoadedAndFindsNothing() {
+        NkodCodelistSnapshot snap = NkodCodelistSnapshot.notLoaded();
 
-        assertThat(snap.isEmpty()).isTrue();
+        assertThat(snap.isLoaded()).isFalse();
         assertThat(snap.size()).isZero();
         assertThat(snap.find("https://data.gov.cz/zdroj/datové-sady/x")).isEmpty();
+    }
+
+    @Test
+    void of_noEntries_isLoaded() {
+        NkodCodelistSnapshot snap = NkodCodelistSnapshot.of(LOADED, List.of());
+
+        assertThat(snap.isLoaded()).isTrue();
+        assertThat(snap.size()).isZero();
     }
 
     @Test
@@ -90,6 +98,44 @@ class NkodCodelistSnapshotTest {
         assertThat(snap.find("https://x/b")).isEmpty();
         assertThatThrownBy(() -> snap.getEntries().add(entry("https://x/c", "C")))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static NkodCodelistEntry described(String iri, String title, String description) {
+        return new NkodCodelistEntry(
+                NkodCodelist.builder().datasetIri(iri).title(title).description(description).publisher("DIA").build(),
+                List.of());
+    }
+
+    private static NkodCodelistSnapshot searchable() {
+        return NkodCodelistSnapshot.of(LOADED, List.of(
+                described("https://x/jazyk", "Jazyk", null),
+                described("https://x/obce", "Obce", "Číselník územních jednotek"),
+                described("https://x/pohlavi", "Pohlaví", "Kód ČSÚ: 102")));
+    }
+
+    @Test
+    void search_blankOrNullQuery_returnsEverythingInOrder() {
+        assertThat(searchable().search(null)).extracting(NkodCodelistEntry::datasetIri)
+                .containsExactly("https://x/jazyk", "https://x/obce", "https://x/pohlavi");
+        assertThat(searchable().search("   ")).hasSize(3);
+    }
+
+    @Test
+    void search_matchesAnAccentedTitleFromAnUnaccentedQuery_ignoringCase() {
+        assertThat(searchable().search("POHLAVI")).extracting(NkodCodelistEntry::datasetIri)
+                .containsExactly("https://x/pohlavi");
+        assertThat(searchable().search(" pohlaví ")).hasSize(1);
+    }
+
+    @Test
+    void search_alsoMatchesTheDescription() {
+        assertThat(searchable().search("uzemnich")).extracting(NkodCodelistEntry::datasetIri)
+                .containsExactly("https://x/obce");
+    }
+
+    @Test
+    void search_noMatch_isEmpty() {
+        assertThat(searchable().search("neexistuje")).isEmpty();
     }
 
     @Test

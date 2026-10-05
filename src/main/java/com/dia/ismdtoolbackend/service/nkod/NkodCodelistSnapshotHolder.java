@@ -55,7 +55,7 @@ public class NkodCodelistSnapshotHolder {
     private final ExecutorService fetchPool;
 
     private final AtomicReference<NkodCodelistSnapshot> current =
-            new AtomicReference<>(NkodCodelistSnapshot.empty());
+            new AtomicReference<>(NkodCodelistSnapshot.notLoaded());
     private final Object refreshLock = new Object();
 
     public NkodCodelistSnapshotHolder(NkodSparqlClient client, CodelistDistributionReader reader,
@@ -79,7 +79,7 @@ public class NkodCodelistSnapshotHolder {
         fetchPool.shutdownNow();
     }
 
-    /** Fresh snapshot, rebuilding synchronously if the current one is stale or empty. */
+    /** Fresh snapshot, rebuilding synchronously if the current one is stale or not loaded. */
     public NkodCodelistSnapshot get() {
         NkodCodelistSnapshot snap = current.get();
         if (isFresh(snap)) {
@@ -88,7 +88,7 @@ public class NkodCodelistSnapshotHolder {
         return refreshUnderLock();
     }
 
-    /** Current snapshot without triggering a rebuild; empty until the first refresh succeeds. */
+    /** Current snapshot without triggering a rebuild; not loaded until the first refresh succeeds. */
     public NkodCodelistSnapshot peek() {
         return current.get();
     }
@@ -132,9 +132,9 @@ public class NkodCodelistSnapshotHolder {
         }
     }
 
-    private NkodCodelistSnapshot forceRefresh() {
+    private void forceRefresh() {
         synchronized (refreshLock) {
-            return attemptRefresh(current.get());
+            attemptRefresh(current.get());
         }
     }
 
@@ -150,21 +150,16 @@ public class NkodCodelistSnapshotHolder {
 
     /**
      * Serves the existing snapshot when a refresh fails, so a flaky endpoint never evicts good
-     * data. An empty catalogue result counts as a failure when there is data to keep.
+     * data. A successful result replaces it whatever it holds, including no datasets.
      */
     private NkodCodelistSnapshot attemptRefresh(NkodCodelistSnapshot existing) {
         try {
             List<NkodCodelistEntry> listed = client.fetchCodelists();
-            if (listed.isEmpty() && !existing.isEmpty()) {
-                log.warn("NKOD codelist refresh returned no datasets; keeping snapshot loadedAt={}",
-                        existing.getLoadedAt());
-                return existing;
-            }
             NkodCodelistSnapshot fresh = NkodCodelistSnapshot.of(clock.instant(), resolve(listed, existing));
             current.set(fresh);
             return fresh;
         } catch (SparqlEndpointUnavailableException e) {
-            if (!existing.isEmpty()) {
+            if (existing.isLoaded()) {
                 log.warn("NKOD codelist refresh failed; serving stale snapshot loadedAt={}. cause={}",
                         existing.getLoadedAt(), e.getMessage());
                 return existing;
@@ -255,6 +250,6 @@ public class NkodCodelistSnapshotHolder {
     }
 
     private boolean isFresh(NkodCodelistSnapshot snap) {
-        return !snap.isEmpty() && !snap.isStale(ttl, clock);
+        return snap.isLoaded() && !snap.isStale(ttl, clock);
     }
 }

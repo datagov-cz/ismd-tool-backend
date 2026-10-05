@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.models;
 
 import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
+import com.dia.ismdtoolbackend.controller.dto.NkodCodelistCheckDto;
 import com.dia.ismdtoolbackend.controller.dto.NonLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
@@ -11,6 +12,7 @@ import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.Valid;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -100,10 +102,6 @@ public class OntologyDetailModel {
         @JsonProperty("nadřazená-vlastnost")
         private List<String> broaderProperties;
 
-        // Source lists are always serialized — empty array, never null/absent —
-        // so the FE has a stable contract (see OntologyDetailExtractor.nullToEmpty
-        // / buildResolvedSources / buildNonLegalSources). Overrides the class-level
-        // @JsonInclude(NON_NULL).
         @JsonInclude()
         @JsonProperty("definující-ustanovení-právního-předpisu")
         private List<String> definingLegalSources;
@@ -162,6 +160,10 @@ public class OntologyDetailModel {
 
         @JsonProperty("instance-definovány-číselníkem")
         private CodeListDto codeList;
+
+        @Valid
+        @JsonProperty("instance-definovány-číselníkem-resolved")
+        private NkodCodelistCheckDto codeListResolved;
 
         private List<ConceptPropertiesModel> conceptProperties;
 

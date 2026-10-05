@@ -13,6 +13,7 @@ import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLBrowseQuery;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
@@ -55,6 +56,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
     private final NkdSparqlClient nkdSparqlClient;
     private final JsonExporter jsonExporter;
     private final RppSnapshotHolder rppSnapshotHolder;
+    private final NkodCodelistService nkodCodelistService;
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
 
     private volatile CachedValue<Integer> cachedTotalOntologies;
@@ -155,6 +157,7 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         // also exists in ISMD stays in the NKD context the user is viewing.
         referencedConceptsEnricher.enrich(detail, SearchSource.NKD);
         resolveRppReferences(detail);
+        resolveCodeList(detail);
 
         // Query param wins (FE supplies it as breadcrumb context); fall back to
         // the skos:inScheme target parsed from the NKD response so the FE has
@@ -174,6 +177,10 @@ public class NkdDetailServiceImpl implements NkdDetailService {
         if (aisIri != null) {
             rppSnapshotHolder.findIsvsByIri(aisIri).ifPresent(detail::setAisResolved);
         }
+    }
+
+    private void resolveCodeList(OntologyDetailModel.ConceptDetailModel detail) {
+        nkodCodelistService.check(detail.getCodeList()).ifPresent(detail::setCodeListResolved);
     }
 
     @Override

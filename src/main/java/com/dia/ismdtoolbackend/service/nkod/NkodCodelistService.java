@@ -20,9 +20,12 @@ public class NkodCodelistService {
 
     private final NkodCodelistSnapshotHolder holder;
 
-    /** Codelists that have a codelist IRI, in title order; 503 when the snapshot never loaded. */
-    public List<NkodCodelist> list() {
-        return holder.get().getEntries().stream()
+    /**
+     * Codelists that have a codelist IRI, in title order, narrowed to those matching
+     * {@code query} when it isn't blank; 503 when the snapshot never loaded.
+     */
+    public List<NkodCodelist> list(String query) {
+        return holder.get().search(query).stream()
                 .filter(NkodCodelistEntry::isResolved)
                 .map(NkodCodelistEntry::codelist)
                 .toList();
@@ -38,7 +41,7 @@ public class NkodCodelistService {
             return Optional.empty();
         }
         NkodCodelistSnapshot snapshot = holder.peek();
-        if (snapshot.isEmpty()) {
+        if (!snapshot.isLoaded()) {
             return Optional.empty();
         }
         Optional<NkodCodelistEntry> entry = snapshot.find(stored.getDatovaSadaVNkod());

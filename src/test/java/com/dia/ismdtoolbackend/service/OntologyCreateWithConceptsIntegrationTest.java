@@ -534,6 +534,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
                     new com.dia.ismdtoolbackend.utility.creator.ConceptCreator(), new com.dia.ismdtoolbackend.utility.editor.ConceptEditor(), rdf,
                     mock(OntologyDetailExtractor.class), mock(CommentRepository.class), mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
                     mock(ConceptDeviationComparator.class), mock(com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder.class),
+                    mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class), config, writer, outbox, trigger, mock(NkdSnapshotService.class),
                     new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
                     new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(), mock(NkdSnapshotWarmer.class),

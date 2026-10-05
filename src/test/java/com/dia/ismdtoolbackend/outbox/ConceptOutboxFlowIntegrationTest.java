@@ -188,6 +188,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
                     mock(ConceptDeviationComparator.class),
                     mock(RppSnapshotHolder.class),
+                    mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class),
                     outboxConfig, writer, outboxRepository, trigger,
                     // No external NKD links in this flow's test data → real detector returns empty and the

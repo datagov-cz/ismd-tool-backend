@@ -116,7 +116,7 @@ class NkodCodelistSnapshotHolderTest {
         holder.warmOnStartup();
 
         verify(client, never()).fetchCodelists();
-        assertThat(holder.peek().isEmpty()).isTrue();
+        assertThat(holder.peek().isLoaded()).isFalse();
     }
 
     @Test
@@ -126,7 +126,7 @@ class NkodCodelistSnapshotHolderTest {
         NkodCodelistSnapshotHolder holder = holder();
         holder.warmOnStartup();
 
-        assertThat(holder.peek().isEmpty()).isTrue();
+        assertThat(holder.peek().isLoaded()).isFalse();
     }
 
     @Test
@@ -227,7 +227,7 @@ class NkodCodelistSnapshotHolderTest {
     }
 
     @Test
-    void findByDatasetIri_onAnEmptySnapshot_neverFetches() {
+    void findByDatasetIri_beforeTheFirstLoad_neverFetches() {
         NkodCodelistSnapshotHolder holder = holder();
 
         assertThat(holder.findByDatasetIri(POHLAVI)).isEmpty();
@@ -300,7 +300,7 @@ class NkodCodelistSnapshotHolderTest {
     }
 
     @Test
-    void emptyCatalogueResult_keepsTheExistingSnapshot() {
+    void emptyCatalogueResult_replacesTheSnapshot() {
         when(client.fetchCodelists()).thenReturn(catalogue());
         NkodCodelistSnapshotHolder holder = holder();
         holder.scheduledRefresh();
@@ -308,8 +308,32 @@ class NkodCodelistSnapshotHolderTest {
         when(client.fetchCodelists()).thenReturn(List.of());
         holder.scheduledRefresh();
 
-        assertThat(holder.peek().size()).isEqualTo(3);
-        assertThat(holder.findByDatasetIri(POHLAVI)).isPresent();
+        assertThat(holder.peek().isLoaded()).isTrue();
+        assertThat(holder.peek().size()).isZero();
+        assertThat(holder.findByDatasetIri(POHLAVI)).isEmpty();
+    }
+
+    @Test
+    void get_loadedSnapshotWithNoDatasets_isFreshAndDoesNotRefetch() {
+        when(client.fetchCodelists()).thenReturn(List.of());
+        NkodCodelistSnapshotHolder holder = holder();
+
+        holder.get();
+        holder.get();
+
+        verify(client, times(1)).fetchCodelists();
+    }
+
+    @Test
+    void get_refreshFailure_servesALoadedSnapshotWithNoDatasets() {
+        when(client.fetchCodelists()).thenReturn(List.of());
+        NkodCodelistSnapshotHolder holder = holder();
+        holder.get();
+
+        clock.advance(Duration.ofHours(config.getCodelist().getTtlHours() + 1));
+        when(client.fetchCodelists()).thenThrow(new SparqlEndpointUnavailableException("NKOD", "down"));
+
+        assertThat(holder.get().isLoaded()).isTrue();
     }
 
     private static final class MutableClock extends Clock {

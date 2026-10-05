@@ -66,15 +66,24 @@ class NkodCodelistServiceTest {
     void list_returnsOnlyResolvedEntries_inSnapshotOrder() {
         when(holder.get()).thenReturn(snapshot());
 
-        assertThat(service.list()).extracting(NkodCodelist::getDatasetIri).containsExactly(ISVAV, POHLAVI);
-        assertThat(service.list()).allSatisfy(c -> assertThat(c.getCodeListIri()).isNotBlank());
+        assertThat(service.list(null)).extracting(NkodCodelist::getDatasetIri).containsExactly(ISVAV, POHLAVI);
+        assertThat(service.list(null)).allSatisfy(c -> assertThat(c.getCodeListIri()).isNotBlank());
+    }
+
+    @Test
+    void list_withQuery_returnsOnlyMatchingResolvedEntries() {
+        when(holder.get()).thenReturn(snapshot());
+
+        assertThat(service.list("pohlavi")).extracting(NkodCodelist::getDatasetIri).containsExactly(POHLAVI);
+        // "Jazyk" matches but has no codelist IRI, so it stays hidden.
+        assertThat(service.list("jazyk")).isEmpty();
     }
 
     @Test
     void list_propagatesUnavailableWhenNothingLoaded() {
         when(holder.get()).thenThrow(new SparqlEndpointUnavailableException("NKOD", "down"));
 
-        assertThatThrownBy(service::list).isInstanceOf(SparqlEndpointUnavailableException.class);
+        assertThatThrownBy(() -> service.list(null)).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
@@ -110,10 +119,18 @@ class NkodCodelistServiceTest {
 
     @Test
     void check_snapshotNeverLoaded_isOmitted_notMissing() {
-        when(holder.peek()).thenReturn(NkodCodelistSnapshot.empty());
+        when(holder.peek()).thenReturn(NkodCodelistSnapshot.notLoaded());
 
         assertThat(service.check(stored(POHLAVI, POHLAVI_2025))).isEmpty();
         verify(holder, never()).get();
+    }
+
+    @Test
+    void check_snapshotLoadedWithNoDatasets_isMissing() {
+        when(holder.peek()).thenReturn(NkodCodelistSnapshot.of(Instant.parse("2026-09-30T10:00:00Z"), List.of()));
+
+        assertThat(service.check(stored(POHLAVI, POHLAVI_2025)))
+                .map(NkodCodelistCheckDto::getStatus).contains(NkodCodelistStatus.MISSING);
     }
 
     @Test
