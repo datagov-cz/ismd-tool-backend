@@ -1,0 +1,132 @@
+package com.dia.ismdtoolbackend.entity;
+
+import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
+import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
+/**
+ * One node on a diagram canvas: a position for a materialized ISMD concept ({@link #conceptIri}). Layout
+ * only — a row means the concept is on the canvas. Staged structural edits live in
+ * {@link DiagramPendingEditEntity}. See {@code docs/DIAGRAM_LAYER.md}.
+ */
+@Entity
+@Table(name = "diagram_nodes")
+@NoArgsConstructor
+@Getter
+@Setter
+@Slf4j
+public class DiagramNodeEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "diagram_id", nullable = false)
+    private DiagramEntity diagram;
+
+    @Column(name = "backing", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private DiagramNodeBacking backing = DiagramNodeBacking.ISMD_CONCEPT;
+
+    /** The referenced concept's IRI; always set. */
+    @Column(name = "concept_iri", length = 1024, nullable = false)
+    private String conceptIri;
+
+    @Column(name = "pos_x", nullable = false)
+    private Double posX;
+
+    @Column(name = "pos_y", nullable = false)
+    private Double posY;
+
+    /** Group node rendered collapsed; round-trips through the layout save and the read. */
+    @Column(name = "collapsed", nullable = false)
+    private boolean collapsed = false;
+
+    /** Parent node id for grouping (ReactFlow {@code parentId}); null for a top-level node. */
+    @Column(name = "parent_node_id")
+    private Long parentNodeId;
+
+    /** Serialized IRI list of the VLASTNOST rows this class cell renders. */
+    @Column(name = "visible_properties_json", columnDefinition = "text")
+    private String visiblePropertiesJson;
+
+    /**
+     * The node references a concept outside the diagram's ontology graph, placed for context and rendered
+     * read-only. The write path derives it both ways, and no overlay may target such a concept.
+     */
+    @Column(name = "is_foreign", nullable = false)
+    private boolean isForeign = false;
+
+    @PrePersist
+    @PreUpdate
+    private void validateNodeInvariant() {
+        if (backing == null) {
+            throw new IllegalStateException("Diagram node backing must be set");
+        }
+        if (conceptIri == null) {
+            throw new IllegalStateException(
+                    "Diagram node must carry a conceptIri (id=" + id + ")");
+        }
+    }
+
+    private static final TypeReference<List<String>> IRI_LIST = new TypeReference<>() {
+    };
+
+    /**
+     * Parsed {@link #visiblePropertiesJson}, memoized against the exact string it was parsed from. The
+     * getter is called once per node per read and the column does not change under a loaded entity, but
+     * keying on the source string means a JPA reload or a {@code setVisibleProperties} still re-parses
+     * rather than serving a stale list. Transient: never persisted, and not part of entity state.
+     */
+    @Transient
+    private String parsedFrom;
+    @Transient
+    private List<String> parsedVisibleProperties;
+
+    /**
+     * The property IRIs this class cell renders, empty on absent or malformed JSON. Empty is a meaningful
+     * value — an uncurated class shows no rows — so this never falls back to "all".
+     */
+    public List<String> getVisibleProperties() {
+        if (visiblePropertiesJson == null || visiblePropertiesJson.isBlank()) {
+            return List.of();
+        }
+        if (parsedVisibleProperties != null && visiblePropertiesJson.equals(parsedFrom)) {
+            return parsedVisibleProperties;
+        }
+        try {
+            List<String> parsed = List.copyOf(DiagramJson.MAPPER.readValue(visiblePropertiesJson, IRI_LIST));
+            parsedVisibleProperties = parsed;
+            parsedFrom = visiblePropertiesJson;
+            return parsed;
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize visible-properties JSON for diagram node id={}", id, e);
+            return List.of();
+        }
+    }
+
+    /** Stores the rendered property IRIs; null or empty clears the column. */
+    public void setVisibleProperties(List<String> properties) {
+        parsedVisibleProperties = null;
+        parsedFrom = null;
+        if (properties == null || properties.isEmpty()) {
+            this.visiblePropertiesJson = null;
+            return;
+        }
+        try {
+            this.visiblePropertiesJson = DiagramJson.MAPPER.writeValueAsString(properties);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(
+                    "Failed to serialize visible properties for diagram node id=" + id, e);
+        }
+    }
+}

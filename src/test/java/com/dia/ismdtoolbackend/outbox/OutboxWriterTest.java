@@ -8,6 +8,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.sys.JenaSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -34,7 +35,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>The whole class is {@code NOT_SUPPORTED} (no ambient @DataJpaTest transaction) so every test
  * drives its own transaction boundary via {@link TransactionTemplate} and commits real rows —
- * which is what makes the rollback assertion meaningful. {@code @AfterEach} cleans up.
+ * which is what makes the rollback assertion meaningful. Committed rows outlive the test, so the
+ * table is emptied both before and after each one.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -65,6 +67,19 @@ class OutboxWriterTest extends PostgresIntegrationTestBase {
         // Force Jena's static system init before any vocabulary/Model use, so the Spring test
         // classloader can't trigger a partial vocabulary init (NodeFactory/SKOS NoClassDefFound).
         JenaSystem.init();
+    }
+
+    /**
+     * Clean BEFORE as well as after. The assertions here count rows table-wide
+     * ({@code repository.count()}), and {@link PostgresIntegrationTestBase} shares ONE container
+     * across every subclass for the life of the JVM — so an {@code @AfterEach} alone leaves the
+     * first test in the class asserting against whatever an earlier class left behind. Surefire
+     * class order is unpinned and differs between platforms, which is what makes that a
+     * passes-locally-fails-in-CI failure rather than a consistent one.
+     */
+    @BeforeEach
+    void startFromEmpty() {
+        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
     }
 
     @AfterEach

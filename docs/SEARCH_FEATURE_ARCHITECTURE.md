@@ -677,7 +677,7 @@ or found in both PG and Fuseki). Dedup happens in Java after result mapping:
 | Dedup merge precedence | Last write wins, log conflicts | PG name = RDF prefLabel by design (create/edit flow); conflicts are bugs |
 | conceptType source | PostgreSQL `concept_type` column | Enum stored in PG; RDF has `rdf:type`/`skos` classes but PG is authoritative |
 | Language fallback | Return best available if preferred not found | Prevents empty labels when concept only has e.g. `en` label |
-| Diagram filter | Deferred | Feature doesn't exist yet |
+| Diagram filter | **Shipped** — `type=DIAGRAM` | One row per **diagram** (not per ontology), matched on ontology slug OR diagram name. Route on `slug` + `diagramId`, never on the synthetic `iri`. See [`DIAGRAM_LAYER_API.md`](./DIAGRAM_LAYER_API.md) |
 | Cross-source pagination | Per-source LIMIT/OFFSET | True cross-source pagination too complex for v1. `returnedCount` + per-source `totalCount` for frontend |
 | Rate limiting | Required on `/api/search/**` | Public `permitAll()` endpoint; must protect against abuse |
 
@@ -774,7 +774,7 @@ All design decisions resolved. See section 15 for the full list.
 | 3 | ISMD visibility | Published + own unpublished (consistent with existing list endpoints) |
 | 4 | NKD production endpoint | Will be configured before deploy |
 | 5 | NKD full-text search | Virtuoso `bif:contains` with `*` wildcard prefix matching |
-| 6 | Diagram filter | Deferred — feature doesn't exist yet |
+| 6 | Diagram filter | **Shipped** — `type=DIAGRAM`, one row per diagram; `SearchResultDto.diagramId` is the routing key alongside `slug` |
 | 7 | Relation type filter semantics | Checks concept has ANY relationship of the specified type(s), not a specific target |
 | 8 | ISMD relation type filter | Batched SELECT with VALUES + UNION in Fuseki SPARQL. Single round-trip, no N+1 ASK queries. |
 | 9 | Pagination | Infinite scroll. Independent LIMIT/OFFSET per source. `returnedCount` + per-source `totalCount` for frontend. |
