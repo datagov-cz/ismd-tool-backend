@@ -320,13 +320,54 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    @ExceptionHandler(OntologyUploadFileTooLargeException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadFileTooLarge(OntologyUploadFileTooLargeException e) {
+        log.warn("Ontology upload rejected, file too large: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadFileTooLargeException.ERROR_CODE));
+    }
+
+    @ExceptionHandler(OntologyUploadParseException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadParse(OntologyUploadParseException e) {
+        log.warn("Ontology upload rejected, RDF not parseable: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadParseException.ERROR_CODE));
+    }
+
+    @ExceptionHandler(OntologyUploadParseTimeoutException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadParseTimeout(OntologyUploadParseTimeoutException e) {
+        log.warn("Ontology upload rejected, RDF parsing timed out: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadParseTimeoutException.ERROR_CODE));
+    }
+
+    @ExceptionHandler(OntologyUploadMissingIriException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadMissingIri(OntologyUploadMissingIriException e) {
+        log.warn("Ontology upload rejected, no ontology IRI in data: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadMissingIriException.ERROR_CODE));
+    }
+
+    /** 502, matching the diagram handlers: the failing party is the RDF store. */
+    @ExceptionHandler(OntologyUploadRdfStoreException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadRdfStore(OntologyUploadRdfStoreException e) {
+        log.error("Ontology upload failed writing to TDB2: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadRdfStoreException.ERROR_CODE));
+    }
+
+    @ExceptionHandler(OntologyUploadMetadataException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadMetadata(OntologyUploadMetadataException e) {
+        log.error("Ontology upload failed saving metadata: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadMetadataException.ERROR_CODE));
+    }
+
     @ExceptionHandler(OntologyAlreadyExistsException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyAlreadyExistsException(OntologyAlreadyExistsException e) {
         log.warn("Ontology already exists: {}", e.getMessage());
-        String location = "/api/ontology/" + e.getExistingMetadata().getSlug() + "/detail";
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .header("Location", location)
-                .body(ApiResponseDto.error(e.getMessage()));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyAlreadyExistsException.ERROR_CODE));
     }
 
     @ExceptionHandler(JsonExportException.class)
