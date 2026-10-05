@@ -388,6 +388,23 @@ class ConceptEditorFieldEdgeCasesTest {
         assertTrue(linked.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK)));
     }
 
+    @Test
+    void codeList_percentEncodedDataset_isAcceptedAndStoredAsRawUtf8() {
+        String iri = DEFAULT_NS + "codelist-encoded";
+        seedClass(iri);
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-1");
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datov%C3%A9-sady/17651921/5ccc4289");
+
+        editor.editConcept(iri, m, model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+        Resource linked = model.getResource(iri).getProperty(instanceDefinedBy).getObject().asResource();
+        assertEquals("https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289",
+                linked.getProperty(datasetProp).getObject().asResource().getURI());
+    }
+
     // ---- code-list completeness: both IRIs are mandatory together (class only) ----
 
     @Test

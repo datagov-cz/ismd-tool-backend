@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
@@ -758,7 +759,7 @@ class ConceptFieldUpdaters {
             Resource codeListNode = model.createResource(newCodeListIri.trim());
             toAdd.add(model.createStatement(codeListNode, RDF.type, codeListType));
             toAdd.add(model.createStatement(codeListNode, datasetProperty,
-                    model.createResource(newDatasetUrl.trim())));
+                    model.createResource(SparqlSolutions.toRawUtf8(newDatasetUrl.trim()))));
             toAdd.add(model.createStatement(newConcept, instanceDefinedByCodeList, codeListNode));
         }
     }
