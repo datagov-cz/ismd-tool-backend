@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.validation.ConceptCreateValidator;
+import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
@@ -105,6 +106,7 @@ public final class VocabularyConceptBuilder {
             legalAct = SparqlIriValidator.esbirkaDomain() + "/esel-esb" + legalAct.substring("https://e-sbirka.gov.cz".length());
         }
         model.setDefiningLegalSource(legalAct == null ? List.of() : List.of(legalAct));
+        ConceptIriNormalizer.normalize(model);
         ConceptCreateValidator.validate(model, userId);
     }
 
@@ -117,7 +119,7 @@ public final class VocabularyConceptBuilder {
             if (!classRefs.contains(reference.ref())) throw invalid("Vazba odkazuje na nevybranou nebo neexistující třídu: " + reference.ref());
             return iris.get(reference.ref());
         }
-        String iri = reference.iri();
+        String iri = ConceptIriNormalizer.iri(reference.iri());
         if (iri.isBlank() || !UtilityMethods.isValidIRI(iri) || !isAbsoluteIri(iri)) throw invalid("Neplatné IRI cílové třídy: " + iri);
         if (iri.equals(graph) || iri.startsWith(UtilityMethods.ensureNamespaceEndsWithDelimiter(graph))) {
             throw invalid("Na nové třídy odkazujte pomocí ref: " + iri);
