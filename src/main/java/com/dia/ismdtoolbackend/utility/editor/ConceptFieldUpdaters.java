@@ -722,26 +722,29 @@ class ConceptFieldUpdaters {
         Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
         Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
-        if (oldConcept.hasProperty(RDF.type, verejnyLegal)) {
-            removeTypeStatement(newConcept, oldConcept, verejnyLegal, model, toRemove, toAdd);
-        }
-        if (oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
-            removeTypeStatement(newConcept, oldConcept, neverejnyLegal, model, toRemove, toAdd);
+        // Non-public needs a provision the concept ends up with: a valid one in this edit, or,
+        // when the edit leaves the provisions alone, one it already carries.
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        boolean endsUpWithProvisions = privacyProvisions == null
+                ? oldConcept.hasProperty(provisionProperty)
+                : privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty()
+                        && SparqlIriValidator.isEsbirkaEliIri(EsbirkaEliParser.canonicalizeHost(p.trim())));
+
+        Resource wanted = null;
+        if (Boolean.TRUE.equals(isPublic) && !hasNonEmptyProvisionsArg) {
+            wanted = verejnyLegal;
+        } else if (Boolean.FALSE.equals(isPublic) && endsUpWithProvisions) {
+            wanted = neverejnyLegal;
         }
 
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-        boolean hasValidProvisions = toAdd.stream().anyMatch(stmt ->
-                stmt.getSubject().equals(newConcept) &&
-                stmt.getPredicate().equals(provisionProperty));
-        if (Boolean.TRUE.equals(isPublic)) {
-            if (!hasNonEmptyProvisionsArg) {
-                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyLegal));
+        // Only the difference is staged, so an edit that keeps the classification changes nothing.
+        for (Resource classification : List.of(verejnyLegal, neverejnyLegal)) {
+            boolean has = oldConcept.hasProperty(RDF.type, classification);
+            if (has && !classification.equals(wanted)) {
+                removeTypeStatement(newConcept, oldConcept, classification, model, toRemove, toAdd);
+            } else if (!has && classification.equals(wanted)) {
+                toAdd.add(model.createStatement(newConcept, RDF.type, classification));
             }
-        } else if (Boolean.FALSE.equals(isPublic)) {
-            if (!hasValidProvisions) {
-                return;
-            }
-            toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyLegal));
         }
     }
 

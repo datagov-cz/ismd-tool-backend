@@ -207,4 +207,60 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         assertTrue(lastResult.statementsToRemove.stream().noneMatch(aboutProvisions));
         assertTrue(lastResult.statementsToAdd.stream().noneMatch(aboutProvisions));
     }
+
+    // --- Non-public classification ------------------------------------------
+
+    private Resource nonPublicType() {
+        return model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+    }
+
+    /** An edit that changes something else must not strip the classification. */
+    @Test
+    void edit_withUnchangedProvisionsKeepsTheNonPublicType() {
+        String iri = DEFAULT_NS + "prop-keeps-type";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(type, nonPublicType());
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of(VALID_ELI));
+
+        assertTrue(model.getResource(iri).hasProperty(type, nonPublicType()));
+        assertTrue(lastResult.statementsToRemove.stream().noneMatch(s -> s.getObject().equals(nonPublicType())));
+        assertTrue(lastResult.statementsToAdd.stream().noneMatch(s -> s.getObject().equals(nonPublicType())));
+    }
+
+    @Test
+    void edit_isPublicFalseWithoutTouchingProvisionsKeepsTheNonPublicType() {
+        String iri = DEFAULT_NS + "prop-flag-only";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(type, nonPublicType());
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, null);
+
+        assertTrue(model.getResource(iri).hasProperty(type, nonPublicType()));
+    }
+
+    @Test
+    void edit_clearingTheProvisionsRemovesTheNonPublicType() {
+        String iri = DEFAULT_NS + "prop-loses-type";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(type, nonPublicType());
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of());
+
+        assertFalse(model.getResource(iri).hasProperty(type, nonPublicType()));
+    }
+
+    @Test
+    void edit_addingAProvisionAddsTheNonPublicType() {
+        String iri = DEFAULT_NS + "prop-gains-type";
+        seedProperty(iri);
+
+        editProvisions(iri, List.of(VALID_ELI));
+
+        assertTrue(model.getResource(iri).hasProperty(type, nonPublicType()));
+    }
 }
