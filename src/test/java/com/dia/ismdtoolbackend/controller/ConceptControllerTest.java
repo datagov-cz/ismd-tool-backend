@@ -27,6 +27,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
@@ -326,6 +329,109 @@ class ConceptControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testCreateConcepts_Success() throws Exception {
+        String userId = "user123";
+        String slug = "test-ontology";
+        String jsonRequest = """
+                [
+                    {
+                        "conceptType": "TRIDA",
+                        "ontologyGraphName": "test-ontology",
+                        "namespace": "http://example.org/",
+                        "nameModel": {
+                            "name": {"cs": "FirstConcept"}
+                        },
+                        "type": "entity"
+                    },
+                    {
+                        "conceptType": "TRIDA",
+                        "ontologyGraphName": "test-ontology",
+                        "namespace": "http://example.org/",
+                        "nameModel": {
+                            "name": {"cs": "SecondConcept"}
+                        },
+                        "type": "entity"
+                    }
+                ]
+                """;
+
+        ConceptMetadataModel firstMetadata = new ConceptMetadataModel();
+        firstMetadata.setId(1L);
+        firstMetadata.setConceptName("FirstConcept");
+
+        ConceptMetadataModel secondMetadata = new ConceptMetadataModel();
+        secondMetadata.setId(2L);
+        secondMetadata.setConceptName("SecondConcept");
+
+        TestOntologySecurityService.setAllowModify(true);
+        when(conceptService.createConcept(any(), eq(userId)))
+                .thenReturn(firstMetadata, secondMetadata);
+
+        mockMvc.perform(post("/api/concept/{slug}/create/bulk", slug)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(1))
+                .andExpect(jsonPath("$.data[0].conceptName").value("FirstConcept"))
+                .andExpect(jsonPath("$.data[1].id").value(2))
+                .andExpect(jsonPath("$.data[1].conceptName").value("SecondConcept"))
+                .andExpect(jsonPath("$.message").value("Pojmy úspěšně vytvořeny: "));
+
+        verify(conceptService, times(2)).createConcept(any(), eq(userId));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testCreateConcepts_EmptyListRejected() throws Exception {
+        TestOntologySecurityService.setAllowModify(true);
+
+        mockMvc.perform(post("/api/concept/{slug}/create/bulk", "test-ontology")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Neplatná data v požadavku."));
+
+        verify(conceptService, never()).createConcept(any(), anyString());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testCreateConcepts_InvalidItemRejected() throws Exception {
+        String jsonRequest = """
+                [
+                    {
+                        "conceptType": "TRIDA",
+                        "ontologyGraphName": "test-ontology",
+                        "nameModel": {
+                            "name": {"cs": "ValidConcept"}
+                        },
+                        "type": "entity"
+                    },
+                    {
+                        "conceptType": "TRIDA"
+                    }
+                ]
+                """;
+
+        TestOntologySecurityService.setAllowModify(true);
+
+        mockMvc.perform(post("/api/concept/{slug}/create/bulk", "test-ontology")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonRequest))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Neplatná data v požadavku."));
+
+        verify(conceptService, never()).createConcept(any(), anyString());
     }
 
     // ========== Delete Concept Tests ==========
