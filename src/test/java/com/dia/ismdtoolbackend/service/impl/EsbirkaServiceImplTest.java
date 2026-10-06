@@ -107,6 +107,16 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
+    void getVersionsStripsATrailingSlashBeforeQuerying() {
+        when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
+                new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "KONSOL", true)));
+
+        assertEquals(1, service.getVersions(LAW_IRI + "/").size());
+
+        verify(client).fetchVersions(LAW_IRI);
+    }
+
+    @Test
     void getVersionsMapsModelToDtoWithEliPathAndLatest() {
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI,
