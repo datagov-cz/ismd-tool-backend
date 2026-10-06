@@ -121,4 +121,90 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         assertTrue(ex.getMessage().contains("privacyProvisions"), ex.getMessage());
         assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
     }
+
+    // --- Other stored copies of the provisions ------------------------------
+
+    private static final String OTHER_ELI =
+            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348";
+
+    /** The copy create writes under the vocabulary's own namespace. */
+    private Property namespaceCopy() {
+        return model.createProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
+    }
+
+    private java.util.Set<String> objects(Resource subject, Property property) {
+        return subject.listProperties(property).mapWith(s -> s.getObject().asResource().getURI()).toSet();
+    }
+
+    private void editProvisions(String iri, List<String> provisions) {
+        stubAllPropertyFieldsNull(propertyConceptEditModel);
+        when(propertyConceptEditModel.getPrivacyProvisions()).thenReturn(provisions);
+        when(propertyConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
+        lastResult = conceptEditor.editConcept(iri, propertyConceptEditModel, model, null);
+    }
+
+    private ConceptEditor.EditResult lastResult;
+
+    @Test
+    void edit_replacesTheNamespaceCopyAlongWithTheProvisions() {
+        String iri = DEFAULT_NS + "prop-copy";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of(OTHER_ELI));
+
+        Resource updated = model.getResource(iri);
+        assertEquals(java.util.Set.of(OTHER_ELI), objects(updated, provisionProp()));
+        assertEquals(java.util.Set.of(OTHER_ELI), objects(updated, namespaceCopy()),
+                "the stale provision must not survive under the vocabulary-namespace property");
+    }
+
+    @Test
+    void edit_clearingTheProvisionsClearsEveryCopy() {
+        String iri = DEFAULT_NS + "prop-clear";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of());
+
+        Resource updated = model.getResource(iri);
+        assertTrue(objects(updated, provisionProp()).isEmpty());
+        assertTrue(objects(updated, namespaceCopy()).isEmpty());
+    }
+
+    @Test
+    void edit_dropsCopiesUploadedUnderOtherPropertyNames() {
+        String iri = DEFAULT_NS + "prop-uploaded";
+        Resource concept = seedProperty(iri);
+        Property foreignNamespace = model.createProperty(
+                "https://slovník.gov.cz/jiný-slovník/" + USTANOVENI_NEVEREJNOST);
+        Property canonicalOfn = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_LONG);
+        concept.addProperty(foreignNamespace, model.createResource(VALID_ELI));
+        concept.addProperty(canonicalOfn, model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of(OTHER_ELI));
+
+        Resource updated = model.getResource(iri);
+        assertFalse(updated.hasProperty(foreignNamespace));
+        assertFalse(updated.hasProperty(canonicalOfn));
+        assertEquals(java.util.Set.of(OTHER_ELI), objects(updated, provisionProp()));
+    }
+
+    /** An unchanged edit must stage nothing: a staged change bumps updatedAt. */
+    @Test
+    void edit_withUnchangedProvisionsStagesNoProvisionChange() {
+        String iri = DEFAULT_NS + "prop-same";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of(VALID_ELI));
+
+        java.util.function.Predicate<org.apache.jena.rdf.model.Statement> aboutProvisions =
+                s -> s.getPredicate().getURI().endsWith(USTANOVENI_NEVEREJNOST);
+        assertTrue(lastResult.statementsToRemove.stream().noneMatch(aboutProvisions));
+        assertTrue(lastResult.statementsToAdd.stream().noneMatch(aboutProvisions));
+    }
 }
