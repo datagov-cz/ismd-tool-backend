@@ -310,7 +310,22 @@ public class NkdSparqlClient {
      * <p>Lenient mode: an NKD outage degrades to an empty map rather than
      * failing the whole resolve request.
      */
+    /**
+     * Display-mode sibling of {@link #fetchConceptResolutions(List)} for IRIs the client named
+     * explicitly: resolves a concept even when NKD publishes no {@code skos:inScheme} for it, which
+     * is the common case for widely-referenced concepts whose own vocabulary never published the
+     * membership triple. Presentational only — see
+     * {@code NKDSPARQLConstructQuery.buildDisplayResolutionConstructQuery}.
+     */
+    public Map<String, ResolvedConceptDto> fetchConceptResolutionsForDisplay(List<String> conceptIris) {
+        return fetchResolutions(conceptIris, true);
+    }
+
     public Map<String, ResolvedConceptDto> fetchConceptResolutions(List<String> conceptIris) {
+        return fetchResolutions(conceptIris, false);
+    }
+
+    private Map<String, ResolvedConceptDto> fetchResolutions(List<String> conceptIris, boolean display) {
         if (conceptIris == null || conceptIris.isEmpty()) {
             return Map.of();
         }
@@ -329,15 +344,18 @@ public class NkdSparqlClient {
             return Map.of();
         }
 
-        String query = NKDSPARQLConstructQuery.buildResolutionConstructQuery(safeConceptIris);
+        String query = display
+                ? NKDSPARQLConstructQuery.buildDisplayResolutionConstructQuery(safeConceptIris)
+                : NKDSPARQLConstructQuery.buildResolutionConstructQuery(safeConceptIris);
         Optional<Model> result = executor.constructLenient(
                 "NKD concept resolution batch (" + safeConceptIris.size() + " IRIs)", query);
         if (result.isEmpty()) {
             log.debug("NKD returned no resolutions for {} requested IRI(s)", safeConceptIris.size());
             return Map.of();
         }
-        Map<String, ResolvedConceptDto> resolutions =
-                JenaTDB2Repository.projectResolutions(result.get(), SearchSource.NKD);
+        Map<String, ResolvedConceptDto> resolutions = display
+                ? JenaTDB2Repository.projectDisplayResolutions(result.get(), SearchSource.NKD, safeConceptIris)
+                : JenaTDB2Repository.projectResolutions(result.get(), SearchSource.NKD);
         log.debug("Resolved {} of {} requested concept IRI(s) against NKD",
                 resolutions.size(), safeConceptIris.size());
         return resolutions;

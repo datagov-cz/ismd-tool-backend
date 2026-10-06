@@ -62,7 +62,7 @@ public class RppSparqlClient {
     }
 
     private HttpSparqlExecutor executor() {
-        // See EsbirkaSparqlClient.executor() for why this is per-call rather than a field.
+        // Built per call so test reflection (`setField(client, "rppEndpoint", ...)`) flows through.
         // The shared, pooled HttpClient is reused across these lightweight wrappers.
         return new HttpSparqlExecutor(RPP_LABEL, rppEndpoint, rppSparqlTimeout, httpClient);
     }

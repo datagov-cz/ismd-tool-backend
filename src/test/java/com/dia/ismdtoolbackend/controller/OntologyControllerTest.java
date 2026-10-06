@@ -20,7 +20,7 @@ import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.models.*;
-import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
@@ -96,7 +96,7 @@ class OntologyControllerTest {
     private ValidationConfig validationConfig;
 
     @MockitoBean
-    private NkdDetailService nkdDetailService;
+    private ReferencedConceptResolutionEngine referencedConceptResolutionEngine;
 
     @MockitoBean
     private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
@@ -486,6 +486,126 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
                 .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: " + "file"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_fileTooLarge_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadFileTooLargeException("Soubor překračuje maximální povolenou velikost (10 MB)."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_TOO_LARGE"))
+                .andExpect(jsonPath("$.message").value("Soubor překračuje maximální povolenou velikost (10 MB)."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_unparseableRdf_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadParseException("Chyba při zpracování RDF souboru: [line: 1, col: 34] Undefined prefix: undeclared"));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_PARSE_FAILED"))
+                .andExpect(jsonPath("$.message").value("Chyba při zpracování RDF souboru: [line: 1, col: 34] Undefined prefix: undeclared"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_parseTimeout_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadParseTimeoutException("Zpracování RDF souboru překročilo časový limit (60 s)."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_PARSE_TIMEOUT"))
+                .andExpect(jsonPath("$.message").value("Zpracování RDF souboru překročilo časový limit (60 s)."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_missingOntologyIri_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadMissingIriException("Z RDF dat nelze odvodit IRI slovníku."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_ONTOLOGY_IRI_MISSING"))
+                .andExpect(jsonPath("$.message").value("Z RDF dat nelze odvodit IRI slovníku."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_rdfStoreFailure_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException("Uložení slovníku do RDF úložiště (TDB2) selhalo: connection refused", new RuntimeException("connection refused")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_STORE_FAILED"))
+                .andExpect(jsonPath("$.message").value("Uložení slovníku do RDF úložiště (TDB2) selhalo: connection refused"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_metadataFailure_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException("Uložení metadat slovníku selhalo: DB failure", new RuntimeException("DB failure")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_METADATA_SAVE_FAILED"))
+                .andExpect(jsonPath("$.message").value("Uložení metadat slovníku selhalo: DB failure"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_duplicate_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException("Slovník se stejným IRI již v Nástroji existuje: http://example.org/test", new OntologyMetadataModel()));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_ALREADY_EXISTS"))
+                .andExpect(jsonPath("$.message").value("Slovník se stejným IRI již v Nástroji existuje: http://example.org/test"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_unclassifiedUploadFailure_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadException("Zpracování RDF souboru bylo přerušeno."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Zpracování RDF souboru bylo přerušeno."));
     }
 
     @Test

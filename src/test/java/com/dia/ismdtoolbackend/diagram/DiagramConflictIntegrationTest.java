@@ -1,0 +1,695 @@
+package com.dia.ismdtoolbackend.diagram;
+
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
+import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
+import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
+import com.dia.ismdtoolbackend.entity.DiagramEntity;
+import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
+import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.DiagramConflictResolutionException;
+import com.dia.ismdtoolbackend.exception.DiagramEditConflictException;
+import com.dia.ismdtoolbackend.mapper.DiagramMapper;
+import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
+import com.dia.ismdtoolbackend.outbox.OutboxEntry;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
+import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
+import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
+import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.service.DiagramService.ConflictResolution;
+import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
+import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
+import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
+import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import jakarta.persistence.EntityNotFoundException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+
+/**
+ * Cross-diagram conflict detection at Převzít.
+ *
+ * <p>Staged edits are per-diagram, so two canvases of one ontology can hold competing intent for the same
+ * concept. Materializing one side moves that concept's {@code updatedAt} — the fingerprint the other
+ * side's edit was stamped against — so the sibling would afterwards fail {@code STALE_BASE}, one concept
+ * per attempt, with nothing explaining what moved underneath it. Detection reports the whole collision
+ * before anything is written, so the user resolves it in a single decision.
+ *
+ * <p>Two properties matter most here and are asserted directly:
+ *
+ * <ol>
+ *   <li><b>Detection runs before any write.</b> It must precede the per-change {@code REQUIRES_NEW} loop,
+ *       or the changes ahead of the collision would already be committed to RDF when the 409 fires.</li>
+ *   <li><b>A conflict is "the same concept staged twice", not "staged with different values".</b> Equal
+ *       values still collide, because the first materialize bumps the fingerprint the second is pinned
+ *       to — so treating them as compatible would trade a clear 409 for a confusing one later.</li>
+ * </ol>
+ */
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@ActiveProfiles("junit")
+@Import({DiagramConflictIntegrationTest.Beans.class, TransactionTemplateConfig.class,
+        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
+@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
+@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
+        DiagramRepository.class})
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
+
+    private static final String GRAPH = "https://slovnik.gov.cz/conflict";
+    private static final String SLUG = "conflict-ontology";
+    private static final String USER = "user123";
+    private static final String CLASS_A = GRAPH + "/pojem/trida-a";
+    private static final String CLASS_B = GRAPH + "/pojem/trida-b";
+    private static final String REL = GRAPH + "/pojem/vztah";
+
+    /** A second ontology, to prove the conflict query never reaches across slovníky. */
+    private static final String OTHER_GRAPH = "https://slovnik.gov.cz/conflict-other";
+    private static final String OTHER_SLUG = "conflict-other-ontology";
+
+    @Autowired private ConceptMetadataRepository conceptRepo;
+    @Autowired private OntologyMetadataRepository ontologyRepo;
+    @Autowired private DiagramRepository diagramRepo;
+    /** Spied so one test can stage a competing edit from inside the detection query itself. */
+    @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepo;
+    @Autowired private TransactionTemplate txTemplate;
+    @Autowired private DiagramServiceImpl diagramService;
+    @Autowired private DiagramMaterializeService materializeService;
+
+    @BeforeEach
+    void setUp() {
+        reset(materializeService, pendingEditRepo);
+        txTemplate.executeWithoutResult(tx -> {
+            pendingEditRepo.deleteAllInBatch();
+            diagramRepo.deleteAllInBatch();
+            conceptRepo.deleteAllInBatch();
+            ontologyRepo.deleteAllInBatch();
+        });
+        txTemplate.executeWithoutResult(tx -> {
+            OntologyMetadataEntity o = ontology(SLUG, GRAPH);
+            seedConcept(o, CLASS_A, "Třída A", ConceptType.TRIDA);
+            seedConcept(o, CLASS_B, "Třída B", ConceptType.TRIDA);
+            seedConcept(o, REL, "vztah", ConceptType.VZTAH);
+            ontology(OTHER_SLUG, OTHER_GRAPH);
+        });
+    }
+
+    // ---- detection ------------------------------------------------------------------------------
+
+    /** The headline case: the same concept staged on two canvases refuses to materialize. */
+    @Test
+    void sameConceptStagedOnTwoDiagrams_refusesWithAReport() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
+                .isInstanceOf(DiagramEditConflictException.class)
+                .satisfies(e -> {
+                    DiagramConflictDto report = ((DiagramEditConflictException) e).getReport();
+                    assertThat(report.conflicts()).singleElement()
+                            .satisfies(c -> {
+                                assertThat(c.conceptIri()).isEqualTo(REL);
+                                assertThat(c.mine().getRange())
+                                        .as("what THIS diagram staged")
+                                        .isEqualTo(CLASS_A);
+                                assertThat(c.theirs()).singleElement().satisfies(t -> {
+                                    assertThat(t.diagramId()).isEqualTo(theirs);
+                                    assertThat(t.diagramName())
+                                            .as("the report must name the other canvas, or the user "
+                                                    + "cannot tell which one to look at")
+                                            .isEqualTo("Pohled HR");
+                                    assertThat(t.pendingEdit().getRange()).isEqualTo(CLASS_B);
+                                });
+                            });
+                });
+    }
+
+    /**
+     * Nothing is written when the conflict fires — both sides' staged work survives untouched. This is
+     * what makes the 409 safe to retry after the user chooses.
+     */
+    @Test
+    void aRefusedMaterialize_leavesBothSidesStaged() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
+                .isInstanceOf(DiagramEditConflictException.class);
+
+        assertThat(pendingEditRepo.findByDiagramId(mine)).hasSize(1);
+        assertThat(pendingEditRepo.findByDiagramId(theirs)).hasSize(1);
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /**
+     * Identical values still conflict. The first materialize bumps the concept's {@code updatedAt}, and
+     * the sibling's fingerprint is stamped on first appearance and never refreshed — so the second side
+     * would fail STALE_BASE regardless of the values agreeing.
+     */
+    @Test
+    void identicalStagedValues_stillConflict() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_A));   // the SAME value
+
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
+                .as("a conflict is 'staged on both', not 'staged differently'")
+                .isInstanceOf(DiagramEditConflictException.class);
+    }
+
+    /** Different concepts on two canvases are not a conflict — they cannot disturb each other. */
+    @Test
+    void differentConceptsOnTwoDiagrams_doNotConflict() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, CLASS_A, exactMatch(CLASS_B));
+        stage(theirs, CLASS_B, exactMatch(CLASS_A));
+
+        diagramService.materialize(SLUG, mine, null, null);
+
+        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
+    }
+
+    /**
+     * The re-detect gate runs on EVERY path, not only after a resolution. A sibling staging a collision
+     * between the first detection query and the decision must still refuse, rather than let the RDF write
+     * proceed against a conflict the endpoint's 409 contract promises to catch.
+     *
+     * <p>The competing edit is staged from inside {@code findConflicting}, which is precisely the window
+     * between "this diagram's staged IRIs" and the decision that follows. Before the fix the early return
+     * for an empty conflict set skipped {@code requireNoRemainingConflict} entirely and this materialized.
+     */
+    @Test
+    void aSiblingStagingDuringDetection_isCaughtBeforeRdfIsWritten() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        // `theirs` stages nothing yet, so the first detection query sees a clean board.
+
+        // Only the FIRST detection query is intercepted: it stages the sibling's edit and reports a clean
+        // board, exactly as a save committing right after that read would look. Every later call — the
+        // re-detect gate included — runs for real against the now-conflicting rows.
+        // Only the FIRST detection query is intercepted: it stages the sibling's edit and reports a clean
+        // board, exactly as a save committing right after that read would look. Every later call — the
+        // re-detect gate included — is answered from the now-conflicting rows.
+        AtomicBoolean raced = new AtomicBoolean(false);
+        doAnswer(inv -> {
+            if (raced.compareAndSet(false, true)) {
+                stage(theirs, REL, range(CLASS_B));   // the concurrent save, mid-detection
+                return List.of();
+            }
+            Long ontologyId = inv.getArgument(0);
+            Long forDiagram = inv.getArgument(1);
+            Collection<String> iris = inv.getArgument(2);
+            return txTemplate.execute(tx -> pendingEditRepo.findAll().stream()
+                    .filter(r -> ontologyId.equals(r.getOntologyMetadata().getId()))
+                    .filter(r -> !forDiagram.equals(r.getDiagram().getId()))
+                    .filter(r -> iris.contains(r.getConceptIri()))
+                    .toList());
+        }).when(pendingEditRepo).findConflicting(any(), any(), any());
+
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, mine, null, null))
+                .as("a conflict staged during detection must refuse, not write RDF blind")
+                .isInstanceOf(DiagramEditConflictException.class);
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /** A lone diagram never conflicts with itself. */
+    @Test
+    void singleDiagram_neverConflicts() {
+        Long only = diagram("Hlavní diagram");
+        stage(only, REL, range(CLASS_A));
+
+        diagramService.materialize(SLUG, only, null, null);
+
+        verify(materializeService).materialize(eq(only), eq(ontologyId()));
+    }
+
+    /**
+     * The conflict query is scoped to one ontology. Two slovníky staging the same-named concept are
+     * unrelated, and a cross-ontology match would block a materialize for no reason.
+     */
+    @Test
+    void aSiblingInAnotherOntology_isNotAConflict() {
+        Long mine = diagram("Hlavní diagram");
+        stage(mine, REL, range(CLASS_A));
+
+        Long elsewhere = txTemplate.execute(tx -> {
+            DiagramEntity d = new DiagramEntity();
+            d.setOntologyMetadata(ontologyRepo.findBySlug(OTHER_SLUG).orElseThrow());
+            d.setName("Cizí diagram");
+            return diagramRepo.saveAndFlush(d).getId();
+        });
+        stageOn(elsewhere, OTHER_SLUG, REL, range(CLASS_A));
+
+        diagramService.materialize(SLUG, mine, null, null);
+
+        verify(materializeService)
+                .materialize(eq(mine), eq(ontologyId()));
+    }
+
+    // ---- resolution -----------------------------------------------------------------------------
+
+    /** ACCEPT_MINE clears the sibling's edit and lets this diagram proceed. */
+    @Test
+    void acceptMine_removesTheSiblingsEditAndProceeds() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_MINE, null);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, REL))
+                .as("the sibling's competing edit is gone")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("my edit is the one kept — that is what ACCEPT_MINE means")
+                .isPresent();
+        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
+    }
+
+    /**
+     * ACCEPT_THEIRS drops this diagram's own edit and applies the named diagram's instead. The winner is
+     * what materializes: a resolution that only discarded the loser would leave the user's chosen edit
+     * staged on a canvas they may not go back to, and the conflict would simply resurface there.
+     */
+    @Test
+    void acceptTheirs_removesOwnEditAndMaterializesTheNamedDiagram() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("this diagram's conflicting edit is abandoned")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, REL))
+                .as("the winner's is untouched — the user chose to keep it")
+                .isPresent();
+        // The WINNER materializes, not the diagram in the path.
+        verify(materializeService).materialize(eq(theirs), eq(ontologyId()));
+        verify(materializeService, never()).materialize(eq(mine), any());
+    }
+
+    /**
+     * The mirror of the test below, on the losing side: yielding to another canvas abandons only MY
+     * contested edit. A resolution scoped to everything this diagram staged would throw away uncontested
+     * work the user never offered up — and unlike the sibling case, every concept in that set does have a
+     * row here, so the over-wide delete would really land.
+     */
+    @Test
+    void acceptTheirs_leavesOwnNonConflictingEdits() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));            // contested
+        stage(mine, CLASS_A, exactMatch(CLASS_B));   // mine alone — nobody contests it
+        stage(theirs, REL, range(CLASS_B));
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("the contested edit is the one abandoned")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, CLASS_A))
+                .as("uncontested work survives — resolving a conflict is not 'discard everything'")
+                .isPresent();
+    }
+
+    /**
+     * Resolution touches ONLY the concepts actually in conflict. A loser's unrelated staged work is
+     * not collateral — discarding a whole canvas's edits would be a much larger act than the user
+     * agreed to.
+     */
+    @Test
+    void acceptMine_leavesTheSiblingsNonConflictingEdits() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+
+        // BOTH concepts are staged here, but only REL is staged on the sibling too. The distinction
+        // matters: a resolution scoped to "everything this diagram staged" rather than "the concepts
+        // actually in conflict" would also reap the sibling's CLASS_A edit, which no one contested.
+        stage(mine, REL, range(CLASS_A));
+        stage(mine, CLASS_B, exactMatch(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));          // conflicts
+        stage(theirs, CLASS_B, exactMatch(CLASS_A)); // ALSO staged by mine, but see below
+
+        // Re-stage so only REL is genuinely contested: drop the sibling's CLASS_B edit and give it an
+        // uncontested one instead.
+        txTemplate.executeWithoutResult(tx ->
+                pendingEditRepo.deleteByDiagramIdAndConceptIri(theirs, CLASS_B));
+        stage(theirs, CLASS_A, exactMatch(CLASS_B)); // uncontested: mine never stages CLASS_A
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_MINE, null);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, REL))
+                .as("the contested concept is discarded")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirs, CLASS_A))
+                .as("an edit no one contested survives — resolution is scoped to the conflict set, "
+                        + "not to everything the materializing diagram happens to have staged")
+                .isPresent();
+    }
+
+    /**
+     * Three canvases staging the same concept. ONE decision settles the whole collision: ACCEPT_MINE
+     * clears BOTH siblings in a single pass. A resolution that addressed one sibling at a time (which the
+     * report's {@code theirs()} list invites, since it names each diagram separately) would leave the
+     * second collision standing, and {@code requireNoRemainingConflict} would then re-throw a 409 the user
+     * has already answered.
+     */
+    @Test
+    void acceptMine_clearsEverySiblingStagingTheSameConcept() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirsOne = diagram("Pohled HR");
+        Long theirsTwo = diagram("Pohled Finance");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirsOne, REL, range(CLASS_B));
+        stage(theirsTwo, REL, range(CLASS_A));
+        stage(theirsTwo, CLASS_A, exactMatch(CLASS_B)); // uncontested: mine never stages CLASS_A
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_MINE, null);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsOne, REL))
+                .as("the first sibling's competing edit is gone")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsTwo, REL))
+                .as("so is the second's — resolving against one sibling at a time would strand this one")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(theirsTwo, CLASS_A))
+                .as("still scoped to the conflict set, however many siblings it spans")
+                .isPresent();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("my edit is the one kept — that is what ACCEPT_MINE means")
+                .isPresent();
+        verify(materializeService).materialize(eq(mine), eq(ontologyId()));
+    }
+
+    /**
+     * The reason the resolution names a WINNER rather than a side to discard: with three canvases in
+     * conflict, "discard theirs" is ambiguous and "discard mine" settles nothing — the two survivors
+     * still collide. Naming one winner clears every other canvas's contested edit in the same pass,
+     * including the third party the caller never mentioned.
+     */
+    @Test
+    void acceptTheirs_clearsEveryLoserIncludingThisDiagram() {
+        Long mine = diagram("Hlavní diagram");
+        Long winner = diagram("Pohled HR");
+        Long alsoLoses = diagram("Pohled Finance");
+        stage(mine, REL, range(CLASS_A));
+        stage(mine, CLASS_B, exactMatch(CLASS_A));      // mine alone — nobody contests it
+        stage(winner, REL, range(CLASS_B));
+        stage(alsoLoses, REL, range(CLASS_A));
+        stage(alsoLoses, CLASS_A, exactMatch(CLASS_B)); // uncontested on the third canvas
+
+        diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, winner);
+
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, REL))
+                .as("I lose too — my contested edit goes with every other loser's")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(alsoLoses, REL))
+                .as("the third canvas loses as well, though the caller named only the winner; leaving it "
+                        + "would strand a collision the user believes they just resolved")
+                .isEmpty();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(winner, REL))
+                .as("the winner's edit stands")
+                .isPresent();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(mine, CLASS_B))
+                .as("uncontested work survives on a loser")
+                .isPresent();
+        assertThat(pendingEditRepo.findByDiagramIdAndConceptIri(alsoLoses, CLASS_A))
+                .as("and on the third canvas")
+                .isPresent();
+        verify(materializeService).materialize(eq(winner), eq(ontologyId()));
+        verify(materializeService, never()).materialize(eq(mine), any());
+        verify(materializeService, never()).materialize(eq(alsoLoses), any());
+    }
+
+    // ---- resolution input validation --------------------------------------------------------------
+
+    /**
+     * ACCEPT_THEIRS with no winner is refused rather than guessed at. With more than one sibling in
+     * conflict there is no defensible default, and picking one would silently discard a canvas the user
+     * never chose against.
+     */
+    @Test
+    void acceptTheirs_withoutAWinner_isRejected() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+
+        assertThatThrownBy(() ->
+                diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, null))
+                .isInstanceOf(DiagramConflictResolutionException.class);
+
+        assertThat(pendingEditRepo.findByDiagramId(mine)).as("nothing discarded").hasSize(1);
+        assertThat(pendingEditRepo.findByDiagramId(theirs)).as("nothing discarded").hasSize(1);
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /**
+     * The winner id is authorized by being IN the conflict set, not by the request asserting it. Only the
+     * slug is checked by the endpoint, and ACCEPT_THEIRS makes this call write a canvas other than the one
+     * in the path — so an arbitrary id must not be able to trigger a materialize of someone else's work.
+     */
+    @Test
+    void acceptTheirs_namingADiagramNotInTheConflictSet_isRejected() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        Long uninvolved = diagram("Pohled Finance");   // same ontology, but stages nothing contested
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, REL, range(CLASS_B));
+        stage(uninvolved, CLASS_A, exactMatch(CLASS_B));
+
+        assertThatThrownBy(() ->
+                diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, uninvolved))
+                .isInstanceOf(DiagramConflictResolutionException.class);
+
+        assertThat(pendingEditRepo.findByDiagramId(theirs))
+                .as("the real conflict is left exactly as it was, for the user to answer again")
+                .hasSize(1);
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /**
+     * ACCEPT_THEIRS when nothing collides is refused, not silently honoured. There is no conflict for it
+     * to resolve, so obeying it would materialize a canvas the caller only named as a winner — a write
+     * nobody asked for on a diagram that is not in the path.
+     */
+    @Test
+    void acceptTheirs_withNoConflictAtAll_isRejected() {
+        Long mine = diagram("Hlavní diagram");
+        Long theirs = diagram("Pohled HR");
+        stage(mine, REL, range(CLASS_A));
+        stage(theirs, CLASS_A, exactMatch(CLASS_B));   // different concept — no collision
+
+        assertThatThrownBy(() ->
+                diagramService.materialize(SLUG, mine, ConflictResolution.ACCEPT_THEIRS, theirs))
+                .isInstanceOf(DiagramConflictResolutionException.class);
+
+        verify(materializeService, never()).materialize(any(), any());
+    }
+
+    /** ACCEPT_MINE with no conflict is a plain materialize — the resolution simply has nothing to do. */
+    @Test
+    void acceptMine_withNoConflict_materializesNormally() {
+        Long only = diagram("Hlavní diagram");
+        stage(only, REL, range(CLASS_A));
+
+        diagramService.materialize(SLUG, only, ConflictResolution.ACCEPT_MINE, null);
+
+        verify(materializeService).materialize(eq(only), eq(ontologyId()));
+    }
+
+    // ---- authorization --------------------------------------------------------------------------
+
+    /**
+     * The ontology slug is authorized by the endpoint; the diagram id is not. Reaching another ontology's
+     * diagram through this slug must fail before anything is read or written — on EVERY id-bearing path,
+     * not just the one. They share {@code requireDiagramOf}, so covering only materialize would let the
+     * call be dropped from any of the other three undetected.
+     */
+    @Test
+    void addressingADiagramOfAnotherOntology_isRefusedOnEveryIdBearingPath() {
+        Long elsewhere = txTemplate.execute(tx -> {
+            DiagramEntity d = new DiagramEntity();
+            d.setOntologyMetadata(ontologyRepo.findBySlug(OTHER_SLUG).orElseThrow());
+            d.setName("Cizí diagram");
+            return diagramRepo.saveAndFlush(d).getId();
+        });
+
+        assertThatThrownBy(() -> diagramService.materialize(SLUG, elsewhere, null, null))
+                .as("materialize")
+                .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> diagramService.getDiagram(SLUG, elsewhere))
+                .as("detail")
+                .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> diagramService.saveLayout(SLUG, elsewhere,
+                new DiagramLayoutDto(0L, null, List.of(), null, null)))
+                .as("layout save")
+                .isInstanceOf(EntityNotFoundException.class);
+        assertThatThrownBy(() -> diagramService.deleteDiagram(SLUG, elsewhere))
+                .as("delete")
+                .isInstanceOf(EntityNotFoundException.class);
+
+        assertThat(diagramRepo.findById(elsewhere))
+                .as("the other ontology's diagram is untouched by any of the four attempts")
+                .isPresent();
+    }
+
+    // ---- fixtures -------------------------------------------------------------------------------
+
+    private Long ontologyId() {
+        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
+    }
+
+    private DiagramPendingEdit range(String iri) {
+        DiagramPendingEdit e = new DiagramPendingEdit();
+        e.setRange(iri);
+        return e;
+    }
+
+    private DiagramPendingEdit exactMatch(String iri) {
+        DiagramPendingEdit e = new DiagramPendingEdit();
+        e.setExactMatch(List.of(iri));
+        return e;
+    }
+
+    private Long diagram(String name) {
+        return txTemplate.execute(tx -> {
+            DiagramEntity d = new DiagramEntity();
+            d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
+            d.setName(name);
+            return diagramRepo.saveAndFlush(d).getId();
+        });
+    }
+
+    private void stage(Long diagramId, String conceptIri, DiagramPendingEdit edit) {
+        stageOn(diagramId, SLUG, conceptIri, edit);
+    }
+
+    private void stageOn(Long diagramId, String ontologySlug, String conceptIri, DiagramPendingEdit edit) {
+        txTemplate.executeWithoutResult(tx -> {
+            DiagramPendingEditEntity row = new DiagramPendingEditEntity();
+            row.setDiagram(diagramRepo.findById(diagramId).orElseThrow());
+            row.setOntologyMetadata(ontologyRepo.findBySlug(ontologySlug).orElseThrow());
+            row.setConceptIri(conceptIri);
+            row.setPendingEdit(edit);
+            pendingEditRepo.saveAndFlush(row);
+        });
+    }
+
+    private OntologyMetadataEntity ontology(String slug, String graphName) {
+        OntologyMetadataEntity o = new OntologyMetadataEntity();
+        o.setSlug(slug);
+        o.setGraphName(graphName);
+        o.setUserId(USER);
+        o.setIsPublished(false);
+        o.setCreatedAt(LocalDateTime.now());
+        return ontologyRepo.save(o);
+    }
+
+    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name, ConceptType type) {
+        ConceptMetadataEntity c = new ConceptMetadataEntity();
+        c.setConceptIri(iri);
+        c.setConceptName(name);
+        c.setConceptType(type);
+        c.setGraphName(GRAPH);
+        c.setUserId(USER);
+        c.setOntologyMetadata(ontology);
+        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1));
+        c.setCreatedAt(LocalDateTime.now());
+        c.setUpdatedAt(LocalDateTime.now());
+        conceptRepo.save(c);
+    }
+
+    @TestConfiguration
+    static class Beans {
+
+        @Bean JenaTDB2Repository jenaTDB2Repository() {
+            return mock(JenaTDB2Repository.class);
+        }
+
+        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
+            return mock(OntologyDetailExtractor.class);
+        }
+
+        @Bean DiagramMapper diagramMapper() {
+            return new DiagramMapper();
+        }
+
+        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
+                                                              ConceptMetadataRepository conceptRepo,
+                                                              DiagramPendingEditRepository pendingEditRepo) {
+            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
+        }
+
+        /**
+         * Materialize itself is mocked: this class is about what happens BEFORE the fan-out — whether it
+         * is reached at all, and with what left staged. {@link DiagramMaterializeIntegrationTest} covers
+         * the applying half against real RDF.
+         */
+        @Bean DiagramMaterializeService diagramMaterializeService() {
+            return mock(DiagramMaterializeService.class);
+        }
+
+        @Bean OntologyLabelLookup ontologyLabelLookup() {
+
+            return mock(OntologyLabelLookup.class);
+
+        }
+
+
+        @Bean DiagramServiceImpl diagramServiceImpl(
+                DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
+                ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
+                JenaTDB2Repository tdb2, DiagramMaterializeService materializeService,
+                DiagramLayoutReconciler reconciler, DiagramPendingEditRepository pendingEditRepo,
+                DiagramMapper mapper, OntologyLabelLookup labelLookup, @Lazy DiagramServiceImpl self) {
+            return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
+                    materializeService, reconciler, pendingEditRepo, mapper, labelLookup, self);
+        }
+    }
+}

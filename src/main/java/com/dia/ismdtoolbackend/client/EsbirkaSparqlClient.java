@@ -1,18 +1,20 @@
 package com.dia.ismdtoolbackend.client;
 
+import com.dia.ismdtoolbackend.config.EsbirkaConfig;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlCircuitBreaker;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpClient;
@@ -32,21 +34,32 @@ public class EsbirkaSparqlClient {
      */
     public static final String ESBIRKA_LABEL = "e-Sbírka";
 
-    @Value("${esbirka.sparql.endpoint:}")
-    private String endpoint;
+    private final HttpSparqlExecutor executor;
 
-    @Value("${esbirka.sparql.timeout:10000}")
-    private int sparqlTimeout;
+    /**
+     * Guards every e-Sbírka query: after repeated failures calls fail fast for a cooldown
+     * instead of each waiting out the SPARQL timeout.
+     */
+    private final SparqlCircuitBreaker breaker;
 
-    private final HttpClient httpClient;
-
-    public EsbirkaSparqlClient(@Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
-        this.httpClient = httpClient;
+    public EsbirkaSparqlClient(EsbirkaConfig config,
+                               @Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
+        EsbirkaConfig.Sparql sparql = config.getSparql();
+        this.executor = new HttpSparqlExecutor(
+                ESBIRKA_LABEL,
+                sparql.getEndpoint(),
+                sparql.getTimeout(),
+                httpClient,
+                sparql.getMaxConcurrentRequests());
+        this.breaker = new SparqlCircuitBreaker(
+                ESBIRKA_LABEL,
+                sparql.getCircuitBreaker().getFailureThreshold(),
+                sparql.getCircuitBreaker().getCooldownMs());
     }
 
     @PostConstruct
     void warnIfEndpointMissing() {
-        if (endpoint == null || endpoint.isBlank()) {
+        if (!executor.isConfigured()) {
             log.warn("esbirka.sparql.endpoint is not configured — /api/eli/* endpoints will return 503 until set.");
         }
     }
@@ -54,6 +67,31 @@ public class EsbirkaSparqlClient {
     public List<LawModel> searchLaws(String q, int limit) {
         return executeSelect("law search",
                 EsbirkaSPARQLQuery.buildLawSearchQuery(q, limit),
+                this::mapLawRows);
+    }
+
+    /**
+     * Distinct předpis numbers prefix-matching {@code cisloPrefix}, with a dataset-wide act
+     * count each, capped at {@code limit} groups (not rows). A non-blank {@code rokPrefix}
+     * narrows the aggregate — and therefore the counts — to acts of that year.
+     */
+    public List<LawNumberGroupModel> searchLawNumberGroups(String cisloPrefix, String rokPrefix, int limit) {
+        return executeSelect("law number groups",
+                EsbirkaSPARQLQuery.buildLawNumberGroupsQuery(cisloPrefix, rokPrefix, limit),
+                this::mapNumberGroupRows);
+    }
+
+    /**
+     * Acts carrying one of the given čísla, newest rok first, capped at {@code rowLimit} rows.
+     * {@code rokPrefix} repeats step 1's year narrowing. Empty input short-circuits without a
+     * round-trip.
+     */
+    public List<LawModel> fetchLawsByNumbers(List<String> cisla, String rokPrefix, int rowLimit) {
+        if (cisla == null || cisla.isEmpty()) {
+            return List.of();
+        }
+        return executeSelect("laws by numbers",
+                EsbirkaSPARQLQuery.buildLawsByNumbersQuery(cisla, rokPrefix, rowLimit),
                 this::mapLawRows);
     }
 
@@ -106,15 +144,7 @@ public class EsbirkaSparqlClient {
     }
 
     private <T> List<T> executeSelect(String label, String query, Function<ResultSet, List<T>> mapper) {
-        return executor().select("e-Sbírka " + label, query, mapper);
-    }
-
-    private HttpSparqlExecutor executor() {
-        // Built per call so test reflection (`setField(client, "endpoint", ...)`)
-        // continues to flow through. The executor is a ~24-byte wrapper around two
-        // strings and an int — allocation cost is negligible compared to the SPARQL roundtrip.
-        // The shared, pooled HttpClient is reused across these lightweight wrappers.
-        return new HttpSparqlExecutor(ESBIRKA_LABEL, endpoint, sparqlTimeout, httpClient);
+        return breaker.call(() -> executor.select("e-Sbírka " + label, query, mapper));
     }
 
     private List<LawModel> mapLawRows(ResultSet rs) {
@@ -131,6 +161,20 @@ public class EsbirkaSparqlClient {
                 continue;
             }
             out.add(new LawModel(iri, citace, cislo, rok, sbirka));
+        }
+        return out;
+    }
+
+    private List<LawNumberGroupModel> mapNumberGroupRows(ResultSet rs) {
+        List<LawNumberGroupModel> out = new ArrayList<>();
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String cislo = SparqlSolutions.literalString(sol, "cislo");
+            Integer pocet = SparqlSolutions.literalInt(sol, "pocet");
+            if (cislo == null) {
+                continue;
+            }
+            out.add(new LawNumberGroupModel(cislo, pocet == null ? 0 : pocet));
         }
         return out;
     }
