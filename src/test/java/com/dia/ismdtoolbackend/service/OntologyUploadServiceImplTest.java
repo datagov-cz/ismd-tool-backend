@@ -20,6 +20,9 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.UploadConceptGate;
+import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.riot.Lang;
@@ -87,7 +90,9 @@ class OntologyUploadServiceImplTest {
                 validationClient,
                 validationReportRepository,
                 jenaTDB2Repository,
-                publishedResourceUtil
+                publishedResourceUtil,
+                new UploadConceptGate(new OntologyDetailExtractor(conceptMetadataRepository),
+                        new NkdLinkDetector(), conceptMetadataRepository)
         );
         // In production `self` is the Spring proxy (so @Transactional applies through the async
         // lambda). In this unit test there is no proxy — point it at the instance itself so the

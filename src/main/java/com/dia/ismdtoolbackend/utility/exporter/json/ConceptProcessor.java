@@ -727,15 +727,24 @@ public class ConceptProcessor {
         }
     }
 
+    /**
+     * Reads the privacy provisions under both property IRIs they are stored as: the one the
+     * writers ({@code ConceptCreator} / {@code ConceptFieldUpdaters}) use, and the canonical OFN
+     * one that {@code TurtleFormatterUtil} rewrites it to and published vocabularies carry.
+     */
     private void addUstanoveniProperty(Resource concept, Map<String, Object> conceptObj,
                                        OntModel ontModel) {
-        // Must match the property IRI the writers (ConceptCreator / ConceptFieldUpdaters)
-        // actually store: OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST. Reading via
-        // USTANOVENI_LONG here silently dropped every privacy provision on detail load.
-        Property suppLegal = ontModel.getProperty(L111_2009_NAMESPACE + USTANOVENI_NEVEREJNOST);
-
-        if (concept.hasProperty(suppLegal)) {
-            addResourceArrayProperty(concept, suppLegal, USTANOVENI_NEVEREJNOST, conceptObj);
+        Set<String> provisions = new LinkedHashSet<>();
+        for (String localName : List.of(USTANOVENI_NEVEREJNOST, USTANOVENI_LONG)) {
+            Map<String, Object> read = new HashMap<>();
+            addResourceArrayProperty(concept, ontModel.createProperty(L111_2009_NAMESPACE + localName),
+                    USTANOVENI_NEVEREJNOST, read);
+            @SuppressWarnings("unchecked")
+            List<String> values = (List<String>) read.get(USTANOVENI_NEVEREJNOST);
+            if (values != null) provisions.addAll(values);
+        }
+        if (!provisions.isEmpty()) {
+            conceptObj.put(USTANOVENI_NEVEREJNOST, new ArrayList<>(provisions));
         }
     }
 
