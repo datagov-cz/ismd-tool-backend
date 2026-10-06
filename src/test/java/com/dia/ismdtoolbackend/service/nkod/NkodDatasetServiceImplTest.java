@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.NkodSparqlClient;
 import com.dia.ismdtoolbackend.config.NkodConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetNkodDatasetDto;
 import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListDto;
+import com.dia.ismdtoolbackend.controller.dto.NkodDatasetListItemDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
@@ -259,5 +260,109 @@ class NkodDatasetServiceImplTest {
     void detailRejectsBlankIri() {
         assertThatThrownBy(() -> service.getDatasetDetail("  "))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static final String CONCEPT = "https://slovník.gov.cz/generický/pojem/číslo";
+
+    /**
+     * Queried live, not paged: the whole result is returned and {@code totalCount} is its size,
+     * so an FE paging on the envelope does not hide rows.
+     */
+    @Test
+    void byConceptReturnsEveryDatasetWithMatchingTotal() {
+        when(client.fetchDatasetsByConcept(CONCEPT))
+                .thenReturn(List.of(row("urn:b", "Beta"), row("urn:a", "Alfa")));
+
+        NkodDatasetListDto result = service.listDatasetsByConcept(CONCEPT);
+
+        assertThat(result.getDatasets()).hasSize(2);
+        assertThat(result.getTotalCount()).isEqualTo(2);
+    }
+
+    /** Czech collation, so {@code Č} sorts right after {@code C} rather than after {@code Z}. */
+    @Test
+    void byConceptSortsByTitleUsingCzechCollation() {
+        when(client.fetchDatasetsByConcept(CONCEPT)).thenReturn(List.of(
+                row("urn:z", "Zásoby"),
+                row("urn:c", "Cena"),
+                row("urn:cc", "Číslo"),
+                row("urn:d", "Doprava")));
+
+        NkodDatasetListDto result = service.listDatasetsByConcept(CONCEPT);
+
+        assertThat(result.getDatasets()).extracting(NkodDatasetListItemDto::getIri)
+                .containsExactly("urn:c", "urn:cc", "urn:d", "urn:z");
+    }
+
+    /** The title and description maps must reach the row, not just the IRI. */
+    @Test
+    void byConceptCarriesLabels() {
+        when(client.fetchDatasetsByConcept(CONCEPT)).thenReturn(List.of(
+                new NkodDatasetRow("urn:a", Map.of("cs", "Adresy"), Map.of("cs", "Popis adres"))));
+
+        NkodDatasetListDto result = service.listDatasetsByConcept(CONCEPT);
+
+        assertThat(result.getDatasets()).singleElement().satisfies(item -> {
+            assertThat(item.getName()).containsEntry("cs", "Adresy");
+            assertThat(item.getDescription()).containsEntry("cs", "Popis adres");
+        });
+    }
+
+    /**
+     * An unannotated concept is the expected state until publishers adopt {@code týká-se-pojmu},
+     * so it is an empty list rather than a 404 — the concept itself exists.
+     */
+    @Test
+    void byConceptReturnsEmptyListWhenConceptHasNoDatasets() {
+        when(client.fetchDatasetsByConcept(CONCEPT)).thenReturn(List.of());
+
+        NkodDatasetListDto result = service.listDatasetsByConcept(CONCEPT);
+
+        assertThat(result.getDatasets()).isEmpty();
+        assertThat(result.getTotalCount()).isZero();
+    }
+
+    /** The snapshot holds no annotations, so this path must not consult it. */
+    @Test
+    void byConceptDoesNotTouchSnapshot() {
+        when(client.fetchDatasetsByConcept(CONCEPT)).thenReturn(List.of());
+
+        service.listDatasetsByConcept(CONCEPT);
+
+        verify(snapshotHolder, never()).get();
+    }
+
+    @Test
+    void byConceptRejectsBlankIri() {
+        assertThatThrownBy(() -> service.listDatasetsByConcept("  "))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.listDatasetsByConcept(null))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(client, never()).fetchDatasetsByConcept(anyString());
+    }
+
+    /**
+     * A malformed IRI must 400, not come back as an empty list — otherwise an FE that
+     * mis-builds the link reads as "this concept has no datasets" and the bug stays invisible.
+     */
+    @Test
+    void byConceptRejectsMalformedIriRatherThanReturningEmpty() {
+        assertThatThrownBy(() -> service.listDatasetsByConcept("not-an-iri"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.listDatasetsByConcept("ftp://example.org/x"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.listDatasetsByConcept("https://x/a> } UNION { ?ds ?p ?o"))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(client, never()).fetchDatasetsByConcept(anyString());
+    }
+
+    /** A percent-encoded IRI is valid input and must pass validation, not 400. */
+    @Test
+    void byConceptAcceptsPercentEncodedIri() {
+        String encoded = "https://slovn%C3%ADk.gov.cz/generick%C3%BD/pojem/%C4%8D%C3%ADslo";
+        when(client.fetchDatasetsByConcept(encoded)).thenReturn(List.of());
+
+        assertThat(service.listDatasetsByConcept(encoded).getDatasets()).isEmpty();
+        verify(client).fetchDatasetsByConcept(encoded);
     }
 }

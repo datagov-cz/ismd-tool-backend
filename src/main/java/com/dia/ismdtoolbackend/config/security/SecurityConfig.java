@@ -151,6 +151,7 @@ public class SecurityConfig {
                         "/api/nkd/concept/detail",
                         "/api/nkod/dataset/all",
                         "/api/nkod/dataset/detail",
+                        "/api/nkod/concept/datasets",
                         "/api/rpp/agenda/search",
                         "/api/rpp/ais/search",
                         "/api/eli/law/search",
