@@ -1,11 +1,16 @@
 package com.dia.ismdtoolbackend.client.ai;
 
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyRegenerationRequestDto;
+
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiClassJobRequest;
 import com.dia.ismdtoolbackend.client.ai.dto.IsmdAiSelectedClassJobRequest;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiIdReferenceDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiKnownConceptualModelDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
@@ -113,6 +118,31 @@ class IsmdAiClientTest {
     @BeforeEach
     void resetServer() {
         wireMock.resetAll();
+    }
+
+    @Test
+    void forwardsVocabularyEditingWithCallerRefsAndSnakeCaseInOneRequestEach() {
+        String base = "/legal-acts/2024/1/2024-01-01/vocabulary-suggestions-jobs";
+        for (String op : List.of("expand", "regenerate")) {
+            wireMock.stubFor(post(urlEqualTo(base + "/" + op)).willReturn(aResponse().withHeader("Content-Type", "application/json")
+                    .withBody("{\"job_id\":\"" + FIRST_JOB_ID + "\",\"status\":\"in_progress\"}")));
+        }
+        var model = new AiKnownConceptualModelDto(List.of(new AiKnownConceptualModelDto.KnownClassTermDto(
+                "class-draft", Map.of("cs", "Motocykl"), null, null, AiTermType.CLASS, List.of(), null)), List.of(), List.of());
+        var expand = new AiVocabularyExpansionRequestDto(AiVocabularyExpansionRequestDto.Kind.PROPERTIES, 2,
+                "class-draft", List.of("/eli/cz/sb/2024/1/2024-01-01/par_1"), "Doplnit", model);
+        assertEquals(FIRST_JOB_ID, client.expandVocabulary(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 1), expand).jobId());
+        var regenerate = new AiVocabularyRegenerationRequestDto("class-draft", null, "Přepsat", model);
+        assertEquals(FIRST_JOB_ID, client.regenerateVocabularyConcept(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 1), regenerate).jobId());
+        wireMock.verify(1, postRequestedFor(urlEqualTo(base + "/expand"))
+                .withHeader("Authorization", equalTo("Bearer " + BEARER_TOKEN))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.kind", equalTo("properties")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.selected_class_id", equalTo("class-draft")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.known_conceptual_model.classes[0].termID", equalTo("class-draft"))));
+        wireMock.verify(1, postRequestedFor(urlEqualTo(base + "/regenerate"))
+                .withHeader("Authorization", equalTo("Bearer " + BEARER_TOKEN))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.concept_ref", equalTo("class-draft")))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.known_conceptual_model.classes[0].name.cs", equalTo("Motocykl"))));
     }
 
     @Test
@@ -354,6 +384,76 @@ class IsmdAiClientTest {
         );
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, exception.getStatusCode());
+    }
+
+    @Test
+    void vocabularyStart_forwardsCountsContextBearerAndExactUpstreamPath() {
+        String path = "/legal-acts/2025/7/2025-02-03/vocabulary-suggestions-jobs";
+        wireMock.stubFor(post(urlEqualTo(path)).willReturn(jsonResponse(HttpStatus.ACCEPTED,
+                "{\"job_id\":\"" + FIRST_JOB_ID + "\",\"status\":\"in_progress\"}")));
+        var request = new AiVocabularySuggestionRequestDto(2, 0, 3,
+                List.of("/eli/cz/sb/2025/7/2025-02-03/par_1"), "Vozidla", fullKnownConceptualModel());
+        assertEquals(FIRST_JOB_ID, client.startVocabularySuggestions(
+                BEARER_TOKEN, 2025, 7, LocalDate.of(2025, 2, 3), request).jobId());
+        wireMock.verify(1, postRequestedFor(urlEqualTo(path))
+                .withHeader(HttpHeaders.AUTHORIZATION, equalTo("Bearer " + BEARER_TOKEN))
+                .withRequestBody(equalToJson("""
+                        {"class_count":2,"properties_per_class":0,"relationships_per_class":3,
+                         "structural_element_ids":["/eli/cz/sb/2025/7/2025-02-03/par_1"],
+                         "context_text":"Vozidla","known_conceptual_model":%s}
+                        """.formatted(KNOWN_CONCEPTUAL_MODEL_JSON))));
+    }
+
+    @Test
+    void vocabularyStart_leavesDefaultsToAiAndRejectsEmptyUpstreamResponse() {
+        String path = "/legal-acts/2025/7/2025-02-03/vocabulary-suggestions-jobs";
+        wireMock.stubFor(post(urlEqualTo(path)).willReturn(aResponse().withStatus(202)));
+        assertThrows(org.springframework.web.client.RestClientException.class,
+                () -> client.startVocabularySuggestions(BEARER_TOKEN, 2025, 7, LocalDate.of(2025, 2, 3),
+                        new AiVocabularySuggestionRequestDto(null, null, null, null, null, null)));
+        wireMock.verify(postRequestedFor(urlEqualTo(path)).withRequestBody(equalToJson("""
+                {"class_count":null,"properties_per_class":null,"relationships_per_class":null,
+                 "structural_element_ids":null,"context_text":null,"known_conceptual_model":null}
+                """)));
+    }
+
+    @Test
+    void vocabularyPolling_preservesPartialDraftAndBothReferenceKinds() {
+        String path = "/legal-acts/vocabulary-suggestions-jobs?jobIds=" + FIRST_JOB_ID + "&jobIds=" + SECOND_JOB_ID;
+        wireMock.stubFor(get(urlEqualTo(path)).willReturn(jsonResponse(HttpStatus.OK, """
+                [{"job_id":"11111111-1111-1111-1111-111111111111","status":"failed",
+                  "draft":{"phase":"RELATIONSHIPS",
+                    "classes":[{"ref":"class-1","name":{"cs":"Vozidlo"},"definition":null,
+                      "explanation":null,"type":"CLASS","specializes":[{"iri":"https://example.test/vehicle"}],
+                      "legal_act":"/eli/cz/sb/2025/7"}],
+                    "attributes":[{"ref":"attribute-1","associated_class":{"ref":"class-1"},
+                      "name":{"cs":"Značka"},"definition":null,"explanation":null,"legal_act":"/eli/cz/sb/2025/7"}],
+                    "relationships":[{"ref":"relationship-1","source_class":{"ref":"class-1"},
+                      "target_class":{"iri":"https://example.test/person"},"name":{"cs":"Má vlastníka"},
+                      "definition":null,"explanation":null,"legal_act":"/eli/cz/sb/2025/7"}]}}
+                ]
+                """)));
+        var result = client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID, SECOND_JOB_ID)).get(0);
+        assertEquals(AiJobStatus.FAILED, result.status());
+        assertEquals(AiVocabularySuggestionsJobResponseDto.Phase.RELATIONSHIPS, result.draft().phase());
+        assertEquals("https://example.test/vehicle", result.draft().classes().get(0).specializes().get(0).iri());
+        assertEquals("class-1", result.draft().attributes().get(0).associatedClass().ref());
+        assertEquals("class-1", result.draft().relationships().get(0).sourceClass().ref());
+        assertEquals("https://example.test/person", result.draft().relationships().get(0).targetClass().iri());
+        wireMock.verify(1, getRequestedFor(urlEqualTo(path))
+                .withHeader(HttpHeaders.AUTHORIZATION, equalTo("Bearer " + BEARER_TOKEN)));
+    }
+
+    @Test
+    void vocabularyPolling_propagatesUpstreamErrorsAndRejectsMissingDraft() {
+        String path = "/legal-acts/vocabulary-suggestions-jobs?jobIds=" + FIRST_JOB_ID;
+        wireMock.stubFor(get(urlEqualTo(path)).willReturn(jsonResponse(HttpStatus.NOT_FOUND, "{}")));
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(RestClientResponseException.class,
+                () -> client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID))).getStatusCode());
+        wireMock.stubFor(get(urlEqualTo(path)).willReturn(jsonResponse(HttpStatus.OK,
+                "[{\"job_id\":\"" + FIRST_JOB_ID + "\",\"status\":\"in_progress\"}]")));
+        assertThrows(org.springframework.web.client.RestClientException.class,
+                () -> client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID)));
     }
 
     private static AiKnownConceptualModelDto fullKnownConceptualModel() {

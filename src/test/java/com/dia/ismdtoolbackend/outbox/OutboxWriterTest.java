@@ -8,6 +8,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.sys.JenaSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -34,7 +35,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>The whole class is {@code NOT_SUPPORTED} (no ambient @DataJpaTest transaction) so every test
  * drives its own transaction boundary via {@link TransactionTemplate} and commits real rows —
- * which is what makes the rollback assertion meaningful. {@code @AfterEach} cleans up.
+ * which is what makes the rollback assertion meaningful. Committed rows outlive the test, so the
+ * table is emptied both before and after each one.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -67,6 +69,19 @@ class OutboxWriterTest extends PostgresIntegrationTestBase {
         JenaSystem.init();
     }
 
+    /**
+     * Clean BEFORE as well as after. The assertions here count rows table-wide
+     * ({@code repository.count()}), and {@link PostgresIntegrationTestBase} shares ONE container
+     * across every subclass for the life of the JVM — so an {@code @AfterEach} alone leaves the
+     * first test in the class asserting against whatever an earlier class left behind. Surefire
+     * class order is unpinned and differs between platforms, which is what makes that a
+     * passes-locally-fails-in-CI failure rather than a consistent one.
+     */
+    @BeforeEach
+    void startFromEmpty() {
+        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
+    }
+
     @AfterEach
     void cleanUp() {
         txTemplate.executeWithoutResult(tx -> repository.deleteAll());
@@ -86,6 +101,22 @@ class OutboxWriterTest extends PostgresIntegrationTestBase {
         Resource subj = m.createResource(OutboxWriterTest.IRI);
         Property pred = m.createProperty(OutboxWriterTest.RDF_TYPE);
         return m.createStatement(subj, pred, m.createResource("http://www.w3.org/2004/02/skos/core#Concept"));
+    }
+
+    @Test
+    void createGraphSerializesEntireModelBeforeClose() {
+        Model model = ModelFactory.createDefaultModel();
+        var shared = model.createResource();
+        model.add(model.createResource(GRAPH), model.createProperty(PREF_LABEL), "Vocabulary");
+        model.add(model.createResource(IRI), model.createProperty(DEFINITION), shared);
+        model.add(shared, model.createProperty(PREF_LABEL), "Shared definition");
+        Model expected = ModelFactory.createDefaultModel().add(model);
+        txTemplate.executeWithoutResult(tx -> writer.enqueueCreateGraph(GRAPH, model));
+        model.close();
+        var row = repository.findAll().get(0);
+        assertThat(row.getOperation()).isEqualTo(OutboxOperation.CREATE_GRAPH);
+        assertThat(row.getAggregateIri()).isEqualTo(GRAPH);
+        assertThat(OutboxTriples.parse(row.getInsertTriples()).isIsomorphicWith(expected)).isTrue();
     }
 
     @Test

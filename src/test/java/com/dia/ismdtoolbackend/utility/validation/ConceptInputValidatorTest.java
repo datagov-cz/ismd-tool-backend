@@ -143,6 +143,33 @@ class ConceptInputValidatorTest {
         }
 
         @Test
+        void acceptsEveryAllowlistedGovernanceValue() {
+            List<String> sharing = List.of("veřejně přístupné", "poskytované na žádost",
+                    "nesdílené", "zpřístupňované pro výkon agendy");
+            List<String> acquisition = List.of("základních registrů", "jiných agend", "vlastní");
+            List<String> content = List.of("provozní", "identifikační", "evidenční", "statistické");
+
+            for (String s : sharing) {
+                ClassConceptModel m = createModel();
+                m.setSharingMethod(List.of(s));
+                assertTrue(ConceptInputValidator.validate(m).isEmpty(),
+                        "sharing method rejected: " + s);
+            }
+            for (String a : acquisition) {
+                ClassConceptModel m = createModel();
+                m.setAcquisitionMethod(a);
+                assertTrue(ConceptInputValidator.validate(m).isEmpty(),
+                        "acquisition method rejected: " + a);
+            }
+            for (String c : content) {
+                ClassConceptModel m = createModel();
+                m.setContentType(c);
+                assertTrue(ConceptInputValidator.validate(m).isEmpty(),
+                        "content type rejected: " + c);
+            }
+        }
+
+        @Test
         void rejectsMalformedAgendaAndAisCodes() {
             ClassConceptModel m = createModel();
             m.setAgendaCode("not-an-agenda");

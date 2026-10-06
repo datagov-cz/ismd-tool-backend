@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.Dev
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
+import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.NkdConceptSnapshotRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
@@ -27,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,6 +53,7 @@ class NkdSnapshotEndpointServiceImplTest {
     @Mock private NkdConceptSnapshotRepository snapshotRepository;
     @Mock private NkdSnapshotService nkdSnapshotService;
     @Mock private JenaTDB2Repository jenaTDB2Repository;
+    @Mock private ConceptMetadataRepository conceptMetadataRepository;
     @Mock private OutboxConfig outboxConfig;
     @Mock private OutboxWriter outboxWriter;
     @Mock private OutboxRelayTrigger outboxRelayTrigger;
@@ -133,6 +136,75 @@ class NkdSnapshotEndpointServiceImplTest {
         service.removeSnapshot(CONCEPT_ID, SNAPSHOT_ID);
 
         verify(nkdSnapshotService).removeSnapshotAndLink(eq(snapshot), any(), any());
+    }
+
+    // ---- M4: the owner's stale-base fingerprint must move with its RDF ---------------------------
+    // `concepts.updated_at` is what a staged diagram overlay is validated against (STALE_BASE). These
+    // paths mutate owner RDF, so leaving the column frozen makes the guard silently miss the change —
+    // and every SnapshotLinkType maps onto a stageable overlay field, so the collision is reachable.
+
+    @Test
+    void update_stampsOwnerUpdatedAt_whenRdfActuallyChanged() {
+        LocalDateTime before = LocalDateTime.now().minusDays(1);
+        owner.setUpdatedAt(before);
+        when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
+                .thenAnswer(inv -> {
+                    OwnerChangeSet cs = inv.getArgument(3);
+                    cs.toAdd.add(ModelFactory.createDefaultModel().createStatement(
+                            ModelFactory.createDefaultModel().createResource(NKD_IRI),
+                            org.apache.jena.vocabulary.RDFS.label, "copy"));
+                    return snapshot;
+                });
+        when(nkdSnapshotService.evaluateDeviation(snapshot))
+                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.HAS_DEVIATIONS).build());
+
+        service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
+
+        // The RDF delta was enqueued AND the fingerprint moved with it — the two must not diverge.
+        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), any(), any());
+        verify(conceptMetadataRepository).save(owner);
+        assertThat(owner.getUpdatedAt()).isAfter(before);
+    }
+
+    @Test
+    void remove_stampsOwnerUpdatedAt() {
+        LocalDateTime before = LocalDateTime.now().minusDays(1);
+        owner.setUpdatedAt(before);
+        when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
+        Model g = ModelFactory.createDefaultModel();
+        g.add(g.getResource(OWNER_IRI), org.apache.jena.vocabulary.RDFS.subClassOf, g.getResource(NKD_IRI));
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(g);
+        // The service contributes the unlink triple to the change set, so the flush actually fires.
+        org.mockito.Mockito.doAnswer(inv -> {
+            OwnerChangeSet cs = inv.getArgument(2);
+            cs.toRemove.add(g.listStatements().next());
+            return null;
+        }).when(nkdSnapshotService).removeSnapshotAndLink(eq(snapshot), any(), any());
+
+        service.removeSnapshot(CONCEPT_ID, SNAPSHOT_ID);
+
+        verify(conceptMetadataRepository).save(owner);
+        assertThat(owner.getUpdatedAt()).isAfter(before);
+    }
+
+    /** No RDF delta → no stamp. The fingerprint tracks real changes, not every call. */
+    @Test
+    void update_noDelta_leavesOwnerUpdatedAtAlone() {
+        LocalDateTime before = LocalDateTime.now().minusDays(1);
+        owner.setUpdatedAt(before);
+        when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
+        // Refresh yields no change-set entries at all.
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
+                .thenReturn(snapshot);
+        when(nkdSnapshotService.evaluateDeviation(snapshot))
+                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
+
+        service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
+
+        verify(outboxWriter, never()).enqueueUpsert(anyString(), anyString(), any(), any());
+        verify(conceptMetadataRepository, never()).save(any());
+        assertThat(owner.getUpdatedAt()).isEqualTo(before);
     }
 
     @Test

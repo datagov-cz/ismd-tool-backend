@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.*;
 import org.apache.jena.rdf.model.*;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
@@ -178,6 +179,13 @@ class ConceptCreatorTest {
         when(model.getRelatedNonLegalSource()).thenReturn(null);
         when(model.getExactMatch()).thenReturn(null);
         when(model.getIdentifier()).thenReturn(null);
+    }
+
+    /**
+     * Whether the created concept carries the given rdf:type, resolved in the concept's own model.
+     */
+    private static boolean hasType(Resource concept, String typeUri) {
+        return concept.hasProperty(RDF.type, concept.getModel().createResource(typeUri));
     }
 
     /**
@@ -799,7 +807,7 @@ class ConceptCreatorTest {
         }
 
         @Test
-        void createSingleConcept_ShouldCreateObjectPropertyWhenDatatypeIsNotXsdLiteral() {
+        void createSingleConcept_ShouldFallBackToLiteralRangeWhenDatatypeIsNotXsdLiteral() {
             // arrange
             setupBasicPropertyConcept("Object property", "SomeOtherClass");
             when(propertyConceptModel.getIdentifier()).thenReturn("OBJ-PROP");
@@ -812,6 +820,39 @@ class ConceptCreatorTest {
             assertNotNull(result);
             Resource range = result.getProperty(RDFS.range).getObject().asResource();
             assertEquals(RDFS.Literal.getURI(), range.getURI());
+        }
+
+        @Test
+        void createSingleConcept_ShouldNotTypePropertyAsObjectPropertyForClassValuedRange() {
+            // arrange — a VLASTNOST whose datatype names a class/codelist rather than an xsd type
+            setupBasicPropertyConcept("Object property", "SomeOtherClass");
+            when(propertyConceptModel.getIdentifier()).thenReturn("OBJ-PROP");
+            when(propertyConceptModel.getIsPublic()).thenReturn(Boolean.FALSE);
+
+            // act
+            Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
+
+            // assert — the declared type is VLASTNOST, so it must not also be an owl:ObjectProperty,
+            // which readers would surface as a Vztah
+            assertTrue(hasType(result, OFN_NAMESPACE + VLASTNOST));
+            assertTrue(hasType(result, OWL2.DatatypeProperty.getURI()));
+            assertFalse(hasType(result, OWL2.ObjectProperty.getURI()));
+            assertFalse(hasType(result, OFN_NAMESPACE + VZTAH));
+        }
+
+        @Test
+        void createSingleConcept_ShouldNotTypePlainDatatypePropertyAsObjectProperty() {
+            // arrange
+            setupBasicPropertyConcept("Plain property", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PLAIN-PROP");
+
+            // act
+            Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
+
+            // assert
+            assertTrue(hasType(result, OFN_NAMESPACE + VLASTNOST));
+            assertFalse(hasType(result, OWL2.ObjectProperty.getURI()));
+            assertFalse(hasType(result, OFN_NAMESPACE + VZTAH));
         }
 
         @Test

@@ -56,11 +56,23 @@ A link to a published NKD concept may only be made through:
 | super property (`superProperty`, VLASTNOST) | `rdfs:subPropertyOf` | `SUPER_PROPERTY` |
 | super relation (`superRelation`, VZTAH) | `rdfs:subPropertyOf` | `SUPER_RELATION` |
 | exact match (`exactMatch`, any type) | `skos:exactMatch` | `EXACT_MATCH` |
+| **range target** (`range`, **VZTAH only**) | `rdfs:range` | `RANGE_TARGET` |
 
-`domain` and `range` are **excluded** — `range` points at an XSD datatype, and a `domain` pointing
-at a published concept is invalid input. Pointing one of those at a confirmed-published NKD IRI is
-**hard-rejected (HTTP 400)** on the strict edit path. There is no concept-to-concept "related" link
-in the codebase, so `relatedConcept` is not applicable.
+`domain` is **excluded for every type** — a domain pointing at a published concept is invalid input —
+and `range` is excluded for a **VLASTNOST**, whose range points at an XSD datatype rather than a
+concept. Pointing either of those at a confirmed-published NKD IRI is **hard-rejected (HTTP 400)** on
+the strict edit path. There is no concept-to-concept "related" link in the codebase, so
+`relatedConcept` is not applicable.
+
+> **A VZTAH's `range` is the exception, and always was semantically.** A relationship's range names a
+> *class*, not a datatype, so pointing it at a published NKD concept is an ordinary cross-vocabulary
+> link — the same shape as `subClassOf` or `exactMatch`, and snapshotted the same way. The original
+> blanket exclusion of `range` was justified by the datatype argument, which only ever applied to a
+> VLASTNOST; it swept up the VZTAH case with it. This is what lets a diagram draw a relationship from
+> an owned class to an NKD one: only the VZTAH is written, in the owner's graph, referencing the NKD
+> IRI. NKD's own triples are never touched. The detector is `ConceptType`-aware on **both** sides —
+> `forbiddenDomainRangeTargets` skips `range` for a VZTAH, and `allowedTargets` collects it as
+> `RANGE_TARGET` only for a VZTAH.
 
 > **Locally-owned exemption.** The rejection applies only to targets **owned by someone else**. A
 > domain/range pointing at a locally-owned concept is allowed even when that concept is itself a

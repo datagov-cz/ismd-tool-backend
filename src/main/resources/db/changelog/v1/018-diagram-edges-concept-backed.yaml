@@ -1,0 +1,248 @@
+databaseChangeLog:
+  # Edges become concept-backed projections: a VZTAH is one edge keyed by its own concept IRI, not a node
+  # with a DOMAIN and a RANGE edge hanging off it. Endpoints are re-derived from rdfs:domain/rdfs:range on
+  # every read, so the persisted row keeps only waypoints. See .planning/diagram-edge-model-REDESIGN.md.
+
+  # Old rows carry an edge_kind the projector can no longer interpret and endpoints it now derives, so they
+  # are deleted rather than converted. The only loss is waypoints, which are re-drawable.
+  - changeSet:
+      id: 018-diagram-edges-truncate
+      author: richard.koubek
+      changes:
+        - delete:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+      # Irreversible by design: the dropped rows and columns held state the new model cannot
+      # reconstruct. The empty rollback makes a rollbackCount past 017 fail loudly rather than
+      # silently leave a half-migrated table.
+      rollback: [ ]
+
+  # Endpoint FKs go: source/target are projections of RDF now, and a stored copy could disagree with them.
+  - changeSet:
+      id: 018-diagram-edges-drop-endpoint-fks
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_node_id
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            constraintName: fk_diagram_edges_source_node
+        - dropForeignKeyConstraint:
+            baseTableSchemaName: ismd_schema
+            baseTableName: diagram_edges
+            constraintName: fk_diagram_edges_target_node
+        - dropIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_source_node_id
+        - dropIndex:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            indexName: idx_diagram_edges_target_node_id
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_node_id
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: target_node_id
+      # Irreversible by design; the empty rollback makes a rollbackCount past 017 fail loudly.
+      rollback: [ ]
+
+  # Handles duplicated source/target and went stale the moment an endpoint was repointed; ReactFlow renders
+  # an edge from source/target alone.
+  - changeSet:
+      id: 018-diagram-edges-drop-handles
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_handle
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: source_handle
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: target_handle
+      # Irreversible by design; the empty rollback makes a rollbackCount past 017 fail loudly.
+      rollback: [ ]
+
+  # edge_kind is derived from the backing concept (VZTAH) or the predicate (SUBCLASS_OF / EXACT_MATCH).
+  - changeSet:
+      id: 018-diagram-edges-drop-edge-kind
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_kind
+      changes:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_kind
+      # Irreversible by design; the empty rollback makes a rollbackCount past 017 fail loudly.
+      rollback: [ ]
+
+  # The projected edge id these waypoints belong to: a VZTAH's concept IRI, or the composite
+  # edge|KIND|source|target of a hierarchy link. TEXT rather than VARCHAR(n) because a hierarchy key
+  # concatenates two full concept IRIs of up to 1024 each.
+  - changeSet:
+      id: 018-diagram-edges-add-edge-key
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: edge_key
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: edge_key
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                  remarks: Projected edge id this row carries waypoints for.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_key
+
+  # H2 (test-only) maps TEXT to CLOB and cannot index it; the length ceiling is a Postgres-index concern, so
+  # a bounded VARCHAR suffices on fresh test schemas.
+  - changeSet:
+      id: 018-diagram-edges-add-edge-key-h2
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - dbms:
+                type: postgresql
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: edge_key
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: edge_key
+                  type: VARCHAR(2048)
+                  constraints:
+                    nullable: false
+                  remarks: Projected edge id this row carries waypoints for.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: edge_key
+
+  # One waypoint row per edge per diagram, so a second Save updates rather than duplicates. Hashed because a
+  # btree over the raw value would exceed Postgres's ~2704-byte index limit for long IRI pairs.
+  - changeSet:
+      id: 018-diagram-edges-unique-edge-key
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              CREATE UNIQUE INDEX uq_diagram_edges_diagram_edge_key
+                  ON ismd_schema.diagram_edges (diagram_id, md5(edge_key));
+      rollback:
+        - sql:
+            sql: DROP INDEX IF EXISTS ismd_schema.uq_diagram_edges_diagram_edge_key;
+
+  # H2 (test-only) cannot index an expression this way, and the length problem is Postgres-specific, so a
+  # plain unique constraint suffices there.
+  - changeSet:
+      id: 018-diagram-edges-unique-edge-key-h2
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - dbms:
+                type: postgresql
+      changes:
+        - addUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnNames: diagram_id, edge_key
+            constraintName: uq_diagram_edges_diagram_edge_key
+      rollback:
+        - dropUniqueConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            constraintName: uq_diagram_edges_diagram_edge_key
+
+  # Overlay fields removed with SUB_PROPERTY/SUB_RELATION. Jackson ignores stale keys on read, but a node
+  # whose overlay held only them would still count toward pendingChangeCount as a change the user can
+  # neither see nor resolve, so they are stripped explicitly.
+  #
+  # Only the dead keys go: an overlay may carry superProperty alongside a live domain change, and
+  # blanket-nulling would discard staged work the user can still materialize. Postgres-only, the jsonb
+  # surgery having no H2 equivalent and H2 holding no legacy overlays.
+  - changeSet:
+      id: 018-diagram-nodes-strip-removed-overlay-fields
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              UPDATE ismd_schema.diagram_nodes
+                 SET pending_edit_json = (pending_edit_json::jsonb - 'superProperty' - 'superRelation')::text
+               WHERE pending_edit_json IS NOT NULL
+                 AND jsonb_exists_any(pending_edit_json::jsonb,
+                                      array['superProperty', 'superRelation']);
+      # Irreversible by design; the empty rollback makes a rollbackCount past 017 fail loudly.
+      rollback: [ ]
+
+  # An overlay holding nothing but its stale-base fingerprint is not a pending change, so it is cleared and
+  # stops inflating pendingChangeCount.
+  - changeSet:
+      id: 018-diagram-nodes-clear-emptied-overlays
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              UPDATE ismd_schema.diagram_nodes
+                 SET pending_edit_json = NULL
+               WHERE pending_edit_json IS NOT NULL
+                 AND (pending_edit_json::jsonb - 'baseUpdatedAt') = '{}'::jsonb;
+      # Irreversible by design; the empty rollback makes a rollbackCount past 017 fail loudly.
+      rollback: [ ]

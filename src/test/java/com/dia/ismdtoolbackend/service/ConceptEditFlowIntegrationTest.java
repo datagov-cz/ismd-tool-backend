@@ -55,6 +55,8 @@ import static org.mockito.Mockito.*;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ConceptEditFlowIntegrationTest {
 
+    @Mock private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
+
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
     @Mock private OntologyMetadataRepository ontologyMetadataRepository;
     @Mock private ConceptMetadataMapper conceptMetadataMapper;
@@ -88,11 +90,13 @@ class ConceptEditFlowIntegrationTest {
         com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector linkDetector =
                 new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
         conceptService = new ConceptServiceImpl(
-                conceptMetadataRepository, ontologyMetadataRepository, conceptMetadataMapper,
+                conceptMetadataRepository, ontologyMetadataRepository,
+                org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.impl.MetadataTouchService.class),
+                conceptMetadataMapper,
                 conceptCreator, realEditor, jenaTDB2Repository, detailExtractor,
                 commentRepository, nkdSparqlClient, deviationComparator,
                 rppSnapshotHolder, referencedConceptsEnricher,
-                outboxConfig, outboxWriter, outboxRelayTrigger,
+                outboxConfig, outboxWriter, outboxRepository, outboxRelayTrigger,
                 nkdSnapshotService, linkDetector,
                 new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
                 org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),

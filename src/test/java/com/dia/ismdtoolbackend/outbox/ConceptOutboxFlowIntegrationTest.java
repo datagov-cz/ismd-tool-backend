@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
@@ -163,6 +164,10 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
             return c;
         }
         @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
+        @Bean MetadataTouchService metadataTouchService(ConceptMetadataRepository c,
+                                                        OntologyMetadataRepository o) {
+            return new MetadataTouchService(c, o);
+        }
         @Bean @Primary ConceptMetadataMapper conceptMetadataMapper() { return new ConceptMetadataMapperImpl(); }
         @Bean OutboxWriter outboxWriter(OutboxEntryRepository r) { return new OutboxWriter(r); }
         @Bean OutboxRelay outboxRelay(OutboxEntryRepository r, InMemoryTdb2 t, OutboxConfig c) {
@@ -173,9 +178,10 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         @Bean ConceptServiceImpl conceptServiceImpl(
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
-                OutboxConfig outboxConfig, OutboxWriter writer, OutboxRelayTrigger trigger) {
+                OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
+                MetadataTouchService touchService) {
             return new ConceptServiceImpl(
-                    conceptRepo, ontologyRepo, mapper,
+                    conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
                     mock(OntologyDetailExtractor.class),
                     mock(com.dia.ismdtoolbackend.repository.CommentRepository.class),
@@ -183,7 +189,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     mock(ConceptDeviationComparator.class),
                     mock(RppSnapshotHolder.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, trigger,
+                    outboxConfig, writer, outboxRepository, trigger,
                     // No external NKD links in this flow's test data → real detector returns empty and the
                     // mocked snapshot service is never called; reconcileNkdLinks is a no-op here.
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),

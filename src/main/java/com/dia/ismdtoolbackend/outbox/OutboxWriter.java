@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.Model;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.Assert;
@@ -43,6 +44,13 @@ public class OutboxWriter {
         OutboxEntry entry = newEntry(graphName, aggregateIri, OutboxOperation.UPSERT_CONCEPT);
         entry.setDeleteTriples(OutboxTriples.toNTriples(statementsToRemove));
         entry.setInsertTriples(OutboxTriples.toNTriples(statementsToAdd));
+        return persist(entry);
+    }
+
+    /** Serialize before the caller closes its model; persist in the metadata transaction. */
+    public OutboxEntry enqueueCreateGraph(String graphName, Model model) {
+        OutboxEntry entry = newEntry(graphName, graphName, OutboxOperation.CREATE_GRAPH);
+        entry.setInsertTriples(OutboxTriples.toNTriples(model.listStatements().toList()));
         return persist(entry);
     }
 

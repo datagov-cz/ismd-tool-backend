@@ -9,6 +9,14 @@ spring:
     password: password
     driver-class-name: org.h2.Driver
 
+    # Every Postgres-backed test class is its own Spring context with its own pool, and the test
+    # context cache keeps them all alive for the JVM. Small pools that drain when idle keep the
+    # shared container's connection slots available.
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 0
+      idle-timeout: 10000
+
   jpa:
     hibernate:
       ddl-auto: validate

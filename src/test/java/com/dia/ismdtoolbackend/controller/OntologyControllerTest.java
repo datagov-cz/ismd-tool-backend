@@ -6,6 +6,10 @@ import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
 import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
+import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
+import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.sample;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
@@ -16,14 +20,20 @@ import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.models.*;
-import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.validation.ValidationReportDto;
+import com.dia.validation.ValidationResult;
+import com.dia.validation.ValidationSeverity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -86,7 +96,7 @@ class OntologyControllerTest {
     private ValidationConfig validationConfig;
 
     @MockitoBean
-    private NkdDetailService nkdDetailService;
+    private ReferencedConceptResolutionEngine referencedConceptResolutionEngine;
 
     @MockitoBean
     private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
@@ -97,6 +107,85 @@ class OntologyControllerTest {
     void setUp() {
         // Reset security service to allow modifications by default
         TestOntologySecurityService.reset();
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void createWithConcepts_ReturnsCreatedAndRefMapping() throws Exception {
+        var response = new OntologyCreateWithConceptsResponseDto(new OntologyMetadataModel(), java.util.Map.of("driver", "https://example.org/driver"));
+        when(ontologyService.createWithConcepts(any(), eq("user123"))).thenReturn(response);
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(sample())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.conceptIris.driver").value("https://example.org/driver"));
+        verify(ontologyService).createWithConcepts(argThat(r -> r.classes().size() == 2 && r.attributes().size() == 1 && r.relationships().size() == 1), eq("user123"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void createWithConcepts_ConflictReturns409() throws Exception {
+        when(ontologyService.createWithConcepts(any(), anyString())).thenThrow(new OntologyCreationConflictException("IRI is taken"));
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsString(sample())))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void createWithConcepts_RejectsMissingCollectionsAndNullTerms() throws Exception {
+        var json = new ObjectMapper().valueToTree(sample());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) json).remove("classes");
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
+                .andExpect(status().isBadRequest());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) json).putArray("classes").addNull();
+        mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(ontologyService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void checkIri_AcceptsNameAndNamespaceWithoutDescription() throws Exception {
+        when(ontologyService.checkIri(any())).thenReturn(
+                new OntologyIriCheckResponseDto("http://example.org/test", true, true));
+
+        mockMvc.perform(post("/api/ontology/check-iri")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"namespace":"http://example.org/","nameModel":{"name":{"cs":"Test"}}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.iri").value("http://example.org/test"))
+                .andExpect(jsonPath("$.data.valid").value(true))
+                .andExpect(jsonPath("$.data.available").value(true));
+        verify(ontologyService).checkIri(argThat(request -> request.namespace().equals("http://example.org/")
+                && request.nameModel().getName().get("cs").equals("Test")));
+        verifyNoMoreInteractions(ontologyService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void checkIri_MissingNameModel_ReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/ontology/check-iri")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(ontologyService);
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void checkIri_InvalidIri_ReturnsFlags() throws Exception {
+        when(ontologyService.checkIri(any())).thenReturn(new OntologyIriCheckResponseDto("invalid", false, false));
+        mockMvc.perform(post("/api/ontology/check-iri")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"namespace":"invalid","nameModel":{"name":{"cs":"Test"}}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.valid").value(false))
+                .andExpect(jsonPath("$.data.available").value(false));
     }
 
     @Test
@@ -401,6 +490,126 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_fileTooLarge_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadFileTooLargeException("Soubor překračuje maximální povolenou velikost (10 MB)."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FILE_TOO_LARGE"))
+                .andExpect(jsonPath("$.message").value("Soubor překračuje maximální povolenou velikost (10 MB)."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_unparseableRdf_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadParseException("Chyba při zpracování RDF souboru: [line: 1, col: 34] Undefined prefix: undeclared"));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_PARSE_FAILED"))
+                .andExpect(jsonPath("$.message").value("Chyba při zpracování RDF souboru: [line: 1, col: 34] Undefined prefix: undeclared"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_parseTimeout_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadParseTimeoutException("Zpracování RDF souboru překročilo časový limit (60 s)."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_PARSE_TIMEOUT"))
+                .andExpect(jsonPath("$.message").value("Zpracování RDF souboru překročilo časový limit (60 s)."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_missingOntologyIri_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadMissingIriException("Z RDF dat nelze odvodit IRI slovníku."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_ONTOLOGY_IRI_MISSING"))
+                .andExpect(jsonPath("$.message").value("Z RDF dat nelze odvodit IRI slovníku."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_rdfStoreFailure_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException("Uložení slovníku do RDF úložiště (TDB2) selhalo: connection refused", new RuntimeException("connection refused")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_STORE_FAILED"))
+                .andExpect(jsonPath("$.message").value("Uložení slovníku do RDF úložiště (TDB2) selhalo: connection refused"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_metadataFailure_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException("Uložení metadat slovníku selhalo: DB failure", new RuntimeException("DB failure")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_METADATA_SAVE_FAILED"))
+                .andExpect(jsonPath("$.message").value("Uložení metadat slovníku selhalo: DB failure"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_duplicate_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException("Slovník se stejným IRI již v Nástroji existuje: http://example.org/test", new OntologyMetadataModel()));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_ALREADY_EXISTS"))
+                .andExpect(jsonPath("$.message").value("Slovník se stejným IRI již v Nástroji existuje: http://example.org/test"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_unclassifiedUploadFailure_returnsSpecificStatusCodeAndMessage() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadException("Zpracování RDF souboru bylo přerušeno."));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Zpracování RDF souboru bylo přerušeno."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testDeleteOntology_Success() throws Exception {
         Long ontologyId = 1L;
 
@@ -614,6 +823,111 @@ class OntologyControllerTest {
         mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
                         .param("format", "ttl"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testDownloadOntology_BlockedByValidationErrors_ReturnsErrorDetails() throws Exception {
+        Long ontologyId = 21L;
+        OntologyMetadataModel metadata = new OntologyMetadataModel();
+        metadata.setId(ontologyId);
+        metadata.setGraphName("https://example.com/slovnik");
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
+        when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
+        when(validationService.getValidationReport(metadata)).thenReturn(
+                new ValidationReportDto(
+                        List.of(
+                                new ValidationResult(ValidationSeverity.ERROR, "Pojem nemá název", "rule-nazev",
+                                        "https://example.com/pojem/1", "http://www.w3.org/2004/02/skos/core#prefLabel", null),
+                                new ValidationResult(ValidationSeverity.WARNING, "Doporučujeme popis", "rule-popis",
+                                        "https://example.com/pojem/2", null, null)),
+                        metadata.getGraphName(),
+                        Instant.now()));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "json-ld"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION"))
+                .andExpect(jsonPath("$.message").value("Slovník nelze stáhnout, protože obsahuje 1 chybu z kontroly. Opravte je a spusťte kontrolu znovu."))
+                .andExpect(jsonPath("$.data.graphName").value("https://example.com/slovnik"))
+                .andExpect(jsonPath("$.data.errorCount").value(1))
+                .andExpect(jsonPath("$.data.truncated").value(false))
+                // only the ERROR is listed; the WARNING does not block and is not reported here
+                .andExpect(jsonPath("$.data.errors.length()").value(1))
+                .andExpect(jsonPath("$.data.errors[0].ruleName").value("rule-nazev"))
+                .andExpect(jsonPath("$.data.errors[0].message").value("Pojem nemá název"))
+                .andExpect(jsonPath("$.data.errors[0].focusNodeUri").value("https://example.com/pojem/1"));
+
+        verify(ontologyDownloadService, never()).downloadOntology(anyLong(), anyString());
+    }
+
+    @Test
+    void testDownloadOntology_BlockedWithManyErrors_TruncatesListButKeepsFullCount() throws Exception {
+        Long ontologyId = 21L;
+        OntologyMetadataModel metadata = new OntologyMetadataModel();
+        metadata.setId(ontologyId);
+        metadata.setGraphName("https://example.com/slovnik");
+
+        List<ValidationResult> results = IntStream.range(0, 38)
+                .mapToObj(i -> new ValidationResult(ValidationSeverity.ERROR, "Chyba " + i, "rule-" + i,
+                        "https://example.com/pojem/" + i, null, null))
+                .collect(Collectors.toList());
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
+        when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
+        when(validationService.getValidationReport(metadata)).thenReturn(
+                new ValidationReportDto(results, metadata.getGraphName(), Instant.now()));
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "json-ld"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION"))
+                .andExpect(jsonPath("$.message").value("Slovník nelze stáhnout, protože obsahuje 38 chyb z kontroly. Opravte je a spusťte kontrolu znovu."))
+                .andExpect(jsonPath("$.data.errorCount").value(38))
+                .andExpect(jsonPath("$.data.truncated").value(true))
+                .andExpect(jsonPath("$.data.errors.length()").value(20));
+    }
+
+    @Test
+    void testDownloadOntology_WarningsOnly_IsNotBlocked() throws Exception {
+        Long ontologyId = 1L;
+        String ttlContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .";
+        OntologyMetadataModel metadata = new OntologyMetadataModel();
+        metadata.setId(ontologyId);
+        metadata.setGraphName("https://example.com/slovnik");
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(false);
+        when(ontologyService.getOntologyMetadata(ontologyId)).thenReturn(metadata);
+        when(validationService.getValidationReport(metadata)).thenReturn(
+                new ValidationReportDto(
+                        List.of(new ValidationResult(ValidationSeverity.WARNING, "Doporučujeme popis", "rule-popis",
+                                "https://example.com/pojem/2", null, null)),
+                        metadata.getGraphName(),
+                        Instant.now()));
+        when(ontologyDownloadService.downloadOntology(ontologyId, "ttl")).thenReturn(ttlContent);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "ttl"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(ttlContent));
+    }
+
+    @Test
+    void testDownloadOntology_ErrorsAllowedByConfig_IsNotBlocked() throws Exception {
+        Long ontologyId = 21L;
+        String ttlContent = "@prefix owl: <http://www.w3.org/2002/07/owl#> .";
+
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(true);
+        when(ontologyDownloadService.downloadOntology(ontologyId, "ttl")).thenReturn(ttlContent);
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+                        .param("format", "ttl"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(ttlContent));
+
+        // the report is not even read when downloads with errors are permitted
+        verify(validationService, never()).getValidationReport(any());
     }
 
     // ========== Get Ontology Detail Tests ==========

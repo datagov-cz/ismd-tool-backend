@@ -22,5 +22,12 @@ public class FragmentDto {
      * endpoint ({@code /api/eli/law/fragments}) and for structural fragments with no text.
      */
     private String bodyHtml;
+    /**
+     * Whether this node is a navigable step in the law's structure. False for unnumbered text
+     * blocks ({@code frag_*} with no children), which carry body text but no citation and so
+     * would render as a blank navigation entry. Such nodes still belong in the rendered body —
+     * consumers building navigation skip them, consumers rendering text do not.
+     */
+    private boolean navigable = true;
     private List<FragmentDto> children = new ArrayList<>();
 }

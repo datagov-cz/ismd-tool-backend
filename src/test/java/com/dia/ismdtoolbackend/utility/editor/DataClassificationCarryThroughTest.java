@@ -16,11 +16,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Phase C guards the one field where "leave it null" is NOT a safe no-op:
- * {@link ConceptFieldUpdaters#updateDataClassification} has no null guard and is called unconditionally
- * by every type editor, so a null {@code isPublic} strips the veřejný/neveřejný type and never re-adds it.
+ * Phase C protects the one field where "leave it null" was NOT a safe no-op:
+ * {@link ConceptFieldUpdaters#updateDataClassification} is called unconditionally by every type editor.
+ * Its null guard now leaves the veřejný/neveřejný type untouched when nothing about the classification
+ * is being edited (a null {@code isPublic} and no provisions), so a field-scoped edit — e.g. the diagram
+ * overlay — can no longer silently strip the classification.
  *
- * <p>These tests pin that behaviour (so the guard is not silently removed) and prove the fix —
+ * <p>These tests pin that guard (so it is not silently removed) and prove the carry-through path —
  * {@code ConceptServiceImpl.carryCurrentDataClassification} passes the CURRENT value through when the
  * user did not accept the field.
  */
@@ -50,15 +52,16 @@ class DataClassificationCarryThroughTest {
     }
 
     @Test
-    void nullIsPublic_stripsClassification_theTrapPhaseCMustAvoid() {
+    void nullIsPublic_leavesClassificationUntouched_theTrapPhaseCAvoids() {
         Fixture f = publicConcept();
 
-        // What a naive "leave unaccepted fields null" sync would do.
+        // A field-scoped edit that does not touch the classification (null isPublic, no provisions):
+        // the guard must leave the veřejný type in place — neither removed nor re-added.
         fields.updateDataClassification(f.concept(), null, null, f.concept(), f.model(),
                 f.toRemove(), f.toAdd());
 
-        assertTrue(removes(f), "null isPublic removes the veřejný type");
-        assertFalse(reAdds(f), "…and never re-adds it — silent data loss");
+        assertFalse(removes(f), "null isPublic must NOT remove the veřejný type — no silent data loss");
+        assertFalse(reAdds(f), "…and there is nothing to re-add — the classification is left as-is");
     }
 
     @Test
