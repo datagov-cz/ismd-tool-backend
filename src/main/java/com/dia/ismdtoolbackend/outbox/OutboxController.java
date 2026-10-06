@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
+import com.dia.ismdtoolbackend.enums.ErrorCode;
 import com.dia.ismdtoolbackend.outbox.dto.OutboxEntryDto;
 import com.dia.ismdtoolbackend.outbox.dto.OutboxStatusDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -61,6 +62,7 @@ public class OutboxController {
         boolean reset = adminService.retry(id);
         if (!reset) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
+                    ErrorCode.OUTBOX_ROW_NOT_RETRYABLE,
                     "Row " + id + " not found or not in FAILED state; nothing to retry."));
         }
         return ResponseEntity.ok(ApiResponseDto.success("Row " + id + " reset to PENDING for retry"));
