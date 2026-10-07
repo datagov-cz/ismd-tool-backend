@@ -94,17 +94,38 @@ public class NkodSparqlClient {
     }
 
     /**
+     * The datasets annotated with one concept, newest-first ordering left to the caller.
+     *
+     * <p>Returns an empty list both when the concept has no datasets and when the IRI is
+     * unsafe.
+     *
+     * <p>Queried live rather than served from the harvested snapshot: the snapshot carries only
+     * titles and descriptions, not the {@code týká-se-pojmu} annotations this reads.
+     */
+    public List<NkodDatasetRow> fetchDatasetsByConcept(String conceptIri) {
+        String normalized = SparqlSolutions.toRawUtf8(conceptIri);
+        String query = NKODSPARQLDatasetQuery.buildDatasetsByConceptQuery(
+                normalized, config.getSnapshot().getMaxRows());
+        if (query == null) {
+            log.warn("Rejected unsafe concept IRI for NKOD dataset lookup: {}", conceptIri);
+            return List.of();
+        }
+        return executor.select("NKOD datasets by concept", query, this::mapHarvestRows);
+    }
+
+    /**
      * Full detail of one dataset, or empty when the dataset is absent from the catalogue.
      *
      * <p>The detail query is all-OPTIONAL, so a dataset with no title is indistinguishable
      * from a missing one by its rows alone — an ASK probe settles it, and only then do we
      * spend a second round-trip.
      */
-    public Optional<NkodDatasetDetail> fetchDatasetDetail(String datasetIri) {
+    public Optional<NkodDatasetDetail> fetchDatasetDetail(String rawDatasetIri) {
+        String datasetIri = SparqlSolutions.toRawUtf8(rawDatasetIri);
         String existsQuery = NKODSPARQLDatasetQuery.buildDatasetExistsQuery(datasetIri);
         String detailQuery = NKODSPARQLDatasetQuery.buildDatasetDetailQuery(datasetIri);
         if (existsQuery == null || detailQuery == null) {
-            log.warn("Rejected unsafe NKOD dataset IRI: {}", datasetIri);
+            log.warn("Rejected unsafe NKOD dataset IRI: {}", rawDatasetIri);
             return Optional.empty();
         }
 

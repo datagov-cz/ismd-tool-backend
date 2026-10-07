@@ -22,6 +22,7 @@ import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
+import com.dia.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
@@ -237,7 +238,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                             Comparator.nullsLast(Comparator.naturalOrder()));
 
     /**
-     * Rewrite a legacy e-Sbírka host to the canonical one, leaving everything else untouched.
+     * Rewrite a legacy e-Sbírka host to the canonical one and strip trailing slashes, leaving
+     * everything else untouched.
      *
      * <p>Every e-Sbírka IRI entering this service passes through here before it is validated,
      * compared or cached, so all endpoints accept the same host spellings that {@code /resolve}
@@ -245,12 +247,17 @@ public class EsbirkaServiceImpl implements EsbirkaService {
      * SpEL keys below, so it must stay {@code public}.
      */
     public String canonicalizeEsbirkaIri(String iri) {
-        return iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        return canonicalize(iri);
+    }
+
+    private static String canonicalize(String iri) {
+        return iri == null ? null
+                : UtilityMethods.removeTrailingSlash(EsbirkaEliParser.canonicalizeHost(iri.trim()));
     }
 
     /** Canonicalize, then validate — a legacy host is a spelling, not an invalid identifier. */
     private static String requireValidIri(String iri, String message) {
-        String canonical = iri == null ? null : EsbirkaEliParser.canonicalizeHost(iri.trim());
+        String canonical = canonicalize(iri);
         if (!SparqlIriValidator.isEsbirkaEliIri(canonical)) {
             throw new IllegalArgumentException(message);
         }

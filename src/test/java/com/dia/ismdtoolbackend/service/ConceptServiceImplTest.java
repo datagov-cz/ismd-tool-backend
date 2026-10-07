@@ -206,6 +206,20 @@ class ConceptServiceImplTest {
     }
 
     @Test
+    void createConcept_stripsTrailingSlashFromIrisBeforeCreating() {
+        ConceptCreateModel createModel = createValidConceptCreateModel();
+        createModel.setExactMatch(List.of("https://example.org/pojem/osoba/"));
+
+        when(conceptCreator.createSingleConcept(createModel)).thenReturn(testResource);
+        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+
+        assertThrows(ConceptValidationException.class,
+                () -> conceptService.createConcept(createModel, TEST_USER_ID));
+
+        assertEquals(List.of("https://example.org/pojem/osoba"), createModel.getExactMatch());
+    }
+
+    @Test
     void createConcept_NullUserId() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
 
@@ -567,6 +581,28 @@ class ConceptServiceImplTest {
         verify(metadataTouchService, never()).touchConceptAndOntology(any());
         assertEquals(before, testConceptEntity.getUpdatedAt(),
                 "a no-op edit must not bump updatedAt — it would falsely invalidate staged overlays");
+    }
+
+    @Test
+    void editConcept_stripsTrailingSlashFromIrisBeforeEditing() {
+        ConceptEditModel editModel = createValidConceptEditModel();
+        editModel.setExactMatch(List.of("https://example.org/pojem/osoba/"));
+        testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
+
+        when(conceptMetadataRepository.findById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
+        when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
+                .thenAnswer(invocation -> {
+                    ConceptEditModel seen = invocation.getArgument(1);
+                    assertEquals(List.of("https://example.org/pojem/osoba"), seen.getExactMatch());
+                    return new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
+                });
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+
+        conceptService.editConcept(TEST_CONCEPT_ID, editModel);
+
+        verify(conceptEditor).editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any());
     }
 
     /** A failed edit must not persist a stamp: it throws before the save, and the tx rolls back. */

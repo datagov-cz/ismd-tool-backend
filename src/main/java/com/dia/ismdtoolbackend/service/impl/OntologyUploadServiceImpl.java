@@ -5,6 +5,12 @@ import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadFileTooLargeException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadMissingIriException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadParseException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadParseTimeoutException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
@@ -135,7 +141,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
         long maxBytes = DataSize.parse(maxFileSizeConfig).toBytes();
         if (file.getSize() > maxBytes) {
-            throw new OntologyUploadException(
+            throw new OntologyUploadFileTooLargeException(
                     String.format("Soubor překračuje maximální povolenou velikost (%d MB).", maxBytes / (1024 * 1024))
             );
         }
@@ -194,7 +200,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             try {
                 jenaTDB2Repository.putOntologyModel(graphName, finalModel);
             } catch (Exception e) {
-                throw new OntologyUploadException("Failed to save ontology to TDB2: " + e.getMessage(), e);
+                throw new OntologyUploadRdfStoreException(
+                        "Uložení slovníku do RDF úložiště (TDB2) selhalo: " + e.getMessage(), e);
             }
 
             // 6. Save metadata to PostgreSQL — protected by @Transactional
@@ -217,7 +224,8 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 } catch (Exception tdbException) {
                     log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
                 }
-                throw new OntologyUploadException("Failed to upload ontology: " + e.getMessage(), e);
+                throw new OntologyUploadMetadataException(
+                        "Uložení metadat slovníku selhalo: " + e.getMessage(), e);
             }
 
             String ontologyContent = convertOntModelToTtl(finalModel);
@@ -297,7 +305,7 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         // which produces orphan concepts whose namespace diverges from the graph.
         String ontologyIRI = extractOntologyIRI(model);
         if (ontologyIRI == null) {
-            throw new OntologyUploadException(
+            throw new OntologyUploadMissingIriException(
                     "Z RDF dat nelze odvodit IRI slovníku (chybí owl:Ontology nebo skos:ConceptScheme). "
                             + "Slovník nelze nahrát bez identity odvozené z dat.");
         }
@@ -410,28 +418,23 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             Future<?> future = executor.submit(() -> {
                 try (ByteArrayInputStream inputStream = new ByteArrayInputStream(fileBytes)) {
                     RDFDataMgr.read(uploadedModel, inputStream, rdfLang);
-                } catch (IOException e) {
-                    throw new OntologyUploadException(e.getMessage());
+                    return null;
                 }
             });
             future.get(rdfParsingTimeoutSeconds, TimeUnit.SECONDS);
+            return uploadedModel;
         } catch (TimeoutException e) {
             log.error("RDF parsing timed out after {} seconds", rdfParsingTimeoutSeconds);
-            throw new OntologyUploadException("Zpracování RDF souboru překročilo časový limit (" + rdfParsingTimeoutSeconds + " s).");
+            throw new OntologyUploadParseTimeoutException("Zpracování RDF souboru překročilo časový limit (" + rdfParsingTimeoutSeconds + " s).");
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException re) {
-                throw re;
-            }
-            throw new OntologyUploadException("Chyba při zpracování RDF souboru: " + cause.getMessage(), cause);
+            throw new OntologyUploadParseException("Chyba při zpracování RDF souboru: " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new OntologyUploadException("Zpracování RDF souboru bylo přerušeno.");
         } finally {
             executor.shutdownNow();
         }
-
-        return uploadedModel;
     }
 
     private String convertOntModelToTtl(OntModel model) throws RuntimeException {

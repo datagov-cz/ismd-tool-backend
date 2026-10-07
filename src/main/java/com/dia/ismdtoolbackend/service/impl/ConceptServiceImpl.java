@@ -43,6 +43,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.validation.ConceptCreateValidator;
+import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
@@ -116,6 +117,7 @@ public class ConceptServiceImpl implements ConceptService {
                 createModel.getConceptType(), createModel.getNameModel(),
                 createModel.getNamespace(), userId);
 
+        ConceptIriNormalizer.normalize(createModel);
         ConceptCreateValidator.validate(createModel, userId);
 
         Resource conceptResource = createConceptResource(createModel);
@@ -217,6 +219,8 @@ public class ConceptServiceImpl implements ConceptService {
                                      boolean severWorkingCopyOnRename) {
         log.info("Editing concept: ID={}, type={}",
                 conceptId, conceptEditModel.getConceptType());
+
+        ConceptIriNormalizer.normalize(conceptEditModel);
 
         // On the outbox path, take a row lock FIRST so two concurrent edits of the same concept are
         // serialized — see ConceptMetadataRepository.findWithLockById. The lock must be the first DB
