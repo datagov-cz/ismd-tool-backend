@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models.concept;
 
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import org.apache.jena.ontology.OntologyException;
 
 import java.util.List;
@@ -48,8 +49,10 @@ public final class ConceptValidationUtil {
         }
     }
 
+    /** The NKOD dataset IRI, in raw UTF-8 or percent-encoded form. */
     public static void validateCodeListDataset(String codeListDataset) {
-        if (codeListDataset != null && !codeListDataset.trim().isEmpty() && !codeListDataset.matches(NKOD_DATASET_PATTERN)) {
+        if (codeListDataset != null && !codeListDataset.trim().isEmpty()
+                && !SparqlSolutions.toRawUtf8(codeListDataset).matches(NKOD_DATASET_PATTERN)) {
             throw new OntologyException("Neplatná URL datové sady v NKOD: " + codeListDataset);
         }
     }

@@ -231,6 +231,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
                     mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
                     mock(ConceptDeviationComparator.class),
                     mock(RppSnapshotHolder.class),
+                    mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class),
                     outboxConfig, writer, outboxRepository, trigger,
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),

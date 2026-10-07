@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.config.security;
 
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistSnapshotHolder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -13,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.lang.reflect.Method;
@@ -63,6 +66,13 @@ class SecurityFilterChainIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    /** Stubbed, with its snapshot holder, so /api/codelist/nkod never reaches the live catalogue. */
+    @MockitoBean
+    private NkodCodelistService nkodCodelistService;
+
+    @MockitoBean
+    private NkodCodelistSnapshotHolder nkodCodelistSnapshotHolder;
 
     // ── Bean introspection tests ──────────────────────────────────────────
 
@@ -138,6 +148,7 @@ class SecurityFilterChainIntegrationTest {
             "/api/eli/resolve",
             // Codelist (wildcard)
             "/api/codelist/property-datatypes",
+            "/api/codelist/nkod",
             // OpenAPI / Swagger
             "/v3/api-docs",
             "/swagger-ui/index.html",

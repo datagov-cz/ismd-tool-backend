@@ -58,6 +58,47 @@ class ConceptValidationUtilCodeListTest {
     }
 
     @Nested
+    @DisplayName("validateCodeListDataset")
+    class DatasetFormat {
+
+        @Test
+        void acceptsRawUtf8DatasetIri() {
+            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset(NKOD_DATASET));
+        }
+
+        @Test
+        void acceptsPercentEncodedDatasetIri() {
+            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset(
+                    NKOD_DATASET.replace("datové-sady", "datov%C3%A9-sady")));
+        }
+
+        @Test
+        void toleratesNullAndBlank() {
+            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset(null));
+            assertDoesNotThrow(() -> ConceptValidationUtil.validateCodeListDataset("  "));
+        }
+
+        @Test
+        void rejectsADatasetOutsideNkod() {
+            assertThrows(OntologyException.class, () ->
+                    ConceptValidationUtil.validateCodeListDataset("https://not-nkod.example/dataset/x"));
+        }
+
+        @Test
+        void rejectsAnEncodedIriThatIsNotAnNkodDataset() {
+            assertThrows(OntologyException.class, () ->
+                    ConceptValidationUtil.validateCodeListDataset(
+                            "https://data.gov.cz/zdroj/datov%C3%A9-s%C3%A1dy/x"));
+        }
+
+        @Test
+        void rejectsAMalformedEscape() {
+            assertThrows(OntologyException.class, () ->
+                    ConceptValidationUtil.validateCodeListDataset("https://data.gov.cz/zdroj/datov%zz-sady/x"));
+        }
+    }
+
+    @Nested
     @DisplayName("validateCodeListIri")
     class IriFormat {
 
