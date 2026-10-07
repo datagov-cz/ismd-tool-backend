@@ -28,7 +28,6 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxOperation;
 import com.dia.ismdtoolbackend.outbox.OutboxStatus;
@@ -93,7 +92,6 @@ public class OntologyServiceImpl implements OntologyService {
     private final OntologyEditor ontologyEditor;
     private final OntologyDetailExtractor detailExtractor;
     private final PublishedResourceUtil deviationChecker;
-    private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
     private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
@@ -135,17 +133,10 @@ public class OntologyServiceImpl implements OntologyService {
                 .toList();
         nkdSnapshotService.cascadeGraphDeletion(ownedConceptIds, graphName);
 
-        if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the graph deletion, committed atomically with the PG metadata
-            // delete below.
-            outboxWriter.enqueueDeleteGraph(graphName);
-            ontologyMetadataRepository.deleteById(ontologyId);
-            outboxRelayTrigger.nudgeAfterCommit();
-            return;
-        }
-
-        jenaTDB2Repository.deleteGraph(graphName);
+        // Enqueue the graph deletion, committed atomically with the PG metadata delete below.
+        outboxWriter.enqueueDeleteGraph(graphName);
         ontologyMetadataRepository.deleteById(ontologyId);
+        outboxRelayTrigger.nudgeAfterCommit();
     }
 
     @Override
@@ -182,7 +173,6 @@ public class OntologyServiceImpl implements OntologyService {
             return model;
         }
 
-        requireCreationOutbox();
         if (ontologyMetadataOpt.isPresent()) {
             throw new OntologyCreationConflictException("Slovník s tímto IRI nebo identifikátorem již existuje: " + ontologyIRI);
         }
@@ -214,7 +204,6 @@ public class OntologyServiceImpl implements OntologyService {
         if (userId == null || userId.isBlank()) throw new OntologyValidationException("ID uživatele je povinné.");
         String graph = generateOntologyIri(request.ontology().getNameModel(), request.ontology().getNamespace());
         if (!UtilityMethods.isValidIRI(graph)) throw new OntologyValidationException("Neplatné IRI slovníku: " + graph);
-        requireCreationOutbox();
         if (findLocalCollision(graph).isPresent()) {
             throw new OntologyCreationConflictException("Slovník s tímto IRI nebo identifikátorem již existuje: " + graph);
         }
@@ -272,14 +261,8 @@ public class OntologyServiceImpl implements OntologyService {
         conceptMetadataRepository.saveAll(entities);
     }
 
-    private void requireCreationOutbox() {
-        if (!outboxConfig.isEnabled()) {
-            throw new OntologyException("Vytvoření slovníku vyžaduje zapnutý outbox (outbox.enabled=true).");
-        }
-    }
-
-    // Direct PUT/rename/delete cannot race a retry of the initial PUT, including after a restart
-    // with outbox disabled. Seeing DONE means the relay's transaction and its row lock completed.
+    // Direct PUT/rename/delete cannot race a retry of the initial PUT. Seeing DONE means the relay's
+    // transaction and its row lock completed.
     private void requireInitialGraphApplied(String graph) {
         if (outboxRepository.existsEarlierUnappliedCreateGraph(graph, Long.MAX_VALUE)) {
             throw new OntologyCreationConflictException("Počáteční zápis slovníku ještě nebyl dokončen: " + graph);
@@ -883,10 +866,6 @@ public class OntologyServiceImpl implements OntologyService {
         OntologyMetadataEntity updatedEntity = ontologyMetadataRepository.save(metadataEntity);
         log.info("Updated metadata with new graph name: {} (slug unchanged: {})", newGraphName, metadataEntity.getSlug());
         return updatedEntity;
-    }
-
-    private void cleanupTDB2Graph(String graphName) {
-        jenaTDB2Repository.deleteGraph(graphName);
     }
 
     private void enrichMetadataFromRDF(OntologyMetadataModel model, OntologyMetadataEntity entity) {

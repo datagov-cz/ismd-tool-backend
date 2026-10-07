@@ -46,8 +46,8 @@ A row that fails to apply is retried up to `outbox.max-attempts`, then marked **
 on the admin API for a human to retry. DONE rows are kept as an audit trail and pruned after
 `outbox.done-retention`.
 
-When `outbox.enabled=false` (default), the outboxed write sites fall back to the **legacy direct
-write** — deploying the code changes nothing until an environment opts in.
+The outbox is the only write path for the covered sites — there is no switch and no direct-write
+fallback.
 
 **Covered write sites (4):** concept create, concept edit (incl. rename), concept delete, ontology
 delete. **Not covered:** ontology **upload** (still a direct write — this is the path the reconciler
@@ -74,7 +74,6 @@ Prefix `outbox.*` (bound in `OutboxConfig`). All values are env-overridable in
 
 | Property | Env var | Default | Meaning |
 |---|---|---|---|
-| `outbox.enabled` | `OUTBOX_ENABLED` | `false` | Master switch. `false` → legacy direct write, no relay, no behavior change. |
 | `outbox.relay-cron` | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Backstop drain schedule (Spring 6-field cron). The hot path is the after-commit nudge; this only catches crash-left rows. |
 | `outbox.max-attempts` | `OUTBOX_MAX_ATTEMPTS` | `10` | Apply attempts before a row is marked FAILED (and blocks its aggregate). |
 | `outbox.batch-size` | `OUTBOX_BATCH_SIZE` | `100` | Max rows claimed per relay drain pass. |
@@ -109,8 +108,8 @@ curl -s "http://localhost:8081/popisujeme/api/admin/outbox/status" \
 
 - **Healthy:** `pending` drains to 0 within a tick, `failed` = 0, `oldestPendingCreatedAt` stays
   null/recent.
-- **Relay stuck / disabled:** `oldestPendingCreatedAt` keeps aging. Check `outbox.enabled`, that the
-  scheduler is running, and Fuseki reachability. `POST /drain` forces a pass.
+- **Relay stuck:** `oldestPendingCreatedAt` keeps aging. Check that the scheduler is running, and
+  Fuseki reachability. `POST /drain` forces a pass.
 - **A row is FAILED:** `GET /failed` shows id + `lastError`. Fix the underlying cause (usually Fuseki
   down or a bad payload), bring Fuseki back, then `POST /retry/{id}` → `POST /drain`. The aggregate
   is blocked until you do.
@@ -237,14 +236,13 @@ Key correctness properties:
 
 ## Reconciler detection model
 
-- **Read order is unconditionally TDB2-first, PG-last** (it does not vary with `outbox.enabled`). The
-  benefit of this order depends on the active write mode, and it is only ever a minor optimization —
-  not a correctness mechanism:
-  - **Direct write (outbox off):** writes are TDB2-first, then the PG commit. The in-flight window is
+- **Read order is unconditionally TDB2-first, PG-last**. The benefit of this order depends on the
+  write site's mode, and it is only ever a minor optimization — not a correctness mechanism:
+  - **Direct write (the sites the outbox does not cover):** writes are TDB2-first, then the PG commit. The in-flight window is
     "RDF written, PG not yet committed" → a transient false `RDF_ORPHAN`. Reading PG *last* makes that
     late commit most likely to be visible, shrinking the window. This is the case the order was chosen
     for.
-  - **Outbox (outbox on):** the order inverts — PG (metadata + outbox row) commits first, the relay
+  - **Outbox (the covered sites):** the order inverts — PG (metadata + outbox row) commits first, the relay
     applies TDB2 afterward. The in-flight window becomes "PG committed, TDB2 not yet applied" → a
     transient false `PG_MISSING_RDF`, not an orphan. For *this* race, reading TDB2 last would help, so
     TDB2-first is mildly counterproductive — but in practice the after-commit nudge lands TDB2 within

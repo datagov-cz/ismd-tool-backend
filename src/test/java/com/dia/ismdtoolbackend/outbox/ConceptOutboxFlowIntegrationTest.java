@@ -46,7 +46,7 @@ import static org.mockito.Mockito.mock;
 
 /**
  * Review #8(c) — the end-to-end seam: the REAL {@link ConceptServiceImpl} (real editor/creator/mapper,
- * real PG repos via Testcontainers, real outbox beans + in-mem TDB2) with {@code outbox.enabled=true},
+ * real PG repos via Testcontainers, real outbox beans + in-mem TDB2),
  * driven through the actual enqueue → drain → apply flow. The headline case is **create → rename**:
  * the #4 fix keys both rows on the pre-edit IRI (same aggregate), so the rename's DELETE of old-IRI
  * triples can never apply before the create's INSERT of them.
@@ -86,7 +86,6 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void setUp() {
-        outboxConfig.setEnabled(true);
         outboxConfig.setBatchSize(100);
         // Clean slate + the FK target ontology row (createMetadataEntity requires it).
         txTemplate.executeWithoutResult(tx -> {
@@ -120,7 +119,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
 
     @Test
     void createThenRename_throughRealService_ordersCorrectly_noLostConcept() {
-        // CREATE (flag on): the synchronous after-commit nudge drains, so the concept lands in TDB2.
+        // CREATE: the synchronous after-commit nudge drains, so the concept lands in TDB2.
         service.createConcept(classModel("Alpha"), USER);
         ConceptMetadataEntity row = conceptMetadataRepository.findAll().get(0);
         Long id = row.getId();
@@ -129,7 +128,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(afterCreate.containsResource(afterCreate.getResource(oldIri)))
                 .as("create's nudge drained the concept into TDB2").isTrue();
 
-        // RENAME (flag on): rename to a new IRI. The outbox row keys on the PRE-EDIT (old) IRI — same
+        // RENAME: rename to a new IRI. The outbox row keys on the PRE-EDIT (old) IRI — same
         // aggregate as the create — so ordering holds and the rename relocates old→new in TDB2.
         com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel rename =
                 new com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel();
@@ -160,7 +159,6 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
     static class Beans {
         @Bean OutboxConfig outboxConfig() {
             OutboxConfig c = new OutboxConfig();
-            c.setEnabled(true);
             return c;
         }
         @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
@@ -190,7 +188,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                     mock(RppSnapshotHolder.class),
                     mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, outboxRepository, trigger,
+                    writer, outboxRepository, trigger,
                     // No external NKD links in this flow's test data → real detector returns empty and the
                     // mocked snapshot service is never called; reconcileNkdLinks is a no-op here.
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),

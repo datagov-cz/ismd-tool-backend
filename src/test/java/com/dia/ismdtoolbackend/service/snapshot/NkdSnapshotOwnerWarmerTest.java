@@ -2,11 +2,9 @@ package com.dia.ismdtoolbackend.service.snapshot;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotLinkType;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,10 +46,8 @@ class NkdSnapshotOwnerWarmerTest {
     private static final String NKD_IRI = "https://slovník.gov.cz/agendový/104/pojem/adresní-místo";
 
     @Mock private NkdSnapshotService nkdSnapshotService;
-    @Mock private OutboxConfig outboxConfig;
     @Mock private OutboxWriter outboxWriter;
     @Mock private OutboxRelayTrigger outboxRelayTrigger;
-    @Mock private JenaTDB2Repository jenaTDB2Repository;
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
 
     @InjectMocks private NkdSnapshotOwnerWarmer warmer;
@@ -64,7 +60,6 @@ class NkdSnapshotOwnerWarmerTest {
         owner.setId(1L);
         owner.setConceptIri(OWNER_IRI);
         owner.setGraphName(GRAPH);
-        when(outboxConfig.isEnabled()).thenReturn(true);
     }
 
     private List<NkdSnapshotOwnerWarmer.Target> oneTarget() {

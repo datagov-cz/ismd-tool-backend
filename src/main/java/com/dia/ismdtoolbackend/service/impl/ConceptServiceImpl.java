@@ -35,7 +35,6 @@ import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
 import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
@@ -98,7 +97,6 @@ public class ConceptServiceImpl implements ConceptService {
     private final RppSnapshotHolder rppSnapshotHolder;
     private final NkodCodelistService nkodCodelistService;
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
-    private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
     private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
@@ -126,21 +124,15 @@ public class ConceptServiceImpl implements ConceptService {
         rejectIfConceptIriTaken(conceptUri);
 
         String ontologyGraphName = createModel.getOntologyGraphName();
-
-        if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the concept's triples (empty remove set), committed atomically
-            // with the metadata below. No rollback compensator needed — if the PG tx fails, the
-            // outbox row rolls back with it, so nothing reaches TDB2.
-            outboxWriter.enqueueUpsert(ontologyGraphName, conceptUri, java.util.Set.of(),
-                    conceptResource.getModel().listStatements().toSet());
-            ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
-            outboxRelayTrigger.nudgeAfterCommit();
-            return conceptMetadataMapper.toDto(savedEntity);
-        }
-
         requireInitialGraphApplied(ontologyGraphName);
-        saveConceptToTDB2(conceptResource, ontologyGraphName);
-        return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
+
+        // Enqueue the concept's triples (empty remove set), committed atomically with the metadata
+        // below. If the PG tx fails, the outbox row rolls back with it, so nothing reaches TDB2.
+        outboxWriter.enqueueUpsert(ontologyGraphName, conceptUri, java.util.Set.of(),
+                conceptResource.getModel().listStatements().toSet());
+        ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
+        outboxRelayTrigger.nudgeAfterCommit();
+        return conceptMetadataMapper.toDto(savedEntity);
     }
 
     @Override
@@ -148,12 +140,9 @@ public class ConceptServiceImpl implements ConceptService {
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public void deleteConcept(Long conceptId) {
         assertCanModify(conceptId);
-        // On the outbox path, take a row lock FIRST (see ConceptMetadataRepository.findWithLockById)
-        // so a concurrent edit/delete of the same concept can't enqueue an out-of-order same-aggregate
-        // outbox row. Direct path keeps the plain findById (byte-for-byte unchanged when flag off).
-        Optional<ConceptMetadataEntity> conceptMetadataOpt = outboxConfig.isEnabled()
-                ? conceptMetadataRepository.findWithLockById(conceptId)
-                : conceptMetadataRepository.findById(conceptId);
+        // Take a row lock FIRST (see ConceptMetadataRepository.findWithLockById) so a concurrent
+        // edit/delete of the same concept can't enqueue an out-of-order same-aggregate outbox row.
+        Optional<ConceptMetadataEntity> conceptMetadataOpt = conceptMetadataRepository.findWithLockById(conceptId);
         if (conceptMetadataOpt.isEmpty()) {
             log.error("conceptId {} not found", conceptId);
             throw new OntologyException("Metadata pojmu s id " + conceptId + "nebyla nalezena.");
@@ -184,21 +173,13 @@ public class ConceptServiceImpl implements ConceptService {
                 .toList();
         nkdSnapshotService.cascadeConceptDeletion(deletedConceptIds, graphName);
 
-        if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the TDB2 deletion (keyed on the concept being deleted), committed
-            // atomically with the PG metadata delete below.
-            outboxWriter.enqueueDeleteConcepts(graphName, conceptUri, relatedConceptUris);
-            OntologyMetadataEntity parent = conceptMetadataOpt.get().getOntologyMetadata();
-            conceptMetadataRepository.deleteAll(relatedConceptEntities);
-            metadataTouchService.touchOntology(parent);
-            outboxRelayTrigger.nudgeAfterCommit();
-            return;
-        }
-
-        jenaTDB2Repository.deleteConceptsFromGraph(relatedConceptUris, graphName);
+        // Enqueue the TDB2 deletion (keyed on the concept being deleted), committed atomically with
+        // the PG metadata delete below.
+        outboxWriter.enqueueDeleteConcepts(graphName, conceptUri, relatedConceptUris);
         OntologyMetadataEntity parent = conceptMetadataOpt.get().getOntologyMetadata();
         conceptMetadataRepository.deleteAll(relatedConceptEntities);
         metadataTouchService.touchOntology(parent);
+        outboxRelayTrigger.nudgeAfterCommit();
     }
 
     @Override
@@ -222,11 +203,11 @@ public class ConceptServiceImpl implements ConceptService {
 
         ConceptIriNormalizer.normalize(conceptEditModel);
 
-        // On the outbox path, take a row lock FIRST so two concurrent edits of the same concept are
+        // Take a row lock FIRST so two concurrent edits of the same concept are
         // serialized — see ConceptMetadataRepository.findWithLockById. The lock must be the first DB
         // read of the critical section (read graph → compute delta → enqueue), so it spans the whole
         // window in which a concurrent edit could enqueue an out-of-order same-aggregate outbox row.
-        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, true);
         String graphName = metadata.getGraphName();
         requireInitialGraphApplied(graphName);
 
@@ -257,23 +238,11 @@ public class ConceptServiceImpl implements ConceptService {
         Set<Statement> toAdd = new HashSet<>(editResult.statementsToAdd);
         toAdd.addAll(snapshotDelta.toAdd);
 
-        if (outboxConfig.isEnabled()) {
-            // Outbox path: enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a
-            // whole-graph PUT, committed atomically with the metadata update below.
-            outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
-            updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
-            outboxRelayTrigger.nudgeAfterCommit();
-            return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
-                    contentChanged(toRemove, toAdd));
-        }
-
-        // Direct (outbox-disabled) path: the editor already applied its delta to `model`. Apply the merged
-        // delta (editor ∪ reconcile link removals) so any dropped-link edge removal reaches TDB2 in the
-        // same write. Idempotent — re-applying the editor's own triples is a no-op.
-        model.remove(new ArrayList<>(toRemove));
-        model.add(new ArrayList<>(toAdd));
-        saveUpdatedModelToTDB2(graphName, model);
+        // Enqueue the merged change set (editor delta ∪ NKD copy delta), NOT a whole-graph PUT,
+        // committed atomically with the metadata update below.
+        outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
+        outboxRelayTrigger.nudgeAfterCommit();
         return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
                 contentChanged(toRemove, toAdd));
     }
@@ -288,7 +257,7 @@ public class ConceptServiceImpl implements ConceptService {
     public GetConceptDto syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
         // sync calls the private editConcept overload (self-invocation bypasses the proxy), so the evict
         // must be declared here too — a sync changes the local concept and must not leave stale deviation.
-        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, true);
         if (!Boolean.TRUE.equals(metadata.getIsPublished())) {
             throw new OntologyValidationException(
                     "Pojem není pracovní kopií publikovaného pojmu v NKD — není co synchronizovat.");
@@ -475,8 +444,8 @@ public class ConceptServiceImpl implements ConceptService {
      * {@code updateDataClassification} reads it, so a sync that does not accept these fields is a no-op on
      * them instead of a deletion. An accepted key overwrites the seed afterwards.
      *
-     * <p>This graph read is separate from the one {@link #editConcept} performs, which is safe on the
-     * outbox path: both run inside the caller's transaction, and {@code editConcept} takes the concept
+     * <p>This graph read is separate from the one {@link #editConcept} performs, which is safe:
+     * both run inside the caller's transaction, and {@code editConcept} takes the concept
      * row lock before its own read, so a concurrent edit of this concept cannot land between them.
      * Do not reuse this read-then-edit shape where that lock is not held.
      */
@@ -642,7 +611,13 @@ public class ConceptServiceImpl implements ConceptService {
                                                  String userId,
                                                  String conceptUri) {
         ConceptMetadataEntity entity = createMetadataEntity(createModel, userId, conceptUri);
-        ConceptMetadataEntity savedEntity = conceptMetadataRepository.save(entity);
+        ConceptMetadataEntity savedEntity;
+        try {
+            savedEntity = conceptMetadataRepository.save(entity);
+        } catch (Exception e) {
+            log.error("Failed to save concept metadata for {}", conceptUri, e);
+            throw new OntologyException("Nepodařilo se uložit metadata pojmu.");
+        }
 
         // Adding a concept modifies the vocabulary: the child FK write does not dirty the parent row,
         // so bump it explicitly. (Concept row is written above, ontology second — the standard order.)
@@ -869,16 +844,6 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private void saveUpdatedModelToTDB2(String graphName, Model model) {
-        try {
-            jenaTDB2Repository.putOntologyModel(graphName, model);
-            log.info("Updated model saved to TDB2 graph: {}", graphName);
-        } catch (Exception e) {
-            log.error("Failed to save updated model to TDB2", e);
-            throw new OntologyException("Nepodařilo se uložit upravený pojem do TDB2: " + e.getMessage());
-        }
-    }
-
     private void updateMetadataFromEditResult(ConceptMetadataEntity metadata, ConceptEditModel conceptEditModel,
                                               ConceptEditor.EditResult editResult, boolean severWorkingCopyOnRename) {
         if (editResult.iriChanged) {
@@ -961,42 +926,6 @@ public class ConceptServiceImpl implements ConceptService {
         return conceptMetadataRepository.findByConceptIri(conceptUri)
                 .filter(existing -> !existing.getId().equals(conceptId))
                 .isPresent();
-    }
-
-    private void saveConceptToTDB2(Resource conceptResource, String ontologyGraphName) {
-        try {
-            String conceptIRI = jenaTDB2Repository.saveConcept(conceptResource, ontologyGraphName);
-            log.info("Concept saved to TDB2 graph {} successfully: {}", ontologyGraphName, conceptIRI);
-        } catch (Exception e) {
-            log.error("Failed to save concept to TDB2 graph {}", ontologyGraphName, e);
-            throw new OntologyException("Nepodařilo se uložit pojem do TDB2: " + e.getMessage());
-        }
-    }
-
-    private ConceptMetadataModel saveMetadataWithRollback(ConceptCreateModel createModel, String userId,
-                                                          String conceptUri, String ontologyGraphName) {
-        try {
-            ConceptMetadataEntity savedEntity = saveMetadata(createModel, userId, conceptUri);
-            log.info("Metadata saved successfully with ID: {}", savedEntity.getId());
-
-            ConceptMetadataModel result = conceptMetadataMapper.toDto(savedEntity);
-            log.info("Concept creation completed successfully: {}", conceptUri);
-            return result;
-        } catch (Exception e) {
-            log.error("Failed to save concept metadata, rolling back TDB2 data", e);
-            rollbackTDB2Data(conceptUri, ontologyGraphName);
-            throw new OntologyException("Nepodařilo se uložit metadata pojmu: " + e.getMessage());
-        }
-    }
-
-    private void rollbackTDB2Data(String conceptUri, String ontologyGraphName) {
-        try {
-            jenaTDB2Repository.deleteConceptFromGraph(conceptUri, ontologyGraphName);
-            log.info("Successfully rolled back TDB2 data from graph {} for failed metadata save", ontologyGraphName);
-        } catch (Exception rollbackException) {
-            log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
-                    "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
-        }
     }
 
     /**
