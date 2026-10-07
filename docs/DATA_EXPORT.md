@@ -61,12 +61,20 @@ archive format.
 ```
 manifest.json
 ontologies/
-  <ontology-slug>/
+  <ontology-iri>/
     ontology.ttl            (or ontology.jsonld)
     concepts.json
     diagrams/
-      <diagram-id>.json
+      <diagram-name>.json
 ```
+
+`<ontology-iri>` and `<diagram-name>` are percent-encoded (UTF-8), so each is a single path segment
+that is valid on every filesystem. A diagram name is unique within its ontology. A consumer should
+take IRIs and names from the JSON content and use the paths only to locate files; a very long IRI
+can exceed the 255-byte file-name limit of common filesystems when the archive is unpacked.
+
+**No database identifiers are exported.** Ontologies and concepts are identified by IRI, a diagram
+by its ontology IRI and name, and a diagram node by its concept IRI.
 
 ### `manifest.json`
 
@@ -88,15 +96,14 @@ The index of the archive and the only place a consumer needs to read to know wha
       "lastValidationStatus": "VALIDATED",
       "lastValidationAt": "2026-09-30T14:02:15Z",
       "conceptCount": 42,
-      "rdf": { "status": "OK", "file": "ontologies/moje-agenda/ontology.ttl" },
-      "concepts": "ontologies/moje-agenda/concepts.json",
+      "rdf": { "status": "OK", "file": "ontologies/https%3A%2F%2Fslovn%C3%ADk.gov.cz%2Fagendov%C3%BD%2Fmoje-agenda/ontology.ttl" },
+      "concepts": "ontologies/https%3A%2F%2Fslovn%C3%ADk.gov.cz%2Fagendov%C3%BD%2Fmoje-agenda/concepts.json",
       "diagrams": [
         {
-          "id": 17,
           "name": "Přehled",
           "createdAt": "2026-04-11T08:00:00",
           "updatedAt": "2026-09-12T16:40:00",
-          "file": "ontologies/moje-agenda/diagrams/17.json"
+          "file": "ontologies/https%3A%2F%2Fslovn%C3%ADk.gov.cz%2Fagendov%C3%BD%2Fmoje-agenda/diagrams/P%C5%99ehled.json"
         }
       ]
     }
@@ -131,23 +138,21 @@ The per-concept metadata that exists only in PostgreSQL.
 ]
 ```
 
-### `diagrams/<diagram-id>.json`
+### `diagrams/<diagram-name>.json`
 
 The **stored layout**, not the projected read model the frontend receives.
 
 ```json
 {
-  "id": 17,
   "name": "Přehled",
-  "ontologySlug": "moje-agenda",
+  "ontologyIri": "https://slovník.gov.cz/agendový/moje-agenda",
   "viewport": { "x": 0.0, "y": 0.0, "zoom": 1.0 },
   "nodes": [
     {
-      "id": 301,
       "conceptIri": "https://slovník.gov.cz/agendový/moje-agenda/pojem/žadatel",
       "position": { "x": 120.0, "y": 80.0 },
       "collapsed": false,
-      "parentNodeId": null,
+      "parentConceptIri": null,
       "foreign": false,
       "visibleProperties": [
         "https://slovník.gov.cz/agendový/moje-agenda/pojem/jméno-žadatele"
@@ -167,8 +172,10 @@ A diagram stores only what a user arranged: which concepts are on the canvas, wh
 edges are routed. Which edges exist, and every label, is derived from RDF on read. The export
 keeps that split, so the diagram file references concepts by IRI and the RDF in the same archive
 supplies their content. A node marked `foreign` references a concept from another ontology.
+`parentConceptIri` is the concept IRI of the node this node is grouped under, or `null`; a concept
+appears at most once as a node in a diagram.
 
-The optimistic-lock `version` and the internal edge bookkeeping columns are not exported.
+Row ids, the optimistic-lock `version` and the internal edge bookkeeping columns are not exported.
 
 ## How the export is built
 

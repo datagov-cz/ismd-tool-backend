@@ -60,12 +60,21 @@ archivu.
 ```
 manifest.json
 ontologies/
-  <slug-slovníku>/
+  <iri-slovníku>/
     ontology.ttl            (nebo ontology.jsonld)
     concepts.json
     diagrams/
-      <id-diagramu>.json
+      <název-diagramu>.json
 ```
+
+`<iri-slovníku>` a `<název-diagramu>` jsou procentově kódované (UTF-8), takže každý z nich tvoří
+jediný segment cesty platný na každém souborovém systému. Název diagramu je v rámci slovníku
+jedinečný. Konzument by měl IRI a názvy brát z obsahu JSON a cesty používat jen k nalezení souborů;
+velmi dlouhé IRI může při rozbalení archivu překročit limit 255 bajtů na název souboru, který mají
+běžné souborové systémy.
+
+**Neexportují se žádné databázové identifikátory.** Slovníky a pojmy jsou identifikovány přes IRI,
+diagram přes IRI svého slovníku a název a uzel diagramu přes IRI pojmu.
 
 ### `manifest.json`
 
@@ -87,15 +96,14 @@ Rejstřík archivu a jediné místo, které konzument potřebuje přečíst, aby
       "lastValidationStatus": "VALIDATED",
       "lastValidationAt": "2026-09-30T14:02:15Z",
       "conceptCount": 42,
-      "rdf": { "status": "OK", "file": "ontologies/moje-agenda/ontology.ttl" },
-      "concepts": "ontologies/moje-agenda/concepts.json",
+      "rdf": { "status": "OK", "file": "ontologies/https%3A%2F%2Fslovn%C3%ADk.gov.cz%2Fagendov%C3%BD%2Fmoje-agenda/ontology.ttl" },
+      "concepts": "ontologies/https%3A%2F%2Fslovn%C3%ADk.gov.cz%2Fagendov%C3%BD%2Fmoje-agenda/concepts.json",
       "diagrams": [
         {
-          "id": 17,
           "name": "Přehled",
           "createdAt": "2026-04-11T08:00:00",
           "updatedAt": "2026-09-12T16:40:00",
-          "file": "ontologies/moje-agenda/diagrams/17.json"
+          "file": "ontologies/https%3A%2F%2Fslovn%C3%ADk.gov.cz%2Fagendov%C3%BD%2Fmoje-agenda/diagrams/P%C5%99ehled.json"
         }
       ]
     }
@@ -130,23 +138,21 @@ Metadata jednotlivých pojmů, která existují jen v PostgreSQL.
 ]
 ```
 
-### `diagrams/<id-diagramu>.json`
+### `diagrams/<název-diagramu>.json`
 
 **Uložené rozložení**, nikoli projektovaný čtecí model, který dostává frontend.
 
 ```json
 {
-  "id": 17,
   "name": "Přehled",
-  "ontologySlug": "moje-agenda",
+  "ontologyIri": "https://slovník.gov.cz/agendový/moje-agenda",
   "viewport": { "x": 0.0, "y": 0.0, "zoom": 1.0 },
   "nodes": [
     {
-      "id": 301,
       "conceptIri": "https://slovník.gov.cz/agendový/moje-agenda/pojem/žadatel",
       "position": { "x": 120.0, "y": 80.0 },
       "collapsed": false,
-      "parentNodeId": null,
+      "parentConceptIri": null,
       "foreign": false,
       "visibleProperties": [
         "https://slovník.gov.cz/agendový/moje-agenda/pojem/jméno-žadatele"
@@ -165,9 +171,11 @@ Metadata jednotlivých pojmů, která existují jen v PostgreSQL.
 Diagram ukládá jen to, co uživatel uspořádal: které pojmy jsou na plátně, kde a jak jsou vedeny
 hrany. Které hrany existují a všechny popisky se při čtení odvozují z RDF. Export toto rozdělení
 zachovává, takže soubor diagramu odkazuje na pojmy přes IRI a jejich obsah dodává RDF ve stejném
-archivu. Uzel označený `foreign` odkazuje na pojem z jiného slovníku.
+archivu. Uzel označený `foreign` odkazuje na pojem z jiného slovníku. `parentConceptIri` je IRI
+pojmu uzlu, pod kterým je tento uzel seskupen, nebo `null`; pojem je v diagramu jako uzel nejvýše
+jednou.
 
-Verze pro optimistický zámek (`version`) a interní evidenční sloupce hran se neexportují.
+Id řádků, verze pro optimistický zámek (`version`) a interní evidenční sloupce hran se neexportují.
 
 ## Jak se export sestavuje
 
