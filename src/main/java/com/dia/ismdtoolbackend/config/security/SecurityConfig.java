@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.config.security;
 
+import com.dia.ismdtoolbackend.enums.ErrorCode;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -101,9 +102,10 @@ public class SecurityConfig {
                             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                                 log.warn("Invalid JWT token on search endpoint: {}", authException.getMessage());
                                 response.setStatus(401);
-                                response.setContentType("application/json");
+                                response.setContentType("application/json;charset=UTF-8");
                                 response.getWriter().write(
-                                        "{\"success\":false,\"message\":\"Invalid or expired authentication token\"}");
+                                        "{\"success\":false,\"message\":\"" + ErrorCode.UNAUTHORIZED.getDefaultMessage()
+                                                + "\",\"errorCode\":\"" + ErrorCode.UNAUTHORIZED + "\"}");
                             }
                             // No token — allow anonymous access to proceed
                         })
