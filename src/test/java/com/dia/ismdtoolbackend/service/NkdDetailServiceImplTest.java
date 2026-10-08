@@ -1,10 +1,13 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.NkodCodelistCheckDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
 import com.dia.ismdtoolbackend.controller.dto.NkdOntologyListItemDto;
+import com.dia.ismdtoolbackend.enums.NkodCodelistStatus;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
@@ -13,6 +16,7 @@ import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.service.impl.NkdDetailServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.apache.jena.rdf.model.Model;
@@ -53,6 +57,9 @@ class NkdDetailServiceImplTest {
 
     @Mock
     private RppSnapshotHolder rppSnapshotHolder;
+
+    @Mock
+    private NkodCodelistService nkodCodelistService;
 
     @Mock
     private ReferencedConceptsEnricher referencedConceptsEnricher;
@@ -207,6 +214,45 @@ class NkdDetailServiceImplTest {
 
         assertSame(agenda, dto.getConceptDetail().getAgendaResolved());
         assertSame(ais, dto.getConceptDetail().getAisResolved());
+    }
+
+    @Test
+    void getConceptDetail_setsCodeListResolved_whenTheCheckReports() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        CodeListDto stored =
+                CodeListDto.builder()
+                        .iri("https://rpp.example/číselníky/151/2024-01-01")
+                        .datovaSadaVNkod("https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289")
+                        .build();
+        OntologyDetailModel.ConceptDetailModel model =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).codeList(stored).build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, ONTOLOGY_IRI)));
+        NkodCodelistCheckDto check =
+                NkodCodelistCheckDto.builder()
+                        .status(NkodCodelistStatus.MISSING).build();
+        when(nkodCodelistService.check(stored)).thenReturn(Optional.of(check));
+
+        GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
+
+        assertSame(check, dto.getConceptDetail().getCodeListResolved());
+        assertSame(stored, dto.getConceptDetail().getCodeList());
+    }
+
+    @Test
+    void getConceptDetail_leavesCodeListResolvedUnset_whenTheCheckReportsNothing() {
+        when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
+
+        OntologyDetailModel.ConceptDetailModel model =
+                OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).build();
+        when(nkdSparqlClient.fetchPublishedConceptWithScheme(CONCEPT_IRI))
+                .thenReturn(Optional.of(new NkdSparqlClient.PublishedConcept(model, ONTOLOGY_IRI)));
+        when(nkodCodelistService.check(null)).thenReturn(Optional.empty());
+
+        GetNkdConceptDto dto = service.getConceptDetail(CONCEPT_IRI, null);
+
+        assertNull(dto.getConceptDetail().getCodeListResolved());
     }
 
     @Test

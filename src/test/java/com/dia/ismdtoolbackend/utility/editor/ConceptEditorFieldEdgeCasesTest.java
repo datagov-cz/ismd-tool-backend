@@ -342,6 +342,69 @@ class ConceptEditorFieldEdgeCasesTest {
         assertTrue(linked.hasProperty(datasetProp), "new číselník must carry its dataset");
     }
 
+    // ---- the FE's codelist actions: "" / "" deletes, null / null keeps ----
+
+    private Resource seedNamedCodeList(Resource concept, String codeListIri, String datasetIri) {
+        Resource node = model.createResource(codeListIri);
+        node.addProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK));
+        node.addProperty(model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU),
+                model.createResource(datasetIri));
+        concept.addProperty(model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM), node);
+        return node;
+    }
+
+    @Test
+    void codeList_bothBlank_deletesTheLinkAndTheCiselnikNode() {
+        String iri = DEFAULT_NS + "codelist-delete";
+        String codeList = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/číselníky/151/2024-01-01";
+        seedNamedCodeList(seedClass(iri), codeList, "https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289");
+
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("");
+        m.setCodeListDataset("");
+
+        editor.editConcept(iri, m, model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        assertFalse(model.getResource(iri).hasProperty(instanceDefinedBy), "code-list link must be removed");
+        assertFalse(model.containsResource(model.createResource(codeList)),
+                "číselník subject must leave no triples behind");
+    }
+
+    @Test
+    void codeList_bothNull_keepsTheStoredCodeList() {
+        String iri = DEFAULT_NS + "codelist-keep";
+        String codeList = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/číselníky/151/2024-01-01";
+        String dataset = "https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289";
+        seedNamedCodeList(seedClass(iri), codeList, dataset);
+
+        editor.editConcept(iri, classModel(), model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+        Resource linked = model.getResource(iri).getProperty(instanceDefinedBy).getObject().asResource();
+        assertEquals(codeList, linked.getURI(), "stored číselník must stay linked");
+        assertEquals(dataset, linked.getProperty(datasetProp).getObject().asResource().getURI());
+        assertTrue(linked.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE_LEGAL + CISELNIK)));
+    }
+
+    @Test
+    void codeList_percentEncodedDataset_isAcceptedAndStoredAsRawUtf8() {
+        String iri = DEFAULT_NS + "codelist-encoded";
+        seedClass(iri);
+        ClassConceptEditModel m = classModel();
+        m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-1");
+        m.setCodeListDataset("https://data.gov.cz/zdroj/datov%C3%A9-sady/17651921/5ccc4289");
+
+        editor.editConcept(iri, m, model, null);
+
+        Property instanceDefinedBy = model.createProperty(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+        Property datasetProp = model.createProperty(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+        Resource linked = model.getResource(iri).getProperty(instanceDefinedBy).getObject().asResource();
+        assertEquals("https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289",
+                linked.getProperty(datasetProp).getObject().asResource().getURI());
+    }
+
     // ---- code-list completeness: both IRIs are mandatory together (class only) ----
 
     @Test

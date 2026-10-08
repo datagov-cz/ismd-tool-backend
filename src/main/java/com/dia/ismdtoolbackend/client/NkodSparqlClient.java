@@ -1,9 +1,12 @@
 package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.config.NkodConfig;
+import com.dia.ismdtoolbackend.models.nkod.NkodCodelist;
+import com.dia.ismdtoolbackend.models.nkod.NkodCodelistEntry;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetDetail;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
+import com.dia.ismdtoolbackend.query.NKODSPARQLCodelistQuery;
 import com.dia.ismdtoolbackend.query.NKODSPARQLDatasetQuery;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
@@ -17,10 +20,13 @@ import org.springframework.stereotype.Component;
 import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Queries the NKOD catalogue for {@code dcat:Dataset} records.
@@ -213,6 +219,140 @@ public class NkodSparqlClient {
         }
         return new NkodDatasetDetail(datasetIri, name, description,
                 List.copyOf(conceptIris), List.of());
+    }
+
+    /**
+     * Every codelist dataset in the catalogue, one entry per dataset in title order, with
+     * publisher names resolved. Codelist IRIs are left unresolved — they live in the
+     * distribution files, not the catalogue.
+     *
+     * <p>Two round-trips; if either fails the whole call throws, so no entry ever carries a
+     * publisher IRI because the name query failed.
+     */
+    public List<NkodCodelistEntry> fetchCodelists() {
+        List<CodelistRow> rows = executor.select("NKOD codelists",
+                NKODSPARQLCodelistQuery.buildListQuery(), NkodSparqlClient::mapCodelistRows);
+        Map<String, String> names = fetchPublisherNames(publisherIris(rows));
+        return groupByDataset(rows, names);
+    }
+
+    /** Czech names of the given publishers; publishers without one are absent from the map. */
+    Map<String, String> fetchPublisherNames(Set<String> publisherIris) {
+        String query = NKODSPARQLCodelistQuery.buildPublisherNamesQuery(publisherIris);
+        if (query == null) {
+            return Map.of();
+        }
+        return executor.select("NKOD codelist publishers", query, NkodSparqlClient::mapPublisherNames);
+    }
+
+    /** One list-query row: a dataset with at most one of its download URLs. */
+    record CodelistRow(String datasetIri, String title, String downloadUrl, String publisherIri,
+                       String description, String rppIdentifier, String validFrom) {
+    }
+
+    static List<CodelistRow> mapCodelistRows(ResultSet rs) {
+        List<CodelistRow> rows = new ArrayList<>();
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String dataset = SparqlSolutions.resourceUri(sol, "dataset");
+            String title = SparqlSolutions.literalString(sol, "title");
+            if (dataset == null || title == null || title.isBlank()) {
+                log.warn("Skipping NKOD codelist row without dataset or title: dataset={}", dataset);
+                continue;
+            }
+            rows.add(new CodelistRow(
+                    dataset,
+                    title,
+                    SparqlSolutions.resourceUri(sol, "downloadUrl"),
+                    SparqlSolutions.resourceUri(sol, "publisher"),
+                    SparqlSolutions.literalString(sol, "description"),
+                    uriOrLiteral(sol, "rppIdentifier"),
+                    SparqlSolutions.literalString(sol, "validFrom")));
+        }
+        return rows;
+    }
+
+    static Map<String, String> mapPublisherNames(ResultSet rs) {
+        Map<String, String> names = new HashMap<>();
+        while (rs.hasNext()) {
+            QuerySolution sol = rs.next();
+            String publisher = SparqlSolutions.resourceUri(sol, "publisher");
+            String name = SparqlSolutions.literalString(sol, "name");
+            if (publisher != null && name != null && !name.isBlank()) {
+                names.putIfAbsent(publisher, name);
+            }
+        }
+        return names;
+    }
+
+    private static Set<String> publisherIris(List<CodelistRow> rows) {
+        Set<String> iris = new TreeSet<>();
+        for (CodelistRow row : rows) {
+            if (row.publisherIri() != null) {
+                iris.add(row.publisherIri());
+            }
+        }
+        return iris;
+    }
+
+    /**
+     * Collapses the query's one-row-per-download-URL into one entry per dataset, keeping the
+     * query's title order. Metadata depends only on the dataset, so the first row's is taken.
+     */
+    static List<NkodCodelistEntry> groupByDataset(List<CodelistRow> rows, Map<String, String> names) {
+        Map<String, CodelistRow> firstRow = new LinkedHashMap<>();
+        Map<String, Set<String>> urls = new LinkedHashMap<>();
+        for (CodelistRow row : rows) {
+            firstRow.putIfAbsent(row.datasetIri(), row);
+            Set<String> datasetUrls = urls.computeIfAbsent(row.datasetIri(), k -> new TreeSet<>());
+            if (row.downloadUrl() != null) {
+                datasetUrls.add(row.downloadUrl());
+            }
+        }
+
+        List<NkodCodelistEntry> entries = new ArrayList<>(firstRow.size());
+        firstRow.forEach((iri, row) -> {
+            String publisher = row.publisherIri() == null ? null
+                    : names.getOrDefault(row.publisherIri(), row.publisherIri());
+            if (publisher == null) {
+                log.warn("NKOD codelist dataset {} has no publisher", iri);
+                publisher = "";
+            }
+            NkodCodelist codelist = NkodCodelist.builder()
+                    .datasetIri(iri)
+                    .title(row.title())
+                    .publisher(publisher)
+                    .description(blankToNull(row.description()))
+                    .codeListNumber(lastPathSegment(row.rppIdentifier()))
+                    .validFrom(blankToNull(row.validFrom()))
+                    .build();
+            entries.add(new NkodCodelistEntry(codelist, List.copyOf(urls.get(iri))));
+        });
+        return entries;
+    }
+
+    /** {@code …/mdzastresujicids/151} → {@code "151"}; null when absent or segment-less. */
+    static String lastPathSegment(String iri) {
+        if (iri == null) {
+            return null;
+        }
+        String trimmed = iri.strip();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        int slash = trimmed.lastIndexOf('/');
+        String segment = slash < 0 ? trimmed : trimmed.substring(slash + 1);
+        return segment.isBlank() ? null : segment;
+    }
+
+    /** {@code dcterms:identifier} is published both as an IRI and as a literal. */
+    private static String uriOrLiteral(QuerySolution sol, String var) {
+        String uri = SparqlSolutions.resourceUri(sol, var);
+        return uri != null ? uri : SparqlSolutions.literalString(sol, var);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     /**

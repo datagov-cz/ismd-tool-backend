@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.junit.jupiter.api.BeforeEach;
@@ -110,6 +111,11 @@ class NkdConceptListCacheTest {
         @Bean
         RppSnapshotHolder rppSnapshotHolder() {
             return mock(RppSnapshotHolder.class);
+        }
+
+        @Bean
+        NkodCodelistService nkodCodelistService() {
+            return mock(NkodCodelistService.class);
         }
 
         @Bean
