@@ -742,6 +742,24 @@ class ConceptCreatorTest {
         }
 
         @Test
+        void createSingleConcept_ShouldStoreAPercentEncodedDatasetAsRawUtf8() {
+            setupBasicClassConcept("Encoded Code List Class", "subjekt");
+            when(classConceptModel.getCodeListIri())
+                    .thenReturn("https://data.mvcr.gov.cz/zdroj/číselníky/typy-turistických-cílů");
+            when(classConceptModel.getCodeListDataset())
+                    .thenReturn("https://data.gov.cz/zdroj/datov%C3%A9-sady/test-dataset");
+
+            Resource result = conceptCreator.createSingleConcept(classConceptModel);
+
+            Resource codeListNode = result.getProperty(result.getModel().createProperty(
+                    OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM)).getObject().asResource();
+            Property datasetProp = result.getModel().createProperty(
+                    OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
+            assertEquals("https://data.gov.cz/zdroj/datové-sady/test-dataset",
+                    codeListNode.getProperty(datasetProp).getObject().asResource().getURI());
+        }
+
+        @Test
         void createSingleConcept_ShouldRejectDatasetWithoutCodeListIri() {
             setupBasicClassConcept("Incomplete Code List", "subjekt");
             when(classConceptModel.getCodeListDataset())

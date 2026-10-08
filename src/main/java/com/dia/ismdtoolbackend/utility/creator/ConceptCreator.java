@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.utility.creator;
 import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
+import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
 import com.dia.models.OFNBaseModel;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.URIGenerator;
@@ -932,7 +933,7 @@ public class ConceptCreator {
         if (!hasIri || !hasDataset) return;
 
         String iri = codeListIri.trim();
-        String dataset = datasetUrl.trim();
+        String dataset = SparqlSolutions.toRawUtf8(datasetUrl.trim());
 
         Property instanceDefinedByCodeList = ontModel.createProperty(
                 OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);

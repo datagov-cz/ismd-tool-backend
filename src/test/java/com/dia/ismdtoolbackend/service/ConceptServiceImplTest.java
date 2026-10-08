@@ -1,11 +1,14 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.controller.dto.CodeListDto;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.NkodCodelistCheckDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.NkodCodelistStatus;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -26,6 +29,7 @@ import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -86,6 +90,9 @@ class ConceptServiceImplTest {
 
     @Mock
     private RppSnapshotHolder rppSnapshotHolder;
+
+    @Mock
+    private NkodCodelistService nkodCodelistService;
 
     @Mock
     private OntologyDetailExtractor detailExtractor;
@@ -1496,6 +1503,59 @@ class ConceptServiceImplTest {
 
         verify(rppSnapshotHolder, never()).findAgendaByIri(anyString());
         verify(rppSnapshotHolder, never()).findIsvsByIri(anyString());
+    }
+
+    // ── resolveCodeList ────────────────────────────────────────────────
+
+    private OntologyDetailModel.ConceptDetailModel stubDetailWithCodeList(CodeListDto codeList) {
+        testConceptEntity.setIsPublished(false);
+        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
+        Model rawModel = nonEmptyModel();
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+
+        OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
+                .iri(TEST_CONCEPT_IRI)
+                .codeList(codeList)
+                .build();
+        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
+
+        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
+        metadataDto.setIsPublished(false);
+        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
+        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
+        return detail;
+    }
+
+    @Test
+    void getConceptDetail_setsCodeListResolved_whenTheCheckReports() {
+        CodeListDto stored = CodeListDto.builder()
+                .iri("https://rpp.example/číselníky/151/2024-01-01")
+                .datovaSadaVNkod("https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289")
+                .build();
+        stubDetailWithCodeList(stored);
+        NkodCodelistCheckDto check = NkodCodelistCheckDto.builder().status(NkodCodelistStatus.NEW_VERSION).build();
+        when(nkodCodelistService.check(stored)).thenReturn(Optional.of(check));
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertSame(check, result.getConceptDetail().getCodeListResolved());
+        assertSame(stored, result.getConceptDetail().getCodeList());
+    }
+
+    @Test
+    void getConceptDetail_leavesCodeListResolvedUnset_whenTheCheckReportsNothing() {
+        CodeListDto stored = CodeListDto.builder()
+                .iri("https://rpp.example/číselníky/151/2024-01-01")
+                .datovaSadaVNkod("https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289")
+                .build();
+        stubDetailWithCodeList(stored);
+        when(nkodCodelistService.check(stored)).thenReturn(Optional.empty());
+
+        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
+
+        assertNull(result.getConceptDetail().getCodeListResolved());
+        assertSame(stored, result.getConceptDetail().getCodeList());
     }
 
     private static Model nonEmptyModel() {

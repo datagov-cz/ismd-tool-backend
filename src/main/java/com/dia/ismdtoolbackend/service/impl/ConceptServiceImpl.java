@@ -29,6 +29,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
+import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
 import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
@@ -95,6 +96,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final NkdSparqlClient nkdSparqlClient;
     private final ConceptDeviationComparator deviationComparator;
     private final RppSnapshotHolder rppSnapshotHolder;
+    private final NkodCodelistService nkodCodelistService;
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
@@ -602,6 +604,7 @@ public class ConceptServiceImpl implements ConceptService {
 
         referencedConceptsEnricher.enrich(conceptDetail);
         resolveRppReferences(conceptDetail);
+        resolveCodeList(conceptDetail);
 
         ConceptMetadataModel metadataModel = conceptMetadataMapper.toDto(metadataEntity);
 
@@ -629,6 +632,10 @@ public class ConceptServiceImpl implements ConceptService {
         if (aisIri != null) {
             rppSnapshotHolder.findIsvsByIri(aisIri).ifPresent(detail::setAisResolved);
         }
+    }
+
+    private void resolveCodeList(OntologyDetailModel.ConceptDetailModel detail) {
+        nkodCodelistService.check(detail.getCodeList()).ifPresent(detail::setCodeListResolved);
     }
 
     protected ConceptMetadataEntity saveMetadata(ConceptCreateModel createModel,
