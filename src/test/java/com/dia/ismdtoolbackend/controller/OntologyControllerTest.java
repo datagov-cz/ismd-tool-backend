@@ -604,7 +604,7 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload").file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.errorCode").doesNotExist())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FAILED"))
                 .andExpect(jsonPath("$.message").value("Zpracování RDF souboru bylo přerušeno."));
     }
 

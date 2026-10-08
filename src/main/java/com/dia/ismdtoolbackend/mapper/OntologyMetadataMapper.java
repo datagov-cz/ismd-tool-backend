@@ -29,6 +29,8 @@ public interface OntologyMetadataMapper {
     @Mapping(target = "concepts", ignore = true)
     @Mapping(target = "conceptCount", ignore = true)
     @Mapping(target = "sourceTag", ignore = true)
+    @Mapping(target = "rejectedConcepts", ignore = true)
+    @Mapping(target = "correctedIris", ignore = true)
     OntologyMetadataModel toDto(OntologyMetadataEntity entity);
 
     /**

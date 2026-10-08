@@ -111,6 +111,25 @@ class ConceptMetadataPropertyTest {
     }
 
     @Test
+    @DisplayName("ustanovení read under the canonical OFN property, merged without duplicates")
+    void ustanoveniNeverejnost_canonicalProperty() {
+        OntModel model = createDefaultModel();
+        Resource concept = addOwlClass(model, "udaj", "Údaj");
+        String shared = "https://zakon.example.org/sb/111-2009/par/5";
+        String canonicalOnly = "https://zakon.example.org/sb/111-2009/par/6";
+        addUstanoveniNeverejnost(concept, model, shared);
+        org.apache.jena.rdf.model.Property canonical = model.createProperty(
+                "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/" + USTANOVENI_LONG);
+        concept.addProperty(canonical, model.createResource(shared));
+        concept.addProperty(canonical, model.createResource(canonicalOnly));
+        ModelStructure structure = createModelStructure(model);
+
+        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+
+        assertEquals(List.of(shared, canonicalOnly), result.get(USTANOVENI_NEVEREJNOST));
+    }
+
+    @Test
     @DisplayName("No metadata properties → fields absent")
     void noMetadataProperties_fieldsAbsent() {
         OntModel model = createDefaultModel();

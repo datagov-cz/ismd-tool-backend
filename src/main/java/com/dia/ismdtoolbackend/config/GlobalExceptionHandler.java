@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramReadbackFailureDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
+import com.dia.ismdtoolbackend.enums.ErrorCode;
 import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -39,18 +40,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleEntityNotFound(EntityNotFoundException e) {
         log.error("Entity not found: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponseDto.error(e.getMessage()));
+        return error(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleAccessDenied(AccessDeniedException e) {
         log.error("Access denied: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponseDto.error("Přístup odepřen: nemáte oprávnění k této operaci."));
+        return error(ErrorCode.ACCESS_DENIED);
     }
 
     @ExceptionHandler(OntologyCreationConflictException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyCreationConflict(OntologyCreationConflictException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(e.getMessage()));
+        return error(ErrorCode.ONTOLOGY_CREATION_CONFLICT, e.getMessage());
     }
 
     /** Another editor saved the diagram first; membership is a full replace, so a stale save would delete. */
@@ -58,16 +59,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramVersionConflict(
             DiagramVersionConflictException e) {
         log.warn("Diagram version conflict: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(
-                ApiResponseDto.error(null, e.getMessage(), DiagramVersionConflictException.ERROR_CODE));
+        return error(ErrorCode.DIAGRAM_VERSION_CONFLICT, e.getMessage());
     }
 
     /** A diagram name is already taken within its ontology (names identify a canvas to the user). */
     @ExceptionHandler(DiagramNameConflictException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramNameConflict(DiagramNameConflictException e) {
         log.warn("Diagram name conflict: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(
-                ApiResponseDto.error(null, e.getMessage(), DiagramNameConflictException.ERROR_CODE));
+        return error(ErrorCode.DIAGRAM_NAME_CONFLICT, e.getMessage());
     }
 
     /**
@@ -79,8 +78,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramConflictResolution(
             DiagramConflictResolutionException e) {
         log.warn("Invalid diagram conflict resolution: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
-                null, e.getMessage(), DiagramConflictResolutionException.ERROR_CODE));
+        return error(ErrorCode.DIAGRAM_CONFLICT_RESOLUTION_INVALID, e.getMessage());
     }
 
     /**
@@ -93,8 +91,7 @@ public class GlobalExceptionHandler {
             DiagramEditConflictException e) {
         log.warn("Diagram materialize blocked by cross-diagram conflict: {} concept(s)",
                 e.getReport().conflicts().size());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
-                e.getReport(), e.getMessage(), DiagramEditConflictException.ERROR_CODE));
+        return error(ErrorCode.DIAGRAM_EDIT_CONFLICT, e.getMessage(), e.getReport());
     }
 
     /**
@@ -107,10 +104,7 @@ public class GlobalExceptionHandler {
             DiagramReadbackFailedException e) {
         log.error("Diagram write committed but content read-back failed (version {}): {}",
                 e.getVersion(), e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
-                new DiagramReadbackFailureDto(e.getVersion()),
-                e.getMessage(),
-                DiagramReadbackFailedException.ERROR_CODE));
+        return error(ErrorCode.DIAGRAM_SAVED_READBACK_FAILED, e.getMessage(), new DiagramReadbackFailureDto(e.getVersion()));
     }
 
     /**
@@ -121,21 +115,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleDiagramContentUnavailable(
             DiagramContentUnavailableException e) {
         log.error("Diagram content could not be read: {}", e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
-                null, e.getMessage(), DiagramContentUnavailableException.ERROR_CODE));
+        return error(ErrorCode.DIAGRAM_CONTENT_UNAVAILABLE, e.getMessage());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
         log.warn("Constraint violation: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error("Zápis porušuje omezení databáze — pravděpodobně již existuje záznam se stejnou hodnotou."), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.DATA_INTEGRITY_VIOLATION);
     }
 
     @ExceptionHandler(ResourceAccessException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceUnavailable(ResourceAccessException e) {
         log.error("External service unavailable: {}", e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiResponseDto.error("Externí služba není momentálně dostupná."));
+        return error(ErrorCode.EXTERNAL_SERVICE_UNAVAILABLE);
     }
 
     @ExceptionHandler(RestClientResponseException.class)
@@ -144,39 +136,37 @@ public class GlobalExceptionHandler {
         HttpStatusCode status = e.getStatusCode().is5xxServerError()
                 ? HttpStatus.BAD_GATEWAY
                 : e.getStatusCode();
-        return ResponseEntity.status(status)
-                .body(ApiResponseDto.error("Externí služba požadavek odmítla."));
+        return ResponseEntity.status(status).body(ApiResponseDto.error(ErrorCode.EXTERNAL_SERVICE_REJECTED));
     }
 
     @ExceptionHandler(RestClientException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleExternalServiceError(RestClientException e) {
         log.error("External service call failed: {}", e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(ApiResponseDto.error("Externí služba vrátila neplatnou odpověď."));
+        return error(ErrorCode.EXTERNAL_SERVICE_INVALID_RESPONSE);
     }
 
     @ExceptionHandler(JenaTDB2Exception.class)
     public ResponseEntity<ApiResponseDto<Void>> handleJenaTDB2Exception(JenaTDB2Exception e) {
         log.error("Database operation failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.RDF_STORE_ERROR, e.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponseDto<Void>> handleGenericException(Exception e) {
         log.error("Unexpected error: {}", e.getMessage(), e);
-        return ResponseEntity.status(500).body(ApiResponseDto.error("Nastala neočekávaná chyba."));
+        return error(ErrorCode.INTERNAL_ERROR);
     }
 
     @ExceptionHandler(OntologyNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyNotFoundException(OntologyNotFoundException e) {
         log.warn("Ontology not found: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+        return error(ErrorCode.ONTOLOGY_NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(OntologyValidationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyValidationException(OntologyValidationException e) {
         log.warn("Ontology validation failed: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.ONTOLOGY_VALIDATION_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(InSchemeDecisionRequiredException.class)
@@ -185,8 +175,7 @@ public class GlobalExceptionHandler {
                 e.getConceptsMissingInScheme().size());
         MissingInSchemeDecisionDto data = new MissingInSchemeDecisionDto(
                 e.getGraphName(), e.getConceptsMissingInScheme());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponseDto.error(data, e.getMessage(), InSchemeDecisionRequiredException.ERROR_CODE));
+        return error(ErrorCode.MISSING_INSCHEME_DECISION_REQUIRED, e.getMessage(), data);
     }
 
     @ExceptionHandler(OntologyDownloadBlockedException.class)
@@ -197,38 +186,37 @@ public class GlobalExceptionHandler {
                 e.getErrors().stream().map(ValidationErrorSummaryDto::ruleName).distinct().toList());
         DownloadBlockedByValidationDto data = new DownloadBlockedByValidationDto(
                 e.getGraphName(), e.getErrorCount(), e.getErrors(), e.isTruncated());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponseDto.error(data, e.getMessage(), OntologyDownloadBlockedException.ERROR_CODE));
+        return error(ErrorCode.ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION, e.getMessage(), data);
     }
 
     @ExceptionHandler(OntologyStorageException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyStorageException(OntologyStorageException e) {
         log.error("Ontology storage failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.ONTOLOGY_STORAGE_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(EmptyFileException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleEmptyFileException(EmptyFileException e) {
         log.warn("File is empty: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.UPLOAD_FILE_EMPTY, e.getMessage());
     }
 
     @ExceptionHandler(UnsupportedRdfFormatException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleUnsupportedRdfFormatException(UnsupportedRdfFormatException e) {
         log.warn("Unsupported RDF language format: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.UPLOAD_RDF_FORMAT_UNSUPPORTED, e.getMessage());
     }
 
     @ExceptionHandler(EmptyDataException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleEmptyDataException(EmptyDataException e) {
         log.warn("Data for creating ontology is empty: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.UPLOAD_DATA_EMPTY, e.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleIllegalArgumentException(IllegalArgumentException e) {
         log.warn("Illegal argument: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.INVALID_ARGUMENT, e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -238,67 +226,67 @@ public class GlobalExceptionHandler {
                 .reduce((a, b) -> a + "; " + b)
                 .orElse("Neplatná data v požadavku.");
         log.warn("Validation failed: {}", details);
-        return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku: " + details), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.REQUEST_VALIDATION_FAILED, "Neplatná data v požadavku: " + details);
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleHandlerMethodValidation(HandlerMethodValidationException e) {
         log.warn("Method argument validation failed: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error("Neplatná data v požadavku."), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.REQUEST_VALIDATION_FAILED);
     }
 
     @ExceptionHandler(TypeMismatchException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleTypeMismatch(TypeMismatchException e) {
         log.warn("Bad request: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.INVALID_PARAMETER, e.getMessage());
     }
 
     @ExceptionHandler(SecurityException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleSecurityException(SecurityException e) {
         log.warn("Unauthorized: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.UNAUTHORIZED);
+        return error(ErrorCode.UNAUTHORIZED, e.getMessage());
     }
 
     @ExceptionHandler(ConceptNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleConceptNotFoundException(ConceptNotFoundException e) {
         log.warn("Concept not found: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+        return error(ErrorCode.CONCEPT_NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(ConceptValidationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleConceptValidationException(ConceptValidationException e) {
         log.warn("Concept validation failed: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.CONCEPT_VALIDATION_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(ConceptStorageException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleConceptStorageException(ConceptStorageException e) {
         log.error("Concept storage failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.CONCEPT_STORAGE_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(CommentNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleCommentNotFoundException(CommentNotFoundException e) {
         log.warn("Comment not found: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+        return error(ErrorCode.COMMENT_NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(CommentException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleCommentException(CommentException e) {
         log.warn("Comment operation failed: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.COMMENT_INVALID, e.getMessage());
     }
 
     @ExceptionHandler(OntologyException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyException(OntologyException e) {
         log.error("Operation failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.ONTOLOGY_PROCESSING_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleValidationException(ValidationException e) {
         log.error("Validation failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.BAD_REQUEST);
+        return error(ErrorCode.VALIDATION_FAILED, e.getMessage());
     }
 
     /**
@@ -311,132 +299,142 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(
             com.dia.ismdtoolbackend.exception.ValidationException e) {
         log.error("Validation report operation failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.VALIDATION_REPORT_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(OntologyUploadException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadException(OntologyUploadException e) {
         log.error("Ontology upload failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.UPLOAD_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(OntologyUploadFileTooLargeException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadFileTooLarge(OntologyUploadFileTooLargeException e) {
         log.warn("Ontology upload rejected, file too large: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyUploadFileTooLargeException.ERROR_CODE));
+        return error(ErrorCode.UPLOAD_FILE_TOO_LARGE, e.getMessage());
     }
 
     @ExceptionHandler(OntologyUploadParseException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadParse(OntologyUploadParseException e) {
         log.warn("Ontology upload rejected, RDF not parseable: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyUploadParseException.ERROR_CODE));
+        return error(ErrorCode.UPLOAD_RDF_PARSE_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(OntologyUploadParseTimeoutException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadParseTimeout(OntologyUploadParseTimeoutException e) {
         log.warn("Ontology upload rejected, RDF parsing timed out: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyUploadParseTimeoutException.ERROR_CODE));
+        return error(ErrorCode.UPLOAD_RDF_PARSE_TIMEOUT, e.getMessage());
     }
 
     @ExceptionHandler(OntologyUploadMissingIriException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadMissingIri(OntologyUploadMissingIriException e) {
         log.warn("Ontology upload rejected, no ontology IRI in data: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyUploadMissingIriException.ERROR_CODE));
+        return error(ErrorCode.UPLOAD_ONTOLOGY_IRI_MISSING, e.getMessage());
+    }
+
+    @ExceptionHandler(OntologyUploadIriCollisionException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadIriCollision(OntologyUploadIriCollisionException e) {
+        log.warn("Ontology upload rejected, IRIs differ only by a trailing slash: {}", e.getMessage());
+        return error(ErrorCode.UPLOAD_IRI_TRAILING_SLASH_COLLISION, e.getMessage());
     }
 
     /** 502, matching the diagram handlers: the failing party is the RDF store. */
     @ExceptionHandler(OntologyUploadRdfStoreException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadRdfStore(OntologyUploadRdfStoreException e) {
         log.error("Ontology upload failed writing to TDB2: {}", e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyUploadRdfStoreException.ERROR_CODE));
+        return error(ErrorCode.UPLOAD_RDF_STORE_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(OntologyUploadMetadataException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadMetadata(OntologyUploadMetadataException e) {
         log.error("Ontology upload failed saving metadata: {}", e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyUploadMetadataException.ERROR_CODE));
+        return error(ErrorCode.UPLOAD_METADATA_SAVE_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(OntologyAlreadyExistsException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyAlreadyExistsException(OntologyAlreadyExistsException e) {
         log.warn("Ontology already exists: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponseDto.error(
-                null, e.getMessage(), OntologyAlreadyExistsException.ERROR_CODE));
+        return error(ErrorCode.ONTOLOGY_ALREADY_EXISTS, e.getMessage());
     }
 
     @ExceptionHandler(JsonExportException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleJsonExportException(JsonExportException e) {
         log.error("JSON export failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.EXPORT_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(OntologyAnalysisException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyAnalysisException(OntologyAnalysisException e) {
         log.error("Ontology analysis failed: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.ONTOLOGY_ANALYSIS_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e) {
         log.warn("File upload size exceeded: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error("Nahraný soubor překračuje maximální povolenou velikost."), HttpStatus.PAYLOAD_TOO_LARGE);
+        return error(ErrorCode.UPLOAD_FILE_TOO_LARGE);
     }
 
     @ExceptionHandler(IOException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleIOException(IOException e) {
         log.error("IO exception: {}", e.getMessage(), e);
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+        return error(ErrorCode.IO_ERROR, e.getMessage());
     }
 
     @ExceptionHandler(NkdResourceNotFoundException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleNkdResourceNotFoundException(NkdResourceNotFoundException e) {
         log.info("NKD resource not found: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.NOT_FOUND);
+        return error(ErrorCode.NKD_RESOURCE_NOT_FOUND, e.getMessage());
     }
 
     @ExceptionHandler(NkdEndpointException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleNkdEndpointException(NkdEndpointException e) {
         log.warn("NKD endpoint error: {}", e.getMessage());
-        return new ResponseEntity<>(ApiResponseDto.error(e.getMessage()), HttpStatus.SERVICE_UNAVAILABLE);
+        return error(ErrorCode.NKD_UNAVAILABLE, e.getMessage());
     }
 
     @ExceptionHandler(SparqlEndpointUnavailableException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleSparqlEndpointUnavailable(SparqlEndpointUnavailableException e) {
         log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiResponseDto.error(e.getEndpointLabel() + " data nejsou momentálně dostupná."));
+        return error(ErrorCode.SPARQL_ENDPOINT_UNAVAILABLE, e.getEndpointLabel() + " data nejsou momentálně dostupná.");
     }
 
     @ExceptionHandler(ValidationServiceUnavailableException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleValidationServiceUnavailable(ValidationServiceUnavailableException e) {
         log.error("{} unavailable: {}", e.getEndpointLabel(), e.getMessage(), e);
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiResponseDto.error(e.getEndpointLabel() + " není momentálně dostupná."));
+        return error(ErrorCode.VALIDATION_SERVICE_UNAVAILABLE, e.getEndpointLabel() + " není momentálně dostupná.");
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleMethodArgumentTypeMismatch(MethodArgumentTypeMismatchException e) {
         log.warn("Type mismatch for parameter '{}': value='{}'", e.getName(), e.getValue());
         String msg = "Parametr '" + e.getName() + "' má neplatnou hodnotu.";
-        return ResponseEntity.badRequest().body(ApiResponseDto.error(msg));
+        return error(ErrorCode.INVALID_PARAMETER, msg);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleMissingParameter(MissingServletRequestParameterException e) {
         log.warn("Missing required parameter '{}'", e.getParameterName());
         String msg = "Chybí povinný parametr '" + e.getParameterName() + "'.";
-        return ResponseEntity.badRequest().body(ApiResponseDto.error(msg));
+        return error(ErrorCode.MISSING_PARAMETER, msg);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleNotReadable(HttpMessageNotReadableException e) {
         log.warn("Request body unreadable: {}", e.getMessage());
-        return ResponseEntity.badRequest().body(ApiResponseDto.error("Požadavek má neplatný formát."));
+        return error(ErrorCode.MALFORMED_REQUEST);
+    }
+
+    private static ResponseEntity<ApiResponseDto<Void>> error(ErrorCode code) {
+        return error(code, null, null);
+    }
+
+    private static ResponseEntity<ApiResponseDto<Void>> error(ErrorCode code, String message) {
+        return error(code, message, null);
+    }
+
+    /** The status comes from the code, so the two cannot disagree. */
+    private static <T> ResponseEntity<ApiResponseDto<T>> error(ErrorCode code, String message, T data) {
+        return ResponseEntity.status(code.getStatus()).body(ApiResponseDto.error(code, message, data));
     }
 }

@@ -9,9 +9,6 @@ package com.dia.ismdtoolbackend.exception;
  */
 public class DiagramVersionConflictException extends RuntimeException {
 
-    /** Stable error code the FE branches on, rather than the localized message. */
-    public static final String ERROR_CODE = "DIAGRAM_VERSION_CONFLICT";
-
     public DiagramVersionConflictException(String message) {
         super(message);
     }

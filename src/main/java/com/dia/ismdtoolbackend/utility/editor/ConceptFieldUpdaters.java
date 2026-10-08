@@ -321,6 +321,47 @@ class ConceptFieldUpdaters {
                 toAdd.add(model.createStatement(newConcept, provisionProperty, model.createResource(provisionURI)));
             }
         }
+
+        syncPrivacyProvisionCopies(newConcept, oldConcept, provisionProperty, newProvisions, model, toRemove, toAdd);
+    }
+
+    /**
+     * Keeps the other stored copies of the provisions in step with the edit. Create also writes
+     * them under the vocabulary's own namespace, and uploaded data may carry them under that or
+     * the canonical OFN property; the vocabulary-namespace copy is rewritten to the new set and
+     * any other copy is dropped. A copy already equal to the new set is left untouched, so an
+     * unchanged edit stages nothing.
+     */
+    private void syncPrivacyProvisionCopies(Resource newConcept, Resource oldConcept, Property provisionProperty,
+                                            Set<String> newProvisions, Model model,
+                                            Set<Statement> toRemove, Set<Statement> toAdd) {
+        Property namespaceCopy = model.createProperty(iriFactory.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
+
+        Set<Property> otherCopies = new HashSet<>();
+        oldConcept.listProperties().forEachRemaining(stmt -> {
+            Property predicate = stmt.getPredicate();
+            String localName = UtilityMethods.extractNameFromIRI(predicate.getURI());
+            if ((USTANOVENI_NEVEREJNOST.equals(localName) || USTANOVENI_LONG.equals(localName))
+                    && !predicate.equals(provisionProperty) && !predicate.equals(namespaceCopy)) {
+                otherCopies.add(predicate);
+            }
+        });
+        for (Property copy : otherCopies) {
+            removeAllByPredicate(newConcept, copy, toRemove, toAdd);
+            if (!newConcept.equals(oldConcept)) {
+                removeAllByPredicate(oldConcept, copy, toRemove, toAdd);
+            }
+        }
+
+        if (!getResourceURIs(oldConcept, namespaceCopy).equals(newProvisions)) {
+            removeAllByPredicate(newConcept, namespaceCopy, toRemove, toAdd);
+            if (!newConcept.equals(oldConcept)) {
+                removeAllByPredicate(oldConcept, namespaceCopy, toRemove, toAdd);
+            }
+            for (String provisionURI : newProvisions) {
+                toAdd.add(model.createStatement(newConcept, namespaceCopy, model.createResource(provisionURI)));
+            }
+        }
     }
 
     private void updateGovernanceProperty(Resource newConcept, String newValue, String propertyName,
@@ -682,26 +723,29 @@ class ConceptFieldUpdaters {
         Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
         Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
 
-        if (oldConcept.hasProperty(RDF.type, verejnyLegal)) {
-            removeTypeStatement(newConcept, oldConcept, verejnyLegal, model, toRemove, toAdd);
-        }
-        if (oldConcept.hasProperty(RDF.type, neverejnyLegal)) {
-            removeTypeStatement(newConcept, oldConcept, neverejnyLegal, model, toRemove, toAdd);
+        // Non-public needs a provision the concept ends up with: a valid one in this edit, or,
+        // when the edit leaves the provisions alone, one it already carries.
+        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        boolean endsUpWithProvisions = privacyProvisions == null
+                ? oldConcept.hasProperty(provisionProperty)
+                : privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty()
+                        && SparqlIriValidator.isEsbirkaEliIri(EsbirkaEliParser.canonicalizeHost(p.trim())));
+
+        Resource wanted = null;
+        if (Boolean.TRUE.equals(isPublic) && !hasNonEmptyProvisionsArg) {
+            wanted = verejnyLegal;
+        } else if (Boolean.FALSE.equals(isPublic) && endsUpWithProvisions) {
+            wanted = neverejnyLegal;
         }
 
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-        boolean hasValidProvisions = toAdd.stream().anyMatch(stmt ->
-                stmt.getSubject().equals(newConcept) &&
-                stmt.getPredicate().equals(provisionProperty));
-        if (Boolean.TRUE.equals(isPublic)) {
-            if (!hasNonEmptyProvisionsArg) {
-                toAdd.add(model.createStatement(newConcept, RDF.type, verejnyLegal));
+        // Only the difference is staged, so an edit that keeps the classification changes nothing.
+        for (Resource classification : List.of(verejnyLegal, neverejnyLegal)) {
+            boolean has = oldConcept.hasProperty(RDF.type, classification);
+            if (has && !classification.equals(wanted)) {
+                removeTypeStatement(newConcept, oldConcept, classification, model, toRemove, toAdd);
+            } else if (!has && classification.equals(wanted)) {
+                toAdd.add(model.createStatement(newConcept, RDF.type, classification));
             }
-        } else if (Boolean.FALSE.equals(isPublic)) {
-            if (!hasValidProvisions) {
-                return;
-            }
-            toAdd.add(model.createStatement(newConcept, RDF.type, neverejnyLegal));
         }
     }
 

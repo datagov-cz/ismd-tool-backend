@@ -10,9 +10,6 @@ package com.dia.ismdtoolbackend.exception;
  */
 public class DiagramConflictResolutionException extends RuntimeException {
 
-    /** Stable error code the FE branches on, rather than the localized message. */
-    public static final String ERROR_CODE = "DIAGRAM_CONFLICT_RESOLUTION_INVALID";
-
     public DiagramConflictResolutionException(String message) {
         super(message);
     }

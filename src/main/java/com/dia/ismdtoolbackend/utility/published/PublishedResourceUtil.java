@@ -143,6 +143,13 @@ public class PublishedResourceUtil {
     }
 
     public List<String> checkPublishedResourcesInNKD(OntModel model) {
+        return checkPublishedResourcesInNKD(model, List.of());
+    }
+
+    /**
+     * Checks the model's vocabulary and concepts plus {@code additionalIris} in one NKD query.
+     */
+    public List<String> checkPublishedResourcesInNKD(OntModel model, Collection<String> additionalIris) {
         List<String> resourceIris = new ArrayList<>();
 
         ResIterator ontologyIterator = model.listResourcesWithProperty(RDF.type, OWL2.Ontology);
@@ -166,6 +173,8 @@ public class PublishedResourceUtil {
                 resourceIris.add(conceptIri);
             }
         }
+
+        additionalIris.stream().filter(iri -> !resourceIris.contains(iri)).forEach(resourceIris::add);
 
         log.debug("Extracted {} resource IRIs from model for NKD verification", resourceIris.size());
 

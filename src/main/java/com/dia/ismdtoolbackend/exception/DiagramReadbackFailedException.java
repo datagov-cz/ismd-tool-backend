@@ -14,9 +14,6 @@ package com.dia.ismdtoolbackend.exception;
  */
 public class DiagramReadbackFailedException extends RuntimeException {
 
-    /** Stable error code the FE branches on, rather than the localized message. */
-    public static final String ERROR_CODE = "DIAGRAM_SAVED_READBACK_FAILED";
-
     private final transient Long version;
 
     public DiagramReadbackFailedException(Long version, Throwable cause) {

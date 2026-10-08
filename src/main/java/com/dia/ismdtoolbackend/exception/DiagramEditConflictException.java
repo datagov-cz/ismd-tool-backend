@@ -15,9 +15,6 @@ import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConflictDto;
  */
 public class DiagramEditConflictException extends RuntimeException {
 
-    /** Stable error code the FE branches on, rather than the localized message. */
-    public static final String ERROR_CODE = "DIAGRAM_EDIT_CONFLICT";
-
     private final transient DiagramConflictDto report;
 
     public DiagramEditConflictException(DiagramConflictDto report) {
