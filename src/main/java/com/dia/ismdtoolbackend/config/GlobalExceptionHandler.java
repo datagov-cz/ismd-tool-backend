@@ -332,6 +332,13 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.UPLOAD_ONTOLOGY_IRI_MISSING, e.getMessage());
     }
 
+    @ExceptionHandler(OntologyUploadIriCollisionException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadIriCollision(OntologyUploadIriCollisionException e) {
+        log.warn("Ontology upload rejected, IRIs differ only by a trailing slash: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponseDto.error(
+                null, e.getMessage(), OntologyUploadIriCollisionException.ERROR_CODE));
+    }
+
     /** 502, matching the diagram handlers: the failing party is the RDF store. */
     @ExceptionHandler(OntologyUploadRdfStoreException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadRdfStore(OntologyUploadRdfStoreException e) {
