@@ -49,6 +49,8 @@ public enum ErrorCode {
     UPLOAD_RDF_PARSE_TIMEOUT(HttpStatus.UNPROCESSABLE_CONTENT, "Zpracování nahraného souboru trvalo příliš dlouho."),
     UPLOAD_DATA_EMPTY(HttpStatus.BAD_REQUEST, "Nahraný soubor neobsahuje žádná data."),
     UPLOAD_ONTOLOGY_IRI_MISSING(HttpStatus.BAD_REQUEST, "Nahraný slovník nemá IRI."),
+    UPLOAD_IRI_TRAILING_SLASH_COLLISION(HttpStatus.BAD_REQUEST,
+            "Nahraný soubor obsahuje IRI, která se liší pouze koncovým lomítkem."),
     UPLOAD_RDF_STORE_FAILED(HttpStatus.BAD_GATEWAY, "Nahraný slovník se nepodařilo zapsat do úložiště RDF."),
     UPLOAD_METADATA_SAVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Metadata nahraného slovníku se nepodařilo uložit."),
     MISSING_INSCHEME_DECISION_REQUIRED(HttpStatus.BAD_REQUEST,
