@@ -18,6 +18,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.UploadConceptGate;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
@@ -81,6 +82,9 @@ class OntologyUploadTransactionalTest {
     @Mock
     private PublishedResourceUtil deviationChecker;
 
+    @Mock
+    private UploadConceptGate uploadConceptGate;
+
     @InjectMocks
     private OntologyUploadServiceImpl uploadService;
 
@@ -108,7 +112,7 @@ class OntologyUploadTransactionalTest {
         MultipartFile file = createTurtleFile(ttl);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         doThrow(new RuntimeException("TDB2 connection failed"))
                 .when(jenaTDB2Repository).putOntologyModel(anyString(), any());
 
@@ -126,7 +130,7 @@ class OntologyUploadTransactionalTest {
         MultipartFile file = createTurtleFile(ttl);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         // TDB2 save succeeds
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         // Metadata save fails
@@ -146,7 +150,7 @@ class OntologyUploadTransactionalTest {
         MultipartFile file = createTurtleFile(ttl);
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         when(ontologyMetadataRepository.save(any())).thenThrow(new RuntimeException("DB failure"));
         // TDB2 cleanup also fails
@@ -177,7 +181,7 @@ class OntologyUploadTransactionalTest {
         model.setGraphName("https://example.com/ontology");
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(deviationChecker.checkPublishedResourcesInNKD(any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         when(ontologyMetadataRepository.save(any())).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(model);
@@ -205,7 +209,7 @@ class OntologyUploadTransactionalTest {
     @Test
     void uploadFromFile_noOntologyIri_shouldThrowMissingIriException() throws IOException {
         MultipartFile file = createTurtleFile("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
-        when(deviationChecker.checkPublishedResourcesInNKD(any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
 
         assertThrows(OntologyUploadMissingIriException.class,
                 () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
@@ -229,7 +233,7 @@ class OntologyUploadTransactionalTest {
         String ttl = "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n<https://example.com/ontology> a owl:Ontology .";
         MultipartFile file = createTurtleFile(ttl);
 
-        when(deviationChecker.checkPublishedResourcesInNKD(any())).thenReturn(Collections.emptyList());
+        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.of(new OntologyMetadataEntity()));
 
         OntologyAlreadyExistsException thrown = assertThrows(OntologyAlreadyExistsException.class,

@@ -112,7 +112,21 @@ public class OntologyController {
                     savedOntology.getGraphName(), e.getMessage());
         }
 
-        return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, "Slovník úspěšně nahrán: " + savedOntology.getGraphName()));
+        return ResponseEntity.ok().body(ApiResponseDto.success(savedOntology, uploadMessage(savedOntology)));
+    }
+
+    /** Names what the import left out or corrected, so a partial import does not read as a full one. */
+    static String uploadMessage(OntologyMetadataModel uploaded) {
+        StringBuilder message = new StringBuilder("Slovník úspěšně nahrán: ").append(uploaded.getGraphName());
+        int rejected = uploaded.getRejectedConcepts() == null ? 0 : uploaded.getRejectedConcepts().size();
+        if (rejected > 0) {
+            message.append(". Neimportované pojmy: ").append(rejected);
+        }
+        int corrected = uploaded.getCorrectedIris() == null ? 0 : uploaded.getCorrectedIris().size();
+        if (corrected > 0) {
+            message.append(". IRI opravená o koncové lomítko: ").append(corrected);
+        }
+        return message.toString();
     }
 
     @Operation(

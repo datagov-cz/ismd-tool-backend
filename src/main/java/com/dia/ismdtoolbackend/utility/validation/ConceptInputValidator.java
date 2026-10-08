@@ -34,7 +34,8 @@ public final class ConceptInputValidator {
     public record InvalidInput(String field, String value, String reason) {
         @Override
         public String toString() {
-            return field + "='" + value + "' (" + reason + ")";
+            // A rule over several fields has no single offending value; its reason stands alone.
+            return value == null ? reason : field + "='" + value + "' (" + reason + ")";
         }
     }
 

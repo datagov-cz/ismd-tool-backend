@@ -72,6 +72,7 @@ class DataClassificationCarryThroughTest {
         fields.updateDataClassification(f.concept(), Boolean.TRUE, null, f.concept(), f.model(),
                 f.toRemove(), f.toAdd());
 
-        assertTrue(reAdds(f), "carrying the current value re-adds the veřejný type, so the net effect is a no-op");
+        assertFalse(removes(f), "carrying the current value must not remove the veřejný type");
+        assertFalse(reAdds(f), "…and stages nothing: the classification is already what was asked for");
     }
 }
