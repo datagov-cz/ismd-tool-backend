@@ -1,9 +1,9 @@
 package com.dia.ismdtoolbackend.utility.codelist;
 
 import com.dia.ismdtoolbackend.config.NkodConfig;
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
+import tools.jackson.core.json.JsonFactory;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.JsonToken;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -183,11 +183,11 @@ public class CodelistDistributionReader {
             if (parser.nextToken() != JsonToken.START_OBJECT) {
                 return null;
             }
-            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+            while (parser.nextToken() == JsonToken.PROPERTY_NAME) {
                 String name = parser.currentName();
                 JsonToken value = parser.nextToken();
                 if ("iri".equals(name)) {
-                    return value == JsonToken.VALUE_STRING ? parser.getText() : null;
+                    return value == JsonToken.VALUE_STRING ? parser.getString() : null;
                 }
                 parser.skipChildren();
             }

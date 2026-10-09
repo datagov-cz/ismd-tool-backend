@@ -457,7 +457,7 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         java.util.List<String> cyclic = new java.util.ArrayList<>();
         @SuppressWarnings({"unchecked", "rawtypes"})
         java.util.List raw = cyclic;
-        raw.add(cyclic); // cycle → JsonMappingException on write
+        raw.add(cyclic); // cycle → DatabindException on write
         DiagramPendingEdit edit = new DiagramPendingEdit();
         edit.setExactMatch(cyclic);
 
