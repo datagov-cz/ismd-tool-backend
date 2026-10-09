@@ -1,11 +1,10 @@
 package com.dia.ismdtoolbackend.models.concept;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.JsonDeserializer;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ValueDeserializer;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -18,7 +17,7 @@ import java.util.Set;
  * an array of strings. Strings are wrapped into a single-element list, so callers always see lists.
  *
  * <p>Values must be JSON strings. A number, boolean, object, or nested array is rejected with a
- * {@link com.fasterxml.jackson.databind.exc.InvalidFormatException} rather than coerced or dropped —
+ * {@link tools.jackson.databind.exc.InvalidFormatException} rather than coerced or dropped —
  * silently discarding a malformed language would clear that language's stored labels, since the edit
  * path treats an absent key as "no alt names".
  *
@@ -26,12 +25,11 @@ import java.util.Set;
  * {@code skos:altLabel} as a set, so a repeated label cannot round-trip and would otherwise make every
  * subsequent edit re-detect a difference. Insertion order is preserved.
  */
-public class AltNameValuesDeserializer extends JsonDeserializer<Map<String, List<String>>> {
+public class AltNameValuesDeserializer extends ValueDeserializer<Map<String, List<String>>> {
 
     @Override
-    public Map<String, List<String>> deserialize(JsonParser parser, DeserializationContext context)
-            throws IOException {
-        JsonNode root = parser.getCodec().readTree(parser);
+    public Map<String, List<String>> deserialize(JsonParser parser, DeserializationContext context) {
+        JsonNode root = context.readTree(parser);
         if (root == null || root.isNull()) {
             return null;
         }
@@ -51,8 +49,7 @@ public class AltNameValuesDeserializer extends JsonDeserializer<Map<String, List
     }
 
     /** Reads one language's value: either an array of label strings or a single label string. */
-    private List<String> readValues(String language, JsonNode node, DeserializationContext context)
-            throws IOException {
+    private List<String> readValues(String language, JsonNode node, DeserializationContext context) {
         Set<String> unique = new LinkedHashSet<>();
         if (node == null || node.isNull()) {
             return new ArrayList<>(unique);
@@ -68,15 +65,15 @@ public class AltNameValuesDeserializer extends JsonDeserializer<Map<String, List
     }
 
     private void addLabel(Set<String> values, String language, JsonNode node,
-                          DeserializationContext context) throws IOException {
+                          DeserializationContext context) {
         if (node == null || node.isNull()) {
             return;
         }
-        if (!node.isTextual()) {
+        if (!node.isString()) {
             throw context.weirdStringException(node.toString(), String.class,
                     "alternativní-název[" + language + "] must contain only strings");
         }
-        String text = node.asText().trim();
+        String text = node.asString().trim();
         if (!text.isEmpty()) {
             values.add(text);
         }

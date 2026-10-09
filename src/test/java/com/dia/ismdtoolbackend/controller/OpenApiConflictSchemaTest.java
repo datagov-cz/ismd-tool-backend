@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,7 +84,7 @@ class OpenApiConflictSchemaTest {
                 .as("Převzít must document its 409 — the FE cannot generate a conflict-resolution "
                         + "UI for a response the schema does not mention")
                 .isTrue();
-        assertThat(responses.path("409").path("content").fieldNames()).hasNext();
+        assertThat(responses.path("409").path("content").propertyNames()).isNotEmpty();
     }
 
     /**

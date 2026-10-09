@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.models.concept;
 
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DatabindException;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -108,32 +108,32 @@ class AltNameModelDeserializationTest {
 
     @Test
     void numberValue_isRejected() {
-        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":42}}"));
+        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":42}}"));
     }
 
     @Test
     void booleanValue_isRejected() {
-        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":true}}"));
+        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":true}}"));
     }
 
     @Test
     void nestedArrayValue_isRejected() {
-        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":[[\"a\",\"b\"]]}}"));
+        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":[[\"a\",\"b\"]]}}"));
     }
 
     @Test
     void nestedObjectValue_isRejected() {
-        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":{\"x\":1}}}"));
+        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":{\"x\":1}}}"));
     }
 
     @Test
     void numberInsideAnArray_isRejected() {
-        assertThrows(JsonMappingException.class, () -> read("{\"altName\":{\"cs\":[\"Obec\",42]}}"));
+        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":[\"Obec\",42]}}"));
     }
 
     @Test
     void nonObjectAltName_isRejected() {
-        assertThrows(JsonMappingException.class, () -> read("{\"altName\":[\"Obec\"]}"));
+        assertThrows(DatabindException.class, () -> read("{\"altName\":[\"Obec\"]}"));
     }
 
     /** An explicit empty object still means "clear the field" — that is a legitimate instruction. */
