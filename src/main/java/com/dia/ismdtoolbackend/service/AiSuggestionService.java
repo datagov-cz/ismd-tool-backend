@@ -1,9 +1,13 @@
 package com.dia.ismdtoolbackend.service;
 
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyRegenerationRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiJobStartResponseDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionRequestDto;
+import com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiPropertySuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiRelationshipSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionRequestDto;
@@ -43,6 +47,18 @@ public interface AiSuggestionService {
     List<AiPropertySuggestionsJobResponseDto> getPropertySuggestions(String bearerToken, List<UUID> jobIds);
 
     List<AiRelationshipSuggestionsJobResponseDto> getRelationshipSuggestions(String bearerToken, List<UUID> jobIds);
+
+    AiJobStartResponseDto startVocabularySuggestions(
+            String bearerToken, int year, int number, LocalDate date, AiVocabularySuggestionRequestDto request
+    );
+
+    AiJobStartResponseDto expandVocabulary(String bearerToken, int year, int number, LocalDate date,
+                                           AiVocabularyExpansionRequestDto request);
+
+    AiJobStartResponseDto regenerateVocabularyConcept(String bearerToken, int year, int number, LocalDate date,
+                                                      AiVocabularyRegenerationRequestDto request);
+
+    List<AiVocabularySuggestionsJobResponseDto> getVocabularySuggestions(String bearerToken, List<UUID> jobIds);
 
     void acceptSuggestions(String bearerToken, List<AiFeedbackRequestDto> requests);
 

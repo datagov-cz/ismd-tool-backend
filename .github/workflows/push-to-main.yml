@@ -16,6 +16,9 @@ on:
       - '**/target/**'
       - '**/.idea/**'
       - '**/*.iml'
+      # Side images have their own build/deploy workflows
+      - 'docker/fuseki/**'
+      - 'docker/keycloak/**'
 
 permissions:
   contents: write

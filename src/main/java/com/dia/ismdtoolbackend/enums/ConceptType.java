@@ -80,4 +80,19 @@ public enum ConceptType {
         }
         return KONCEPT;
     }
+
+    /**
+     * Whether a concept of this type is drawn as a node on a diagram canvas. Only classes are: a VZTAH
+     * renders as an edge and a VLASTNOST as a row inside its domain class, so neither is ever a node.
+     *
+     * <p>A null type is a member. It means the concept is not in PG — deleted underneath the canvas, or
+     * never typed — and a stale node is still on the canvas and must still be rendered so the user can
+     * remove it.
+     *
+     * <p>Lives here rather than in either caller because it is a fact about the type, and it was the one
+     * definition of "on the canvas" that the read path and the edge projector each held a copy of.
+     */
+    public static boolean isCanvasMember(ConceptType type) {
+        return type == null || type == TRIDA || type == KONCEPT;
+    }
 }

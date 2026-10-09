@@ -1,0 +1,130 @@
+databaseChangeLog:
+  # Diagram node overlay constraint reshape. See docs/DIAGRAM_LAYER.md.
+  # Order: drop the old CHECK (references draft_json) BEFORE the column rename.
+
+  - changeSet:
+      id: 014-drop-v1-backing-content-check
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              DROP CONSTRAINT IF EXISTS ck_diagram_nodes_backing_content
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              ADD CONSTRAINT ck_diagram_nodes_backing_content CHECK (
+                (backing = 'DRAFT' AND concept_iri IS NULL)
+                OR (backing = 'ISMD_CONCEPT' AND concept_iri IS NOT NULL AND draft_json IS NULL)
+              )
+
+  # Rename draft_json -> pending_edit_json.
+  - changeSet:
+      id: 014-rename-draft-json-to-pending-edit-json
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: draft_json
+      changes:
+        - renameColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            oldColumnName: draft_json
+            newColumnName: pending_edit_json
+            columnDataType: text
+      rollback:
+        - renameColumn:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            oldColumnName: pending_edit_json
+            newColumnName: draft_json
+            columnDataType: text
+
+  # concept_iri is now always present.
+  - changeSet:
+      id: 014-diagram-nodes-concept-iri-not-null
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - sqlCheck:
+            # Run only while concept_iri is still nullable.
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM information_schema.columns
+              WHERE table_schema = 'ismd_schema' AND table_name = 'diagram_nodes'
+                AND column_name = 'concept_iri' AND is_nullable = 'YES'
+      changes:
+        - addNotNullConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: concept_iri
+            columnDataType: VARCHAR(1024)
+      rollback:
+        - dropNotNullConstraint:
+            schemaName: ismd_schema
+            tableName: diagram_nodes
+            columnName: concept_iri
+            columnDataType: VARCHAR(1024)
+
+  # Replace the partial-unique index with a plain unique.
+  - changeSet:
+      id: 014-diagram-nodes-plain-unique-concept
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              DROP INDEX IF EXISTS ismd_schema.uq_diagram_nodes_diagram_concept
+        - sql:
+            dbms: postgresql
+            sql: >-
+              CREATE UNIQUE INDEX uq_diagram_nodes_diagram_concept
+              ON ismd_schema.diagram_nodes (diagram_id, concept_iri)
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              DROP INDEX IF EXISTS ismd_schema.uq_diagram_nodes_diagram_concept
+        - sql:
+            dbms: postgresql
+            sql: >-
+              CREATE UNIQUE INDEX uq_diagram_nodes_diagram_concept
+              ON ismd_schema.diagram_nodes (diagram_id, concept_iri)
+              WHERE concept_iri IS NOT NULL
+
+  # New backing<->content CHECK: a node always references a concept.
+  - changeSet:
+      id: 014-diagram-nodes-backing-check
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - dbms:
+            type: postgresql
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              ADD CONSTRAINT ck_diagram_nodes_backing_content CHECK (
+                backing = 'ISMD_CONCEPT' AND concept_iri IS NOT NULL
+              )
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: >-
+              ALTER TABLE ismd_schema.diagram_nodes
+              DROP CONSTRAINT IF EXISTS ck_diagram_nodes_backing_content

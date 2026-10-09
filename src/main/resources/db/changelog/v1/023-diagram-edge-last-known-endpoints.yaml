@@ -1,0 +1,55 @@
+databaseChangeLog:
+  # Tombstone endpoints for a placed edge whose concept was deleted underneath the canvas. Read ONLY when
+  # the backing concept is gone, so they can never contradict a live projection; a VZTAH's row is keyed by
+  # its concept IRI alone, so without them a deleted relationship has no two ends to render between.
+  # See docs/DIAGRAM_LAYER.md.
+
+  - changeSet:
+      id: 023-diagram-edges-last-known-source
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: last_known_source
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: last_known_source
+                  type: VARCHAR(1024)
+                  remarks: Source IRI as last projected; read only when the backing concept is deleted.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: last_known_source
+
+  - changeSet:
+      id: 023-diagram-edges-last-known-target
+      author: richard.koubek
+      preConditions:
+        - onFail: MARK_RAN
+        - not:
+            - columnExists:
+                schemaName: ismd_schema
+                tableName: diagram_edges
+                columnName: last_known_target
+      changes:
+        - addColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columns:
+              - column:
+                  name: last_known_target
+                  type: VARCHAR(1024)
+                  remarks: Target IRI as last projected; read only when the backing concept is deleted.
+      rollback:
+        - dropColumn:
+            schemaName: ismd_schema
+            tableName: diagram_edges
+            columnName: last_known_target

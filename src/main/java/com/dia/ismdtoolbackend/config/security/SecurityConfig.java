@@ -47,19 +47,19 @@ public class SecurityConfig {
         if (!StringUtils.hasText(clientId)) {
             throw new IllegalStateException(
                     "Keycloak client ID is not configured. " +
-                    "Set KEYCLOAK_CLIENT_ID environment variable or application property.");
+                            "Set KEYCLOAK_CLIENT_ID environment variable or application property.");
         }
 
         if (!StringUtils.hasText(clientSecret)) {
             throw new IllegalStateException(
                     "Keycloak client secret is not configured. " +
-                    "Set KEYCLOAK_CLIENT_SECRET environment variable or application property.");
+                            "Set KEYCLOAK_CLIENT_SECRET environment variable or application property.");
         }
 
         if (!StringUtils.hasText(issuerUri)) {
             throw new IllegalStateException(
                     "Keycloak issuer URI is not configured. " +
-                    "Set KEYCLOAK_ISSUER_URI environment variable or application property.");
+                            "Set KEYCLOAK_ISSUER_URI environment variable or application property.");
         }
 
         log.info("Keycloak configuration validated successfully.");
@@ -140,6 +140,7 @@ public class SecurityConfig {
                         "/api/ontology/*/detail",
                         "/api/ontology/*/validation-report",
                         "/api/ontology/concepts",
+                        "/api/ontology/concepts/resolve",
                         "/api/ontology/list",
                         "/api/concept/list",
                         "/api/concept/*/detail",
@@ -148,9 +149,12 @@ public class SecurityConfig {
                         "/api/nkd/ontology/all",
                         "/api/nkd/ontology/download",
                         "/api/nkd/concept/detail",
+                        "/api/nkod/dataset/all",
+                        "/api/nkod/dataset/detail",
                         "/api/rpp/agenda/search",
                         "/api/rpp/ais/search",
                         "/api/eli/law/search",
+                        "/api/eli/law/search/grouped",
                         "/api/eli/law/versions",
                         "/api/eli/law/fragments",
                         "/api/eli/law/content",
@@ -199,6 +203,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/user/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/upload").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/create").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/ontology/check-iri").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/ontology/create-with-concepts").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/ontology/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/ontology/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/*/validate").authenticated()
@@ -211,6 +217,18 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/concept/*/sync").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/comment/post").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/comment/*/delete").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/all").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/*/list").authenticated()
+                        // Concept-addressed rather than diagram-addressed. Nested under /usage/ so it
+                        // cannot be ambiguous with the {ontologySlug}/{diagramId} routes even if some
+                        // ontology were slugged "usage" — nothing else lives at this depth.
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/usage/concept/*").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/diagram/*/create").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/diagram/*/*/detail").authenticated()
+                        .requestMatchers(HttpMethod.PUT,   "/api/diagram/*/*/layout").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/diagram/*/*/rename").authenticated()
+                        .requestMatchers(HttpMethod.POST,  "/api/diagram/*/*/materialize").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/diagram/*/*").authenticated()
                         .requestMatchers("/api/ai/**").authenticated()
                         // Admin-only PG↔TDB2 reconciler. Role check is enforced by
                         // @PreAuthorize("hasRole('ADMIN')") on the controller; this matcher

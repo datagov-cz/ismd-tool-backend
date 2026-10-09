@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
+import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
@@ -34,12 +35,16 @@ import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.outbox.OutboxConfig;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.exception.OntologyCreationConflictException;
+import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.validation.ConceptInputValidator;
+import com.dia.ismdtoolbackend.utility.validation.ConceptCreateValidator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.utility.security.SecurityUtils;
 import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +57,7 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +67,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -90,6 +97,7 @@ public class ConceptServiceImpl implements ConceptService {
     private final ReferencedConceptsEnricher referencedConceptsEnricher;
     private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
+    private final OutboxEntryRepository outboxRepository;
     private final OutboxRelayTrigger outboxRelayTrigger;
     private final NkdSnapshotService nkdSnapshotService;
     private final NkdLinkDetector nkdLinkDetector;
@@ -106,7 +114,7 @@ public class ConceptServiceImpl implements ConceptService {
                 createModel.getConceptType(), createModel.getNameModel(),
                 createModel.getNamespace(), userId);
 
-        validateInput(createModel, userId);
+        ConceptCreateValidator.validate(createModel, userId);
 
         Resource conceptResource = createConceptResource(createModel);
         String conceptUri = conceptResource.getURI();
@@ -126,6 +134,7 @@ public class ConceptServiceImpl implements ConceptService {
             return conceptMetadataMapper.toDto(savedEntity);
         }
 
+        requireInitialGraphApplied(ontologyGraphName);
         saveConceptToTDB2(conceptResource, ontologyGraphName);
         return saveMetadataWithRollback(createModel, userId, conceptUri, ontologyGraphName);
     }
@@ -134,6 +143,7 @@ public class ConceptServiceImpl implements ConceptService {
     @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public void deleteConcept(Long conceptId) {
+        assertCanModify(conceptId);
         // On the outbox path, take a row lock FIRST (see ConceptMetadataRepository.findWithLockById)
         // so a concurrent edit/delete of the same concept can't enqueue an out-of-order same-aggregate
         // outbox row. Direct path keeps the plain findById (byte-for-byte unchanged when flag off).
@@ -146,6 +156,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         String graphName = conceptMetadataOpt.get().getGraphName();
+        requireInitialGraphApplied(graphName);
         String conceptUri = conceptMetadataOpt.get().getConceptIri();
 
         if (!jenaTDB2Repository.graphHasData(graphName)) {
@@ -190,6 +201,7 @@ public class ConceptServiceImpl implements ConceptService {
     @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel) {
+        assertCanModify(conceptId);
         // A rename relocates the conceptIri, which for a working copy IS its NKD twin's IRI — so a rename
         // orphans it from the twin. The generic edit path treats that as chosen divergence and severs the
         // working copy to a draft. The sync path passes false: it owns its own sever decision (a name sync
@@ -210,6 +222,7 @@ public class ConceptServiceImpl implements ConceptService {
         // window in which a concurrent edit could enqueue an out-of-order same-aggregate outbox row.
         ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId, outboxConfig.isEnabled());
         String graphName = metadata.getGraphName();
+        requireInitialGraphApplied(graphName);
 
         Model model = fetchAndValidateGraph(graphName);
         validateConceptInGraph(metadata.getConceptIri(), graphName, model);
@@ -244,7 +257,8 @@ public class ConceptServiceImpl implements ConceptService {
             outboxWriter.enqueueUpsert(graphName, aggregateIri, toRemove, toAdd);
             updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
             outboxRelayTrigger.nudgeAfterCommit();
-            return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+            return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
+                    contentChanged(toRemove, toAdd));
         }
 
         // Direct (outbox-disabled) path: the editor already applied its delta to `model`. Apply the merged
@@ -254,7 +268,12 @@ public class ConceptServiceImpl implements ConceptService {
         model.add(new ArrayList<>(toAdd));
         saveUpdatedModelToTDB2(graphName, model);
         updateMetadataFromEditResult(metadata, conceptEditModel, editResult, severWorkingCopyOnRename);
-        return saveAndReturnMetadata(metadata, editResult.newConceptIRI);
+        return saveAndReturnMetadata(metadata, editResult.newConceptIRI,
+                contentChanged(toRemove, toAdd));
+    }
+
+    private boolean contentChanged(Set<Statement> toRemove, Set<Statement> toAdd) {
+        return !toRemove.isEmpty() || !toAdd.isEmpty();
     }
 
     @Override
@@ -430,7 +449,7 @@ public class ConceptServiceImpl implements ConceptService {
         ConceptEditModel editModel = newEditModelFor(metadata.getConceptType());
         editModel.setConceptType(metadata.getConceptType().name());
 
-        carryCurrentDataClassification(editModel, metadata, accepted);
+        carryCurrentDataClassification(editModel, metadata);
         accepted.forEach(key -> syncFields.apply(key, editModel, nkd));
         return editModel;
     }
@@ -456,7 +475,7 @@ public class ConceptServiceImpl implements ConceptService {
      * Do not reuse this read-then-edit shape where that lock is not held.
      */
     private void carryCurrentDataClassification(
-            ConceptEditModel editModel, ConceptMetadataEntity metadata, Set<String> accepted) {
+            ConceptEditModel editModel, ConceptMetadataEntity metadata) {
         Model model = jenaTDB2Repository.fetchGraph(metadata.getGraphName());
         Resource concept = model.getResource(metadata.getConceptIri());
         Boolean isPublic = currentIsPublic(model, concept);
@@ -633,59 +652,6 @@ public class ConceptServiceImpl implements ConceptService {
         return relatedConcepts;
     }
 
-    private void validateInput(ConceptCreateModel createModel, String userId) {
-        if (createModel == null) {
-            throw new OntologyException("Data pro vytvoření pojmu jsou prázdná");
-        }
-
-        if (userId == null || userId.trim().isEmpty()) {
-            throw new OntologyException("ID uživatele je povinné");
-        }
-
-        // name is required and must include a non-blank cs variant
-        Map<String, String> name = createModel.getNameModel() != null
-                ? createModel.getNameModel().getName() : null;
-        if (name == null || name.isEmpty()) {
-            throw new ConceptValidationException("Název pojmu je povinný.");
-        }
-        if (isBlankValue(name.get("cs"))) {
-            throw new ConceptValidationException("Název pojmu musí obsahovat českou variantu (cs).");
-        }
-
-        // description is optional, but if present it must include a non-blank cs variant
-        Map<String, String> description = createModel.getDescriptionModel() != null
-                ? createModel.getDescriptionModel().getDescription() : null;
-        if (hasAnyValue(description) && isBlankValue(description.get("cs"))) {
-            throw new ConceptValidationException("Popis pojmu musí obsahovat českou variantu (cs).");
-        }
-
-        // definition is optional, but if present it must include a non-blank cs variant
-        Map<String, String> definition = createModel.getDefinitionModel() != null
-                ? createModel.getDefinitionModel().getDefinition() : null;
-        if (hasAnyValue(definition) && isBlankValue(definition.get("cs"))) {
-            throw new ConceptValidationException("Definice pojmu musí obsahovat českou variantu (cs).");
-        }
-
-        // Reject the whole create (HTTP 400) if any supplied value is invalid, rather than
-        // dropping it silently. Runs the same rule set as the edit path, so identical input
-        // fails identically on both verbs.
-        List<ConceptInputValidator.InvalidInput> invalid = ConceptInputValidator.validate(createModel);
-        if (!invalid.isEmpty()) {
-            String detail = invalid.stream()
-                    .map(ConceptInputValidator.InvalidInput::toString)
-                    .collect(Collectors.joining("; "));
-            throw new ConceptValidationException("Neplatné hodnoty při vytváření pojmu: " + detail);
-        }
-    }
-
-    private static boolean isBlankValue(String value) {
-        return value == null || value.trim().isEmpty();
-    }
-
-    private static boolean hasAnyValue(Map<String, String> map) {
-        return map != null && !map.isEmpty() && map.values().stream().anyMatch(v -> !isBlankValue(v));
-    }
-
     private ConceptMetadataEntity createMetadataEntity(ConceptCreateModel createModel,
                                                        String userId,
                                                        String conceptIri) {
@@ -697,27 +663,42 @@ public class ConceptServiceImpl implements ConceptService {
                     return new OntologyException("Slovník s názvem " + ontologyGraphName + " nebyl nalezen.");
                 });
 
-        String baseSlug = UtilityMethods.extractNameFromIRI(ontologyGraphName) + "-" + UtilityMethods.extractNameFromIRI(conceptIri);
-        String slug = baseSlug;
-        int counter = 1;
+        return ConceptMetadataFactory.create(createModel, conceptIri, userId, ontologyMetadata,
+                slug -> conceptMetadataRepository.findBySlug(slug).isPresent(), new HashSet<>());
+    }
 
-        while (conceptMetadataRepository.findBySlug(slug).isPresent()) {
-            slug = baseSlug + "-" + counter;
-            counter++;
+    private void requireInitialGraphApplied(String graph) {
+        if (outboxRepository.existsEarlierUnappliedCreateGraph(graph, Long.MAX_VALUE)) {
+            throw new OntologyCreationConflictException("Počáteční zápis slovníku ještě nebyl dokončen: " + graph);
         }
+    }
 
-        ConceptMetadataEntity entity = new ConceptMetadataEntity();
-        entity.setSlug(slug);
-        entity.setConceptName(getNameForMetadata(createModel.getNameModel()));
-        entity.setConceptType(createModel.getConceptTypeEnum());
-        entity.setConceptIri(conceptIri);
-        entity.setGraphName(createModel.getOntologyGraphName());
-        entity.setUserId(userId);
-        entity.setIsPublished(false);
-        entity.setInTezaurus(createModel.getInTezaurus());
-        entity.setOntologyMetadata(ontologyMetadata);
-
-        return entity;
+    /**
+     * Defence in depth: the caller may only edit/delete a concept it owns. {@code ConceptController} already
+     * gates both operations with {@code @PreAuthorize canModifyConcept}, but that check is controller-resident
+     * — a service-to-service caller (the diagram layer is the first) inherits none of it. Asserting here means
+     * the guarantee holds at the layer that actually performs the write.
+     *
+     * <p>Enforced only when a request context is present. A caller running outside one (the outbox relay, a
+     * scheduler, a warmer) has no user to check and is trusted by construction; requiring authentication here
+     * would break those paths instead of protecting them.
+     */
+    private void assertCanModify(Long conceptId) {
+        SecurityUser currentUser;
+        try {
+            currentUser = SecurityUtils.getCurrentUser();
+        } catch (IllegalStateException e) {
+            return;   // no authenticated context — a non-request caller, not a cross-tenant reach
+        }
+        if (currentUser.isAdmin()) {
+            return;
+        }
+        ConceptMetadataEntity metadata = fetchAndValidateMetadata(conceptId);
+        if (!Objects.equals(metadata.getUserId(), currentUser.getUserId())) {
+            log.warn("User {} attempted to modify concept {} owned by {}",
+                    currentUser.getUserId(), conceptId, metadata.getUserId());
+            throw new AccessDeniedException("Nemáte oprávnění upravovat tento pojem.");
+        }
     }
 
     private ConceptMetadataEntity fetchAndValidateMetadata(Long conceptId) {
@@ -774,7 +755,8 @@ public class ConceptServiceImpl implements ConceptService {
         OwnerChangeSet ownerChangeSet = new OwnerChangeSet();
 
         List<String> domainRangeTargets =
-                nkdLinkDetector.forbiddenDomainRangeTargets(ownerIri, graphScheme, model);
+                nkdLinkDetector.forbiddenDomainRangeTargets(
+                        ownerIri, owner.getConceptType(), graphScheme, model);
         List<NkdLinkDetector.LinkTarget> detectedTargets =
                 nkdLinkDetector.allowedTargets(ownerIri, owner.getConceptType(), graphScheme, model);
 
@@ -903,7 +885,7 @@ public class ConceptServiceImpl implements ConceptService {
         }
 
         if (conceptEditModel.getNameModel() != null && conceptEditModel.getNameModel().getName() != null) {
-            metadata.setConceptName(getNameForMetadata(conceptEditModel.getNameModel()));
+            metadata.setConceptName(ConceptMetadataFactory.nameForMetadata(conceptEditModel.getNameModel()));
         }
 
         if (conceptEditModel.getInTezaurus() != null) {
@@ -911,11 +893,19 @@ public class ConceptServiceImpl implements ConceptService {
         }
     }
 
-    private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI) {
+    /**
+     * Persist the metadata row at the end of an edit. When {@code contentChanged}, the concept and its
+     * parent ontology are touched so {@code updatedAt} means "the concept last changed" — including
+     * RDF-only changes. A no-op edit leaves both timestamps unchanged.
+     */
+    private ConceptMetadataModel saveAndReturnMetadata(ConceptMetadataEntity metadata, String conceptIRI,
+                                                       boolean contentChanged) {
         try {
-            // Explicit touch: an RDF-only edit dirties no mapped column, so a plain save() would be a
-            // no-op and updatedAt would never move. Also propagates to the parent ontology.
-            metadataTouchService.touchConceptAndOntology(metadata);
+            if (contentChanged) {
+                // Explicit touch: an RDF-only edit dirties no mapped column, so a plain save() would be a
+                // no-op and updatedAt would never move. Also propagates to the parent ontology.
+                metadataTouchService.touchConceptAndOntology(metadata);
+            }
             ConceptMetadataEntity savedMetadata = conceptMetadataRepository.save(metadata);
             log.info("Metadata updated successfully for concept: {}", conceptIRI);
             return conceptMetadataMapper.toDto(savedMetadata);
@@ -996,17 +986,6 @@ public class ConceptServiceImpl implements ConceptService {
             log.error("CRITICAL: Failed to rollback TDB2 data from graph {} after metadata failure. " +
                     "Manual cleanup required for concept IRI: {}", ontologyGraphName, conceptUri, rollbackException);
         }
-    }
-
-    private String getNameForMetadata(com.dia.ismdtoolbackend.models.NameModel nameModel) {
-        if (nameModel == null || nameModel.getName() == null || nameModel.getName().isEmpty()) {
-            return "";
-        }
-        Map<String, String> names = nameModel.getName();
-        if (names.containsKey("cs")) {
-            return names.get("cs");
-        }
-        return names.values().iterator().next();
     }
 
     /**

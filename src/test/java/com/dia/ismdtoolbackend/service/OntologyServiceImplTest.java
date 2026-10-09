@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
+import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
@@ -56,6 +57,8 @@ import static org.mockito.Mockito.*;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyServiceImplTest {
 
+    @Mock private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
+
     @Mock
     private OntologyMetadataRepository ontologyMetadataRepository;
 
@@ -92,7 +95,7 @@ class OntologyServiceImplTest {
     @Mock
     private PublishedResourceUtil deviationChecker;
 
-    // OutboxConfig mock isEnabled() defaults to false → existing tests exercise the direct path.
+    // Creation requires the outbox; legacy direct-delete tests explicitly disable it.
     @Mock
     private OutboxConfig outboxConfig;
 
@@ -128,12 +131,14 @@ class OntologyServiceImplTest {
         testOntologyEntity.setIsPublished(false);
 
         testModel = ModelFactory.createDefaultModel();
+        lenient().when(outboxConfig.isEnabled()).thenReturn(true);
     }
 
     // ========== deleteOntology Tests ==========
 
     @Test
     void deleteOntology_Success() throws OntologyException {
+        when(outboxConfig.isEnabled()).thenReturn(false);
         ValidationReportEntity validationReport = new ValidationReportEntity();
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(validationReport));
@@ -172,6 +177,7 @@ class OntologyServiceImplTest {
 
     @Test
     void deleteOntology_NoValidationReport() throws OntologyException {
+        when(outboxConfig.isEnabled()).thenReturn(false);
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
@@ -205,6 +211,79 @@ class OntologyServiceImplTest {
                 () -> ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG));
     }
 
+    @Test
+    void checkIri_Available_DoesNotWriteOrContactNkd() {
+        var model = createValidOntologyCreateModel();
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(model.getNamespace(), model.getNameModel()));
+
+        assertEquals(TEST_GRAPH_NAME, result.iri());
+        assertTrue(result.valid());
+        assertTrue(result.available());
+        verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
+        verify(ontologyMetadataRepository).findBySlug(TEST_ONTOLOGY_SLUG);
+        verifyNoMoreInteractions(ontologyMetadataRepository);
+        verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, nkdDetailService, nkdSnapshotService, outboxWriter);
+    }
+
+    @Test
+    void checkIri_Occupied_DoesNotReturnOrModifyExistingOntology() {
+        var model = createValidOntologyCreateModel();
+        when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(testOntologyEntity));
+
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(model.getNamespace(), model.getNameModel()));
+
+        assertEquals(TEST_GRAPH_NAME, result.iri());
+        assertTrue(result.valid());
+        assertFalse(result.available());
+        verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
+        verifyNoMoreInteractions(ontologyMetadataRepository);
+        verifyNoInteractions(ontologyMetadataMapper, jenaTDB2Repository, nkdSparqlClient, nkdDetailService);
+    }
+
+    @Test
+    void checkIri_InvalidNamespace_DoesNotQueryDatabase() {
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(
+                "invalid iri with spaces", createValidOntologyCreateModel().getNameModel()));
+
+        assertFalse(result.valid());
+        assertFalse(result.available());
+        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, nkdSparqlClient);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"http://example.org/", "https://slovník.gov.cz/datový/"})
+    void checkIri_UsesSameIriAsCreate(String namespace) {
+        var model = createValidOntologyCreateModel();
+        model.setNamespace(namespace);
+        model.getNameModel().setName(Map.of("cs", "Silniční provoz", "en", "Road traffic"));
+        var result = ontologyService.checkIri(new OntologyIriCheckRequestDto(namespace, model.getNameModel()));
+        assertTrue(result.valid());
+        clearInvocations(ontologyMetadataRepository);
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
+        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(new OntologyMetadataModel());
+
+        ontologyService.createOntology(model, TEST_USER_ID);
+
+        verify(ontologyMetadataRepository).findByGraphName(result.iri());
+        verify(outboxWriter).enqueueCreateGraph(eq(result.iri()), any(Model.class));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"   "})
+    void checkIri_RequiresCzechName(String czechName) {
+        NameModel name = new NameModel();
+        Map<String, String> names = new HashMap<>();
+        names.put("en", "Road traffic");
+        if (czechName != null) names.put("cs", czechName);
+        name.setName(names);
+
+        assertThrows(OntologyValidationException.class, () -> ontologyService.checkIri(
+                new OntologyIriCheckRequestDto("http://example.org/", name)));
+        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, nkdSparqlClient);
+    }
+
     // ========== createOntology Tests ==========
 
     @Test
@@ -219,7 +298,7 @@ class OntologyServiceImplTest {
         OntologyMetadataModel result = ontologyService.createOntology(createModel, TEST_USER_ID);
 
         assertNotNull(result);
-        verify(jenaTDB2Repository).saveOntologyModel(anyString(), any(Model.class));
+        verify(outboxWriter).enqueueCreateGraph(anyString(), any(Model.class));
         verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
     }
 
@@ -256,21 +335,29 @@ class OntologyServiceImplTest {
     }
 
     @Test
-    void createOntology_TDB2SaveFails() {
-        OntologyCreateModel createModel = createValidOntologyCreateModel();
+    void createOntology_DisabledOutboxRejectsBeforeWrites() {
+        when(outboxConfig.isEnabled()).thenReturn(false);
+        var exception = assertThrows(OntologyException.class,
+                () -> ontologyService.createOntology(createValidOntologyCreateModel(), TEST_USER_ID));
+        assertTrue(exception.getMessage().contains("outbox.enabled=true"));
+        verify(ontologyMetadataRepository, never()).save(any());
+        verifyNoInteractions(jenaTDB2Repository, outboxWriter, outboxRelayTrigger);
+    }
 
-        when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
-        doThrow(new RuntimeException("TDB2 error")).when(jenaTDB2Repository).saveOntologyModel(anyString(), any(Model.class));
-
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.createOntology(createModel, TEST_USER_ID));
-
-        assertTrue(exception.getMessage().contains("Nepodařilo se uložit RDF model"));
+    @Test
+    void checkIri_SameSlugInDifferentNamespaceAlsoConflictsOnCreate() {
+        var model = createValidOntologyCreateModel();
+        var existing = new OntologyMetadataEntity();
+        existing.setGraphName("https://other.example/" + TEST_ONTOLOGY_SLUG);
+        when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(existing));
+        assertFalse(ontologyService.checkIri(new OntologyIriCheckRequestDto(model.getNamespace(), model.getNameModel())).available());
+        assertThrows(com.dia.ismdtoolbackend.exception.OntologyCreationConflictException.class,
+                () -> ontologyService.createOntology(model, TEST_USER_ID));
         verify(ontologyMetadataRepository, never()).save(any());
     }
 
     @Test
-    void createOntology_MetadataSaveFails_CleanupTDB2() {
+    void createOntology_MetadataSaveFails_DoesNotTouchTDB2() {
         OntologyCreateModel createModel = createValidOntologyCreateModel();
 
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
@@ -280,7 +367,7 @@ class OntologyServiceImplTest {
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
 
         assertTrue(exception.getMessage().contains("Nepodařilo se uložit metadata"));
-        verify(jenaTDB2Repository).deleteGraph(anyString());
+        verifyNoInteractions(jenaTDB2Repository);
     }
 
     // ========== createOntology required-field validation ==========
