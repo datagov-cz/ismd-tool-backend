@@ -48,18 +48,6 @@ class JenaTDB2RepositorySemaphoreTest {
     }
 
     @Test
-    void deleteConceptFromGraph_nullUri_shouldThrowIllegalArgument() {
-        assertThrows(IllegalArgumentException.class,
-                () -> repository.deleteConceptFromGraph(null, "urn:graph:test"));
-    }
-
-    @Test
-    void deleteConceptFromGraph_emptyUri_shouldThrowIllegalArgument() {
-        assertThrows(IllegalArgumentException.class,
-                () -> repository.deleteConceptFromGraph("", "urn:graph:test"));
-    }
-
-    @Test
     void deleteConceptsFromGraph_nullList_shouldThrowIllegalArgument() {
         assertThrows(IllegalArgumentException.class,
                 () -> repository.deleteConceptsFromGraph(null, "urn:graph:test"));

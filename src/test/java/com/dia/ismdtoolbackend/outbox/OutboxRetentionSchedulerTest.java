@@ -24,8 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Review #4 MEDIUM — the DONE-row retention prune ({@link OutboxRetentionScheduler}, the only caller
  * of {@link OutboxEntryRepository#deleteDoneBefore}). Verifies it removes only DONE rows older than
- * {@code outbox.done-retention}, leaves fresh DONE / PENDING / FAILED rows alone, and is gated by
- * {@code outbox.enabled}. Runs against real Postgres (Testcontainers).
+ * {@code outbox.done-retention} and leaves fresh DONE / PENDING / FAILED rows alone. Runs against
+ * real Postgres (Testcontainers).
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -49,7 +49,6 @@ class OutboxRetentionSchedulerTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void reset() {
-        config.setEnabled(true);
         config.setDoneRetention(Duration.ofDays(7));
     }
 
@@ -85,16 +84,6 @@ class OutboxRetentionSchedulerTest extends PostgresIntegrationTestBase {
         assertThat(repository.findById(freshDone)).isPresent();    // within window, kept
         assertThat(repository.findById(pending)).isPresent();      // never pruned
         assertThat(repository.findById(failed)).isPresent();       // never pruned
-    }
-
-    @Test
-    void skipsWhenDisabled() {
-        config.setEnabled(false);
-        Long oldDone = seed(OutboxStatus.DONE, Instant.now().minus(10, ChronoUnit.DAYS));
-
-        scheduler.pruneDone();
-
-        assertThat(repository.findById(oldDone)).isPresent(); // disabled → nothing pruned
     }
 
     static class RetentionTestConfig {

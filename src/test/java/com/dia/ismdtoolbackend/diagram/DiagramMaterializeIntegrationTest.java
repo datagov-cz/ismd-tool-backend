@@ -137,7 +137,6 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         // No authenticated principal by default: the materialize tests drive the service as a non-request
         // caller, which the ownership assertion deliberately lets through.
         SecurityContextHolder.clearContext();
-        outboxConfig.setEnabled(true);
         outboxConfig.setBatchSize(100);
         txTemplate.executeWithoutResult(tx -> {
             outboxRepo.deleteAllInBatch();
@@ -1164,7 +1163,6 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     static class Beans {
         @Bean OutboxConfig outboxConfig() {
             OutboxConfig c = new OutboxConfig();
-            c.setEnabled(true);
             return c;
         }
         @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
@@ -1196,7 +1194,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                     mock(RppSnapshotHolder.class),
                     mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, outboxRepository, trigger,
+                    writer, outboxRepository, trigger,
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
                     new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
                     new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),

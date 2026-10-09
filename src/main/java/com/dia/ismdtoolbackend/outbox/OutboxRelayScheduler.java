@@ -6,9 +6,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Backstop drain for the outbox: fires on {@code outbox.relay-cron}, gated by
- * {@code outbox.enabled} (default off), so deploying this code does not start draining until an
- * environment opts in. The hot path is the {@link OutboxRelayTrigger} after-commit nudge; this
+ * Backstop drain for the outbox: fires on {@code outbox.relay-cron}. The hot path is the
+ * {@link OutboxRelayTrigger} after-commit nudge; this
  * scheduled tick exists to catch rows whose nudge never completed (process died, relay busy) and to
  * retry transiently-failed rows.
  *
@@ -28,15 +27,10 @@ public class OutboxRelayScheduler {
     /** Hard cap on drain passes per tick — far above any real backlog; a spin-guard, not a tuning knob. */
     private static final int MAX_PASSES_PER_TICK = 1000;
 
-    private final OutboxConfig config;
     private final OutboxRelay relay;
 
     @Scheduled(cron = "${outbox.relay-cron:*/10 * * * * *}")
     public void drainScheduled() {
-        if (!config.isEnabled()) {
-            log.debug("Scheduled outbox drain skipped — outbox.enabled=false");
-            return;
-        }
         try {
             int totalApplied = 0;
             int passes = 0;

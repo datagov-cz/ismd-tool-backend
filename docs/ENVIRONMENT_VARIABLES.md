@@ -91,7 +91,6 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OUTBOX_ENABLED` | `false` | Master switch. `false` keeps the legacy direct TDB2 write (no behavior change). |
 | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Backstop relay drain schedule (Spring 6-field cron). |
 | `OUTBOX_MAX_ATTEMPTS` | `10` | Apply attempts before a row is marked FAILED. |
 | `OUTBOX_BATCH_SIZE` | `100` | Max rows claimed per relay drain pass. |

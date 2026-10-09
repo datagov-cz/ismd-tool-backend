@@ -24,6 +24,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +39,7 @@ import org.mockito.quality.Strictness;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,7 +51,7 @@ import static org.mockito.Mockito.*;
  * field updaters) wired into ConceptServiceImpl. Only the persistence boundary
  * (repositories, Fuseki, mapper) is mocked. This catches wiring regressions that
  * the layer-isolated tests (which mock the editor) cannot — e.g. a valid edit
- * actually mutating the model, and an invalid edit producing a 400 with no write.
+ * actually producing the enqueued change set, and an invalid edit producing a 400 with no write.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -68,7 +70,6 @@ class ConceptEditFlowIntegrationTest {
     @Mock private ConceptDeviationComparator deviationComparator;
     @Mock private RppSnapshotHolder rppSnapshotHolder;
     @Mock private ReferencedConceptsEnricher referencedConceptsEnricher;
-    @Mock private com.dia.ismdtoolbackend.outbox.OutboxConfig outboxConfig;
     @Mock private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
     @Mock private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
     @Mock private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
@@ -98,7 +99,7 @@ class ConceptEditFlowIntegrationTest {
                 rppSnapshotHolder,
                 org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                 referencedConceptsEnricher,
-                outboxConfig, outboxWriter, outboxRepository, outboxRelayTrigger,
+                outboxWriter, outboxRepository, outboxRelayTrigger,
                 nkdSnapshotService, linkDetector,
                 new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
                 org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
@@ -118,7 +119,7 @@ class ConceptEditFlowIntegrationTest {
         entity.setGraphName(GRAPH_NAME);
         entity.setUserId("user123");
 
-        when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(Optional.of(entity));
+        when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(entity));
         when(jenaTDB2Repository.fetchGraph(GRAPH_NAME)).thenReturn(model);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(conceptMetadataMapper.toDto(any(ConceptMetadataEntity.class))).thenReturn(new ConceptMetadataModel());
@@ -130,8 +131,13 @@ class ConceptEditFlowIntegrationTest {
         return m;
     }
 
+    @SuppressWarnings("unchecked")
+    private ArgumentCaptor<Set<Statement>> statements() {
+        return ArgumentCaptor.forClass(Set.class);
+    }
+
     @Test
-    void validEdit_mutatesModelAndPersists() {
+    void validEdit_enqueuesChangeSetAndPersists() {
         ClassConceptEditModel m = editModel();
         // change the description (no name change → no IRI rename)
         var desc = new com.dia.ismdtoolbackend.models.DescriptionModel();
@@ -142,15 +148,16 @@ class ConceptEditFlowIntegrationTest {
 
         conceptService.editConcept(CONCEPT_ID, m);
 
-        // the real editor mutated the in-memory model, and the service persisted it
-        ArgumentCaptor<Model> saved = ArgumentCaptor.forClass(Model.class);
-        verify(jenaTDB2Repository).putOntologyModel(eq(GRAPH_NAME), saved.capture());
+        // the real editor produced the change set, and the service enqueued it
+        ArgumentCaptor<Set<Statement>> added = statements();
+        verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), anySet(), added.capture());
 
-        Resource concept = saved.getValue().getResource(CONCEPT_IRI);
-        Property descProp = saved.getValue().createProperty("http://purl.org/dc/terms/description");
+        Model addedModel = ModelFactory.createDefaultModel().add(List.copyOf(added.getValue()));
+        Resource concept = addedModel.getResource(CONCEPT_IRI);
+        Property descProp = addedModel.createProperty("http://purl.org/dc/terms/description");
         assertTrue(concept.hasProperty(descProp), "description must be written");
-        Property provisionProp = saved.getValue().createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-        assertTrue(concept.hasProperty(provisionProp, saved.getValue().createResource(VALID_ELI)),
+        Property provisionProp = addedModel.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        assertTrue(concept.hasProperty(provisionProp, addedModel.createResource(VALID_ELI)),
                 "privacy provision must be written end-to-end");
         verify(conceptMetadataRepository).save(any());
     }
@@ -165,7 +172,7 @@ class ConceptEditFlowIntegrationTest {
 
         assertTrue(ex.getMessage().contains("exactMatch"), ex.getMessage());
         // no persistence on rejection — atomic
-        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any());
+        verifyNoInteractions(outboxWriter);
         verify(conceptMetadataRepository, never()).save(any());
     }
 
@@ -178,12 +185,20 @@ class ConceptEditFlowIntegrationTest {
 
         conceptService.editConcept(CONCEPT_ID, m);
 
-        ArgumentCaptor<Model> saved = ArgumentCaptor.forClass(Model.class);
-        // IRI change path saves via the rename handler; capture whichever save ran
-        verify(jenaTDB2Repository, atLeastOnce()).putOntologyModel(anyString(), saved.capture());
+        // the row is keyed on the pre-edit IRI
+        ArgumentCaptor<Set<Statement>> removed = statements();
+        ArgumentCaptor<Set<Statement>> added = statements();
+        verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), removed.capture(), added.capture());
+
         // the old IRI no longer carries the prefLabel (it moved to the new IRI)
-        Resource oldConcept = saved.getValue().getResource(CONCEPT_IRI);
-        assertFalse(oldConcept.hasProperty(SKOS.prefLabel),
-                "after rename, the old IRI must not retain the prefLabel");
+        assertTrue(removed.getValue().stream().anyMatch(st ->
+                        st.getSubject().isURIResource() && CONCEPT_IRI.equals(st.getSubject().getURI())
+                                && SKOS.prefLabel.equals(st.getPredicate())),
+                "after rename, the old IRI's prefLabel must be removed");
+        assertTrue(added.getValue().stream().noneMatch(st ->
+                        st.getSubject().isURIResource() && CONCEPT_IRI.equals(st.getSubject().getURI())),
+                "after rename, nothing may be re-added under the old IRI");
+        assertTrue(added.getValue().stream().anyMatch(st -> SKOS.prefLabel.equals(st.getPredicate())),
+                "the prefLabel must be added under the new IRI");
     }
 }

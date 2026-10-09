@@ -137,8 +137,7 @@ concept editor exactly like any other owner edge — plus its removal when a lin
 
 The snapshot service is outbox-agnostic: it takes a pre-computed `OwnerChangeSet` and contributes
 **only link removals** (when unlinking a target) into it. The owner's own edit/endpoint flow flushes
-that change set as one owner-keyed `UPSERT_CONCEPT` aggregate (or, when `outbox.enabled=false`, a
-direct `JenaTDB2Repository.applyConceptDelta`). No separate NKD-keyed aggregate exists, so there is
+that change set as one owner-keyed `UPSERT_CONCEPT` aggregate. No separate NKD-keyed aggregate exists, so there is
 no cross-aggregate ordering hazard — the link triple is just part of the owner's normal change set.
 
 ### Reconciler safety: nothing to guard

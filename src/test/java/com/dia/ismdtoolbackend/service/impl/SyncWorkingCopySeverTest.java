@@ -6,7 +6,6 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
@@ -61,8 +60,6 @@ class SyncWorkingCopySeverTest {
     @Mock
     private NkdSparqlClient nkdSparqlClient;
     @Mock
-    private OutboxConfig outboxConfig;
-    @Mock
     private JenaTDB2Repository jenaTDB2Repository;
 
     private ConceptServiceImpl service;
@@ -83,7 +80,6 @@ class SyncWorkingCopySeverTest {
         service = spy(newServiceWith(Map.of(
                 "conceptMetadataRepository", conceptMetadataRepository,
                 "nkdSparqlClient", nkdSparqlClient,
-                "outboxConfig", outboxConfig,
                 "jenaTDB2Repository", jenaTDB2Repository,
                 "syncFields", new WorkingCopySyncFields(),
                 "deviationComparator", new ConceptDeviationComparator())));
@@ -93,8 +89,7 @@ class SyncWorkingCopySeverTest {
         when(jenaTDB2Repository.fetchGraph(anyString()))
                 .thenReturn(ModelFactory.createDefaultModel());
 
-        when(outboxConfig.isEnabled()).thenReturn(true);
-        // outbox enabled → the service takes the locking read; the post-edit re-read is unlocked.
+        // The service takes the locking read; the post-edit re-read is unlocked.
         when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
         when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
         when(nkdSparqlClient.fetchPublishedConcept(anyString()))
