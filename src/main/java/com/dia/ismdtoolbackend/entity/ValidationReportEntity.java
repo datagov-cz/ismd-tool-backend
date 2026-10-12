@@ -2,10 +2,11 @@ package com.dia.ismdtoolbackend.entity;
 
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationResult;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -40,8 +41,9 @@ public class ValidationReportEntity implements ValidationReport {
     @Column(name = "ontology_iri", columnDefinition = "text")
     private String getOntologyIri;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final ObjectMapper objectMapper = JsonMapper.builderWithJackson2Defaults()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .build();
 
     public ValidationReportEntity(ValidationReport report, Long ontologyMetadataId) {
         this.id = report.getId();
@@ -58,7 +60,7 @@ public class ValidationReportEntity implements ValidationReport {
     public String convertResultsToJson(List<ValidationResult> results) {
         try {
             return objectMapper.writeValueAsString(results);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to convert ValidationResults to JSON", e);
             return "[]";
         }
@@ -70,7 +72,7 @@ public class ValidationReportEntity implements ValidationReport {
         }
         try {
             return objectMapper.readValue(json, new TypeReference<>() {});
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to convert JSON to ValidationResults", e);
             return List.of();
         }

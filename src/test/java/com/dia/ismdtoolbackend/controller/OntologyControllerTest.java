@@ -28,7 +28,7 @@ import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
 import com.dia.validation.ValidationSeverity;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -134,10 +134,10 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void createWithConcepts_RejectsMissingCollectionsAndNullTerms() throws Exception {
         var json = new ObjectMapper().valueToTree(sample());
-        ((com.fasterxml.jackson.databind.node.ObjectNode) json).remove("classes");
+        ((tools.jackson.databind.node.ObjectNode) json).remove("classes");
         mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
                 .andExpect(status().isBadRequest());
-        ((com.fasterxml.jackson.databind.node.ObjectNode) json).putArray("classes").addNull();
+        ((tools.jackson.databind.node.ObjectNode) json).putArray("classes").addNull();
         mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(ontologyService);

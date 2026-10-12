@@ -10,7 +10,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -111,7 +111,7 @@ public class DiagramConceptUsageService {
         }
         try {
             return DiagramJson.MAPPER.readValue(json, DiagramPendingEdit.class);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Skipping malformed pending-edit JSON on diagram {}", row.getDiagramId(), e);
             return null;
         }

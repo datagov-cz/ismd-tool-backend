@@ -437,7 +437,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
         e.setAggregateIri(aggregate);
         e.setOperation(OutboxOperation.DELETE_CONCEPTS);
         try {
-            e.setTargetIris(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(targetIris));
+            e.setTargetIris(new tools.jackson.databind.ObjectMapper().writeValueAsString(targetIris));
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }

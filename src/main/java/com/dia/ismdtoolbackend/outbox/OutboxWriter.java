@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Statement;
@@ -97,7 +97,7 @@ public class OutboxWriter {
     private String writeIriListJson(List<String> conceptIris) {
         try {
             return OBJECT_MAPPER.writeValueAsString(conceptIris == null ? List.of() : conceptIris);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             // A plain list of IRI strings cannot realistically fail to serialize; treat as a bug.
             throw new IllegalStateException("Failed to serialize concept IRI list for outbox", e);
         }
