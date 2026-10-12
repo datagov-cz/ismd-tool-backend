@@ -14,6 +14,7 @@ Large classes are split into an **orchestrator** and **delegates**. The rules be
 | Orchestrator | Delegates |
 |---|---|
 | `ConceptServiceImpl`, `OntologyServiceImpl` | `*Operation`, `*Reader` in `service/impl` |
+| `OntologyUploadServiceImpl` | `Upload*` in `service/impl` |
 | `IsmdSearchProvider` | `Ismd*Search` in `service/search` |
 | `JenaTDB2Repository` | `Fuseki*` in `repository` |
 | `ConceptCreator` | `*Writer` in `utility/creator` |
@@ -31,10 +32,14 @@ no-argument constructor.
 | Delegates | not `public`; no `@Transactional` or `@CacheEvict` |
 | Fields of a singleton bean | `final` (`@Value` and `@Autowired` fields excepted) |
 | Self-injection | a bean holds no reference to its own proxy |
+| `*Transactions` beans | not `public`; `@Transactional` on the class |
 
 A method that needs `@Cacheable` or `@Transactional` on a call from its own class moves to a
 separate bean (`NkdPublishedResourceFetcher`, `LocalConceptProjectionReader`), so the call passes
 through the proxy without a `self` reference.
+
+When an operation must hold a transaction for only part of its work, the transactional steps go in
+a `*Transactions` bean (`OntologyUploadTransactions`) that the orchestrator's delegates call.
 
 Per-call state goes in a context object passed to the delegates (`ConceptBuildContext`), never in a
 field of a singleton.

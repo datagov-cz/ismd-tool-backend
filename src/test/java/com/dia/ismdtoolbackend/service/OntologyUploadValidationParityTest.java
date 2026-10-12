@@ -15,10 +15,8 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.UploadConceptGate;
-import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Model;
@@ -36,7 +34,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.StringWriter;
@@ -93,14 +90,9 @@ class OntologyUploadValidationParityTest {
 
     @BeforeEach
     void setUp() {
-        service = new OntologyUploadServiceImpl(ontologyMetadataMapper, ontologyMetadataRepository,
+        service = OntologyUploadServiceWiring.build(ontologyMetadataMapper, ontologyMetadataRepository,
                 conceptMetadataRepository, validationClient, validationReportRepository, jenaTDB2Repository,
-                publishedResourceUtil,
-                new UploadConceptGate(new OntologyDetailExtractor(conceptMetadataRepository),
-                        new NkdLinkDetector(), conceptMetadataRepository));
-        ReflectionTestUtils.setField(service, "self", service);
-        ReflectionTestUtils.setField(service, "maxFileSizeConfig", "10MB");
-        ReflectionTestUtils.setField(service, "rdfParsingTimeoutSeconds", 60);
+                publishedResourceUtil);
 
         OntologyMetadataEntity entity = new OntologyMetadataEntity();
         entity.setId(1L);

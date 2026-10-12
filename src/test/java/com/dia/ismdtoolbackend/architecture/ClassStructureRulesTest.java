@@ -47,7 +47,6 @@ class ClassStructureRulesTest {
             "service/impl/DiagramServiceImpl.java", 824,
             "utility/editor/ConceptFieldUpdaters.java", 810,
             "utility/detail/OntologyDetailExtractor.java", 752,
-            "service/impl/OntologyUploadServiceImpl.java", 729,
             "service/impl/ConceptDeviationComparator.java", 626,
             "service/impl/NkdDetailServiceImpl.java", 569);
 
@@ -60,8 +59,7 @@ class ClassStructureRulesTest {
     /** Beans that still inject a proxy of themselves. Remove entries as they are split; never add one. */
     private static final Set<String> SELF_INJECTING_BEANS = Set.of(
             "DiagramServiceImpl",
-            "EsbirkaServiceImpl",
-            "OntologyUploadServiceImpl");
+            "EsbirkaServiceImpl");
 
     private static final JavaClasses MAIN_CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -115,6 +113,14 @@ class ClassStructureRulesTest {
     }
 
     @Test
+    void transactionBeansAreNotPublicAndTransactionalAsAWhole() {
+        classes().that().haveSimpleNameEndingWith("Transactions")
+                .should().notBePublic()
+                .andShould().beAnnotatedWith(Transactional.class)
+                .check(MAIN_CLASSES);
+    }
+
+    @Test
     void singletonsHoldNoReassignableState() {
         fields().that().areDeclaredInClassesThat().areMetaAnnotatedWith(Component.class)
                 .and().areDeclaredInClassesThat().areNotAnnotatedWith(ConfigurationProperties.class)
@@ -150,7 +156,8 @@ class ClassStructureRulesTest {
             public boolean test(JavaClass javaClass) {
                 String name = javaClass.getSimpleName();
                 return switch (javaClass.getPackageName()) {
-                    case "com.dia.ismdtoolbackend.service.impl" -> name.endsWith("Operation") || name.endsWith("Reader");
+                    case "com.dia.ismdtoolbackend.service.impl" -> name.endsWith("Operation") || name.endsWith("Reader")
+                            || name.startsWith("Upload");
                     case "com.dia.ismdtoolbackend.service.search" -> name.startsWith("Ismd") && name.endsWith("Search");
                     case "com.dia.ismdtoolbackend.repository" -> name.startsWith("Fuseki");
                     case "com.dia.ismdtoolbackend.utility.creator" -> name.endsWith("Writer");
