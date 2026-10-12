@@ -50,11 +50,7 @@ The application uses a **hybrid storage architecture** combining relational and 
 **Application Properties**:
 
 ```properties
-# Direct TDB2 access (local development)
-jena.access.method=direct
-jena.tdb2.location=./data/tdb2/production-dataset
-
-# Fuseki HTTP endpoint (deployment)
+# Fuseki HTTP endpoint
 jena.fuseki.url=${FUSEKI_URL}  # Default: http://localhost:3030/ismd-tool-dataset
 ```
 

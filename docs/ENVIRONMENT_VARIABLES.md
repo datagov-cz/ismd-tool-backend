@@ -101,7 +101,7 @@ documentation: [`docs/pg-tdb2-consistency.md`](PG_TDB2_CONSISTENCY) (Czech:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RECONCILER_ENABLED` | `false` | Master switch for the **scheduled** run. The admin endpoint works regardless. |
+| `RECONCILER_ENABLED` | `true` (`false` in the local profile) | Master switch for the **scheduled** run. The admin endpoint works regardless. |
 | `RECONCILER_CRON` | `0 0 3 * * *` | Scheduled-run schedule (Spring 6-field cron). |
 | `RECONCILER_MAX_CONCEPTS` | `200000` | Safety cap: abort a run rather than OOM if PG concept rows exceed this. `0` = unlimited. |
 
