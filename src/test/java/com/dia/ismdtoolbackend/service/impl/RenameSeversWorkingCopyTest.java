@@ -6,8 +6,6 @@ import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,16 +34,9 @@ class RenameSeversWorkingCopyTest {
 
     private void invokeUpdate(ConceptMetadataEntity metadata, ConceptEditModel edit,
                               ConceptEditor.EditResult editResult, boolean severOnRename) throws Exception {
-        Constructor<?> ctor = ConceptServiceImpl.class.getDeclaredConstructors()[0];
-        ctor.setAccessible(true);
-        ConceptServiceImpl service =
-                (ConceptServiceImpl) ctor.newInstance(new Object[ctor.getParameterCount()]);
-
-        Method m = ConceptServiceImpl.class.getDeclaredMethod("updateMetadataFromEditResult",
-                ConceptMetadataEntity.class, ConceptEditModel.class,
-                ConceptEditor.EditResult.class, boolean.class);
-        m.setAccessible(true);
-        m.invoke(service, metadata, edit, editResult, severOnRename);
+        ConceptEditOperation editOperation =
+                new ConceptEditOperation(null, null, null, null, null, null, null, null, null, null);
+        editOperation.updateMetadataFromEditResult(metadata, edit, editResult, severOnRename);
     }
 
     @Test

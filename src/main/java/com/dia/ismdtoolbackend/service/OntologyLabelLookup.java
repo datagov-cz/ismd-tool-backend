@@ -91,7 +91,7 @@ public class OntologyLabelLookup {
     /**
      * Language→value map for the resource's {@code skos:prefLabel}s. An untagged literal is keyed
      * under {@link com.dia.constants.ExportConstants.Common#DEFAULT_LANG}, and the first value per
-     * language wins — matching {@code OntologyServiceImpl.extractMultilingualValue}.
+     * language wins — matching {@code OntologyMetadataEnricher.extractMultilingualValue}.
      */
     private Map<String, String> extractMultilingualValue(Resource resource) {
         Map<String, String> valuesByLang = new LinkedHashMap<>();

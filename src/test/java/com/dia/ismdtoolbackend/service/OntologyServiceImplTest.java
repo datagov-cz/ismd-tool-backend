@@ -23,6 +23,7 @@ import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.OntologyServiceWiring;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
@@ -33,7 +34,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -107,7 +107,6 @@ class OntologyServiceImplTest {
     @Mock
     private NkdDetailService nkdDetailService;
 
-    @InjectMocks
     private OntologyServiceImpl ontologyService;
 
     private OntologyMetadataEntity testOntologyEntity;
@@ -119,6 +118,12 @@ class OntologyServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        ontologyService = OntologyServiceWiring.build(ontologyMetadataRepository, metadataTouchService,
+                conceptMetadataRepository, validationReportRepository, jenaTDB2Repository, commentRepository,
+                ontologyMetadataMapper, conceptMetadataMapper, ontologyEditor, detailExtractor, deviationChecker,
+                outboxWriter, outboxRepository, outboxRelayTrigger, null, null, nkdSnapshotService, null,
+                nkdDetailService);
+
         testOntologyEntity = new OntologyMetadataEntity();
         testOntologyEntity.setId(TEST_ONTOLOGY_ID);
         testOntologyEntity.setSlug(TEST_ONTOLOGY_SLUG);
