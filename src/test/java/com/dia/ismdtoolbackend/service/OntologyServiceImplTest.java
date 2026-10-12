@@ -17,7 +17,6 @@ import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
@@ -97,9 +96,6 @@ class OntologyServiceImplTest {
 
     // Creation requires the outbox; legacy direct-delete tests explicitly disable it.
     @Mock
-    private OutboxConfig outboxConfig;
-
-    @Mock
     private OutboxWriter outboxWriter;
 
     @Mock
@@ -131,14 +127,12 @@ class OntologyServiceImplTest {
         testOntologyEntity.setIsPublished(false);
 
         testModel = ModelFactory.createDefaultModel();
-        lenient().when(outboxConfig.isEnabled()).thenReturn(true);
     }
 
     // ========== deleteOntology Tests ==========
 
     @Test
     void deleteOntology_Success() throws OntologyException {
-        when(outboxConfig.isEnabled()).thenReturn(false);
         ValidationReportEntity validationReport = new ValidationReportEntity();
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(validationReport));
@@ -147,8 +141,10 @@ class OntologyServiceImplTest {
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
         verify(validationReportRepository).delete(validationReport);
-        verify(jenaTDB2Repository).deleteGraph(TEST_GRAPH_NAME);
+        verify(outboxWriter).enqueueDeleteGraph(TEST_GRAPH_NAME);
+        verify(jenaTDB2Repository, never()).deleteGraph(anyString());
         verify(ontologyMetadataRepository).deleteById(TEST_ONTOLOGY_ID);
+        verify(outboxRelayTrigger).nudgeAfterCommit();
     }
 
     @Test
@@ -177,7 +173,6 @@ class OntologyServiceImplTest {
 
     @Test
     void deleteOntology_NoValidationReport() throws OntologyException {
-        when(outboxConfig.isEnabled()).thenReturn(false);
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
         when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
@@ -185,8 +180,10 @@ class OntologyServiceImplTest {
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
         verify(validationReportRepository, never()).delete(any());
-        verify(jenaTDB2Repository).deleteGraph(TEST_GRAPH_NAME);
+        verify(outboxWriter).enqueueDeleteGraph(TEST_GRAPH_NAME);
+        verify(jenaTDB2Repository, never()).deleteGraph(anyString());
         verify(ontologyMetadataRepository).deleteById(TEST_ONTOLOGY_ID);
+        verify(outboxRelayTrigger).nudgeAfterCommit();
     }
 
     // ========== getOntologyMetadataBySlug Tests ==========
@@ -332,16 +329,6 @@ class OntologyServiceImplTest {
 
         assertThrows(OntologyException.class,
                 () -> ontologyService.createOntology(createModel, TEST_USER_ID));
-    }
-
-    @Test
-    void createOntology_DisabledOutboxRejectsBeforeWrites() {
-        when(outboxConfig.isEnabled()).thenReturn(false);
-        var exception = assertThrows(OntologyException.class,
-                () -> ontologyService.createOntology(createValidOntologyCreateModel(), TEST_USER_ID));
-        assertTrue(exception.getMessage().contains("outbox.enabled=true"));
-        verify(ontologyMetadataRepository, never()).save(any());
-        verifyNoInteractions(jenaTDB2Repository, outboxWriter, outboxRelayTrigger);
     }
 
     @Test

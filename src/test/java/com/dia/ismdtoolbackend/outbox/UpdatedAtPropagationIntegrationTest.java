@@ -204,7 +204,6 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
     static class Beans {
         @Bean OutboxConfig outboxConfig() {
             OutboxConfig c = new OutboxConfig();
-            c.setEnabled(true);
             return c;
         }
         @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
@@ -233,7 +232,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
                     mock(RppSnapshotHolder.class),
                     mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, outboxRepository, trigger,
+                    writer, outboxRepository, trigger,
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
                     new NkdLinkDetector(),
                     new WorkingCopySyncFields(),

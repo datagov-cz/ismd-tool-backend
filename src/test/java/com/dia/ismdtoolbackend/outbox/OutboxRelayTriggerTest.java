@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * T6 — the after-commit relay nudge ({@link OutboxRelayTrigger}) and the scheduled backstop
  * ({@link OutboxRelayScheduler}). Verifies the nudge drains a just-committed row, does NOT drain on
- * rollback, and that the scheduler is gated by {@code outbox.enabled}. Runs against real Postgres +
+ * rollback, and that the scheduler drains a backlog. Runs against real Postgres +
  * an in-memory Jena dataset (same harness as the relay test).
  */
 @DataJpaTest
@@ -70,7 +70,6 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
     @BeforeEach
     void reset() {
         tdb2.reset();
-        config.setEnabled(false);
         config.setBatchSize(100);
         config.setMaxAttempts(10);
     }
@@ -118,21 +117,7 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
     }
 
     @Test
-    void scheduler_skipsWhenDisabled() {
-        config.setEnabled(false);
-        // Seed a committed PENDING row directly (no nudge).
-        txTemplate.executeWithoutResult(tx ->
-                writer.enqueueUpsert(GRAPH, A, Set.of(), Set.of(triple("Pending"))));
-
-        scheduler.drainScheduled();
-
-        assertThat(graphHas("Pending")).isFalse(); // disabled → not drained
-        assertThat(repository.countByStatus(OutboxStatus.PENDING)).isEqualTo(1);
-    }
-
-    @Test
-    void scheduler_drainsBacklogWhenEnabled() {
-        config.setEnabled(true);
+    void scheduler_drainsBacklog() {
         config.setBatchSize(1); // force multiple passes so the backstop's drain-loop is exercised
         txTemplate.executeWithoutResult(tx -> {
             writer.enqueueUpsert(GRAPH, A, Set.of(), Set.of(triple("One")));
@@ -172,8 +157,8 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
         }
 
         @Bean
-        OutboxRelayScheduler outboxRelayScheduler(OutboxConfig config, OutboxRelay relay) {
-            return new OutboxRelayScheduler(config, relay);
+        OutboxRelayScheduler outboxRelayScheduler(OutboxRelay relay) {
+            return new OutboxRelayScheduler(relay);
         }
     }
 }

@@ -1,22 +1,17 @@
 package com.dia.ismdtoolbackend.service.snapshot;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -37,10 +32,8 @@ import java.util.List;
 public class NkdSnapshotOwnerWarmer {
 
     private final NkdSnapshotService nkdSnapshotService;
-    private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
-    private final JenaTDB2Repository jenaTDB2Repository;
     private final ConceptMetadataRepository conceptMetadataRepository;
 
     /** A published NKD link-target of one owner concept. */
@@ -71,15 +64,8 @@ public class NkdSnapshotOwnerWarmer {
         // existing copy is re-evaluated, not overwritten — so a read does not gratuitously bump the row.
         owner.setUpdatedAt(LocalDateTime.now());
         conceptMetadataRepository.save(owner);
-        if (outboxConfig.isEnabled()) {
-            outboxWriter.enqueueUpsert(graphName, owner.getConceptIri(), cs.toRemove, cs.toAdd);
-            outboxRelayTrigger.nudgeAfterCommit();
-            return true;
-        }
-        // outbox-disabled fallback: direct concept-scoped delta (same shape the outbox relay applies).
-        Model removeModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toRemove));
-        Model addModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toAdd));
-        jenaTDB2Repository.applyConceptDelta(owner.getConceptIri(), graphName, removeModel, addModel);
+        outboxWriter.enqueueUpsert(graphName, owner.getConceptIri(), cs.toRemove, cs.toAdd);
+        outboxRelayTrigger.nudgeAfterCommit();
         return true;
     }
 }

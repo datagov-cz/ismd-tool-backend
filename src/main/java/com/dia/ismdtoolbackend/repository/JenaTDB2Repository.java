@@ -219,30 +219,6 @@ public class JenaTDB2Repository {
         }
     }
 
-    public String saveConcept(Resource conceptResource, String graphName) {
-        if (graphName == null || graphName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Graph name is required - concepts cannot be saved to the default graph");
-        }
-
-        return executor.execute(
-                "saving concept to graph " + graphName,
-                "Nepodařilo se uložit pojem do databáze",
-                conn -> {
-                    Model conceptModel = conceptResource.getModel();
-                    log.info("=== SAVING CONCEPT ===");
-                    log.info("Concept URI: {}", conceptResource.getURI());
-                    log.info("Graph name: {}", graphName);
-                    log.info("Model size: {} statements", conceptModel.size());
-                    conceptModel.listStatements().forEachRemaining(stmt -> log.debug("  {} --{}--> {}",
-                            stmt.getSubject(),
-                            stmt.getPredicate().getLocalName(),
-                            stmt.getObject()));
-                    conn.load(graphName, conceptModel);
-                    log.info("Successfully saved concept to TDB2 graph {}: {}", graphName, conceptResource.getURI());
-                    return conceptResource.getURI();
-                });
-    }
-
     public boolean conceptNotFoundInGraph(String conceptUri, String graphName) {
         if (conceptUri == null || conceptUri.trim().isEmpty()) {
             return true;
@@ -264,36 +240,6 @@ public class JenaTDB2Repository {
         log.debug("Concept existence check in graph '{}' for '{}': {}",
                 graphName, conceptUri, exists);
         return !exists;
-    }
-
-    public void deleteConceptFromGraph(String conceptUri, String graphName) {
-        if (conceptUri == null || conceptUri.trim().isEmpty()) {
-            throw new IllegalArgumentException("Concept URI cannot be null or empty");
-        }
-
-        executor.executeVoid(
-                "deleting concept " + conceptUri + " from graph " + graphName,
-                "Nepodařilo se odstranit pojem z TDB2",
-                conn -> {
-                    log.info("=== DELETING CONCEPT FROM GRAPH ===");
-                    log.info("Concept URI: {}", conceptUri);
-                    log.info("Graph name: {}", graphName);
-                    if (conceptNotFoundInGraph(conn, conceptUri, graphName)) {
-                        log.warn("Cannot delete concept - not found in graph {}: {}",
-                                graphName, conceptUri);
-                        return;
-                    }
-                    ParameterizedSparqlString pss = new ParameterizedSparqlString();
-                    pss.setCommandText(
-                            "DELETE WHERE { GRAPH ?g { ?concept ?p ?o } }; " +
-                            "DELETE WHERE { GRAPH ?g { ?s ?p ?concept } }"
-                    );
-                    pss.setIri("g", graphName);
-                    pss.setIri("concept", conceptUri);
-                    conn.update(pss.toString());
-                    log.info("Successfully deleted concept from TDB2 graph {}: {}",
-                            graphName, conceptUri);
-                });
     }
 
     public void deleteConceptsFromGraph(List<String> conceptUris, String graphName) {
