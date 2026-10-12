@@ -369,14 +369,14 @@ public class OntologyServiceImpl implements OntologyService {
                     .filter(Objects::nonNull)
                     .toList();
 
-            Map<String, JenaTDB2Repository.ForeignMemberCount> counts =
+            Map<String, ForeignMemberCount> counts =
                     jenaTDB2Repository.countExternalDomainMembers(graphName, conceptIris);
             if (counts.isEmpty()) {
                 return;
             }
 
             for (OntologyDetailModel.ConceptDetailModel concept : concepts) {
-                JenaTDB2Repository.ForeignMemberCount count = counts.get(concept.getIri());
+                ForeignMemberCount count = counts.get(concept.getIri());
                 if (count != null) {
                     concept.setForeignPropertyCount(count.properties());
                     concept.setForeignRelationshipCount(count.relationships());

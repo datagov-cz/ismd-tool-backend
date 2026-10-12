@@ -57,7 +57,7 @@ class ForeignMemberCountTest {
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
 
-        JenaTDB2Repository.ForeignMemberCount count = counts().get(CLASS_IRI);
+        ForeignMemberCount count = counts().get(CLASS_IRI);
 
         assertThat(count).isNotNull();
         assertThat(count.properties()).isEqualTo(1);
@@ -98,7 +98,7 @@ class ForeignMemberCountTest {
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
 
-        JenaTDB2Repository.ForeignMemberCount count = counts().get(CLASS_IRI);
+        ForeignMemberCount count = counts().get(CLASS_IRI);
 
         assertThat(count).isNotNull();
         assertThat(count.relationships()).isEqualTo(1);
@@ -171,7 +171,7 @@ class ForeignMemberCountTest {
 
     // --- helpers ---
 
-    private Map<String, JenaTDB2Repository.ForeignMemberCount> counts() {
+    private Map<String, ForeignMemberCount> counts() {
         return repository.countExternalDomainMembers(GRAPH_A, List.of(CLASS_IRI, OTHER_CLASS_IRI));
     }
 

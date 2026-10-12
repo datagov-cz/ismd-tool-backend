@@ -523,7 +523,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(jenaTDB2Repository.countExternalDomainMembers(eq(TEST_GRAPH_NAME), anyList()))
-                .thenReturn(java.util.Map.of(classIri, new JenaTDB2Repository.ForeignMemberCount(3, 1)));
+                .thenReturn(java.util.Map.of(classIri, new ForeignMemberCount(3, 1)));
 
         OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
 

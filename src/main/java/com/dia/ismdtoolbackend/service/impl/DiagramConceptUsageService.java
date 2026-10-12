@@ -10,6 +10,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.ConceptHierarchyLinks;
 import tools.jackson.core.JacksonException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -68,7 +69,7 @@ public class DiagramConceptUsageService {
         Map<Long, DiagramPendingEdit> overlays = overlays(conceptIri, diagramIds);
 
         // Live structure, fetched once; every placement layers its own overlay over it.
-        JenaTDB2Repository.ConceptHierarchyLinks live =
+        ConceptHierarchyLinks live =
                 jenaTDB2Repository.fetchConceptHierarchy(conceptIri, concept.getGraphName());
 
         Map<String, ResolvedConceptDto> resolved =
@@ -126,7 +127,7 @@ public class DiagramConceptUsageService {
             String conceptIri,
             List<DiagramRepository.ConceptUsageRow> rows,
             Map<Long, DiagramPendingEdit> overlays,
-            JenaTDB2Repository.ConceptHierarchyLinks live) {
+            ConceptHierarchyLinks live) {
 
         Set<String> iris = new LinkedHashSet<>();
         iris.add(conceptIri);
@@ -152,7 +153,7 @@ public class DiagramConceptUsageService {
             DiagramRepository.ConceptUsageRow row,
             DiagramPendingEdit overlay,
             ResolvedConceptDto self,
-            JenaTDB2Repository.ConceptHierarchyLinks live,
+            ConceptHierarchyLinks live,
             Map<String, ResolvedConceptDto> resolved) {
 
         ResolvedConceptDto domain = self != null ? self.resolvedDomain() : null;

@@ -5,7 +5,7 @@ import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery;
-import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.repository.ConceptResolutionProjection;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
@@ -354,8 +354,8 @@ public class NkdSparqlClient {
             return Map.of();
         }
         Map<String, ResolvedConceptDto> resolutions = display
-                ? JenaTDB2Repository.projectDisplayResolutions(result.get(), SearchSource.NKD, safeConceptIris)
-                : JenaTDB2Repository.projectResolutions(result.get(), SearchSource.NKD);
+                ? ConceptResolutionProjection.projectDisplayResolutions(result.get(), SearchSource.NKD, safeConceptIris)
+                : ConceptResolutionProjection.projectResolutions(result.get(), SearchSource.NKD);
         log.debug("Resolved {} of {} requested concept IRI(s) against NKD",
                 resolutions.size(), safeConceptIris.size());
         return resolutions;
