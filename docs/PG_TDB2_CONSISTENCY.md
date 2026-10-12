@@ -127,7 +127,7 @@ It treats **Postgres as the source of truth**, enumerates the **owned** concept 
 compares them against the PG metadata rows, and **reports drift** by category. Run it:
 
 - **Scheduled:** `reconciler.cron` (03:00 daily by default), gated by `reconciler.enabled`
-  (default off — deploying does not start scanning).
+  (on by default; the local profile turns it off).
 - **On demand:** the admin endpoint works **regardless of `reconciler.enabled`**.
 
 It is the safety net behind the outbox and the only mechanism that catches **upload-path** and
@@ -166,7 +166,7 @@ Prefix `reconciler.*` (bound in `ReconcilerConfig`).
 
 | Property | Env var | Default | Meaning |
 |---|---|---|---|
-| `reconciler.enabled` | `RECONCILER_ENABLED` | `false` | Master switch for the **scheduled** run. The admin endpoint works regardless. |
+| `reconciler.enabled` | `RECONCILER_ENABLED` | `true` (`false` in the local profile) | Master switch for the **scheduled** run. The admin endpoint works regardless. |
 | `reconciler.cron` | `RECONCILER_CRON` | `0 0 3 * * *` | Scheduled-run schedule (Spring 6-field cron). Default 03:00 daily. |
 | `reconciler.max-concepts` | `RECONCILER_MAX_CONCEPTS` | `200000` | Safety cap: abort a run with a clear error rather than OOM if PG concept rows exceed this. `0` = unlimited. |
 

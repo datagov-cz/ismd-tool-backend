@@ -6,8 +6,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Fires the PG↔TDB2 reconciler on a cron schedule. Gated by {@code reconciler.enabled}
- * (default off), so deploying this code does not start scanning until an environment opts in.
+ * Fires the PG↔TDB2 reconciler on a cron schedule. Gated by {@code reconciler.enabled}, which
+ * {@code application.properties} turns on and the local profile turns off.
  *
  * <p>The {@code @Scheduled} cron is resolved from {@code reconciler.cron} at startup. The
  * in-process re-entrancy guard lives in {@link ConsistencyReconciler}; this component only

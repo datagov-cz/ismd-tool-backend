@@ -127,7 +127,7 @@ Považuje **Postgres za zdroj pravdy**, vyjmenuje **vlastněné** subjekty pojm�
 s PG metadaty a **hlásí rozejití** podle kategorií. Spuštění:
 
 - **Plánovaně:** `reconciler.cron` (výchozí denně ve 03:00), ovládáno přes `reconciler.enabled`
-  (výchozí vypnuto — nasazení samo nespustí skenování).
+  (výchozí zapnuto; lokální profil jej vypíná).
 - **Na vyžádání:** admin endpoint funguje **bez ohledu na `reconciler.enabled`**.
 
 Je to záchytná síť za outboxem a jediný mechanismus, který zachytí rozejití z **cesty uploadu**
@@ -166,7 +166,7 @@ Prefix `reconciler.*` (vázáno v `ReconcilerConfig`).
 
 | Vlastnost | Proměnná prostředí | Výchozí | Význam                                                                                                                   |
 |---|---|---|--------------------------------------------------------------------------------------------------------------------------|
-| `reconciler.enabled` | `RECONCILER_ENABLED` | `false` | Hlavní vypínač **plánovaného** běhu. Admin endpoint funguje bez ohledu na něj.                                           |
+| `reconciler.enabled` | `RECONCILER_ENABLED` | `true` (`false` v lokálním profilu) | Hlavní vypínač **plánovaného** běhu. Admin endpoint funguje bez ohledu na něj.                                           |
 | `reconciler.cron` | `RECONCILER_CRON` | `0 0 3 * * *` | Rozvrh plánovaného běhu (cron Spring). Výchozí denně ve 03:00.                                                           |
 | `reconciler.max-concepts` | `RECONCILER_MAX_CONCEPTS` | `200000` | Pojistka: běh raději ukončit s jasnou chybou než dojde k OOM, pokud počet PG řádků překročí tuto mez. `0` = bez omezení. |
 
