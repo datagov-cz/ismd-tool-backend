@@ -205,6 +205,7 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("POST", "/api/ontology/test/validate"),
                 Arguments.of("POST", "/api/ontology/test/catalog-record"),
                 Arguments.of("POST", "/api/concept/test/create"),
+                Arguments.of("POST", "/api/concept/test/create/bulk"),
                 Arguments.of("PATCH", "/api/concept/test/edit"),
                 Arguments.of("DELETE", "/api/concept/test/delete"),
                 Arguments.of("POST", "/api/comment/post"),
@@ -243,6 +244,19 @@ class SecurityFilterChainIntegrationTest {
                 .as("%s %s must be matched by a requestMatcher; 403 means denyAll rejected it first "
                         + "(a single-* matcher does not span two path segments)", method, path)
                 .isNotEqualTo(403);
+    }
+
+    @Test
+    @WithMockSecurityUser
+    void bulkConceptCreate_isMatched_notDeniedByDenyAll() throws Exception {
+        int status = mockMvc.perform(post("/api/concept/test/create/bulk")
+                        .with(testSecurityContext())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+
+        assertThat(status).isNotEqualTo(403);
     }
 
     static Stream<Arguments> diagramEndpoints() {

@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.config;
 
 import com.dia.ismdtoolbackend.config.cors.CorsConfig;
 import com.dia.ismdtoolbackend.config.cors.CorsConfigUtil;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +13,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,7 +43,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=password",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.database=h2",
-        "spring.liquibase.liquibase-schema=PUBLIC"
+        "spring.liquibase.liquibase-schema=PUBLIC",
+        "cors.allowed-origins=https://app.example.test, https://admin.example.test"
 })
 class CorsConfigProductionTest {
 
@@ -51,7 +56,8 @@ class CorsConfigProductionTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "https://www.domain.com"
+            "https://app.example.test",
+            "https://admin.example.test"
     })
     void allowedOriginsTest(String testOrigin) throws Exception {
         String activeProfiles = String.join(", ", environment.getActiveProfiles());
@@ -64,9 +70,17 @@ class CorsConfigProductionTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", testOrigin));
     }
 
+    @Test
+    void noConfiguredOrigins_allowsNoOrigin() {
+        var config = new CorsConfigUtil().createProductionCorsConfiguration(List.of());
+
+        assertThat(config.checkOrigin("https://app.example.test")).isNull();
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "https://www.twitter.com",
+            "https://www.domain.com",
             "http://localhost:3000",
             "https://malicious-site.com",
             "https://192.168.1.1"

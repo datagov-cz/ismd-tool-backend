@@ -213,6 +213,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/ontology/*/validate").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/ontology/*/catalog-record").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/concept/*/create").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/concept/*/create/bulk").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/concept/*/edit").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/concept/*/delete").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/concept/*/localcopy/*/update").authenticated()
