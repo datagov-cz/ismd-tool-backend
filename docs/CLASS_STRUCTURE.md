@@ -30,17 +30,24 @@ no-argument constructor.
 | Constructor parameters of a Spring bean | 13 |
 | Delegates | not `public`; no `@Transactional` or `@CacheEvict` |
 | Fields of a singleton bean | `final` (`@Value` and `@Autowired` fields excepted) |
+| Self-injection | a bean holds no reference to its own proxy |
+
+A method that needs `@Cacheable` or `@Transactional` on a call from its own class moves to a
+separate bean (`NkdPublishedResourceFetcher`, `LocalConceptProjectionReader`), so the call passes
+through the proxy without a `self` reference.
 
 Per-call state goes in a context object passed to the delegates (`ConceptBuildContext`), never in a
 field of a singleton.
 
 ## Exceptions
 
-Both lists live in `ClassStructureRulesTest`.
+All three lists live in `ClassStructureRulesTest`.
 
 - `OVERSIZED_CLASSES` — classes over the line limit today, each capped at its current size. An entry
   may shrink or be removed; none may be added.
 - `MUTABLE_SINGLETON_FIELDS` — volatile caches that are reassigned on purpose.
+- `SELF_INJECTING_BEANS` — beans that still inject themselves. Entries are removed as the classes
+  are split; none may be added.
 
 ## Adding a delegate
 

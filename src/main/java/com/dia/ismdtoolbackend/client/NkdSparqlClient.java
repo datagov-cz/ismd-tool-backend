@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.config.NkdConfig;
+import com.dia.ismdtoolbackend.config.ExternalSparqlConfig;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
@@ -20,10 +20,8 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
-import java.net.http.HttpClient;
 import java.util.*;
 
 @Component
@@ -49,53 +47,24 @@ public class NkdSparqlClient {
     private final HttpSparqlExecutor executor;
     private final OntologyDetailExtractor detailExtractor;
 
-    /**
-     * Self-reference through the Spring proxy so {@code @Cacheable} is honoured on internal calls;
-     * a plain {@code this.} call bypasses the cache proxy.
-     */
-    private final NkdSparqlClient self;
+    private final NkdPublishedResourceFetcher publishedResourceFetcher;
 
-    public NkdSparqlClient(NkdConfig config, OntologyDetailExtractor detailExtractor,
-                           @Qualifier("externalSparqlHttpClient") HttpClient externalSparqlHttpClient,
-                           @Lazy NkdSparqlClient self) {
-        this.executor = new HttpSparqlExecutor(
-                NKD_LABEL,
-                config.getSparql().getEndpoint(),
-                config.getSparql().getTimeout(),
-                externalSparqlHttpClient,
-                config.getSparql().getMaxConcurrentRequests());
+    public NkdSparqlClient(@Qualifier(ExternalSparqlConfig.NKD_SPARQL_EXECUTOR) HttpSparqlExecutor executor,
+                           OntologyDetailExtractor detailExtractor,
+                           NkdPublishedResourceFetcher publishedResourceFetcher) {
+        this.executor = executor;
         this.detailExtractor = detailExtractor;
-        // Constructed outside Spring (tests): no proxy means no cache to re-enter, so a direct call.
-        this.self = self != null ? self : this;
+        this.publishedResourceFetcher = publishedResourceFetcher;
     }
 
     @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'concept:' + #conceptIri")
     public Optional<OntologyDetailModel.ConceptDetailModel> fetchPublishedConcept(String conceptIri) {
-        return self.fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
+        return publishedResourceFetcher.fetchPublishedConceptWithScheme(conceptIri).map(PublishedConcept::detail);
     }
 
-    /**
-     * Concept fetch that also surfaces the {@code skos:inScheme} target
-     */
-    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'conceptWithScheme:' + #conceptIri")
+    /** The concept detail with its {@code skos:inScheme} target, cached in the fetcher. */
     public Optional<PublishedConcept> fetchPublishedConceptWithScheme(String conceptIri) {
-        log.debug("Fetching published concept from NKD: {}", conceptIri);
-        String query = NKDSPARQLConstructQuery.buildConstructQuery(conceptIri);
-        Optional<Model> resultModel = executor.construct("NKD concept fetch for " + conceptIri, query);
-        if (resultModel.isEmpty()) {
-            log.info("No data found for concept in NKD: {}", conceptIri);
-            return Optional.empty();
-        }
-        Model rawModel = resultModel.get();
-        log.debug("Fetched {} triples from NKD for concept: {}", rawModel.size(), conceptIri);
-        String inSchemeIri = extractInSchemeIri(rawModel, conceptIri);
-        Model processedModel = detailExtractor.applyOFNTransformationsForNkd(rawModel);
-        OntologyDetailModel.ConceptDetailModel conceptDetail =
-                detailExtractor.extractConceptDetail(processedModel, conceptIri,
-                        OntologyDetailExtractor.iriResolver());
-        log.debug("Successfully extracted published concept detail from NKD: {} (inScheme={})",
-                conceptIri, inSchemeIri);
-        return Optional.of(new PublishedConcept(conceptDetail, inSchemeIri));
+        return publishedResourceFetcher.fetchPublishedConceptWithScheme(conceptIri);
     }
 
     /**
@@ -211,7 +180,7 @@ public class NkdSparqlClient {
         return slice;
     }
 
-    private static String extractInSchemeIri(Model rawModel, String conceptIri) {
+    static String extractInSchemeIri(Model rawModel, String conceptIri) {
         Resource concept = rawModel.getResource(conceptIri);
         Property inScheme = rawModel.createProperty("http://www.w3.org/2004/02/skos/core#inScheme");
         StmtIterator stmts = rawModel.listStatements(concept, inScheme, (RDFNode) null);
@@ -266,34 +235,17 @@ public class NkdSparqlClient {
 
     @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontology:' + #ontologyIri")
     public Optional<OntologyDetailModel> fetchPublishedOntology(String ontologyIri) {
-        return self.fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
+        return publishedResourceFetcher.fetchPublishedOntologyRaw(ontologyIri).map(resultModel -> {
             Model processedModel = detailExtractor.applyOFNTransformationsForNkd(resultModel);
             return detailExtractor.extractOntologyDetail(processedModel,
                     OntologyDetailExtractor.iriResolver());
         });
     }
 
-    /**
-     * Raw NKD ontology model — same CONSTRUCT as {@link #fetchPublishedOntology}
-     * but returned before OFN extraction, for callers that need to serialize
-     * the source RDF (e.g. download endpoint).
-     *
-     * <p>Cached under its own key so the ontology deviation check and
-     * {@link #derivePublishedConceptsFromOntology} share a single round-trip: the CONSTRUCT already
-     * carries every in-scheme concept, so the concept side needs no query of its own. Callers must
-     * treat the returned model as read-only — it is the shared cached instance.
-     */
-    @Cacheable(cacheNames = PUBLISHED_RESOURCE_CACHE, key = "'ontologyRaw:' + #ontologyIri")
+
+    /** The raw NKD ontology model, cached in the fetcher. Read-only: it is the shared cached instance. */
     public Optional<Model> fetchPublishedOntologyRaw(String ontologyIri) {
-        log.debug("Fetching raw NKD ontology model: {}", ontologyIri);
-        String query = NKDSPARQLConstructQuery.buildOntologyConstructQuery(ontologyIri);
-        Optional<Model> resultModel = executor.construct("NKD ontology fetch for " + ontologyIri, query);
-        if (resultModel.isEmpty()) {
-            log.info("No data found for ontology in NKD: {}", ontologyIri);
-            return Optional.empty();
-        }
-        log.debug("Fetched {} triples from NKD for ontology: {}", resultModel.get().size(), ontologyIri);
-        return resultModel;
+        return publishedResourceFetcher.fetchPublishedOntologyRaw(ontologyIri);
     }
 
     /**

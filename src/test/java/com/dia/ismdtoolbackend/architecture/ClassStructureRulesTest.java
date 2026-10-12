@@ -5,6 +5,7 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaConstructor;
 import com.tngtech.archunit.core.domain.JavaField;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchCondition;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -54,6 +56,12 @@ class ClassStructureRulesTest {
             "ReconcilerRunService.lastReport",
             "NkdDetailServiceImpl.cachedTotalOntologies",
             "NkdDetailServiceImpl.cachedTotalConcepts");
+
+    /** Beans that still inject a proxy of themselves. Remove entries as they are split; never add one. */
+    private static final Set<String> SELF_INJECTING_BEANS = Set.of(
+            "DiagramServiceImpl",
+            "EsbirkaServiceImpl",
+            "OntologyUploadServiceImpl");
 
     private static final JavaClasses MAIN_CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -116,6 +124,23 @@ class ClassStructureRulesTest {
                 .and(areNotListedAsMutable())
                 .should().beFinal()
                 .check(MAIN_CLASSES);
+    }
+
+    @Test
+    void beansDoNotInjectThemselves() {
+        Set<String> selfInjecting = MAIN_CLASSES.stream()
+                .filter(javaClass -> javaClass.isMetaAnnotatedWith(Component.class))
+                .filter(javaClass -> javaClass.getFields().stream().anyMatch(field -> !field.getModifiers()
+                        .contains(JavaModifier.STATIC) && isOwnBean(javaClass, field)))
+                .map(JavaClass::getSimpleName)
+                .collect(Collectors.toSet());
+
+        assertThat(selfInjecting).isEqualTo(SELF_INJECTING_BEANS);
+    }
+
+    private static boolean isOwnBean(JavaClass owner, JavaField field) {
+        JavaClass type = field.getRawType();
+        return !type.isEquivalentTo(Object.class) && owner.isAssignableTo(type.getName());
     }
 
     /** The focused classes an orchestrator delegates to, identified by package and name. */

@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.config.CacheConfig;
-import com.dia.ismdtoolbackend.config.NkdConfig;
+import com.dia.ismdtoolbackend.config.ExternalSparqlConfig;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
@@ -10,16 +10,13 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.mockito.ArgumentMatchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import java.net.http.HttpClient;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -28,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,14 +35,15 @@ import static org.mockito.Mockito.when;
  * fetches: a repeat call for the same IRI does NOT re-hit the SPARQL executor, a negative result
  * ({@link Optional#empty()}) is cached, and a thrown failure is NOT cached.
  *
- * <p>The private {@link HttpSparqlExecutor} is swapped for a mock via reflection on the AOP
- * target so the test exercises the proxy + cache without any HTTP.
+ * <p>The shared {@link HttpSparqlExecutor} bean is a mock, so the test exercises both proxies and
+ * the cache without any HTTP.
  */
-@SpringBootTest(classes = {CacheConfig.class, NkdSparqlClient.class})
+@SpringBootTest(classes = {CacheConfig.class, NkdSparqlClient.class, NkdPublishedResourceFetcher.class})
 @Import(NkdPublishedResourceCacheTest.TestBeans.class)
 class NkdPublishedResourceCacheTest {
 
     private static final String CONCEPT_IRI = "https://slovnik.gov.cz/datovy/osoby/pojem/osoba";
+    private static final String ONTOLOGY_IRI = "https://slovnik.gov.cz/datovy/osoby";
 
     @Autowired
     private NkdSparqlClient client;
@@ -52,16 +51,63 @@ class NkdPublishedResourceCacheTest {
     @Autowired
     private CacheManager cacheManager;
 
+    @Autowired
     private HttpSparqlExecutor executorMock;
 
     @BeforeEach
     void setUp() {
         Objects.requireNonNull(cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE)).clear();
-        executorMock = mock(HttpSparqlExecutor.class);
+        reset(executorMock);
         when(executorMock.isConfigured()).thenReturn(true);
-        // Replace the internally-built executor on the AOP target (not the proxy wrapper).
-        Object target = AopProxyUtils.getSingletonTarget(client);
-        ReflectionTestUtils.setField(Objects.requireNonNull(target), "executor", executorMock);
+    }
+
+    @Test
+    void fetchPublishedConceptWithScheme_isCached_secondCallSkipsExecutor() {
+        when(executorMock.construct(anyString(), anyString())).thenReturn(Optional.of(conceptModel()));
+
+        client.fetchPublishedConceptWithScheme(CONCEPT_IRI);
+        client.fetchPublishedConceptWithScheme(CONCEPT_IRI);
+
+        verify(executorMock, times(1)).construct(anyString(), anyString());
+    }
+
+    @Test
+    void fetchPublishedConcept_sharesTheWithSchemeEntry() {
+        when(executorMock.construct(anyString(), anyString())).thenReturn(Optional.of(conceptModel()));
+
+        client.fetchPublishedConcept(CONCEPT_IRI);
+        client.fetchPublishedConceptWithScheme(CONCEPT_IRI);
+
+        // The client's projection is built on the fetcher's cached entry, not on a second CONSTRUCT.
+        verify(executorMock, times(1)).construct(anyString(), anyString());
+    }
+
+    @Test
+    void fetchPublishedOntologyRaw_isCached_secondCallSkipsExecutor() {
+        when(executorMock.construct(anyString(), anyString())).thenReturn(Optional.of(conceptModel()));
+
+        client.fetchPublishedOntologyRaw(ONTOLOGY_IRI);
+        client.fetchPublishedOntologyRaw(ONTOLOGY_IRI);
+
+        verify(executorMock, times(1)).construct(anyString(), anyString());
+    }
+
+    @Test
+    void fetchPublishedOntology_sharesTheRawEntry() {
+        when(executorMock.construct(anyString(), anyString())).thenReturn(Optional.of(conceptModel()));
+
+        client.fetchPublishedOntology(ONTOLOGY_IRI);
+        client.fetchPublishedOntologyRaw(ONTOLOGY_IRI);
+
+        verify(executorMock, times(1)).construct(anyString(), anyString());
+    }
+
+    private static Model conceptModel() {
+        Model model = ModelFactory.createDefaultModel();
+        model.add(model.createResource(CONCEPT_IRI),
+                model.createProperty("http://www.w3.org/2004/02/skos/core#prefLabel"),
+                "Osoba");
+        return model;
     }
 
     @Test
@@ -124,13 +170,9 @@ class NkdPublishedResourceCacheTest {
 
     @TestConfiguration
     static class TestBeans {
-        @Bean
-        NkdConfig nkdConfig() {
-            NkdConfig cfg = new NkdConfig();
-            cfg.getSparql().setEndpoint("http://localhost:9999/sparql");
-            cfg.getSparql().setTimeout(2000);
-            cfg.getSparql().setMaxConcurrentRequests(2);
-            return cfg;
+        @Bean(ExternalSparqlConfig.NKD_SPARQL_EXECUTOR)
+        HttpSparqlExecutor nkdSparqlExecutor() {
+            return mock(HttpSparqlExecutor.class);
         }
 
         @Bean
@@ -145,11 +187,6 @@ class NkdPublishedResourceCacheTest {
                     ArgumentMatchers.any()))
                     .thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
             return extractor;
-        }
-
-        @Bean
-        HttpClient externalSparqlHttpClient() {
-            return HttpClient.newHttpClient();
         }
     }
 }

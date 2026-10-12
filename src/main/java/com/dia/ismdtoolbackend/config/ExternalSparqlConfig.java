@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.config;
 
+import com.dia.ismdtoolbackend.client.NkdSparqlClient;
+import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,11 +26,25 @@ import java.time.Duration;
 @Configuration
 public class ExternalSparqlConfig {
 
+    public static final String NKD_SPARQL_EXECUTOR = "nkdSparqlExecutor";
+
     @Bean
     public HttpClient externalSparqlHttpClient(
             @Value("${sparql.http.connect-timeout-ms:5000}") int connectTimeoutMs) {
         return HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
+    }
+
+    /** The one NKD executor, shared so its concurrency limit covers every NKD caller. */
+    @Bean(NKD_SPARQL_EXECUTOR)
+    public HttpSparqlExecutor nkdSparqlExecutor(NkdConfig config,
+                                                @Qualifier("externalSparqlHttpClient") HttpClient httpClient) {
+        return new HttpSparqlExecutor(
+                NkdSparqlClient.NKD_LABEL,
+                config.getSparql().getEndpoint(),
+                config.getSparql().getTimeout(),
+                httpClient,
+                config.getSparql().getMaxConcurrentRequests());
     }
 }
