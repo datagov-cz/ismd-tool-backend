@@ -215,7 +215,6 @@ public class OntologyServiceImpl implements OntologyService {
             }
         }
         // Build the whole graph with the existing creators before the first write.
-        // ConceptCreator holds a mutable model, so this batch uses its own instance.
         Model graphModel = OntologyModelFactory.create(graph, request.ontology());
         try {
             ConceptCreator creator = new ConceptCreator();
@@ -223,7 +222,6 @@ public class OntologyServiceImpl implements OntologyService {
                 Resource resource = creator.createSingleConcept(concept);
                 graphModel.add(resource.getModel());
                 resource.getModel().close();
-                creator.getOntModel().close();
             }
             // Metadata and the serialized graph task commit together. The unique slug arbitrates concurrent creates.
             OntologyMetadataEntity ontology;

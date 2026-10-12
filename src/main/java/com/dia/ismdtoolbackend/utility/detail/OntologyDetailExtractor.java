@@ -15,7 +15,7 @@ import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
-import com.dia.ismdtoolbackend.utility.exporter.json.ConceptProcessor;
+import com.dia.ismdtoolbackend.utility.exporter.json.ConceptJsonMapper;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
@@ -176,10 +176,10 @@ public class OntologyDetailExtractor {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
 
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
-        ConceptProcessor conceptProcessor = new ConceptProcessor();
+        ConceptJsonMapper conceptJsonMapper = new ConceptJsonMapper();
 
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
-        ConceptData conceptData = conceptProcessor.processAllConcepts(ontModel, structure);
+        ConceptData conceptData = conceptJsonMapper.processAllConcepts(ontModel, structure);
 
         return mapToOntologyDetailModel(structure, conceptData, refResolver);
     }
@@ -204,7 +204,7 @@ public class OntologyDetailExtractor {
                                                                                      Collection<String> conceptIris) {
         OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM, processedModel);
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
-        ConceptProcessor conceptProcessor = new ConceptProcessor();
+        ConceptJsonMapper conceptJsonMapper = new ConceptJsonMapper();
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
 
         // One slug query for every concept's members, not one per concept.
@@ -212,7 +212,7 @@ public class OntologyDetailExtractor {
 
         Map<String, OntologyDetailModel.ConceptDetailModel> out = new LinkedHashMap<>();
         for (String conceptIri : conceptIris) {
-            Map<String, Object> conceptMap = conceptProcessor.processConceptByIri(ontModel, structure, conceptIri);
+            Map<String, Object> conceptMap = conceptJsonMapper.processConceptByIri(ontModel, structure, conceptIri);
             out.put(conceptIri, mapToConceptDetailModel(conceptMap, null, ontModel, refResolver));
         }
         return out;
@@ -222,10 +222,10 @@ public class OntologyDetailExtractor {
                                                                        String conceptIri,
                                                                        Function<String, String> refResolver) {
         ModelAnalyzer modelAnalyzer = new ModelAnalyzer();
-        ConceptProcessor conceptProcessor = new ConceptProcessor();
+        ConceptJsonMapper conceptJsonMapper = new ConceptJsonMapper();
 
         ModelStructure structure = modelAnalyzer.analyzeModel(processedModel);
-        Map<String, Object> conceptMap = conceptProcessor.processConceptByIri(ontModel, structure, conceptIri);
+        Map<String, Object> conceptMap = conceptJsonMapper.processConceptByIri(ontModel, structure, conceptIri);
 
         return mapToConceptDetailModel(conceptMap, null, ontModel, refResolver);
     }
@@ -386,10 +386,10 @@ public class OntologyDetailExtractor {
     }
 
     /**
-     * Coerce a raw multilingual property value from the {@link ConceptProcessor} export map
+     * Coerce a raw multilingual property value from the {@link ConceptJsonMapper} export map
      * into a strict {@code Map<String, String>} (lang → single label).
      *
-     * <p>{@code ConceptProcessor.addValueToLanguageMap} promotes a language entry to a
+     * <p>{@code ConceptLabelJsonMapper.addValueToLanguageMap} promotes a language entry to a
      * {@code List} when a concept carries more than one value for the same language
      * (e.g. two {@code skos:prefLabel @cs}). The detail contract is single-valued, so we
      * keep the first String and warn-log the dropped extras. Without this, the raw
@@ -494,7 +494,7 @@ public class OntologyDetailExtractor {
     }
 
     /**
-     * Maps the nested code-list object produced by {@code ConceptProcessor} into its DTO.
+     * Maps the nested code-list object produced by {@code ConceptJsonMapper} into its DTO.
      * Absent or malformed structures yield null so the field is simply omitted.
      */
     @SuppressWarnings("unchecked")
@@ -627,7 +627,7 @@ public class OntologyDetailExtractor {
      * are flagged {@code PENDING} for the FE to enrich via {@code /api/eli/resolve}.
      * <p>
      * Read {@code rdfs:range} from a property {@code Resource} and emit it in
-     * the same shape {@code ConceptProcessor.addDomainAndRange} writes to the
+     * the same shape {@code ConceptRelationJsonMapper.addDomainAndRange} writes to the
      * JSON map: abbreviated to {@code xsd:*} when in the XSD namespace, else
      * the raw URI. Returns {@code null} when no range is set.
      */
