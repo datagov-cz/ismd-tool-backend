@@ -51,6 +51,11 @@ class UploadMetadataWriter {
         }
     }
 
+    /** Whether a committed vocabulary row already points at this graph. */
+    boolean graphHasMetadata(String graphName) {
+        return ontologyMetadataRepository.findByGraphName(graphName).isPresent();
+    }
+
     OntologyMetadataModel createOntologyMetadataEntity(String graphName, String userId) {
         String slug = UtilityMethods.extractNameFromIRI(graphName);
 

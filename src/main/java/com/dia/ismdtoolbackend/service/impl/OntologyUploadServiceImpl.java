@@ -3,7 +3,6 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
-import com.dia.ismdtoolbackend.exception.OntologyAlreadyExistsException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException;
@@ -19,7 +18,6 @@ import org.apache.jena.ontology.OntModel;
 import org.apache.jena.riot.Lang;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -31,8 +29,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
- * Entry point for vocabulary upload. Owns the transaction and cache-eviction boundaries and runs
- * the upload as a sequence of steps, each in its focused class.
+ * Entry point for vocabulary upload. Owns the cache-eviction boundary and runs the upload as a
+ * sequence of steps, each in its focused class. It holds no transaction itself: the Postgres
+ * writes run in {@link OntologyUploadTransactions}, so no connection is held while the file is
+ * parsed, NKD is queried or the graph is written.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,11 +41,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     private final UploadFileReader fileReader;
     private final UploadModelNormalizer modelNormalizer;
+    private final UploadVocabularyLock vocabularyLock;
     private final UploadConceptRoleResolver roleResolver;
     private final UploadConceptGate uploadConceptGate;
     private final PublishedResourceUtil deviationChecker;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final UploadMetadataWriter metadataWriter;
+    private final OntologyUploadTransactions transactions;
     private final UploadValidationRunner validationRunner;
 
     @Override
@@ -54,13 +56,13 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
     }
 
     @Override
-    @Transactional
     @CacheEvict(cacheNames = {ReferencedConceptResolutionEngine.CACHE_NAME,
             WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE}, allEntries = true)
     public OntologyMetadataModel uploadFromFile(MultipartFile file, String userId,
                                                 NormalizeMode normalizeMode,
                                                 List<String> conceptsToNormalize) throws IOException, OntologyUploadException {
         OntModel finalModel = fileReader.read(file);
+        UploadVocabularyLock.Claim claim = null;
         try {
             // 0. Strip trailing slashes from IRIs first, so every later step sees the corrected ones.
             List<String> correctedIris = UploadIriNormalizer.normalize(finalModel);
@@ -70,6 +72,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
             String graphName = modelNormalizer.determineGraphName(finalModel);
             log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
+
+            // One upload per vocabulary at a time, so the existence check below is reliable.
+            claim = vocabularyLock.claim(graphName);
 
             modelNormalizer.normalizeOntologyType(finalModel, graphName);
 
@@ -114,6 +119,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             //     honour "no PG row ⇒ no owned RDF", which the PG↔TDB2 reconciler relies on.
             OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(finalModel, graphName);
 
+            // Serialized before anything is stored, so a failure here leaves no data behind.
+            String ontologyContent = fileReader.convertOntModelToTtl(finalModel);
+
             // 5. Save RDF data to TDB2 first — if this fails, no metadata exists, clean exit
             try {
                 jenaTDB2Repository.putOntologyModel(graphName, finalModel);
@@ -122,33 +130,31 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                         "Uložení slovníku do RDF úložiště (TDB2) selhalo: " + e.getMessage(), e);
             }
 
-            // 6. Save metadata to PostgreSQL — protected by @Transactional
-            //    If anything below fails, Spring rolls back PostgreSQL; catch cleans up TDB2
+            // 6. Save metadata to PostgreSQL in one transaction. If it fails or does not commit,
+            //    PostgreSQL holds nothing of this upload and the catch cleans up TDB2.
             OntologyMetadataModel metadata;
             try {
-                metadata = metadataWriter.createOntologyMetadataEntity(graphName, userId);
-                boolean ontologyPublished = metadataWriter.extractAndSaveConceptMetadata(finalModel, graphName, userId, metadata.getId(), publishedConceptIris);
-                // extractAndSaveConceptMetadata flips is_published on a re-fetched entity; mirror it
-                // onto the returned model so the upload response matches the persisted row.
-                metadata.setIsPublished(ontologyPublished);
+                metadata = transactions.saveMetadata(finalModel, graphName, userId, publishedConceptIris);
                 metadata.setRejectedConcepts(rejectedConcepts);
                 metadata.setCorrectedIris(correctedIris);
-            } catch (OntologyAlreadyExistsException e) {
-                // Re-throw without TDB2 cleanup — slug check above should prevent this,
-                // but if it happens (race condition), let @Transactional handle PostgreSQL
-                throw e;
             } catch (Exception e) {
-                try {
-                    jenaTDB2Repository.deleteGraph(graphName);
-                    log.info("Successfully rolled back TDB2 data for graph: {}", graphName);
-                } catch (Exception tdbException) {
-                    log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
+                // A committed row for this graph belongs to a writer that got there first, and so
+                // does the graph: it is left in place.
+                if (!metadataWriter.graphHasMetadata(graphName)) {
+                    try {
+                        jenaTDB2Repository.deleteGraph(graphName);
+                        log.info("Successfully rolled back TDB2 data for graph: {}", graphName);
+                    } catch (Exception tdbException) {
+                        log.error("Failed to rollback TDB2 data for graph: {}", graphName, tdbException);
+                    }
                 }
+                // Reports a vocabulary created meanwhile as the duplicate it is.
+                metadataWriter.checkSlugUniqueness(graphName);
                 throw new OntologyUploadMetadataException(
                         "Uložení metadat slovníku selhalo: " + e.getMessage(), e);
             }
 
-            String ontologyContent = fileReader.convertOntModelToTtl(finalModel);
+            // 7. Advisory validation, started once the metadata is committed.
             CompletableFuture.runAsync(() ->
                     validationRunner.requestAndSaveValidationReport(ontologyContent, graphName)
             ).exceptionally(ex -> {
@@ -158,6 +164,9 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
 
             return metadata;
         } finally {
+            if (claim != null) {
+                claim.close();
+            }
             finalModel.close();
         }
     }

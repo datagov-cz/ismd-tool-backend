@@ -3,15 +3,18 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
+import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.ontology.OntModel;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /** The upload steps that each run in their own Postgres transaction. */
@@ -23,6 +26,19 @@ class OntologyUploadTransactions {
 
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
+    private final UploadMetadataWriter metadataWriter;
+
+    /** Writes the vocabulary's metadata row and the rows of its concepts. */
+    public OntologyMetadataModel saveMetadata(OntModel model, String graphName, String userId,
+                                              List<String> publishedConceptIris) {
+        OntologyMetadataModel metadata = metadataWriter.createOntologyMetadataEntity(graphName, userId);
+        boolean ontologyPublished = metadataWriter.extractAndSaveConceptMetadata(
+                model, graphName, userId, metadata.getId(), publishedConceptIris);
+        // extractAndSaveConceptMetadata flips is_published on a re-fetched entity; mirror it
+        // onto the returned model so the upload response matches the persisted row.
+        metadata.setIsPublished(ontologyPublished);
+        return metadata;
+    }
 
     /**
      * Atomically persists the validation outcome: deletes any prior report, saves the new one (if

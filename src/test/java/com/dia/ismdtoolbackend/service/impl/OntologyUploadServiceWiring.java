@@ -59,16 +59,21 @@ public final class OntologyUploadServiceWiring {
                                                    PublishedResourceUtil deviationChecker,
                                                    UploadConceptGate gate) {
         UploadConceptRoleResolver roleResolver = new UploadConceptRoleResolver();
+        UploadMetadataWriter metadataWriter = new UploadMetadataWriter(ontologyMetadataMapper,
+                ontologyMetadataRepository, conceptMetadataRepository, roleResolver);
+        OntologyUploadTransactions transactions = new OntologyUploadTransactions(
+                ontologyMetadataRepository, validationReportRepository, metadataWriter);
         return new OntologyUploadServiceImpl(
                 new UploadFileReader(MAX_FILE_SIZE, PARSE_TIMEOUT_SECONDS),
                 new UploadModelNormalizer(),
+                new UploadVocabularyLock(),
                 roleResolver,
                 gate,
                 deviationChecker,
                 jenaTDB2Repository,
-                new UploadMetadataWriter(ontologyMetadataMapper, ontologyMetadataRepository,
-                        conceptMetadataRepository, roleResolver),
-                validationRunner(validationClient, ontologyMetadataRepository, validationReportRepository));
+                metadataWriter,
+                transactions,
+                new UploadValidationRunner(validationClient, transactions));
     }
 
     /** Runs the post-upload validation step on its own. */
@@ -93,7 +98,7 @@ public final class OntologyUploadServiceWiring {
     private static UploadValidationRunner validationRunner(ValidationClient validationClient,
                                                            OntologyMetadataRepository ontologyMetadataRepository,
                                                            ValidationReportRepository validationReportRepository) {
-        return new UploadValidationRunner(validationClient,
-                new OntologyUploadTransactions(ontologyMetadataRepository, validationReportRepository));
+        return new UploadValidationRunner(validationClient, new OntologyUploadTransactions(
+                ontologyMetadataRepository, validationReportRepository, null));
     }
 }
