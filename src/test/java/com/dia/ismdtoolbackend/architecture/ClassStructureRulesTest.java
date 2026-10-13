@@ -41,15 +41,12 @@ class ClassStructureRulesTest {
     private static final int MAX_LINES = 500;
     private static final int MAX_INJECTED_DEPENDENCIES = 13;
 
-    /** Classes over {@link #MAX_LINES} today, capped at their current size. Shrink entries; never add one. */
-    private static final Map<String, Integer> OVERSIZED_CLASSES = Map.of(
-            "service/impl/NkdDetailServiceImpl.java", 569);
+    /** Classes allowed over {@link #MAX_LINES}, each capped at a size. Empty, and to stay empty. */
+    private static final Map<String, Integer> OVERSIZED_CLASSES = Map.of();
 
     /** Singleton fields that are deliberately reassigned: volatile caches shared across requests. */
     private static final Set<String> MUTABLE_SINGLETON_FIELDS = Set.of(
-            "ReconcilerRunService.lastReport",
-            "NkdDetailServiceImpl.cachedTotalOntologies",
-            "NkdDetailServiceImpl.cachedTotalConcepts");
+            "ReconcilerRunService.lastReport");
 
     /** Beans allowed to inject a proxy of themselves. Empty, and to stay empty. */
     private static final Set<String> SELF_INJECTING_BEANS = Set.of();
