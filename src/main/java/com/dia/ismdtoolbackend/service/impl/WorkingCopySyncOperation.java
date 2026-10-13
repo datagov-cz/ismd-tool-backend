@@ -50,7 +50,8 @@ class WorkingCopySyncOperation {
     private final ConceptEditOperation editOperation;
     private final ConceptDetailReader detailReader;
 
-    GetConceptDto syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
+    /** Returns the concept's slug; the caller reads the detail once this transaction has committed. */
+    String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
         ConceptMetadataEntity metadata = accessGuard.fetchAndValidateMetadata(conceptId, true);
         if (!Boolean.TRUE.equals(metadata.getIsPublished())) {
             throw new OntologyValidationException(
@@ -106,7 +107,7 @@ class WorkingCopySyncOperation {
                     postEdit.getConceptIri(), acceptedForSever.size(), deviatingKeys.size());
         }
 
-        return detailReader.getConceptDetail(slug);
+        return slug;
     }
 
     /** Every accepted key must be both known and actually deviating; {@code typ} is never acceptable. */

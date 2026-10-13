@@ -252,6 +252,11 @@ Rejections (all HTTP 400): a concept that is not a working copy, a concept with 
 non-syncable key `typ` (ISMD cannot convert between concept types). Unknown keys are rejected by name.
 `typ` stays **visible** in the deviation so the drift is not hidden — it simply cannot be accepted.
 
+> **Response is read after commit.** The sync transaction only enqueues its RDF delta (outbox); the
+> store changes in the after-commit drain. `ConceptService.syncWorkingCopy` therefore returns the slug
+> and the controller reads the detail afterwards — a read inside the transaction returns the pre-sync
+> graph and deviation, which makes the UI offer a sync that then 400s with "není co synchronizovat".
+
 > **Full-snapshot semantics.** The sync applies its accepted fields through the normal edit path, which
 > is a full-snapshot write. Fields not being synced are carried through at their current values —
 > including `isPublic`/`privacyProvisions`, which would otherwise have their veřejný/neveřejný

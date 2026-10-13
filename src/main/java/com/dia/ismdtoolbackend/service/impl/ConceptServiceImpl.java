@@ -50,7 +50,7 @@ public class ConceptServiceImpl implements ConceptService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
-    public GetConceptDto syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
+    public String syncWorkingCopy(Long conceptId, List<String> fieldsToAccept) {
         return syncOperation.syncWorkingCopy(conceptId, fieldsToAccept);
     }
 

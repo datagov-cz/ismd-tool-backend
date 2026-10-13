@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -31,6 +32,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -133,6 +136,23 @@ class SyncWorkingCopySeverTest {
         when(detailReader.getConceptDetail(SLUG)).thenReturn(dto);
         when(nkdSparqlClient.fetchPublishedConcept(anyString()))
                 .thenReturn(Optional.of(detail("Popis", "Definice")));
+    }
+
+    /**
+     * The edit only enqueues its RDF delta, so a detail read inside the sync would return the pre-sync
+     * graph. The detail is read once, before the edit, and the slug is handed back for the caller to read.
+     */
+    @Test
+    void readsTheDetailOnlyBeforeTheEdit_andReturnsTheSlug() {
+        deviatingOn("definice");
+
+        String slug = service.syncWorkingCopy(CONCEPT_ID, List.of("definice"));
+
+        assertEquals(SLUG, slug);
+        InOrder inOrder = inOrder(detailReader, editOperation);
+        inOrder.verify(detailReader).getConceptDetail(SLUG);
+        inOrder.verify(editOperation).editConcept(eq(CONCEPT_ID), any(), eq(false));
+        inOrder.verifyNoMoreInteractions();
     }
 
     @Test
