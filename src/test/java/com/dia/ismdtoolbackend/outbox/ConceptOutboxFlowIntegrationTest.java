@@ -149,6 +149,37 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     @Test
+    void deleteConcept_graphMissing_stillRemovesMetadata() {
+        service.createConcept(classModel("Alpha"), USER);
+        Long id = conceptMetadataRepository.findAll().get(0).getId();
+        tdb2.reset();
+
+        service.deleteConcept(id);
+
+        assertThat(conceptMetadataRepository.count()).isZero();
+        assertThat(outboxRepository.findAll()).allMatch(row -> row.getStatus() == OutboxStatus.DONE);
+    }
+
+    @Test
+    void deleteConcept_conceptAbsentFromPopulatedGraph_removesOnlyItsMetadata() {
+        service.createConcept(classModel("Alpha"), USER);
+        service.createConcept(classModel("Beta"), USER);
+        ConceptMetadataEntity alpha = conceptMetadataRepository.findAll().stream()
+                .filter(row -> row.getConceptIri().endsWith("alpha")).findFirst().orElseThrow();
+        ConceptMetadataEntity beta = conceptMetadataRepository.findAll().stream()
+                .filter(row -> row.getConceptIri().endsWith("beta")).findFirst().orElseThrow();
+        tdb2.deleteConceptsFromGraph(List.of(alpha.getConceptIri()), GRAPH);
+
+        service.deleteConcept(alpha.getId());
+
+        assertThat(conceptMetadataRepository.findAll()).extracting(ConceptMetadataEntity::getId)
+                .containsExactly(beta.getId());
+        Model graph = tdb2.dataset().getNamedModel(GRAPH);
+        assertThat(graph.containsResource(graph.getResource(beta.getConceptIri()))).isTrue();
+        assertThat(outboxRepository.findAll()).allMatch(row -> row.getStatus() == OutboxStatus.DONE);
+    }
+
+    @Test
     void createThenRename_throughRealService_ordersCorrectly_noLostConcept() {
         // CREATE: the synchronous after-commit nudge drains, so the concept lands in TDB2.
         service.createConcept(classModel("Alpha"), USER);

@@ -44,16 +44,8 @@ class ConceptDeleteOperation {
         initialGraphGuard.requireInitialGraphApplied(graphName);
         String conceptUri = conceptMetadataOpt.get().getConceptIri();
 
-        if (!jenaTDB2Repository.graphHasData(graphName)) {
-            log.error("Ontology model is empty.");
-            throw new OntologyException("Slovník, ve kterém se pojem nachází, je prázdný, nebo nebyl nalezen.");
-        }
-
-        if (jenaTDB2Repository.conceptNotFoundInGraph(conceptUri, graphName)) {
-            log.error("Concept resource {} not found in graph {}", conceptUri, graphName);
-            throw new OntologyException("Pojem s IRI " + conceptUri + " nebyl nalezen.");
-        }
-
+        // Neither the graph nor the concept's triples are required to exist: the queued delete is a
+        // no-op for RDF that is already gone, so a concept with missing RDF is still removable.
         List<String> relatedConceptUris = jenaTDB2Repository.findRelatedConceptUris(conceptUri, graphName);
         relatedConceptUris.add(conceptUri);
         List<ConceptMetadataEntity> relatedConceptEntities = findRelatedConceptEntities(relatedConceptUris);

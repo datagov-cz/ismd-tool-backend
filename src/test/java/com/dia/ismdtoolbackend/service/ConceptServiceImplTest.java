@@ -415,8 +415,6 @@ class ConceptServiceImplTest {
     void deleteConcept_Success() throws OntologyException {
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
-        when(jenaTDB2Repository.conceptNotFoundInGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(false);
         when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
 
         conceptService.deleteConcept(TEST_CONCEPT_ID);
@@ -434,8 +432,6 @@ class ConceptServiceImplTest {
     @Test
     void deleteConcept_enqueuesInsteadOfDirectDelete() {
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
-        when(jenaTDB2Repository.conceptNotFoundInGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(false);
         when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
 
         conceptService.deleteConcept(TEST_CONCEPT_ID);
@@ -897,8 +893,6 @@ class ConceptServiceImplTest {
     @Test
     void deleteConcept_takesPessimisticLock() {
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
-        when(jenaTDB2Repository.conceptNotFoundInGraph(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(false);
         when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
 
         conceptService.deleteConcept(TEST_CONCEPT_ID);
@@ -945,31 +939,17 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void deleteConcept_EmptyGraph() {
+    void deleteConcept_neverRequiresRdfToExist() {
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(false);
+        when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptEntity));
+        when(jenaTDB2Repository.findRelatedConceptUris(TEST_CONCEPT_IRI, TEST_GRAPH_NAME)).thenReturn(new ArrayList<>());
 
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
+        conceptService.deleteConcept(TEST_CONCEPT_ID);
 
-        assertTrue(exception.getMessage().contains("prázdný"));
-        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
-    }
-
-    @Test
-    void deleteConcept_ConceptNotInGraph() {
-        Model emptyModel = ModelFactory.createDefaultModel();
-
-        when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(emptyModel);
-        emptyModel.add(emptyModel.createResource("http://other.org/resource"),
-                      emptyModel.createProperty("http://example.org/prop"), "value");
-
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> conceptService.deleteConcept(TEST_CONCEPT_ID));
-
-        assertTrue(exception.getMessage().contains("nebyl nalezen"));
-        verify(jenaTDB2Repository, never()).deleteConceptsFromGraph(anyList(), anyString());
+        verify(jenaTDB2Repository, never()).graphHasData(anyString());
+        verify(jenaTDB2Repository, never()).conceptNotFoundInGraph(anyString(), anyString());
+        verify(outboxWriter).enqueueDeleteConcepts(TEST_GRAPH_NAME, TEST_CONCEPT_IRI, List.of(TEST_CONCEPT_IRI));
+        verify(conceptMetadataRepository).deleteAll(List.of(testConceptEntity));
     }
 
     // ========== editConcept Tests ==========
