@@ -93,6 +93,9 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
             outboxRepository.deleteAll();
             conceptMetadataRepository.deleteAll();
             ontologyMetadataRepository.deleteAll();
+        });
+        // Own transaction: Hibernate flushes inserts before deletes, so the slug would collide.
+        txTemplate.executeWithoutResult(tx -> {
             OntologyMetadataEntity ont = new OntologyMetadataEntity();
             ont.setSlug("g-ontology");
             ont.setGraphName(GRAPH);
