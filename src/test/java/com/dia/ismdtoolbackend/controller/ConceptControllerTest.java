@@ -26,6 +26,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.containsString;
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -368,8 +370,8 @@ class ConceptControllerTest {
         secondMetadata.setConceptName("SecondConcept");
 
         TestOntologySecurityService.setAllowModify(true);
-        when(conceptService.createConcept(any(), eq(userId)))
-                .thenReturn(firstMetadata, secondMetadata);
+        when(conceptService.createConcepts(argThat(models -> models.size() == 2), eq(userId)))
+                .thenReturn(List.of(firstMetadata, secondMetadata));
 
         mockMvc.perform(post("/api/concept/{slug}/create/bulk", slug)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -383,7 +385,8 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.data[1].conceptName").value("SecondConcept"))
                 .andExpect(jsonPath("$.message").value("Pojmy úspěšně vytvořeny: "));
 
-        verify(conceptService, times(2)).createConcept(any(), eq(userId));
+        verify(conceptService).createConcepts(any(), eq(userId));
+        verify(conceptService, never()).createConcept(any(), anyString());
     }
 
     @Test
@@ -399,7 +402,7 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Neplatná data v požadavku."));
 
-        verify(conceptService, never()).createConcept(any(), anyString());
+        verify(conceptService, never()).createConcepts(any(), anyString());
     }
 
     @Test
@@ -431,7 +434,7 @@ class ConceptControllerTest {
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Neplatná data v požadavku."));
 
-        verify(conceptService, never()).createConcept(any(), anyString());
+        verify(conceptService, never()).createConcepts(any(), anyString());
     }
 
     // ========== Delete Concept Tests ==========

@@ -5,7 +5,9 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
 import com.dia.ismdtoolbackend.models.NameModel;
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
+import com.dia.ismdtoolbackend.models.concept.ConceptCreateModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
@@ -40,9 +42,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -119,6 +123,29 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
         nm.setName(names);
         m.setNameModel(nm);
         return m;
+    }
+
+    @Test
+    void bulkCreate_allValid_persistsEveryConcept() {
+        service.createConcepts(List.of(classModel("Alpha"), classModel("Beta")), USER);
+
+        List<ConceptMetadataEntity> rows = conceptMetadataRepository.findAll();
+        assertThat(rows).hasSize(2);
+        Model graph = tdb2.dataset().getNamedModel(GRAPH);
+        assertThat(rows).allSatisfy(row ->
+                assertThat(graph.containsResource(graph.getResource(row.getConceptIri()))).isTrue());
+    }
+
+    @Test
+    void bulkCreate_failingItem_persistsNothing() {
+        List<ConceptCreateModel> batch = List.of(classModel("Alpha"), classModel("Beta"), classModel("Alpha"));
+
+        assertThatThrownBy(() -> service.createConcepts(batch, USER))
+                .isInstanceOf(ConceptValidationException.class);
+
+        assertThat(conceptMetadataRepository.count()).as("no metadata row survives the failed batch").isZero();
+        assertThat(outboxRepository.count()).as("no RDF write is queued").isZero();
+        assertThat(tdb2.dataset().getNamedModel(GRAPH).isEmpty()).as("nothing reached TDB2").isTrue();
     }
 
     @Test

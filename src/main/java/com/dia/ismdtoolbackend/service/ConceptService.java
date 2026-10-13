@@ -10,6 +10,8 @@ import java.util.List;
 
 public interface ConceptService {
     ConceptMetadataModel createConcept(ConceptCreateModel createModel, String userId);
+    /** Creates every concept or none: one failing item rolls the whole batch back. */
+    List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId);
     void deleteConcept(Long conceptId);
     ConceptMetadataModel editConcept(Long conceptId, ConceptEditModel conceptEditModel);
 

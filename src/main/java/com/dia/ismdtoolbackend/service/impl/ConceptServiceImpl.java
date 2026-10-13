@@ -36,6 +36,15 @@ public class ConceptServiceImpl implements ConceptService {
     @Override
     @Transactional
     @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
+    public List<ConceptMetadataModel> createConcepts(List<? extends ConceptCreateModel> createModels, String userId) {
+        return createModels.stream()
+                .map(createModel -> createOperation.createConcept(createModel, userId))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(cacheNames = WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, allEntries = true)
     public void deleteConcept(Long conceptId) {
         deleteOperation.deleteConcept(conceptId);
     }
