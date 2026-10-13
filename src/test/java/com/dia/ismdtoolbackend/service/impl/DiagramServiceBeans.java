@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Import;
 @TestConfiguration
 @Import({DiagramServiceImpl.class, DiagramTransactions.class, DiagramLifecycleOperation.class,
         DiagramLayoutOperation.class, DiagramConflictOperation.class, DiagramSnapshotReader.class,
-        DiagramScopeReader.class, DiagramListReader.class, DiagramLiveContentReader.class,
+        DiagramScopeReader.class, DiagramListReader.class, DiagramLabelReader.class, DiagramLiveContentReader.class,
         DiagramResponseAssembler.class})
 public class DiagramServiceBeans {
 }

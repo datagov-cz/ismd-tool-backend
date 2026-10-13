@@ -24,18 +24,19 @@ import java.util.List;
 public class DiagramServiceImpl implements DiagramService {
 
     private final DiagramTransactions transactions;
+    private final DiagramLabelReader labelReader;
     private final DiagramLiveContentReader liveContentReader;
     private final DiagramResponseAssembler assembler;
     private final DiagramMaterializeService materializeService;
 
     @Override
     public List<DiagramSummaryDto> listAll(String userId) {
-        return transactions.listAll(userId);
+        return labelReader.withOntologyLabels(transactions.listAll(userId));
     }
 
     @Override
     public List<DiagramSummaryDto> listForOntology(String ontologySlug) {
-        return transactions.listForOntology(ontologySlug);
+        return labelReader.withOntologyLabels(transactions.listForOntology(ontologySlug));
     }
 
     /** Create an empty canvas. Creation is explicit — a read never provisions a row. */
@@ -45,10 +46,10 @@ public class DiagramServiceImpl implements DiagramService {
         return assembler.assemble(ontologySlug, snapshot, liveContentReader.readbackConcepts(snapshot));
     }
 
-    /** Renames one diagram. PG only, no graph read. Renaming to the current name is a no-op. */
+    /** Renames one diagram, then reads the ontology label. Renaming to the current name is a no-op. */
     @Override
     public DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name) {
-        return transactions.renameDiagram(ontologySlug, diagramId, name);
+        return labelReader.withOntologyLabel(transactions.renameDiagram(ontologySlug, diagramId, name));
     }
 
     /** Deletes one diagram. Nodes, waypoints and staged edits cascade with it; concepts do not. */

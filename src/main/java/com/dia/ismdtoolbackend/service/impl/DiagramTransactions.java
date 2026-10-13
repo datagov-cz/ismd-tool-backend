@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramSummaryDto;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.service.DiagramService.ConflictResolution;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -9,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/** The diagram steps that each run in their own Postgres transaction. None of them reads Fuseki for content. */
+/** The diagram steps that each run in their own Postgres transaction. None of them reads Fuseki. */
 @Component
 @Transactional
 @RequiredArgsConstructor
@@ -22,12 +23,12 @@ class DiagramTransactions {
     private final DiagramSnapshotReader snapshotReader;
 
     @Transactional(readOnly = true)
-    public List<DiagramSummaryDto> listAll(String userId) {
+    public List<DiagramRepository.DiagramSummaryRow> listAll(String userId) {
         return listReader.listAll(userId);
     }
 
     @Transactional(readOnly = true)
-    public List<DiagramSummaryDto> listForOntology(String ontologySlug) {
+    public List<DiagramRepository.DiagramSummaryRow> listForOntology(String ontologySlug) {
         return listReader.listForOntology(ontologySlug);
     }
 
@@ -35,6 +36,7 @@ class DiagramTransactions {
         return lifecycleOperation.commitNewDiagram(ontologySlug, name);
     }
 
+    /** The renamed diagram's summary, without the ontology label. */
     public DiagramSummaryDto renameDiagram(String ontologySlug, Long diagramId, String name) {
         return lifecycleOperation.renameDiagram(ontologySlug, diagramId, name);
     }

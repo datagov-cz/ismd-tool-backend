@@ -5,7 +5,6 @@ import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.DiagramNameConflictException;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
-import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
@@ -20,7 +19,6 @@ class DiagramLifecycleOperation {
     private final DiagramRepository diagramRepository;
     private final DiagramScopeReader scopeReader;
     private final DiagramSnapshotReader snapshotReader;
-    private final OntologyLabelLookup ontologyLabelLookup;
 
     DiagramSnapshot commitNewDiagram(String ontologySlug, String name) {
         OntologyMetadataEntity ontology = scopeReader.requireOntology(ontologySlug);
@@ -69,14 +67,17 @@ class DiagramLifecycleOperation {
         }
     }
 
-    /** Summary for one loaded diagram; the node count comes off the loaded collection, no query. */
+    /**
+     * Summary for one loaded diagram, without the ontology label; the node count comes off the loaded
+     * collection, no query.
+     */
     private DiagramSummaryDto summaryOf(DiagramEntity diagram, OntologyMetadataEntity ontology) {
         return new DiagramSummaryDto(
                 diagram.getId(),
                 diagram.getName(),
                 ontology.getSlug(),
                 ontology.getGraphName(),
-                ontologyLabelLookup.labelFor(ontology.getGraphName()),
+                null,
                 diagram.getNodes().size(),
                 diagram.getUpdatedAt() != null ? diagram.getUpdatedAt().toString() : null);
     }
