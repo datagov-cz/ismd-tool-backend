@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -45,6 +46,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -350,10 +352,21 @@ class OntologyUploadValidationParityTest {
     // --- Role guard -----------------------------------------------------------
 
     @Test
+    void conceptTypedAsBothPropertyAndRelationshipFailsTheWholeUpload() {
+        OntologyUploadConflictingTypesException ex = assertThrows(OntologyUploadConflictingTypesException.class,
+                () -> upload(vocabulary()
+                        + concept(GOOD, "owl:Class", "")
+                        + concept(BAD, "owl:DatatypeProperty, owl:ObjectProperty", "")));
+
+        assertEquals(List.of(BAD), ex.getConceptIris());
+        assertNull(storedTurtle, "nothing may reach TDB2");
+    }
+
+    @Test
     void conceptWithoutASingleRoleIsReportedAndLeavesNoOwnedTriples() throws Exception {
         OntologyMetadataModel uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "")
-                + concept(BAD, "owl:DatatypeProperty, owl:ObjectProperty", ""));
+                + concept(BAD, "owl:Class, owl:DatatypeProperty", ""));
 
         assertEquals(List.of(GOOD), savedConceptIris());
         assertEquals(List.of(BAD), rejectedIris(uploaded));

@@ -547,6 +547,23 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_conflictingConceptTypes_returnsBadRequestNamingTheConcepts() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException(
+                        List.of("https://x/y/pojem/a", "https://x/y/pojem/b")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_CONCEPT_TYPE_CONFLICT"))
+                .andExpect(jsonPath("$.data[0]").value("https://x/y/pojem/a"))
+                .andExpect(jsonPath("$.data[1]").value("https://x/y/pojem/b"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_uploadInProgress_returnsConflict() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
 

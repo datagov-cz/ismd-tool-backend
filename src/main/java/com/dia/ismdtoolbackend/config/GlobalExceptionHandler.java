@@ -32,6 +32,7 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import java.util.List;
 import java.io.IOException;
 
 @Slf4j
@@ -337,6 +338,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadIriCollision(OntologyUploadIriCollisionException e) {
         log.warn("Ontology upload rejected, IRIs differ only by a trailing slash: {}", e.getMessage());
         return error(ErrorCode.UPLOAD_IRI_TRAILING_SLASH_COLLISION, e.getMessage());
+    }
+
+    @ExceptionHandler(OntologyUploadConflictingTypesException.class)
+    public ResponseEntity<ApiResponseDto<List<String>>> handleOntologyUploadConflictingTypes(
+            OntologyUploadConflictingTypesException e) {
+        log.warn("Ontology upload rejected, concepts typed as both property and relationship: {}",
+                e.getConceptIris());
+        return error(ErrorCode.UPLOAD_CONCEPT_TYPE_CONFLICT, e.getMessage(), e.getConceptIris());
     }
 
     @ExceptionHandler(OntologyUploadInProgressException.class)
