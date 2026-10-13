@@ -43,7 +43,6 @@ class ClassStructureRulesTest {
 
     /** Classes over {@link #MAX_LINES} today, capped at their current size. Shrink entries; never add one. */
     private static final Map<String, Integer> OVERSIZED_CLASSES = Map.of(
-            "utility/editor/ConceptFieldUpdaters.java", 810,
             "utility/detail/OntologyDetailExtractor.java", 752,
             "service/impl/ConceptDeviationComparator.java", 626,
             "service/impl/NkdDetailServiceImpl.java", 569);
@@ -158,6 +157,7 @@ class ClassStructureRulesTest {
                     case "com.dia.ismdtoolbackend.service.search" -> name.startsWith("Ismd") && name.endsWith("Search");
                     case "com.dia.ismdtoolbackend.repository" -> name.startsWith("Fuseki");
                     case "com.dia.ismdtoolbackend.utility.creator" -> name.endsWith("Writer");
+                    case "com.dia.ismdtoolbackend.utility.editor" -> name.endsWith("Updater");
                     case "com.dia.ismdtoolbackend.utility.exporter.json" ->
                             name.endsWith("JsonMapper") && !name.equals("ConceptJsonMapper");
                     default -> false;

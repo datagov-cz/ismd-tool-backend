@@ -20,6 +20,7 @@ Large classes are split into an **orchestrator** and **delegates**. The rules be
 | `IsmdSearchProvider` | `Ismd*Search` in `service/search` |
 | `JenaTDB2Repository` | `Fuseki*` in `repository` |
 | `ConceptCreator` | `*Writer` in `utility/creator` |
+| `ConceptFieldUpdaters` | `Concept*Updater` in `utility/editor` |
 | `ConceptJsonMapper` | `Concept*JsonMapper` in `utility/exporter/json` |
 
 Service delegates are Spring beans. Utility delegates are built by their orchestrator, so it keeps a
