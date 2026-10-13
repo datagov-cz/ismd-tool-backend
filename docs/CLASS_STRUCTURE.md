@@ -15,6 +15,7 @@ Large classes are split into an **orchestrator** and **delegates**. The rules be
 |---|---|
 | `ConceptServiceImpl`, `OntologyServiceImpl` | `*Operation`, `*Reader` in `service/impl` |
 | `OntologyUploadServiceImpl` | `Upload*` in `service/impl` |
+| `EsbirkaServiceImpl` | `Esbirka*` in `service/impl` |
 | `IsmdSearchProvider` | `Ismd*Search` in `service/search` |
 | `JenaTDB2Repository` | `Fuseki*` in `repository` |
 | `ConceptCreator` | `*Writer` in `utility/creator` |

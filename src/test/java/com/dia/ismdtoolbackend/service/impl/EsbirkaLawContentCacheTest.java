@@ -42,6 +42,10 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(classes = {
         CacheConfig.class,
         EsbirkaServiceImpl.class,
+        EsbirkaLawSearch.class,
+        EsbirkaLawVersionsReader.class,
+        EsbirkaLawContentReader.class,
+        EsbirkaLegalSourceResolver.class,
         EsbirkaFragmentResolutionCache.class,
         EsbirkaSubtreeBodyCache.class
 })
@@ -71,6 +75,7 @@ class EsbirkaLawContentCacheTest {
     @BeforeEach
     void setUp() {
         cacheManager.getCache("esbirkaLawContent").clear();
+        cacheManager.getCache("esbirkaLawSearch").clear();
         when(client.findLawByNumberYear("49", 1997)).thenReturn(Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
@@ -240,7 +245,7 @@ class EsbirkaLawContentCacheTest {
     void oneArgOverloadIsAlsoCached() {
         // The one-arg overload delegates to the two-arg @Cacheable method. A direct
         // this.getLawContent(ref, null) call would bypass the Spring proxy and re-run the
-        // whole ~2 MB fetch every time; delegation must go through the self-proxy.
+        // whole ~2 MB fetch every time; the cached method lives in a separate bean.
         LawContentDto first = service.getLawContent("49/1997");
         LawContentDto second = service.getLawContent("49/1997");
 
@@ -256,6 +261,32 @@ class EsbirkaLawContentCacheTest {
         service.getLawContent("49/1997", null);
 
         verify(client, times(1)).fetchVersionContent(LATEST_IRI);
+    }
+
+    @Test
+    void flatSearchIsCachedPerQueryAndLimit() {
+        when(client.searchLaws("zákon", 10)).thenReturn(List.of());
+        when(client.searchLaws("zákon", 20)).thenReturn(List.of());
+
+        service.searchLaws("zákon", 10);
+        service.searchLaws("zákon", 10);
+        service.searchLaws("zákon", 20);
+
+        verify(client, times(1)).searchLaws("zákon", 10);
+        verify(client, times(1)).searchLaws("zákon", 20);
+    }
+
+    @Test
+    void groupedSearchIsCachedAndKeptApartFromTheFlatSearch() {
+        when(client.searchLawNumberGroups("49", null, 10)).thenReturn(List.of());
+        when(client.searchLaws("49", 10)).thenReturn(List.of());
+
+        service.searchLawsGrouped("49", 10);
+        service.searchLawsGrouped("49", 10);
+        service.searchLaws("49", 10);
+
+        verify(client, times(1)).searchLawNumberGroups("49", null, 10);
+        verify(client, times(1)).searchLaws("49", 10);
     }
 
     @Test
