@@ -30,6 +30,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.io.IOException;
 
@@ -422,6 +423,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleMissingParameter(MissingServletRequestParameterException e) {
         log.warn("Missing required parameter '{}'", e.getParameterName());
         String msg = "Chybí povinný parametr '" + e.getParameterName() + "'.";
+        return error(ErrorCode.MISSING_PARAMETER, msg);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleMissingPart(MissingServletRequestPartException e) {
+        log.warn("Missing required request part '{}'", e.getRequestPartName());
+        String msg = "Chybí povinná část požadavku '" + e.getRequestPartName() + "'.";
         return error(ErrorCode.MISSING_PARAMETER, msg);
     }
 

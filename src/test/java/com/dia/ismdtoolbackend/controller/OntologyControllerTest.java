@@ -313,7 +313,7 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void testUploadFromFile_MissingFile() throws Exception {
+    void testUploadFromFile_EmptyJsonLdFile() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -329,6 +329,19 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_noFilePart_returnsBadRequest() throws Exception {
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .param("normalizeMode", "NORMALIZE_ALL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Chybí povinná část požadavku 'file'."));
+
+        verifyNoInteractions(ontologyUploadService);
     }
 
     @Test

@@ -79,7 +79,7 @@ public class OntologyController {
     )
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
-            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam("file") MultipartFile file,
             @RequestParam(value = "normalizeMode", required = false) NormalizeMode normalizeMode,
             @RequestParam(value = "conceptsToNormalize", required = false) List<String> conceptsToNormalize,
             @AuthenticationPrincipal SecurityUser securityUser) throws IOException {
