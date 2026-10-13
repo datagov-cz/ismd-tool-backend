@@ -108,7 +108,7 @@ class ForeignMemberCountTest {
     /**
      * A vztah pointing both domain and range at the same class counts ONCE — mirroring the
      * extractor's dedupe (LinkedHashSet on the concept path, the range!=domain guard in
-     * MemberIndex). Without COUNT(DISTINCT ?member) the UNION would double it.
+     * DetailMemberIndex). Without COUNT(DISTINCT ?member) the UNION would double it.
      */
     @Test
     void selfReferencingRelationshipCountedOnce() {

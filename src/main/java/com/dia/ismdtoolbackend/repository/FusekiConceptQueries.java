@@ -41,7 +41,7 @@ final class FusekiConceptQueries {
      * graphs whose {@code rdfs:domain} <em>or</em> {@code rdfs:range} is {@code conceptIri}
      * — i.e. the members that point <em>at</em> this concept. Merged into the concept's
      * own graph by the detail pipeline so the class-detail read
-     * ({@link com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor#extractConceptPropertiesFromModel})
+     * ({@code DetailMemberReader.extractConceptPropertiesFromModel})
      * sees members that live in a different vocabulary graph than the class.
      *
      * <p>The class-detail read fetches only the class's own named graph, so a
@@ -96,7 +96,7 @@ final class FusekiConceptQueries {
      * graph OTHER than {@code ownGraphName}. One batched query for the whole concept list.
      *
      * <p>Ontology detail lists only members from its own graph
-     * ({@code OntologyDetailExtractor.MemberIndex} is built from that graph's concept list
+     * ({@code DetailMemberIndex} is built from that graph's concept list
      * alone), while concept detail additionally merges cross-graph members via
      * {@link #fetchExternalDomainMembers}. These counts are what the two surfaces differ by,
      * so ontology detail can state how many members it is not showing.
