@@ -18,7 +18,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.UploadConceptGate;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
@@ -30,12 +30,10 @@ import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
@@ -82,16 +80,13 @@ class OntologyUploadTransactionalTest {
     @Mock
     private PublishedResourceUtil deviationChecker;
 
-    @Mock
-    private UploadConceptGate uploadConceptGate;
-
-    @InjectMocks
     private OntologyUploadServiceImpl uploadService;
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(uploadService, "maxFileSizeConfig", "10MB");
-        ReflectionTestUtils.setField(uploadService, "rdfParsingTimeoutSeconds", 60);
+        uploadService = OntologyUploadServiceWiring.buildWithMockedGate(ontologyMetadataMapper,
+                ontologyMetadataRepository, conceptMetadataRepository, validationClient,
+                validationReportRepository, jenaTDB2Repository, deviationChecker);
     }
 
     private MultipartFile createTurtleFile(String content) throws IOException {

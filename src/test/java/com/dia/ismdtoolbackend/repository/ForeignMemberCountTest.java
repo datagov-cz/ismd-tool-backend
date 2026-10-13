@@ -57,7 +57,7 @@ class ForeignMemberCountTest {
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
 
-        JenaTDB2Repository.ForeignMemberCount count = counts().get(CLASS_IRI);
+        ForeignMemberCount count = counts().get(CLASS_IRI);
 
         assertThat(count).isNotNull();
         assertThat(count.properties()).isEqualTo(1);
@@ -98,7 +98,7 @@ class ForeignMemberCountTest {
         store(GRAPH_A, graphA);
         store(GRAPH_B, graphB);
 
-        JenaTDB2Repository.ForeignMemberCount count = counts().get(CLASS_IRI);
+        ForeignMemberCount count = counts().get(CLASS_IRI);
 
         assertThat(count).isNotNull();
         assertThat(count.relationships()).isEqualTo(1);
@@ -108,7 +108,7 @@ class ForeignMemberCountTest {
     /**
      * A vztah pointing both domain and range at the same class counts ONCE — mirroring the
      * extractor's dedupe (LinkedHashSet on the concept path, the range!=domain guard in
-     * MemberIndex). Without COUNT(DISTINCT ?member) the UNION would double it.
+     * DetailMemberIndex). Without COUNT(DISTINCT ?member) the UNION would double it.
      */
     @Test
     void selfReferencingRelationshipCountedOnce() {
@@ -171,7 +171,7 @@ class ForeignMemberCountTest {
 
     // --- helpers ---
 
-    private Map<String, JenaTDB2Repository.ForeignMemberCount> counts() {
+    private Map<String, ForeignMemberCount> counts() {
         return repository.countExternalDomainMembers(GRAPH_A, List.of(CLASS_IRI, OTHER_CLASS_IRI));
     }
 

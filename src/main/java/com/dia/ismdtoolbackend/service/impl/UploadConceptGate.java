@@ -42,7 +42,7 @@ import static com.dia.constants.VocabularyConstants.*;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class UploadConceptGate {
+class UploadConceptGate {
 
     private final OntologyDetailExtractor detailExtractor;
     private final NkdLinkDetector nkdLinkDetector;

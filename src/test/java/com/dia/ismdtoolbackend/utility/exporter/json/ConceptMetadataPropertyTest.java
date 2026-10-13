@@ -13,14 +13,14 @@ import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("ConceptProcessor - Metadata Properties (A104/L111)")
+@DisplayName("ConceptJsonMapper - Metadata Properties (A104/L111)")
 class ConceptMetadataPropertyTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     @Test

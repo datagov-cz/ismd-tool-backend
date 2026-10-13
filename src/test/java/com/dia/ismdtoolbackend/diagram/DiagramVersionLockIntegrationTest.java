@@ -21,6 +21,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
+import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,6 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
@@ -59,10 +59,10 @@ import static org.mockito.Mockito.mock;
 @ActiveProfiles("junit")
 @EntityScan(basePackageClasses = {DiagramEntity.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {DiagramRepository.class, ConceptMetadataRepository.class})
-@Import({JpaAuditingConfig.class, DiagramVersionLockIntegrationTest.Beans.class,
+@Import({JpaAuditingConfig.class, DiagramVersionLockIntegrationTest.Beans.class, DiagramServiceBeans.class,
         TransactionTemplateConfig.class})
 // NOT_SUPPORTED: the service opens its own transaction per write, exactly as it does behind a real
-// request. An ambient test transaction would mask that — and would hide a self-call that never opens one.
+// request. An ambient test transaction would mask that — and would hide a commit step that never opens one.
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
 
@@ -235,22 +235,12 @@ class DiagramVersionLockIntegrationTest extends PostgresIntegrationTestBase {
             return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
         }
 
-        /**
-         * Built with the PROXIED self so the {@code @Transactional} commit steps actually open a
-         * transaction — this test runs {@code NOT_SUPPORTED}, so there is no ambient one to fall back on.
-         */
         @Bean OntologyLabelLookup ontologyLabelLookup() {
             return mock(OntologyLabelLookup.class);
         }
 
-        @Bean DiagramServiceImpl diagramServiceImpl(
-                DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
-                ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
-                DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
-                OntologyLabelLookup labelLookup, @Lazy DiagramServiceImpl self) {
-            return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, labelLookup, self);
+        @Bean DiagramMaterializeService diagramMaterializeService() {
+            return mock(DiagramMaterializeService.class);
         }
     }
 

@@ -967,4 +967,31 @@ class ConceptControllerTest {
         mockMvc.perform(delete("/api/concept/{conceptId}/localcopy/{snapshotId}", 1L, 7L))
                 .andExpect(status().isForbidden());
     }
+
+    /** The response is the detail read after the sync call returns, i.e. after its transaction committed. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void syncWorkingCopy_returnsDetailReadAfterTheSync() throws Exception {
+        TestOntologySecurityService.setAllowModify(true);
+        String slug = "test-concept";
+        ConceptMetadataModel metadataModel = new ConceptMetadataModel();
+        metadataModel.setId(1L);
+        metadataModel.setSlug(slug);
+        com.dia.ismdtoolbackend.controller.dto.GetConceptDto conceptDto =
+                new com.dia.ismdtoolbackend.controller.dto.GetConceptDto();
+        conceptDto.setConceptMetadata(metadataModel);
+
+        when(conceptService.syncWorkingCopy(1L, java.util.List.of("definice"))).thenReturn(slug);
+        when(conceptService.getConceptDetail(slug)).thenReturn(conceptDto);
+
+        mockMvc.perform(post("/api/concept/{conceptId}/sync", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fieldsToAccept\": [\"definice\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.conceptMetadata.slug").value(slug));
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(conceptService);
+        inOrder.verify(conceptService).syncWorkingCopy(1L, java.util.List.of("definice"));
+        inOrder.verify(conceptService).getConceptDetail(slug);
+    }
 }

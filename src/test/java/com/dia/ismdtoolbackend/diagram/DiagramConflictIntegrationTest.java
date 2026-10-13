@@ -25,6 +25,7 @@ import com.dia.ismdtoolbackend.service.DiagramService.ConflictResolution;
 import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
+import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import jakarta.persistence.EntityNotFoundException;
@@ -37,7 +38,6 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -82,7 +82,7 @@ import static org.mockito.Mockito.verify;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
-@Import({DiagramConflictIntegrationTest.Beans.class, TransactionTemplateConfig.class,
+@Import({DiagramConflictIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
         com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
@@ -679,17 +679,6 @@ class DiagramConflictIntegrationTest extends PostgresIntegrationTestBase {
 
             return mock(OntologyLabelLookup.class);
 
-        }
-
-
-        @Bean DiagramServiceImpl diagramServiceImpl(
-                DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
-                ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramMaterializeService materializeService,
-                DiagramLayoutReconciler reconciler, DiagramPendingEditRepository pendingEditRepo,
-                DiagramMapper mapper, OntologyLabelLookup labelLookup, @Lazy DiagramServiceImpl self) {
-            return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    materializeService, reconciler, pendingEditRepo, mapper, labelLookup, self);
         }
     }
 }

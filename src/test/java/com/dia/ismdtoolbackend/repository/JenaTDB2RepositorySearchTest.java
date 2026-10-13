@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.config.FusekiConnectionConfig;
 import com.dia.ismdtoolbackend.enums.RelationType;
 import org.apache.jena.query.Query;
 import org.apache.jena.query.QueryExecution;
@@ -41,7 +42,7 @@ class JenaTDB2RepositorySearchTest {
                                     RDFConnection mockConn,
                                     org.springframework.core.env.Environment environment,
                                     RuntimeException createConnectionError) {
-            super(httpClient, semaphore, timeout, environment);
+            super(new FusekiConnectionConfig(httpClient, semaphore, timeout, "http://localhost/unused"), environment);
             this.mockConn = mockConn;
             this.createConnectionError = createConnectionError;
         }

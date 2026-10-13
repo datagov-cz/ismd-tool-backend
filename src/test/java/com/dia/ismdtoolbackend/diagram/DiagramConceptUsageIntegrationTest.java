@@ -20,6 +20,7 @@ import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.repository.ConceptHierarchyLinks;
 import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import jakarta.persistence.EntityNotFoundException;
@@ -97,7 +98,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     void setUp() {
         reset(tdb2, resolutionEngine);
         when(tdb2.fetchConceptHierarchy(any(), any()))
-                .thenReturn(JenaTDB2Repository.ConceptHierarchyLinks.empty());
+                .thenReturn(ConceptHierarchyLinks.empty());
         // Resolve every requested IRI to a stub, so an assertion about WHICH IRIs were resolved is not
         // silently satisfied by an empty map.
         when(resolutionEngine.resolveAll(any())).thenAnswer(inv -> {
@@ -254,7 +255,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void hierarchyIsReportedResolved() {
         when(tdb2.fetchConceptHierarchy(any(), any())).thenReturn(
-                new JenaTDB2Repository.ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
+                new ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
         diagram("S hierarchií", d -> node(d, CLASS_IRI));
 
         DiagramConceptUsageDto usage = usageService.usageForSlug(slugOf(CLASS_IRI));
@@ -274,7 +275,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void eachCanvasReportsItsOwnStagedStructure() {
         when(tdb2.fetchConceptHierarchy(any(), any())).thenReturn(
-                new JenaTDB2Repository.ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
+                new ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
         Long staged = diagram("Se změnou", d -> edge(d, VZTAH_IRI));
         Long untouched = diagram("Beze změny", d -> edge(d, VZTAH_IRI));
 
@@ -303,7 +304,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void anOverlayOverridesOnlyTheFieldsItCarries() {
         when(tdb2.fetchConceptHierarchy(any(), any())).thenReturn(
-                new JenaTDB2Repository.ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
+                new ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
         Long diagramId = diagram("Částečná změna", d -> edge(d, VZTAH_IRI));
 
         DiagramPendingEdit overlay = new DiagramPendingEdit();
@@ -324,7 +325,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void anOverlayCanStageAnEmptyHierarchy() {
         when(tdb2.fetchConceptHierarchy(any(), any())).thenReturn(
-                new JenaTDB2Repository.ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
+                new ConceptHierarchyLinks(List.of(PARENT_CLASS_IRI), List.of()));
         Long diagramId = diagram("Vyprázdněná hierarchie", d -> node(d, CLASS_IRI));
 
         DiagramPendingEdit overlay = new DiagramPendingEdit();

@@ -27,6 +27,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
@@ -43,7 +44,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -128,7 +128,6 @@ class ConceptServiceImplTest {
     private com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector nkdLinkDetector =
             new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
 
-    @InjectMocks
     private ConceptServiceImpl conceptService;
 
     private ConceptMetadataEntity testConceptEntity;
@@ -142,6 +141,12 @@ class ConceptServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        conceptService = ConceptServiceWiring.build(conceptMetadataRepository, ontologyMetadataRepository,
+                metadataTouchService, conceptMetadataMapper, conceptCreator, conceptEditor, jenaTDB2Repository,
+                detailExtractor, commentRepository, nkdSparqlClient, deviationComparator, rppSnapshotHolder,
+                nkodCodelistService, referencedConceptsEnricher, outboxWriter, outboxRepository, outboxRelayTrigger,
+                nkdSnapshotService, nkdLinkDetector, null, null, null, workingCopyDeviationService);
+
         testConceptEntity = new ConceptMetadataEntity();
         testConceptEntity.setId(TEST_CONCEPT_ID);
         testConceptEntity.setConceptIri(TEST_CONCEPT_IRI);

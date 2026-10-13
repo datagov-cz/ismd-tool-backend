@@ -535,6 +535,21 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_uploadInProgress_returnsConflict() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadInProgressException("Slovník se právě nahrává: https://x/y"));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_IN_PROGRESS"))
+                .andExpect(jsonPath("$.message").value("Slovník se právě nahrává: https://x/y"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_missingOntologyIri_returnsSpecificStatusCodeAndMessage() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
 
