@@ -43,7 +43,6 @@ class ClassStructureRulesTest {
 
     /** Classes over {@link #MAX_LINES} today, capped at their current size. Shrink entries; never add one. */
     private static final Map<String, Integer> OVERSIZED_CLASSES = Map.of(
-            "service/impl/DiagramServiceImpl.java", 824,
             "utility/editor/ConceptFieldUpdaters.java", 810,
             "utility/detail/OntologyDetailExtractor.java", 752,
             "service/impl/ConceptDeviationComparator.java", 626,
@@ -55,9 +54,8 @@ class ClassStructureRulesTest {
             "NkdDetailServiceImpl.cachedTotalOntologies",
             "NkdDetailServiceImpl.cachedTotalConcepts");
 
-    /** Beans that still inject a proxy of themselves. Remove entries as they are split; never add one. */
-    private static final Set<String> SELF_INJECTING_BEANS = Set.of(
-            "DiagramServiceImpl");
+    /** Beans allowed to inject a proxy of themselves. Empty, and to stay empty. */
+    private static final Set<String> SELF_INJECTING_BEANS = Set.of();
 
     private static final JavaClasses MAIN_CLASSES = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
@@ -155,7 +153,7 @@ class ClassStructureRulesTest {
                 String name = javaClass.getSimpleName();
                 return switch (javaClass.getPackageName()) {
                     case "com.dia.ismdtoolbackend.service.impl" -> name.endsWith("Operation") || name.endsWith("Reader")
-                            || name.startsWith("Upload")
+                            || name.endsWith("Assembler") || name.startsWith("Upload")
                             || (name.startsWith("Esbirka") && !name.equals("EsbirkaServiceImpl"));
                     case "com.dia.ismdtoolbackend.service.search" -> name.startsWith("Ismd") && name.endsWith("Search");
                     case "com.dia.ismdtoolbackend.repository" -> name.startsWith("Fuseki");

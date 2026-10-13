@@ -15,6 +15,7 @@ Large classes are split into an **orchestrator** and **delegates**. The rules be
 |---|---|
 | `ConceptServiceImpl`, `OntologyServiceImpl` | `*Operation`, `*Reader` in `service/impl` |
 | `OntologyUploadServiceImpl` | `Upload*` in `service/impl` |
+| `DiagramServiceImpl` | `Diagram*Operation`, `Diagram*Reader`, `DiagramResponseAssembler` in `service/impl` |
 | `EsbirkaServiceImpl` | `Esbirka*` in `service/impl` |
 | `IsmdSearchProvider` | `Ismd*Search` in `service/search` |
 | `JenaTDB2Repository` | `Fuseki*` in `repository` |
@@ -40,7 +41,7 @@ separate bean (`NkdPublishedResourceFetcher`, `LocalConceptProjectionReader`), s
 through the proxy without a `self` reference.
 
 When an operation must hold a transaction for only part of its work, the transactional steps go in
-a `*Transactions` bean (`OntologyUploadTransactions`) that the orchestrator's delegates call.
+a `*Transactions` bean (`OntologyUploadTransactions`, `DiagramTransactions`).
 
 Per-call state goes in a context object passed to the delegates (`ConceptBuildContext`), never in a
 field of a singleton.
@@ -52,8 +53,7 @@ All three lists live in `ClassStructureRulesTest`.
 - `OVERSIZED_CLASSES` — classes over the line limit today, each capped at its current size. An entry
   may shrink or be removed; none may be added.
 - `MUTABLE_SINGLETON_FIELDS` — volatile caches that are reassigned on purpose.
-- `SELF_INJECTING_BEANS` — beans that still inject themselves. Entries are removed as the classes
-  are split; none may be added.
+- `SELF_INJECTING_BEANS` — beans allowed to inject themselves. Empty, and to stay empty.
 
 ## Adding a delegate
 
