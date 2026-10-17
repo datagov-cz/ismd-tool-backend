@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.query.EsbirkaSPARQLQuery;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaFragmentKind;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlCircuitBreaker;
 import com.dia.ismdtoolbackend.utility.sparql.SparqlSolutions;
@@ -209,7 +210,7 @@ public class EsbirkaSparqlClient {
                 log.warn("Fragment row missing iri; skipping.");
                 continue;
             }
-            String kind = parseKindFromIri(iri);
+            String kind = EsbirkaFragmentKind.fromIri(iri);
             out.add(new FragmentModel(iri, parent, citation, kind, order));
         }
         return out;
@@ -232,7 +233,7 @@ public class EsbirkaSparqlClient {
                 log.warn("Fragment content row missing iri; skipping.");
                 continue;
             }
-            String kind = parseKindFromIri(iri);
+            String kind = EsbirkaFragmentKind.fromIri(iri);
             out.add(new FragmentModel(iri, parent, citation, kind, order, bodyHtml));
         }
         return out;
@@ -249,17 +250,5 @@ public class EsbirkaSparqlClient {
             out.add(new FragmentResolutionModel(citation, validUntil, isLatest, bodyHtml));
         }
         return out;
-    }
-
-    /**
-     * Parse the fragment kind from the last IRI segment, e.g.
-     * ".../par_122/odst_4/pism_g" → "pism". Returns "unknown" if no underscore segment found.
-     */
-    private static String parseKindFromIri(String iri) {
-        int slash = iri.lastIndexOf('/');
-        if (slash < 0 || slash >= iri.length() - 1) return "unknown";
-        String last = iri.substring(slash + 1);
-        int underscore = last.indexOf('_');
-        return underscore > 0 ? last.substring(0, underscore) : last;
     }
 }

@@ -54,6 +54,11 @@ final class StaleUrls {
         return IRI_BASE + ELI_CZ + staleUrl;
     }
 
+    /** Canonical IRI of a REST {@code eli} field ({@code /eli/cz/sb/...}). */
+    static String fromEli(String eli) {
+        return IRI_BASE + eli;
+    }
+
     /** The staleUrl as one path segment: every byte outside RFC 3986 unreserved is percent-encoded. */
     static String encodePathSegment(String staleUrl) {
         byte[] bytes = staleUrl.getBytes(StandardCharsets.UTF_8);

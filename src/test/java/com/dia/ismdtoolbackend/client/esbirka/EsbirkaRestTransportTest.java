@@ -57,8 +57,8 @@ class EsbirkaRestTransportTest {
     private static final String API_KEY = "test-key-7f3e9c1a-SECRET";
     private static final String HISTORIE_PATH = "/dokumenty-sbirky/%2Fsb%2F1997%2F49/historie";
     private static final String HISTORIE_JSON = "{\"zaznamy\":[{\"staleUrl\":\"/sb/1997/49/2025-11-01\"}]}";
-    private static final String HTML_429 = "<html><head><title>429 Too Many Requests</title></head>"
-            + "<body><center><h1>429 Too Many Requests</h1></center><hr><center>nginx</center></body></html>";
+    /** Recorded from the live edge: HTML, no Retry-After, Connection: close. */
+    private static final String HTML_429 = EsbirkaRestFixtures.text("errors/nginx-429.html");
     private static final int BREAKER_THRESHOLD = 2;
 
     record Historie(List<Map<String, Object>> zaznamy) {
@@ -211,7 +211,8 @@ class EsbirkaRestTransportTest {
 
     @Test
     void http400DokumentNenalezenIsNotFoundNotRetriedAndNeverTripsTheBreaker() {
-        wm.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(400, chyby("DOKUMENT_NENALEZEN"))));
+        wm.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(
+                json(400, EsbirkaRestFixtures.text("errors/chyby-dokument-nenalezen.json"))));
         EsbirkaRestTransport transport = transport(c -> { });
 
         for (int i = 0; i < BREAKER_THRESHOLD + 1; i++) {
