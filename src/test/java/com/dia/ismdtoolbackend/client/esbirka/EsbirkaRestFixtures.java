@@ -61,6 +61,19 @@ final class EsbirkaRestFixtures {
         return read(law + "/sparql-versions.json", new TypeReference<>() { });
     }
 
+    /** The request body sent when {@code search/<name>} was recorded, as JSON. */
+    static String searchRequest(String name) {
+        return read("search/" + name + ".json", new TypeReference<tools.jackson.databind.JsonNode>() { })
+                .get("request").toString();
+    }
+
+    /** The response recorded for {@code search/<name>}, as JSON. */
+    static String searchResponse(String name) {
+        return read("search/" + name + ".json", new TypeReference<tools.jackson.databind.JsonNode>() { })
+                .get("response").toString();
+    }
+
+    /** A recorded file as raw JSON text (gunzipped when stored as {@code .json.gz}). */
     static String text(String path) {
         try (InputStream in = open(path)) {
             return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);

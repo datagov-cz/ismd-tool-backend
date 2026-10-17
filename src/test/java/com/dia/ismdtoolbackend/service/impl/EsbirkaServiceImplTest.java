@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
@@ -36,7 +36,7 @@ class EsbirkaServiceImplTest {
     private static final String NORMA_ROOT = VERSION_IRI + "/dokument/norma";
 
     @Mock
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
 
     private EsbirkaServiceImpl service;
 
@@ -517,7 +517,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentParsesNumberYearAndResolvesLatestVersion() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         String olderIri = LAW_IRI + "/2020-01-01";
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
@@ -547,7 +547,7 @@ class EsbirkaServiceImplTest {
     private static final String V_2020 = LAW_49_IRI + "/2020-01-01";
 
     private void stubLaw49() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_49_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_49_IRI)).thenReturn(List.of(
                 new LawVersionModel(V_2026, LocalDate.of(2026, 4, 1), null, "t", true),
@@ -663,7 +663,7 @@ class EsbirkaServiceImplTest {
         // real 49/1997 shape through getLawContent to prove the labels reach that response:
         // the document root and its containers used to render blank, taking the top two
         // navigation levels with them.
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -701,7 +701,7 @@ class EsbirkaServiceImplTest {
     void getLawContentAssemblesNestedBodyHtmlInDocumentOrder() {
         // Server-side bodyHtml: a document-ordered, nested tree of <section> wrappers, each
         // carrying its fragment's body (null for structural nodes) followed by its children.
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -759,7 +759,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentEmptyContentYieldsEmptyBodyHtml() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -772,7 +772,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentPicksLatestEvenWhenNotFirstRow() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         String latestIri = LAW_IRI + "/2026-04-01";
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
@@ -786,7 +786,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentTrimsAndStripsSbSuffix() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -798,7 +798,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentUnknownLawThrows() {
-        when(client.findLawByNumberYear("999", 1997)).thenReturn(java.util.Optional.empty());
+        when(client.findLaw("sb", "999", 1997)).thenReturn(java.util.Optional.empty());
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.getLawContent("999/1997"));
         assertEquals("Právní akt č. 999/1997 nebyl nalezen.", ex.getMessage());
@@ -832,7 +832,7 @@ class EsbirkaServiceImplTest {
     @Test
     void getLawContentRendersSelectedVersionNotLatest() {
         String olderIri = LAW_IRI + "/2020-01-01";
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true),
@@ -856,7 +856,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentNullVersionIriFallsBackToLatest() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
@@ -871,7 +871,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentBlankVersionIriFallsBackToLatest() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -886,7 +886,7 @@ class EsbirkaServiceImplTest {
         // list can reject it.
         String foreignVersion =
                 "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/262/2026-04-01";
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -906,7 +906,7 @@ class EsbirkaServiceImplTest {
         // "nepatří k právnímu aktu" — a wrong-act error for a right-act request.
         String legacyVersion =
                 "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01";
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -919,7 +919,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentRejectsNonEsbirkaVersionIri() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -932,7 +932,7 @@ class EsbirkaServiceImplTest {
     @Test
     void getLawContentSingleArgOverloadStillRendersLatest() {
         // The pre-existing one-arg contract must be unchanged for existing callers.
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),

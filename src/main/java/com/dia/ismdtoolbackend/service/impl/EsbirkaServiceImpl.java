@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
@@ -14,6 +14,7 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
@@ -46,9 +47,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     static final int MAX_FRAGMENT_DEPTH = 12;
     static final int FRAGMENT_ROW_WARN_THRESHOLD = 5_000;
 
-    /** Row cap on the grouped search's act fetch; group size itself is unbounded. */
-    static final int GROUPED_ROW_LIMIT = 600;
-
     /** Acts shown per group. The rest are reachable by narrowing the query (or by year). */
     static final int MAX_LAWS_PER_GROUP = 60;
 
@@ -58,20 +56,23 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     /** Cheap tell that a law reference is an IRI rather than a číslo/rok, before full parsing. */
     private static final String ELI_MARKER = "/eli/";
 
+    /** Collection of a bare číslo/rok reference. */
+    private static final String DEFAULT_SBIRKA = "sb";
+
     /** Kind of the document root, the single parentless node of a version's fragment tree. */
     private static final String DOKUMENT_KIND = "dokument";
 
     /** Kind of an unnumbered fragment: a text block when childless, a structural parent otherwise. */
     private static final String FRAG_KIND = "frag";
 
-    private final EsbirkaSparqlClient client;
+    private final EsbirkaClient client;
     private final EsbirkaFragmentResolutionCache resolutionCache;
     private final EsbirkaSubtreeBodyCache subtreeBodyCache;
 
     /** Self-reference through the Spring proxy, so internal calls still hit {@code @Cacheable}. */
     private final EsbirkaService self;
 
-    public EsbirkaServiceImpl(EsbirkaSparqlClient client,
+    public EsbirkaServiceImpl(EsbirkaClient client,
                               EsbirkaFragmentResolutionCache resolutionCache,
                               EsbirkaSubtreeBodyCache subtreeBodyCache,
                               @Lazy EsbirkaService self) {
@@ -98,9 +99,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     }
 
     /**
-     * Grouped law search, in two SPARQL steps: aggregate the matching předpis numbers
-     * (capped at {@code limit} <em>groups</em>), then fetch the acts for exactly those
-     * numbers. The aggregate also yields the true per-group counts.
+     * Grouped law search: the client returns the acts grouped by číslo with per-group counts;
+     * here groups are ordered best first and capped at {@code limit} <em>groups</em>.
      */
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch",
@@ -110,8 +110,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         String needle = q == null ? null : q.trim();
         GroupedNeedle parsed = splitGroupedNeedle(needle);
 
-        List<LawNumberGroupModel> numberGroups =
-                client.searchLawNumberGroups(parsed.cislo(), parsed.rok(), limit);
+        LawNumberSearchModel found = client.searchLawsByNumber(parsed.cislo(), parsed.rok(), limit);
+        List<LawNumberGroupModel> numberGroups = found.groups();
         if (numberGroups.isEmpty()) {
             return LawSearchResultDto.builder()
                     .query(blankToNull(needle))
@@ -122,15 +122,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .build();
         }
 
-        List<String> cisla = new ArrayList<>(numberGroups.size());
-        int totalMatches = 0;
-        for (LawNumberGroupModel g : numberGroups) {
-            cisla.add(g.cislo());
-            totalMatches += g.pocet();
-        }
-
         Map<String, List<LawDto>> byCislo = new HashMap<>();
-        for (LawModel m : client.fetchLawsByNumbers(cisla, parsed.rok(), GROUPED_ROW_LIMIT)) {
+        for (LawModel m : found.laws()) {
             byCislo.computeIfAbsent(m.getCislo() == null ? "" : m.getCislo(),
                     k -> new ArrayList<>()).add(toLawDto(m));
         }
@@ -150,7 +143,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             }
             groups.add(LawSearchGroupDto.builder()
                     .cislo(g.cislo())
-                    // Dataset-wide total from step 1's aggregate, not laws.size().
+                    // Dataset-wide total from the client, not laws.size().
                     .count(g.pocet())
                     // Compared against the číslo part alone: "49/1997" pins číslo 49 exactly,
                     // and matching the raw needle would make this permanently false.
@@ -159,8 +152,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
                     .build());
         }
         groups.sort(BEST_GROUP_FIRST);
-
-        boolean truncated = numberGroups.size() >= limit;
+        boolean truncated = found.moreGroups() || groups.size() > limit;
+        groups = groups.size() > limit ? new ArrayList<>(groups.subList(0, limit)) : groups;
+        int totalMatches = groups.stream().mapToInt(LawSearchGroupDto::getCount).sum();
 
         return LawSearchResultDto.builder()
                 .query(blankToNull(needle))
@@ -328,7 +322,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         NumberYear ny = parseNumberYear(lawRef);
         String effectiveVersionIri = resolveContentVersionIri(lawRef, versionIri);
 
-        LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
+        LawModel law = client.findLaw(ny.sbirka(), ny.number(), ny.year())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
 
@@ -454,7 +448,7 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             throw new IllegalArgumentException(
                     "Číslo předpisu v referenci musí být číselné (např. 49/1997).");
         }
-        return new NumberYear(number, year);
+        return new NumberYear(DEFAULT_SBIRKA, number, year);
     }
 
     /**
@@ -471,7 +465,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         if (parsed.level() == null || parsed.lawNumber() == null || parsed.lawYear() == null) {
             return null;
         }
-        return new NumberYear(parsed.lawNumber(), parsed.lawYear());
+        String sbirka = parsed.sbirkaCode() == null ? DEFAULT_SBIRKA : parsed.sbirkaCode();
+        return new NumberYear(sbirka, parsed.lawNumber(), parsed.lawYear());
     }
 
     /**
@@ -499,16 +494,19 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     /**
      * Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a
-     * cache entry — an IRI and the číslo/rok it denotes collapse to the same key. Called
+     * cache entry — an IRI and the číslo/rok it denotes collapse to the same key. A collection
+     * other than Sb. prefixes the key, since a číslo/rok can exist in several collections. Called
      * reflectively by the {@code @Cacheable} SpEL key on {@link #getLawContent}, so it must
      * stay {@code public} despite having no Java caller.
      */
     public String normalizeLawRef(String lawRef) {
         NumberYear ny = parseNumberYear(lawRef);
-        return ny.number() + "/" + ny.year();
+        String numberYear = ny.number() + "/" + ny.year();
+        return DEFAULT_SBIRKA.equals(ny.sbirka()) ? numberYear : ny.sbirka() + ":" + numberYear;
     }
 
-    record NumberYear(String number, int year) {}
+    /** @param sbirka collection code: from the IRI, {@code sb} for a bare číslo/rok */
+    record NumberYear(String sbirka, String number, int year) {}
 
     /**
      * Tree assembly without a law citation, so the document root stays unlabelled. Used by the

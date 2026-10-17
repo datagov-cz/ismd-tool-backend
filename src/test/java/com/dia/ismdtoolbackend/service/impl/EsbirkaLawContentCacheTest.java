@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
@@ -58,7 +58,7 @@ class EsbirkaLawContentCacheTest {
     private static final String LEGACY_OLDER_IRI = LEGACY_LAW_IRI + "/2020-01-01";
 
     @MockitoBean
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
 
     // Injected as the interface: @Cacheable wraps the bean in a JDK dynamic proxy,
     // so it is not assignable to the impl type.
@@ -71,7 +71,7 @@ class EsbirkaLawContentCacheTest {
     @BeforeEach
     void setUp() {
         cacheManager.getCache("esbirkaLawContent").clear();
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LATEST_IRI, LocalDate.of(2025, 11, 1), null, "KONSOL", true),
@@ -149,7 +149,7 @@ class EsbirkaLawContentCacheTest {
             pool.shutdownNow();
         }
 
-        verify(client, times(1)).findLawByNumberYear("49", 1997);
+        verify(client, times(1)).findLaw("sb", "49", 1997);
         verify(client, times(1)).fetchVersions(LAW_IRI);
         verify(client, times(1)).fetchVersionContent(LATEST_IRI);
     }

@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaFragmentHtml;
@@ -32,7 +32,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EsbirkaSubtreeBodyCache {
 
-    private final EsbirkaSparqlClient client;
+    private final EsbirkaClient client;
 
     /**
      * Assembled subtree HTML for every fragment of {@code versionIri}, keyed by fragment IRI.

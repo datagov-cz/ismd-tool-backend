@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.client.esbirka;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -42,5 +43,23 @@ final class EsbirkaRestDtos {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Fragment(String eli, String kodTypuFragmentu, int hloubka, String xhtml, String zkracenaCitace) {
+    }
+
+    /** {@code POST /rozsirena-vyhledavani} body. {@code razeni} entries are {@code "+attr"} / {@code "-attr"}. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record SearchRequest(int start, int pocet, List<String> razeni, List<SearchCondition> dalsiPodminky) {
+    }
+
+    /** One condition; {@code logickaOperace} is required on each once there are several. */
+    record SearchCondition(String polozka, String operace, String hodnotaText, String logickaOperace) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SearchResult(int pocetCelkem, List<SearchRow> seznam) {
+    }
+
+    /** A matched act; {@code staleUrl} may be version-level for full-text hits. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SearchRow(String staleUrl, String kodDokumentuSbirky, String nazev) {
     }
 }

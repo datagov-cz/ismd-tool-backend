@@ -35,9 +35,17 @@ final class EsbirkaRestMapper {
 
     /** Law header from a law or version detail; číslo/rok/sbírka come from the staleUrl. */
     static LawModel toLaw(DocumentDetail detail) {
-        String lawStaleUrl = StaleUrls.toLawStaleUrl(detail.staleUrl());
+        return toLaw(detail.staleUrl(), detail.kodDokumentuSbirky());
+    }
+
+    /**
+     * @param staleUrl law or version staleUrl ({@code /sb/1997/49[/2025-11-01]})
+     * @param kodDokumentuSbirky e.g. {@code "49/1997 Sb."}, today's {@code citace}
+     */
+    static LawModel toLaw(String staleUrl, String kodDokumentuSbirky) {
+        String lawStaleUrl = StaleUrls.toLawStaleUrl(staleUrl);
         String[] segments = lawStaleUrl.substring(1).split("/");
-        return new LawModel(StaleUrls.toIri(lawStaleUrl), detail.kodDokumentuSbirky(),
+        return new LawModel(StaleUrls.toIri(lawStaleUrl), kodDokumentuSbirky,
                 segments[2], Integer.valueOf(segments[1]), segments[0]);
     }
 

@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * Caching wrapper around {@link EsbirkaSparqlClient#resolveFragment(String, String, String)}.
+ * Caching wrapper around {@link EsbirkaClient#resolveFragment(String, String, String)}.
  * Extracted to a dedicated component so Spring's caching proxy intercepts the
  * call — {@code @Cacheable} on a method called from the same bean (e.g. inside
  * {@code EsbirkaServiceImpl}) would be bypassed.
@@ -25,7 +25,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class EsbirkaFragmentResolutionCache {
 
-    private final EsbirkaSparqlClient client;
+    private final EsbirkaClient client;
 
     @Cacheable(cacheNames = "esbirkaFragmentResolution", key = "#fragmentIri", sync = true)
     public Optional<FragmentResolutionModel> fetch(String fragmentIri, String versionIri, String lawIri) {

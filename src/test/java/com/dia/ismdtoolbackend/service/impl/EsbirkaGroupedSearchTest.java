@@ -39,6 +39,10 @@ class EsbirkaGroupedSearchTest {
     void buildService() {
         // In production `self` is the Spring proxy that adds @Cacheable; here it is a plain
         // self-reference, so the one-arg delegation is exercised without the caching layer.
+        // The two stubbed SPARQL queries below run behind the client's real single entry point.
+        org.mockito.Mockito.lenient().when(client.searchLawsByNumber(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
+                .thenCallRealMethod();
         service = new EsbirkaServiceImpl(client, null, null, null);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "self", service);
     }
@@ -182,7 +186,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).searchLawNumberGroups("49", "1997", 20);
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(
                 org.mockito.ArgumentMatchers.anyList(), eq("1997"),
-                eq(EsbirkaServiceImpl.GROUPED_ROW_LIMIT));
+                eq(EsbirkaSparqlClient.GROUPED_ROW_LIMIT));
     }
 
     @Test
@@ -424,7 +428,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(cisla.capture(), org.mockito.ArgumentMatchers.any(), rowLimit.capture());
         assertEquals(List.of("49", "490"), cisla.getValue().stream().sorted().toList(),
                 "exactly the čísla step 1 returned");
-        assertEquals(EsbirkaServiceImpl.GROUPED_ROW_LIMIT, rowLimit.getValue(),
+        assertEquals(EsbirkaSparqlClient.GROUPED_ROW_LIMIT, rowLimit.getValue(),
                 "act fetch must be row-capped — group size is unbounded");
     }
 }
