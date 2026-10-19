@@ -31,12 +31,6 @@ class EsbirkaRestClient implements EsbirkaClient {
         this.reader = reader;
     }
 
-    /** Flat search has no FE caller and is not ported; the endpoint is being removed. */
-    @Override
-    public List<LawModel> searchLaws(String q, int limit) {
-        throw new UnsupportedOperationException("Flat law search is not available with esbirka.provider=rest.");
-    }
-
     @Override
     public LawNumberSearchModel searchLawsByNumber(String cisloPrefix, String rokPrefix, int groupLimit) {
         if (!EsbirkaRestNumberSearch.isSearchable(cisloPrefix, rokPrefix)) {
@@ -58,13 +52,6 @@ class EsbirkaRestClient implements EsbirkaClient {
     @Override
     public List<LawVersionModel> fetchVersions(String lawIri) {
         return orEmpty(() -> reader.versions(StaleUrls.lawStaleUrl(lawIri), deadline()), List.of());
-    }
-
-    @Override
-    public List<FragmentModel> fetchFragments(String versionIri) {
-        return fetchVersionContent(versionIri).stream()
-                .map(f -> new FragmentModel(f.getIri(), f.getParentIri(), f.getCitation(), f.getKind(), f.getOrder()))
-                .toList();
     }
 
     @Override

@@ -11,7 +11,7 @@ import java.util.Optional;
 
 /**
  * e-Sbírka data source behind {@code /api/eli/*}. {@code esbirka.provider} picks the
- * implementation: {@code sparql} ({@link EsbirkaSparqlClient}) or {@code rest} (the REST API).
+ * implementation: {@code sparql} ({@link EsbirkaSparqlClient}) or {@code rest} the REST API).
  *
  * <p>Both return IRIs in the canonical form {@code https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/...}.
  * A missing law, version or fragment is an empty result, never an exception; an unreachable
@@ -21,8 +21,6 @@ public interface EsbirkaClient {
 
     /** Label for {@link com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException}. */
     String ESBIRKA_LABEL = "e-Sbírka";
-
-    List<LawModel> searchLaws(String q, int limit);
 
     /**
      * Acts whose číslo starts with {@code cisloPrefix}, optionally narrowed to years starting with
@@ -36,8 +34,6 @@ public interface EsbirkaClient {
 
     /** Versions of a law, newest first by účinnost od; exactly one flagged latest when any exist. */
     List<LawVersionModel> fetchVersions(String lawIri);
-
-    List<FragmentModel> fetchFragments(String versionIri);
 
     /** Every fragment of a version in document order, each with its own rendered body. */
     List<FragmentModel> fetchVersionContent(String versionIri);

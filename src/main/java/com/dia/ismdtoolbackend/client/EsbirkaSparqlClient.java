@@ -65,13 +65,6 @@ public class EsbirkaSparqlClient implements EsbirkaClient {
         }
     }
 
-    @Override
-    public List<LawModel> searchLaws(String q, int limit) {
-        return executeSelect("law search",
-                EsbirkaSPARQLQuery.buildLawSearchQuery(q, limit),
-                this::mapLawRows);
-    }
-
     /**
      * Two queries: the {@code groupLimit} best čísla with dataset-wide counts, then the acts of
      * exactly those čísla (capped at {@code GROUPED_ROW_LIMIT} rows). Filling the group cap is
@@ -136,17 +129,10 @@ public class EsbirkaSparqlClient implements EsbirkaClient {
                 this::mapVersionRows);
     }
 
-    @Override
-    public List<FragmentModel> fetchFragments(String versionIri) {
-        return executeSelect("fragment tree",
-                EsbirkaSPARQLQuery.buildFragmentTreeQuery(versionIri),
-                this::mapFragmentRows);
-    }
-
     /**
      * Whole-version content: every fragment with its rendered HTML body (obsah) in one
-     * round-trip. Same shape as {@link #fetchFragments} plus a (nullable) {@code bodyHtml}
-     * per row — structural fragments carry no body.
+     * round-trip, with a (nullable) {@code bodyHtml} per row — structural fragments carry
+     * no body.
      */
     @Override
     public List<FragmentModel> fetchVersionContent(String versionIri) {
@@ -224,27 +210,9 @@ public class EsbirkaSparqlClient implements EsbirkaClient {
         return out;
     }
 
-    private List<FragmentModel> mapFragmentRows(ResultSet rs) {
-        List<FragmentModel> out = new ArrayList<>();
-        while (rs.hasNext()) {
-            QuerySolution sol = rs.next();
-            String iri = SparqlSolutions.resourceUri(sol, "fragment");
-            String parent = SparqlSolutions.resourceUri(sol, "parent");
-            String citation = SparqlSolutions.literalString(sol, "citace");
-            String order = SparqlSolutions.literalString(sol, "order");
-            if (iri == null) {
-                log.warn("Fragment row missing iri; skipping.");
-                continue;
-            }
-            String kind = EsbirkaFragmentKind.fromIri(iri);
-            out.add(new FragmentModel(iri, parent, citation, kind, order));
-        }
-        return out;
-    }
-
     /**
-     * Like {@link #mapFragmentRows} but also reads the OPTIONAL {@code obsah} HTML body.
-     * A null body is expected and valid for structural fragments (Část/Hlava/…).
+     * Fragment rows with the OPTIONAL {@code obsah} HTML body. A null body is expected and
+     * valid for structural fragments (Část/Hlava/…).
      */
     private List<FragmentModel> mapFragmentContentRows(ResultSet rs) {
         List<FragmentModel> out = new ArrayList<>();

@@ -82,26 +82,13 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         this.self = self;
     }
 
-    // Keys join the raw values rather than Objects.hash(q, limit), which collides across
-    // needle/limit pairs and would serve another search's results. '\u0000' cannot occur in a URL query value,
-    // so it is an unambiguous separator.
-    @Override
-    @Cacheable(cacheNames = "esbirkaLawSearch",
-            key = "'flat:' + (#q == null ? '' : #q) + '\u0000' + #limit",
-            sync = true)
-    public List<LawDto> searchLaws(String q, int limit) {
-        List<LawModel> rows = client.searchLaws(q, limit);
-        List<LawDto> out = new ArrayList<>(rows.size());
-        for (LawModel m : rows) {
-            out.add(toLawDto(m));
-        }
-        return out;
-    }
-
     /**
      * Grouped law search: the client returns the acts grouped by číslo with per-group counts;
      * here groups are ordered best first and capped at {@code limit} <em>groups</em>.
      */
+    // The key joins the raw values rather than Objects.hash(q, limit), which collides across
+    // needle/limit pairs and would serve another search's results. '\u0000' cannot occur in a URL query value,
+    // so it is an unambiguous separator.
     @Override
     @Cacheable(cacheNames = "esbirkaLawSearch",
             key = "'grouped:' + (#q == null ? '' : #q) + '\u0000' + #limit",
@@ -274,17 +261,6 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         return out;
     }
 
-    @Override
-    public List<FragmentDto> getFragments(String versionIri) {
-        String iri = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
-        List<FragmentModel> rows = client.fetchFragments(iri);
-        if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
-            log.warn("Fragment tree for {} has {} rows (over {} threshold).",
-                    iri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
-        }
-        return assembleTree(rows, iri);
-    }
-
     /**
      * Resolve a "number/year" law reference (e.g. "49/1997") to the full rendered content of
      * its latest version: parse the ref → exact law lookup → latest znění → content query.
@@ -409,8 +385,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     /**
      * Parse a law reference into its parts, accepting either a "number/year" reference
      * (tolerating surrounding whitespace and a trailing " Sb.") or an e-Sbírka ELI IRI at law,
-     * version or fragment level. Partial input (e.g. "49") is rejected; callers use /law/search
-     * for that.
+     * version or fragment level. Partial input (e.g. "49") is rejected; callers use
+     * /law/search/grouped for that.
      *
      * <p>An IRI is delegated to {@link EsbirkaEliParser}, not split here: its path is
      * {@code .../{rok}/{číslo}/...} — year before number, the reverse of the human reference —
@@ -509,8 +485,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
     record NumberYear(String sbirka, String number, int year) {}
 
     /**
-     * Tree assembly without a law citation, so the document root stays unlabelled. Used by the
-     * lean fragment-tree endpoint, which resolves no law metadata.
+     * Tree assembly without a law citation, so the document root stays unlabelled. Used by
+     * {@link EsbirkaSubtreeBodyCache}, which resolves no law metadata.
      */
     static List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
         return assembleTree(rows, versionIri, null);

@@ -89,7 +89,7 @@ class EsbirkaLawContentCacheTest {
 
     @Test
     void contentNavigationTreeIsFullyLabelled() {
-        // The navigation tree is built from /law/content, not /law/fragments. This walks the
+        // The navigation tree is built from /law/content. This walks the
         // real 49/1997 shape through getLawContent to prove the labels reach that response:
         // the document root and its containers used to render blank, taking the top two
         // navigation levels with them.

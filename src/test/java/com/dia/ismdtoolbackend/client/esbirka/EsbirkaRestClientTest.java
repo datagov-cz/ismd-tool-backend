@@ -196,16 +196,6 @@ class EsbirkaRestClientTest {
     }
 
     @Test
-    void fragmentTreeIsTheContentWithoutBodies() {
-        stubPages();
-
-        List<FragmentModel> tree = client.fetchFragments(V_49);
-
-        assertEquals(2508, tree.size());
-        assertTrue(tree.stream().allMatch(f -> f.getBodyHtml() == null));
-    }
-
-    @Test
     void resolveReadsTheFragmentFromItsVersion() {
         stubPages();
         stubHistorie();
