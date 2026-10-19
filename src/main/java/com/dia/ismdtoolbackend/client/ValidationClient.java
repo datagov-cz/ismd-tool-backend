@@ -1,9 +1,7 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.validation.ValidationCallExecutor;
 import com.dia.ismdtoolbackend.config.ValidationServiceConfig;
-import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ValidationRequestDto;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.validation.ValidationReport;
@@ -97,30 +95,5 @@ public class ValidationClient {
         if (iri == null || iri.trim().isEmpty()) {
             throw new IllegalArgumentException("IRI slovníku nesmí být prázdné");
         }
-    }
-
-    public Optional<CatalogRecordDto> requestCatalogRecord(CatalogRecordRequestDto requestDto) {
-        if (requestDto.getValidationReport() == null) {
-            throw new IllegalArgumentException("Zpráva z kontroly nesmí být prázdná");
-        }
-        String ttlContent = requestDto.getTtlContent();
-        if (ttlContent == null || ttlContent.trim().isEmpty()) {
-            throw new IllegalArgumentException("TTL obsah nesmí být prázdný");
-        }
-
-        String iri = requestDto.getValidationReport().getOntologyIri();
-        log.debug("Requesting catalog record for ontology: {}", iri);
-
-        // Best-effort (lenient): a validator problem must not fail the caller. Routes through
-        // the same timed client + breaker as validation.
-        CatalogRecordDto response = callExecutor.lenient("catalog record for " + iri, () ->
-                validationRestClient.post()
-                        .uri(validationServiceUrl + "/api/validator/catalog-record")
-                        .header("Content-Type", "application/json")
-                        .body(requestDto)
-                        .retrieve()
-                        .body(CatalogRecordDto.class), null);
-
-        return Optional.ofNullable(response);
     }
 }
