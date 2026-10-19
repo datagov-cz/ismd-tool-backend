@@ -1,12 +1,9 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
-import com.dia.dto.CatalogRecordDto;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.ValidationConfig;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
-import com.dia.ismdtoolbackend.controller.dto.CatalogRecordRequestDto;
-import com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -34,7 +31,6 @@ import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.validation.ValidationReport;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
-import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
@@ -407,41 +403,6 @@ public class OntologyController {
         validationService.saveValidationReport(report, ontologyMetadata, securityUser.getUserId());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(report, "Validace proběhla úspěšně."));
-    }
-
-    @Operation(
-            summary = "Žádost o katalogizační záznam",
-            description = "Vyžádá katalogizační záznam slovníku z validační služby na základě RDF dat a výsledků validace. Vyžaduje oprávnění vlastníka nebo administrátora."
-    )
-    @Hidden
-    @Deprecated(forRemoval = true)
-    @PostMapping("{slug}/catalog-record")
-    @PreAuthorize("@ontologySecurityService.belongsToUserBySlug(#slug)")
-    public ResponseEntity<ApiResponseDto<CatalogRecordDto>> requestCatalogRecord(
-            @RequestBody CatalogRequestDto catalogRequestDto,
-            @PathVariable String slug,
-            @AuthenticationPrincipal SecurityUser securityUser
-    ) {
-        log.info("Ontology catalog record requested for user: {}, ontologyIRI: {}, slug: {}",
-                securityUser.getUsername(),
-                catalogRequestDto.getOntologyMetadata().getGraphName(),
-                slug
-        );
-
-        String ttlContent = ontologyService.getTtlContentFromOntology(catalogRequestDto.getOntologyMetadata());
-
-        CatalogRecordRequestDto request = new CatalogRecordRequestDto();
-        request.setTtlContent(ttlContent);
-        request.setValidationReport(catalogRequestDto.getValidationReport());
-
-        Optional<CatalogRecordDto> catalogRecordDto = validationClient.requestCatalogRecord(request);
-
-        CatalogRecordDto catalogRecord = catalogRecordDto.orElseThrow(() -> {
-            log.warn("Catalog record not received for ontology: {}", catalogRequestDto.getOntologyMetadata().getGraphName());
-            return new OntologyValidationException("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná.");
-        });
-
-        return ResponseEntity.ok().body(ApiResponseDto.success(catalogRecord, "Žádost o katalogizační záznam proběhla úspěšně."));
     }
 
     private static ValidationErrorSummaryDto toErrorSummary(ValidationResult result) {
