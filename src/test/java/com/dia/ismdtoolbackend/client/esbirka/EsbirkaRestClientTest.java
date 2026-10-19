@@ -219,6 +219,15 @@ class EsbirkaRestClientTest {
     }
 
     @Test
+    void anUndatedVersionIsAMissingVersionNotAnError() {
+        String undated = LAW_49 + "/aktualni";
+
+        assertEquals(List.of(), client.fetchVersionContent(undated));
+        assertEquals(Optional.empty(), client.resolveFragment(undated + "/dokument/norma/par_1", undated, LAW_49));
+        wm.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
     void callsDrawFromTheRequestDeadline() {
         stubHistorie();
         EsbirkaRequestDeadline.begin(EsbirkaDeadline.after(Duration.ZERO));

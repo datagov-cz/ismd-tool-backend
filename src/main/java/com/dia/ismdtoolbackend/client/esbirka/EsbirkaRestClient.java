@@ -63,6 +63,9 @@ class EsbirkaRestClient implements EsbirkaClient {
 
     @Override
     public List<FragmentModel> fetchVersionContent(String versionIri) {
+        if (!StaleUrls.hasVersion(versionIri)) {
+            return List.of();
+        }
         return orEmpty(() -> reader.versionContent(StaleUrls.versionStaleUrl(versionIri), deadline()), List.of());
     }
 

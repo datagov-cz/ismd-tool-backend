@@ -7,12 +7,18 @@ import com.github.benmanes.caffeine.cache.Cache;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.cache.CacheManager;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EsbirkaContentCacheBudgetTest {
@@ -41,23 +47,89 @@ class EsbirkaContentCacheBudgetTest {
     }
 
     @Test
-    void lawAndVersionContentShareOneBudget() {
+    void underRestTheTwoContentCachesSplitTheBudget() {
+        CacheManager manager = manager("rest", 1);
+        Cache<Object, Object> lawContent = nativeCache(manager, "esbirkaLawContent");
+        Cache<Object, Object> versionContent = nativeCache(manager, "esbirkaVersionContent");
+
+        assertNotSame(lawContent, versionContent, "a load nested in a load on one Caffeine cache is forbidden");
+        assertEquals(512 * 1024, lawContent.policy().eviction().orElseThrow().getMaximum());
+        assertEquals(512 * 1024, versionContent.policy().eviction().orElseThrow().getMaximum());
+    }
+
+    @Test
+    void underSparqlRenderedContentKeepsTheWholeBudget() {
+        CacheManager manager = manager("sparql", 1);
+
+        assertEquals(1024 * 1024, nativeCache(manager, "esbirkaLawContent").policy().eviction().orElseThrow().getMaximum());
+        assertEquals(0, nativeCache(manager, "esbirkaVersionContent").policy().eviction().orElseThrow().getMaximum());
+    }
+
+    @Test
+    void contentEvictsByWeight() {
+        CacheManager manager = manager("rest", 1);
+        List<FragmentModel> twoHundredKb = List.of(new FragmentModel("i", null, null, "par", "0", "x".repeat(100_000)));
+        for (int i = 0; i < 4; i++) {
+            manager.getCache("esbirkaVersionContent").put("/sb/" + i + "/1/2020-01-01", twoHundredKb);
+        }
+        Cache<Object, Object> versionContent = nativeCache(manager, "esbirkaVersionContent");
+        versionContent.cleanUp();
+
+        assertEquals(2, versionContent.estimatedSize(), "0.5 MB holds two of the four ~0.2 MB entries");
+    }
+
+    /**
+     * {@code getLawContent} (esbirkaLawContent) loads the version through esbirkaVersionContent inside
+     * its own load. On one shared Caffeine instance this failed ~0.5 % of loads with "Recursive update"
+     * and deadlocked concurrent ones; here it runs concurrently with eviction pressure.
+     */
+    @Test
+    void nestedColdLoadsUnderConcurrencyNeverFail() throws Exception {
+        CacheManager manager = manager("rest", 8);
+        var outer = manager.getCache("esbirkaLawContent");
+        var inner = manager.getCache("esbirkaVersionContent");
+        List<FragmentModel> halfMb = List.of(new FragmentModel("i", null, null, "par", "0", "x".repeat(250_000)));
+        AtomicInteger next = new AtomicInteger();
+        AtomicInteger failures = new AtomicInteger();
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<?>> workers = new ArrayList<>();
+            for (int t = 0; t < 8; t++) {
+                workers.add(pool.submit(() -> {
+                    for (int i = next.incrementAndGet(); i <= 3_000; i = next.incrementAndGet()) {
+                        int n = i;
+                        try {
+                            outer.get(n + "/1997@v", () -> {
+                                inner.get("/sb/1997/" + n + "/2025-11-01", () -> halfMb);
+                                return LawContentDto.builder().bodyHtml("z").build();
+                            });
+                        } catch (RuntimeException e) {
+                            failures.incrementAndGet();
+                        }
+                    }
+                }));
+            }
+            for (Future<?> worker : workers) {
+                worker.get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertEquals(0, failures.get());
+    }
+
+    private static CacheManager manager(String provider, int budgetMb) {
         EsbirkaConfig esbirka = new EsbirkaConfig();
-        esbirka.setCacheBudgetMb(1);
+        esbirka.setCacheBudgetMb(budgetMb);
         StaticListableBeanFactory beans = new StaticListableBeanFactory();
         beans.addBean("esbirkaConfig", esbirka);
-        CacheManager manager = new CacheConfig().cacheManager(beans.getBeanProvider(EsbirkaConfig.class));
+        return new CacheConfig().cacheManager(beans.getBeanProvider(EsbirkaConfig.class),
+                new MockEnvironment().withProperty("esbirka.provider", provider));
+    }
 
-        @SuppressWarnings("unchecked")
-        Cache<Object, Object> lawContent = (Cache<Object, Object>) manager.getCache("esbirkaLawContent").getNativeCache();
-        assertSame(lawContent, manager.getCache("esbirkaVersionContent").getNativeCache());
-
-        List<FragmentModel> fourHundredKb = List.of(new FragmentModel("i", null, null, "par", "0", "x".repeat(200_000)));
-        manager.getCache("esbirkaVersionContent").put("/sb/1/1/2020-01-01", fourHundredKb);
-        manager.getCache("esbirkaLawContent").put("1/1@", LawContentDto.builder().bodyHtml("z".repeat(200_000)).build());
-        manager.getCache("esbirkaVersionContent").put("/sb/2/2/2020-01-01", fourHundredKb);
-        lawContent.cleanUp();
-
-        assertEquals(2, lawContent.estimatedSize(), "1 MB holds two of the three ~0.4 MB entries");
+    @SuppressWarnings("unchecked")
+    private static Cache<Object, Object> nativeCache(CacheManager manager, String name) {
+        return (Cache<Object, Object>) manager.getCache(name).getNativeCache();
     }
 }

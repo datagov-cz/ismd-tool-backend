@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.CacheManager;
+import org.springframework.core.env.Environment;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
@@ -25,8 +26,8 @@ import java.util.concurrent.TimeUnit;
  *   <li>{@code esbirkaLawContent} — whole-version content trees (fragment tree + HTML
  *       bodies), 24 h TTL (published text is immutable).</li>
  *   <li>{@code esbirkaVersionContent} — a version's fragments as read from the e-Sbírka REST
- *       API (all pages), 24 h TTL. Shares one weight budget with {@code esbirkaLawContent}.</li>
- *   <li>{@code esbirkaRestVersions} — REST version lists per law, 60 min TTL.</li>
+ *       API (all pages), 24 h TTL. Splits the weight budget with {@code esbirkaLawContent}.</li>
+ *   <li>{@code esbirkaRestVersions} — REST version lists per law, 5 min TTL.</li>
  *   <li>{@code esbirkaVersionSubtreeBodies} — per-version fragment IRI → assembled subtree
  *       HTML, backing the {@code /resolve} body fallback for structural fragments. Same
  *       TTL/sizing as {@code esbirkaLawContent}.</li>
@@ -48,6 +49,7 @@ public class CacheConfig {
     // Whole-version content runs to ~10 MB for the largest laws: bounded by weight
     // (esbirka.cache-budget-mb), with a long TTL — a published version's text is immutable.
     static final long ESBIRKA_CONTENT_TTL_HOURS = 24;
+    static final long ESBIRKA_REST_VERSIONS_TTL_MINUTES = 5;
     static final long ESBIRKA_SUBTREE_MAX_ENTRIES = 200;
 
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
@@ -60,9 +62,10 @@ public class CacheConfig {
     static final long NKD_PUBLISHED_MAX_ENTRIES = 10_000;
 
     @Bean
-    public CacheManager cacheManager(ObjectProvider<EsbirkaConfig> esbirkaConfig) {
+    public CacheManager cacheManager(ObjectProvider<EsbirkaConfig> esbirkaConfig, Environment environment) {
         CaffeineCacheManager mgr = new CaffeineCacheManager();
-        long budgetBytes = esbirkaConfig.getIfAvailable(EsbirkaConfig::new).getCacheBudgetMb() * 1024L * 1024L;
+        EsbirkaConfig esbirka = esbirkaConfig.getIfAvailable(EsbirkaConfig::new);
+        long budgetBytes = esbirka.getCacheBudgetMb() * 1024L * 1024L;
 
         mgr.registerCustomCache("esbirkaLawSearch", Caffeine.newBuilder()
                 .expireAfterWrite(ESBIRKA_CATALOGUE_TTL_MINUTES, TimeUnit.MINUTES)
@@ -79,18 +82,15 @@ public class CacheConfig {
                 .maximumSize(ESBIRKA_RESOLUTION_MAX_ENTRIES)
                 .build());
 
-        // One Caffeine instance behind both names, so the rendered content and the REST version
-        // reads share a single byte budget. Their keys cannot collide: "49/1997@<iri>" vs "/sb/1997/49/…".
-        com.github.benmanes.caffeine.cache.Cache<Object, Object> esbirkaContent = Caffeine.newBuilder()
-                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
-                .maximumWeight(budgetBytes)
-                .weigher(new EsbirkaContentWeigher())
-                .build();
-        mgr.registerCustomCache("esbirkaLawContent", esbirkaContent);
-        mgr.registerCustomCache("esbirkaVersionContent", esbirkaContent);
+        boolean rest = "rest".equals(environment.getProperty("esbirka.provider", "sparql"));
+        long versionContentBytes = rest ? budgetBytes / 2 : 0;
+        mgr.registerCustomCache("esbirkaLawContent", contentCache(budgetBytes - versionContentBytes));
+        mgr.registerCustomCache("esbirkaVersionContent", contentCache(versionContentBytes));
 
+        // Short: dedups the historie call within one content load or burst of /resolve calls.
+        // esbirkaLawVersions caches /law/versions on top, so a new version shows within ~65 min.
         mgr.registerCustomCache("esbirkaRestVersions", Caffeine.newBuilder()
-                .expireAfterWrite(ESBIRKA_CATALOGUE_TTL_MINUTES, TimeUnit.MINUTES)
+                .expireAfterWrite(ESBIRKA_REST_VERSIONS_TTL_MINUTES, TimeUnit.MINUTES)
                 .maximumSize(ESBIRKA_CATALOGUE_MAX_ENTRIES)
                 .build());
 
@@ -139,5 +139,13 @@ public class CacheConfig {
                 .build());
 
         return mgr;
+    }
+
+    private static com.github.benmanes.caffeine.cache.Cache<Object, Object> contentCache(long maxBytes) {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
+                .maximumWeight(maxBytes)
+                .weigher(new EsbirkaContentWeigher())
+                .build();
     }
 }

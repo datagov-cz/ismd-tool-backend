@@ -31,6 +31,12 @@ final class StaleUrls {
         return "/" + segments[0] + "/" + segments[1] + "/" + segments[2];
     }
 
+    /** Whether {@code iri} is at version level or below with a dated version ({@code …/2025-11-01}). */
+    static boolean hasVersion(String iri) {
+        String[] segments = segmentsOf(iri);
+        return segments.length >= 4 && VERSION_DATE.matcher(segments[3]).matches();
+    }
+
     /** Version staleUrl ({@code /sb/1997/49/2025-11-01}) of a version or fragment IRI. */
     static String versionStaleUrl(String iri) {
         String[] segments = segmentsOf(iri);
