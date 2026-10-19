@@ -18,6 +18,7 @@ import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaCzechCitationFormatter;
+import com.dia.ismdtoolbackend.utility.eli.EsbirkaLawTitle;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaFragmentHtml;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaHtmlText;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
@@ -84,7 +85,8 @@ public class EsbirkaServiceImpl implements EsbirkaService {
 
     /**
      * Grouped law search: the client returns the acts grouped by číslo with per-group counts;
-     * here groups are ordered best first and capped at {@code limit} <em>groups</em>.
+     * here groups are ordered best first and capped at {@code limit} <em>groups</em>. A query
+     * starting with a letter searches act names instead ({@link EsbirkaNameSearchResult}).
      */
     // The key joins the raw values rather than Objects.hash(q, limit), which collides across
     // needle/limit pairs and would serve another search's results. '\u0000' cannot occur in a URL query value,
@@ -95,6 +97,9 @@ public class EsbirkaServiceImpl implements EsbirkaService {
             sync = true)
     public LawSearchResultDto searchLawsGrouped(String q, int limit) {
         String needle = q == null ? null : q.trim();
+        if (EsbirkaNameSearchResult.isNameQuery(needle)) {
+            return EsbirkaNameSearchResult.search(needle, limit, client);
+        }
         GroupedNeedle parsed = splitGroupedNeedle(needle);
 
         LawNumberSearchModel found = client.searchLawsByNumber(parsed.cislo(), parsed.rok(), limit);
@@ -643,14 +648,14 @@ public class EsbirkaServiceImpl implements EsbirkaService {
         }
     }
 
-    private static LawDto toLawDto(LawModel m) {
+    static LawDto toLawDto(LawModel m) {
         String eliPath = SparqlIriValidator.extractEsbirkaEliPath(m.getIri());
         return new LawDto(
                 m.getIri(),
                 eliPath,
                 SparqlIriValidator.esbirkaDomain(),
                 m.getCitace(),
-                "Zákon č. " + m.getCitace(),
+                EsbirkaLawTitle.displayName(m.getCitace(), m.getNazev()),
                 m.getCislo(),
                 m.getRok(),
                 m.getSbirka()

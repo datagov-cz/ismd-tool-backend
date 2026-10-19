@@ -45,9 +45,13 @@ final class EsbirkaRestDtos {
     record Fragment(String eli, String kodTypuFragmentu, int hloubka, String xhtml, String zkracenaCitace) {
     }
 
-    /** {@code POST /rozsirena-vyhledavani} body. {@code razeni} entries are {@code "+attr"} / {@code "-attr"}. */
+    /**
+     * {@code POST /rozsirena-vyhledavani} body. {@code razeni} entries are {@code "+attr"} / {@code "-attr"};
+     * {@code rozsahVyhledavani} narrows the scope ({@code PLATNE} = acts in force).
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record SearchRequest(int start, int pocet, List<String> razeni, List<SearchCondition> dalsiPodminky) {
+    record SearchRequest(int start, int pocet, List<String> razeni, List<String> rozsahVyhledavani,
+                         List<SearchCondition> dalsiPodminky) {
     }
 
     /** One condition; {@code logickaOperace} is required on each once there are several. */
@@ -58,8 +62,24 @@ final class EsbirkaRestDtos {
     record SearchResult(int pocetCelkem, List<SearchRow> seznam) {
     }
 
-    /** A matched act; {@code staleUrl} may be version-level for full-text hits. */
+    /**
+     * A matched act; {@code staleUrl} may be version-level for full-text hits.
+     * {@code stavDokumentuSbirky}: {@code AKTUALNE_PLATNY}, {@code ZRUSENY}, {@code VYHLASENY_BUDOUCI},
+     * {@code VYHLASENY_BEZ_UCINNOSTI}.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record SearchRow(String staleUrl, String kodDokumentuSbirky, String nazev) {
+    record SearchRow(String staleUrl, String kodDokumentuSbirky, String nazev, String stavDokumentuSbirky) {
+    }
+
+    /**
+     * {@code GET /jednoducha-vyhledavani/nabidka} — the suggester. Matches number, title and alternative
+     * names; CzechVOC concepts come in a separate list we do not read.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Suggestions(List<SuggestedDocument> seznamDokumentuSbirky) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SuggestedDocument(String staleUrl, String kodDokumentuSbirky, String nazev) {
     }
 }

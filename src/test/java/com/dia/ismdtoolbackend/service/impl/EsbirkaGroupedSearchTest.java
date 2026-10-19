@@ -242,8 +242,8 @@ class EsbirkaGroupedSearchTest {
     @Test
     void noMatchesIsNotAmbiguous() {
         // Nothing to choose between — the FE should say "not found", not "pick a year".
-        when(client.searchLawNumberGroups(eq("zzz"), org.mockito.ArgumentMatchers.any(), anyInt())).thenReturn(List.of());
-        LawSearchResultDto out = service.searchLawsGrouped("zzz", 20);
+        when(client.searchLawNumberGroups(eq("999999"), org.mockito.ArgumentMatchers.any(), anyInt())).thenReturn(List.of());
+        LawSearchResultDto out = service.searchLawsGrouped("999999", 20);
         // No numbers matched, so the act fetch must not even be attempted.
         org.mockito.Mockito.verify(client, org.mockito.Mockito.never())
                 .fetchLawsByNumbers(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any(), anyInt());

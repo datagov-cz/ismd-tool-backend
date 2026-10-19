@@ -29,12 +29,15 @@ import java.util.Optional;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -49,11 +52,13 @@ class EsbirkaRestClientTest {
     private static final String LAW_49 = B + "/sb/1997/49";
     private static final String V_49 = LAW_49 + "/2025-11-01";
     private static final String SEARCH = "/rozsirena-vyhledavani";
+    private static final String SUGGEST = "/jednoducha-vyhledavani/nabidka";
     private static final String PAGES_49 = "/dokumenty-sbirky/%2Fsb%2F1997%2F49%2F2025-11-01/fragmenty?cisloStranky=";
 
     private WireMockServer wm;
     private EsbirkaRestTransport transport;
     private EsbirkaRestReader reader;
+    private EsbirkaRestNameSearch nameSearch;
     private EsbirkaRestClient client;
 
     @BeforeAll
@@ -77,12 +82,14 @@ class EsbirkaRestClientTest {
         config.getRest().getRetry().setInitialBackoffMs(5);
         transport = new EsbirkaRestTransport(config, JsonMapper.builder().build(), new SimpleMeterRegistry());
         reader = new EsbirkaRestReader(transport, config);
-        client = new EsbirkaRestClient(transport, reader);
+        nameSearch = new EsbirkaRestNameSearch(transport);
+        client = new EsbirkaRestClient(transport, reader, nameSearch);
     }
 
     @AfterEach
     void tearDown() {
         reader.shutdown();
+        nameSearch.shutdown();
         EsbirkaRequestDeadline.end();
     }
 
@@ -222,6 +229,48 @@ class EsbirkaRestClientTest {
 
     // --- helpers -------------------------------------------------------------------------------
 
+    // --- name search ---------------------------------------------------------------------------
+
+    @Test
+    void nameSearchAsksSuggesterAndTitleSearchThenRanks() {
+        stubNameSearch("civilním letectví");
+
+        LawSearchResultDto result = service().searchLawsGrouped("civilním letectví", 20);
+
+        LawDto top = result.getGroups().get(0).getLaws().get(0);
+        assertEquals(LAW_49, top.getIri());
+        assertEquals("Zákon č. 49/1997 Sb., o civilním letectví", top.getDisplayName());
+        wm.verify(1, getRequestedFor(urlPathEqualTo(SUGGEST))
+                .withQueryParam("text", equalTo("civilním letectví"))
+                .withQueryParam("maxPocet", equalTo("100")));
+        wm.verify(1, postRequestedFor(urlEqualTo(SEARCH)).withRequestBody(equalToJson("""
+                {"start":0,"pocet":100,"rozsahVyhledavani":["PLATNE"],"dalsiPodminky":[
+                 {"polozka":"NAZEV_PRAVNIHO_AKTU","operace":"OBSAHUJE","hodnotaText":"civilním letectví",
+                  "logickaOperace":"AND"}]}""")));
+    }
+
+    @Test
+    void accentlessZakonOIsFoundThroughTheStrippedQuery() {
+        stubNameSearch("zakon o civilnim letectvi");
+        stubNameSearch("o civilnim letectvi");
+
+        LawSearchResultDto result = service().searchLawsGrouped("zakon o civilnim letectvi", 20);
+
+        assertEquals(LAW_49, result.getGroups().get(0).getLaws().get(0).getIri());
+        wm.verify(2, getRequestedFor(urlPathEqualTo(SUGGEST)));
+        wm.verify(2, postRequestedFor(urlEqualTo(SEARCH)));
+    }
+
+    @Test
+    void numberSearchLabelsActsWithTheirTitle() {
+        stubSearch("search-49");
+
+        LawDto law = service().searchLawsGrouped("49", 20).getGroups().get(0).getLaws().stream()
+                .filter(l -> LAW_49.equals(l.getIri())).findFirst().orElseThrow();
+
+        assertTrue(law.getDisplayName().startsWith("Zákon č. 49/1997 Sb., o civilním letectví"), law.getDisplayName());
+    }
+
     private EsbirkaServiceImpl service() {
         EsbirkaServiceImpl service = new EsbirkaServiceImpl(client, null, null, null);
         ReflectionTestUtils.setField(service, "self", service);
@@ -238,6 +287,15 @@ class EsbirkaRestClientTest {
         wm.stubFor(post(urlEqualTo(SEARCH)).atPriority(1)
                 .withRequestBody(equalToJson(EsbirkaRestFixtures.searchRequest(name)))
                 .willReturn(json(EsbirkaRestFixtures.searchResponse(name))));
+    }
+
+    /** Serves the name-search responses recorded for {@code q} (fixture slug = folded query). */
+    private void stubNameSearch(String q) {
+        String slug = String.join("-", com.dia.ismdtoolbackend.utility.eli.EsbirkaLawTitle.fold(q).split(" "));
+        wm.stubFor(get(urlPathEqualTo(SUGGEST)).withQueryParam("text", equalTo(q))
+                .willReturn(json(EsbirkaRestFixtures.text("name-search/" + slug + ".nabidka.json"))));
+        wm.stubFor(post(urlEqualTo(SEARCH)).withRequestBody(matchingJsonPath("$.dalsiPodminky[0].hodnotaText", equalTo(q)))
+                .willReturn(json(EsbirkaRestFixtures.text("name-search/" + slug + ".nazev.json"))));
     }
 
     private void stubHistorie() {

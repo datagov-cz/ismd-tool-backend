@@ -29,6 +29,12 @@ public interface EsbirkaClient {
      */
     LawNumberSearchModel searchLawsByNumber(String cisloPrefix, String rokPrefix, int groupLimit);
 
+    /**
+     * Acts whose name matches {@code q} ("civilním letectví", "katastrální zákon"), best first, at most
+     * {@code limit}, each carrying its title. Empty when the source has no name index (SPARQL).
+     */
+    List<LawModel> searchLawsByName(String q, int limit);
+
     /** @param sbirka collection code from the ELI ({@code sb}, {@code sm}, …) */
     Optional<LawModel> findLaw(String sbirka, String number, int year);
 

@@ -106,6 +106,12 @@ public class EsbirkaSparqlClient implements EsbirkaClient {
                 this::mapLawRows);
     }
 
+    /** The SPARQL dataset has no name index; name search is REST-only. */
+    @Override
+    public List<LawModel> searchLawsByName(String q, int limit) {
+        return List.of();
+    }
+
     /**
      * Exact law lookup by predpis number + year, in any collection: the dataset's {@code LIMIT 1}
      * picks one when a číslo/rok exists in several. Returns empty Optional when no law matches.

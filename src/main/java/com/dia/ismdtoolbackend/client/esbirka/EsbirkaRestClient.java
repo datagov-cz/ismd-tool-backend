@@ -25,10 +25,12 @@ class EsbirkaRestClient implements EsbirkaClient {
 
     private final EsbirkaRestTransport transport;
     private final EsbirkaRestReader reader;
+    private final EsbirkaRestNameSearch nameSearch;
 
-    EsbirkaRestClient(EsbirkaRestTransport transport, EsbirkaRestReader reader) {
+    EsbirkaRestClient(EsbirkaRestTransport transport, EsbirkaRestReader reader, EsbirkaRestNameSearch nameSearch) {
         this.transport = transport;
         this.reader = reader;
+        this.nameSearch = nameSearch;
     }
 
     @Override
@@ -39,6 +41,11 @@ class EsbirkaRestClient implements EsbirkaClient {
         EsbirkaRestDtos.SearchResult result = transport.post(transport.uri("/rozsirena-vyhledavani"),
                 EsbirkaRestNumberSearch.request(cisloPrefix, rokPrefix), EsbirkaRestDtos.SearchResult.class, deadline());
         return EsbirkaRestNumberSearch.group(result, cisloPrefix);
+    }
+
+    @Override
+    public List<LawModel> searchLawsByName(String q, int limit) {
+        return nameSearch.search(q, limit, deadline());
     }
 
     @Override

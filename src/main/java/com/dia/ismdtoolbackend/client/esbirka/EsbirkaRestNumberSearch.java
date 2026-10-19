@@ -51,7 +51,7 @@ final class EsbirkaRestNumberSearch {
             conditions.add(new SearchCondition("ROK_VYHLASENI", "MENSI_ROVNO_NEZ", rokPrefix + "9".repeat(pad), AND));
         }
         List<String> order = List.of(cisloPrefix == null ? "-datumVyhlaseni" : "+kodDokumentuSbirky");
-        return new SearchRequest(0, ROW_LIMIT, order, conditions.isEmpty() ? null : conditions);
+        return new SearchRequest(0, ROW_LIMIT, order, null, conditions.isEmpty() ? null : conditions);
     }
 
     static LawNumberSearchModel group(SearchResult result, String cisloPrefix) {
@@ -62,6 +62,7 @@ final class EsbirkaRestNumberSearch {
                 continue;
             }
             LawModel law = EsbirkaRestMapper.toLaw(row.staleUrl(), row.kodDokumentuSbirky());
+            law.setNazev(row.nazev());
             if (cisloPrefix == null || law.getCislo().startsWith(cisloPrefix)) {
                 byCislo.computeIfAbsent(law.getCislo(), k -> new ArrayList<>()).add(law);
             }

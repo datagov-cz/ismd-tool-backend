@@ -44,7 +44,8 @@ class EsbirkaRestCachingTest {
     }
 
     @Configuration
-    @Import({CacheConfig.class, EsbirkaRestTransport.class, EsbirkaRestReader.class, EsbirkaRestClient.class})
+    @Import({CacheConfig.class, EsbirkaRestTransport.class, EsbirkaRestReader.class, EsbirkaRestNameSearch.class,
+            EsbirkaRestClient.class})
     static class Beans {
         @Bean
         EsbirkaConfig esbirkaConfig() {
