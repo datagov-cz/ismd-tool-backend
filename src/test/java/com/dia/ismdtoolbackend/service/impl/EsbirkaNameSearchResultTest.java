@@ -36,7 +36,7 @@ class EsbirkaNameSearchResultTest {
 
     @BeforeEach
     void setUp() {
-        service = new EsbirkaServiceImpl(client, null, null, null);
+        service = EsbirkaServiceWiring.build(client, null, null);
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -42,6 +43,12 @@ class OutboxEntryRepositoryTest extends PostgresIntegrationTestBase {
 
     @Autowired
     private TransactionTemplate txTemplate;
+
+    @BeforeEach
+    void startFromEmpty() {
+        // The Postgres container is shared by every subclass; start from an empty table.
+        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
+    }
 
     private OutboxEntry pending(String aggregateIri, String graph, long seq) {
         OutboxEntry e = new OutboxEntry();

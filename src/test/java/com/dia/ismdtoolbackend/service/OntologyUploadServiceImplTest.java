@@ -20,9 +20,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.UploadConceptGate;
-import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.riot.Lang;
@@ -30,12 +28,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -78,28 +74,18 @@ class OntologyUploadServiceImplTest {
     @Mock
     private PublishedResourceUtil publishedResourceUtil;
 
-    @InjectMocks
     private OntologyUploadServiceImpl ontologyUploadService;
 
     @BeforeEach
     void setUp() {
-        ontologyUploadService = new OntologyUploadServiceImpl(
+        ontologyUploadService = OntologyUploadServiceWiring.build(
                 ontologyMetadataMapper,
                 ontologyMetadataRepository,
                 conceptMetadataRepository,
                 validationClient,
                 validationReportRepository,
                 jenaTDB2Repository,
-                publishedResourceUtil,
-                new UploadConceptGate(new OntologyDetailExtractor(conceptMetadataRepository),
-                        new NkdLinkDetector(), conceptMetadataRepository)
-        );
-        // In production `self` is the Spring proxy (so @Transactional applies through the async
-        // lambda). In this unit test there is no proxy — point it at the instance itself so the
-        // delegation to saveValidationOutcome runs the real method directly.
-        ReflectionTestUtils.setField(ontologyUploadService, "self", ontologyUploadService);
-        ReflectionTestUtils.setField(ontologyUploadService, "maxFileSizeConfig", "10MB");
-        ReflectionTestUtils.setField(ontologyUploadService, "rdfParsingTimeoutSeconds", 60);
+                publishedResourceUtil);
     }
 
     @Test
@@ -114,7 +100,8 @@ class OntologyUploadServiceImplTest {
         when(report.getResults()).thenReturn(Collections.emptyList());
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.of(report));
 
-        ontologyUploadService.requestAndSaveValidationReport("@prefix x: <x> .", "http://example.org/o");
+        OntologyUploadServiceWiring.runValidation(validationClient, ontologyMetadataRepository,
+                validationReportRepository, "@prefix x: <x> .", "http://example.org/o");
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
@@ -132,7 +119,8 @@ class OntologyUploadServiceImplTest {
         // Lenient returns empty when the validator was unavailable — ingest proceeds, status flagged.
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.empty());
 
-        ontologyUploadService.requestAndSaveValidationReport("@prefix x: <x> .", "http://example.org/o");
+        OntologyUploadServiceWiring.runValidation(validationClient, ontologyMetadataRepository,
+                validationReportRepository, "@prefix x: <x> .", "http://example.org/o");
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
@@ -532,7 +520,7 @@ class OntologyUploadServiceImplTest {
 
     // --- Concept-type guard -------------------------------------------------
     //
-    // determineConceptType must be total: every persisted row carries a real type, and a
+    // Role resolution must be total: every persisted row carries a real type, and a
     // concept whose type cannot be resolved is dropped rather than saved as a null-typed
     // row (which downstream consumers read as "absent" — a VZTAH imported that way once
     // vanished from the diagram projector).
@@ -626,17 +614,15 @@ class OntologyUploadServiceImplTest {
 
         org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
         bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        Object noType = ReflectionTestUtils.invokeMethod(ontologyUploadService, "resolveRole", bare);
-        assertEquals("no recognized type", ReflectionTestUtils.invokeGetterMethod(noType, "reason"),
+        assertEquals("no recognized type", OntologyUploadServiceWiring.roleRejectionReason(bare),
                 "A concept declaring no role must say so plainly");
 
         org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C2);
         both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
         both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
         both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.DatatypeProperty);
-        Object conflict = ReflectionTestUtils.invokeMethod(ontologyUploadService, "resolveRole", both);
         assertEquals("conflicting types: VLASTNOST + VZTAH",
-                ReflectionTestUtils.invokeGetterMethod(conflict, "reason"),
+                OntologyUploadServiceWiring.roleRejectionReason(both),
                 "A contradiction must name both roles it declared, so the file's author can fix it");
     }
 
@@ -645,7 +631,7 @@ class OntologyUploadServiceImplTest {
      * otherwise the guard is sidestepped by whichever vocabulary the file happens to use.
      */
     @Test
-    void determineConceptType_bothOfnRoleTags_isRejected() {
+    void resolveConceptType_bothOfnRoleTags_isRejected() {
         OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
         org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C1);
         both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
@@ -654,8 +640,7 @@ class OntologyUploadServiceImplTest {
         both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
                 "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
 
-        ConceptType resolved = ReflectionTestUtils.invokeMethod(
-                ontologyUploadService, "determineConceptType", both);
+        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(both);
 
         assertNull(resolved, "A concept carrying both the vlastnost and vztah OFN role tags "
                 + "declares two roles and must be dropped");
@@ -666,7 +651,7 @@ class OntologyUploadServiceImplTest {
      * not a contradiction, and must not trip the multi-role guard.
      */
     @Test
-    void determineConceptType_ofnTagAndMatchingOwlType_isNotAContradiction() {
+    void resolveConceptType_ofnTagAndMatchingOwlType_isNotAContradiction() {
         OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
         org.apache.jena.rdf.model.Resource rel = model.createResource(DECISION_C1);
         rel.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
@@ -674,8 +659,7 @@ class OntologyUploadServiceImplTest {
                 "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
         rel.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
 
-        ConceptType resolved = ReflectionTestUtils.invokeMethod(
-                ontologyUploadService, "determineConceptType", rel);
+        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(rel);
 
         assertEquals(ConceptType.VZTAH, resolved,
                 "slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
@@ -715,18 +699,17 @@ class OntologyUploadServiceImplTest {
 
     /**
      * The guard's own unit: extraction must never emit a null-typed row even when the
-     * normalizer has not typed the resource. Drives determineConceptType directly because
+     * normalizer has not typed the resource. Drives the role resolver directly because
      * the upload normalizer stamps {@code skos:Concept} on every {@code slovníky:pojem},
      * which masks the untyped case in a full-pipeline test.
      */
     @Test
-    void determineConceptType_noRecognizableType_returnsNullSoCallerDrops() {
+    void resolveConceptType_noRecognizableType_returnsNullSoCallerDrops() {
         OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
         org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
         bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
 
-        ConceptType resolved = ReflectionTestUtils.invokeMethod(
-                ontologyUploadService, "determineConceptType", bare);
+        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(bare);
 
         assertNull(resolved, "A concept with no class/property/relationship signal must resolve to "
                 + "null so extractAndSaveConceptMetadata drops it instead of saving a null type");
@@ -738,29 +721,27 @@ class OntologyUploadServiceImplTest {
      * concept as a class — and make the untyped guard unreachable.
      */
     @Test
-    void determineConceptType_skosConceptAlone_isNotATrida() {
+    void resolveConceptType_skosConceptAlone_isNotATrida() {
         OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
         org.apache.jena.rdf.model.Resource base = model.createResource(DECISION_C1);
         base.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
         base.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
 
-        ConceptType resolved = ReflectionTestUtils.invokeMethod(
-                ontologyUploadService, "determineConceptType", base);
+        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(base);
 
         assertNull(resolved, "skos:Concept is the base type every concept carries — it must not "
                 + "claim the TRIDA role on its own");
     }
 
     @Test
-    void determineConceptType_owlClass_isTrida() {
+    void resolveConceptType_owlClass_isTrida() {
         OntModel model = org.apache.jena.rdf.model.ModelFactory.createOntologyModel();
         org.apache.jena.rdf.model.Resource cls = model.createResource(DECISION_C2);
         cls.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
         cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
         cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.Class);
 
-        ConceptType resolved = ReflectionTestUtils.invokeMethod(
-                ontologyUploadService, "determineConceptType", cls);
+        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(cls);
 
         assertEquals(ConceptType.TRIDA, resolved,
                 "owl:Class is the real class signal and must still resolve to TRIDA");

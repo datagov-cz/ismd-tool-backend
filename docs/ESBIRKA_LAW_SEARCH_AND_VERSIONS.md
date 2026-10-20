@@ -173,8 +173,8 @@ behaviour exactly.
 law="49/1997"
    │
    ├─ parseNumberYear            → ("49", 1997)          [rejects partial input like "49"]
-   ├─ client.findLawByNumberYear → exact law lookup       [NOT a citation substring match]
-   ├─ self.getVersions(lawIri)   → all znění — through the proxy, so the
+   ├─ client.findLaw(sbirka, …)  → exact law lookup       [NOT a citation substring match]
+   ├─ versionsReader.getVersions(lawIri) → all znění — a separate cached bean, so the
    │                               esbirkaLawVersions cache is shared with /law/versions
    ├─ selectVersion(versions, versionIri, ny)
    │     ├─ versionIri null/blank → pickLatest()  (má-poslední-znění, falls back to newest)
@@ -197,7 +197,7 @@ IRI that is only canonicalised for the *validity* check still fails membership �
 `"Znění … nepatří k právnímu aktu"`, a wrong-act error for a right-act request. Guarded by
 `EsbirkaServiceImplTest.getLawContentAcceptsALegacyHostVersionIriAsAMember`.
 
-The version list is fetched via `self.getVersions(...)`, not `client.fetchVersions(...)`, so it
+The version list is fetched via `EsbirkaLawVersionsReader.getVersions(...)`, not `client.fetchVersions(...)`, so it
 shares the `esbirkaLawVersions` cache. This matters for the switcher: because the content cache
 key is version-aware, a user stepping through N znění of one law takes N content-cache misses,
 and a direct client call would re-issue the identical version-list query on every one of them.
@@ -241,7 +241,7 @@ So the cap moved into SPARQL, and applies to **groups**, not rows.
 ### Two-step query
 
 ```
-Step 0  splitGroupedNeedle(q)                   → EsbirkaServiceImpl
+Step 0  splitGroupedNeedle(q)                   → EsbirkaLawSearch
         "49/1997" → (číslo "49", rok "1997");  "49" → ("49", null)
               │
               ▼
@@ -378,7 +378,7 @@ explicitly. Never wire a per-keystroke search directly to this endpoint without 
 
 ## 9. Fragment Tree Assembly
 
-`má-fragment-znění` returns a **flat** list; `EsbirkaServiceImpl.assembleTree` rebuilds the
+`má-fragment-znění` returns a **flat** list; `EsbirkaFragmentTree.assembleTree` rebuilds the
 hierarchy. Two non-obvious behaviours:
 
 **Three structural roots, not one.** Direct children of any `<versionIri>/dokument/<container>`
@@ -433,16 +433,24 @@ Depth is capped at `MAX_FRAGMENT_DEPTH = 12` (deepest observed is 11, e.g. 89/20
 EsbirkaController              /api/eli/**  — limit validation, Czech error messages,
                               fail-fast IRI shape check (legacy hosts allowed through)
         │
-EsbirkaService (interface)     ← @Lazy self-proxy target for @Cacheable delegation
+EsbirkaService (interface)
         │
-EsbirkaServiceImpl            needle split, grouping, tree assembly, version selection,
-                              HTML rendering; canonicalises every IRI before use
+EsbirkaServiceImpl            orchestrator: one call per operation, no cache of its own
         │
-EsbirkaSparqlClient           one method per query; maps ResultSet → models
+EsbirkaLawSearch              grouped (číslo) and name search, needle split (@Cacheable)
+EsbirkaLawVersionsReader      versions of a law                            (@Cacheable)
+EsbirkaLawContentReader       whole-version content, version selection    (@Cacheable)
+EsbirkaLegalSourceResolver    /resolve: fragment citation and body
+EsbirkaLawReference           číslo/rok and IRI parsing; canonicalises every IRI before use
+EsbirkaFragmentTree           tree assembly, navigability, labels
         │
-EsbirkaSPARQLQuery            query builders (ParameterizedSparqlString — never concatenation)
+EsbirkaClient (interface)     esbirka.provider picks the implementation
         │
-HttpSparqlExecutor            shared pooled HttpClient, timeouts, exception mapping
+        ├─ sparql: EsbirkaSparqlClient   one method per query; maps ResultSet → models
+        │       EsbirkaSPARQLQuery       query builders (ParameterizedSparqlString — never concatenation)
+        │       HttpSparqlExecutor       shared pooled HttpClient, timeouts, exception mapping
+        │
+        └─ rest:   EsbirkaRestClient     e-Sbírka REST API (client/esbirka/*)
 ```
 
 Models: `LawModel`, `LawVersionModel`, `LawNumberGroupModel`, `FragmentModel`,
@@ -463,9 +471,9 @@ treated as a spelling rather than an invalid identifier. All needles are bound v
 |---|---|
 | `EsbirkaSPARQLQueryTest` | query text: `STR()` vs `VALUES`, `GROUP BY` cap, injection escaping |
 | `EsbirkaGroupedSearchTest` | grouping, ambiguity flag, group ordering, dataset-wide counts, needle split (`49/1997`, partial years, `Sb.` suffix) |
-| `EsbirkaLawContentCacheTest` | runs the **real cache manager** — key collisions, self-invocation and legacy/canonical key sharing are only observable through the Spring proxy |
+| `EsbirkaLawContentCacheTest` | runs the **real cache manager** — key collisions, calls between the cached beans and legacy/canonical key sharing are only observable through the Spring proxy |
 | `EsbirkaServiceImplTest` | version selection, membership guard, legacy-host acceptance, tree assembly edge cases |
 | `EsbirkaControllerTest` | envelope shape, 400/503 mapping |
 
-The cache-key, membership and self-proxy guards were each **mutation-tested**:
+The cache-key, membership and cache-annotation guards were each **mutation-tested**:
 reverting the fix makes the corresponding test fail with the original symptom.

@@ -15,14 +15,14 @@ import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("ConceptProcessor - Multilingual Properties (prefLabel, definition, description)")
+@DisplayName("ConceptJsonMapper - Multilingual Properties (prefLabel, definition, description)")
 class ConceptMultilingualPropertyTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     @Test

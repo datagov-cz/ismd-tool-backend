@@ -117,7 +117,7 @@ public class CacheConfig {
         // NKD-published projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE). Key shapes share it,
         // all NKD-sourced with the same 24h-TTL freshness model: 'concept:' / 'conceptWithScheme:' /
         // 'ontology:' / 'ontologyRaw:' from NkdSparqlClient, and 'conceptList:' from
-        // NkdDetailServiceImpl.listOntologyConcepts.
+        // NkdConceptListReader.listOntologyConcepts.
         //
         // Sizing note: maximumSize counts ENTRIES, not bytes, and 'ontologyRaw:' holds a whole Jena
         // model for one vocabulary (~400 KB for a 381-concept scheme) against ~1 KB for a 'concept:'

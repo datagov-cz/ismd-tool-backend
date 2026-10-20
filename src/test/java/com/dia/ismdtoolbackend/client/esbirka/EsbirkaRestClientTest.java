@@ -9,7 +9,8 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
-import com.dia.ismdtoolbackend.service.impl.EsbirkaServiceImpl;
+import com.dia.ismdtoolbackend.service.EsbirkaService;
+import com.dia.ismdtoolbackend.service.impl.EsbirkaServiceWiring;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -19,7 +20,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
@@ -280,10 +280,8 @@ class EsbirkaRestClientTest {
         assertTrue(law.getDisplayName().startsWith("Zákon č. 49/1997 Sb., o civilním letectví"), law.getDisplayName());
     }
 
-    private EsbirkaServiceImpl service() {
-        EsbirkaServiceImpl service = new EsbirkaServiceImpl(client, null, null, null);
-        ReflectionTestUtils.setField(service, "self", service);
-        return service;
+    private EsbirkaService service() {
+        return EsbirkaServiceWiring.forClient(client);
     }
 
     /**

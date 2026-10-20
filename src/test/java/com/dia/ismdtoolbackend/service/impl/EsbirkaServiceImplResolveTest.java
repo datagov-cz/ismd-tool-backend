@@ -47,9 +47,7 @@ class EsbirkaServiceImplResolveTest {
         // Without it the degraded (fallback-unavailable) path would be the fixture default and
         // every "no body" assertion would pass for the wrong reason.
         lenient().when(subtreeBodyCache.bodiesByFragmentIri(any())).thenReturn(Map.of());
-        // self is only used by the one-arg getLawContent overload, which this suite
-        // never exercises; null keeps the constructor honest without a stub.
-        service = new EsbirkaServiceImpl(client, cache, subtreeBodyCache, null);
+        service = EsbirkaServiceWiring.build(client, cache, subtreeBodyCache);
     }
 
     @Test

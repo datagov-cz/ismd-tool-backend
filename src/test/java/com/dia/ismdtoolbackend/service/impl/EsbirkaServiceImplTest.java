@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -41,13 +40,14 @@ class EsbirkaServiceImplTest {
     private EsbirkaClient client;
 
     private EsbirkaServiceImpl service;
+    private EsbirkaLawContentReader contentReader;
 
     @BeforeEach
     void setUp() {
-        // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
-        // the same delegation path without a Spring context.
-        service = new EsbirkaServiceImpl(client, null, null, null);
-        ReflectionTestUtils.setField(service, "self", service);
+        EsbirkaLawVersionsReader versionsReader = new EsbirkaLawVersionsReader(client);
+        contentReader = new EsbirkaLawContentReader(client, versionsReader);
+        service = new EsbirkaServiceImpl(new EsbirkaLawSearch(client), versionsReader, contentReader,
+                new EsbirkaLegalSourceResolver(null, null));
     }
 
     // -------- searchLawsGrouped: DTO mapping --------
@@ -138,7 +138,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(odst, par, "§ 1 odst. 1", "odst", "0002"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(1, out.size());
         FragmentDto root = out.get(0);
         assertEquals(par, root.getIri());
@@ -161,7 +161,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(fn1, poznamkyRoot, "1)", "frag", "9001"),
                 new FragmentModel(fn2, poznamkyRoot, "2)", "frag", "9002"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(3, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(fn1, out.get(1).getIri());
@@ -181,7 +181,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(dokument, null, null, "dokument", "0001"),
                 new FragmentModel(norma, dokument, null, "norma", "0002"),
                 new FragmentModel(prilohy, dokument, null, "prilohy", "0003"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         FragmentDto root = out.get(0);
         assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
         assertEquals("Přílohy", root.getChildren().get(1).getCitation());
@@ -196,7 +196,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(dokument, null, null, "dokument", "0001"),
                 new FragmentModel(dokument + "/prilohy", dokument, null, "prilohy", "0002"),
                 new FragmentModel(dokument + "/prilohy:2", dokument, null, "prilohy:2", "0003"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         List<FragmentDto> containers = out.get(0).getChildren();
         assertEquals("Přílohy", containers.get(0).getCitation());
         assertEquals("Přílohy (2)", containers.get(1).getCitation());
@@ -209,11 +209,11 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(dokument, null, null, "dokument", "0001"));
 
         // Without law metadata (the subtree body cache) the root stays unlabelled.
-        assertNull(EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI).get(0).getCitation());
+        assertNull(EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getCitation());
 
         // The content endpoint knows the citation and labels the root with it.
         assertEquals("Zákon č. 49/1997 Sb.",
-                EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
+                EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
     }
 
     @Test
@@ -222,7 +222,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(dokument, null, null, "dokument", "0001"),
                 new FragmentModel(dokument + "/norma", dokument, "Vlastní název", "norma", "0002"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals("Vlastní název", out.get(0).getChildren().get(0).getCitation());
     }
 
@@ -235,7 +235,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(textBlock, par, null, "frag", "0002"));
-        FragmentDto leaf = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
+        FragmentDto leaf = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
         assertNull(leaf.getCitation());
         assertFalse(leaf.isNavigable());
     }
@@ -254,7 +254,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(wrapper, par, null, "frag", "0002"),
                 new FragmentModel(text, wrapper, null, "frag", "0003"));
 
-        FragmentDto node = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
+        FragmentDto node = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
 
         assertFalse(node.isNavigable(), "a frag wrapping only text blocks is not a nav target");
         assertNull(node.getCitation());
@@ -276,7 +276,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(inner, outer, null, "frag", "0003"),
                 new FragmentModel(pism, inner, "§ 9 písm. b)", "pism", "0004"));
 
-        FragmentDto o = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
+        FragmentDto o = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
         assertTrue(o.isNavigable(), "outer wrapper must stay reachable");
         FragmentDto i = o.getChildren().get(0);
         assertTrue(i.isNavigable(), "inner wrapper must stay reachable");
@@ -294,7 +294,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(par, NORMA_ROOT, "§ 3", "par", "0001"),
                 new FragmentModel(grouper, par, null, "frag", "0002"),
                 new FragmentModel(pism, grouper, "§ 3 písm. a)", "pism", "0003"));
-        FragmentDto node = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
+        FragmentDto node = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
         assertTrue(node.isNavigable());
         assertEquals(1, node.getChildren().size());
         assertTrue(node.getChildren().get(0).isNavigable());
@@ -320,7 +320,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(odst, par, null, "odst", "0005"),
                 new FragmentModel(pism, odst, null, "pism", "0006"));
 
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
 
         FragmentDto root = out.get(0);
         assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
@@ -343,7 +343,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(par1, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(par2, NORMA_ROOT, "§ 2", "par", "0002"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals(par1, out.get(0).getIri());
         assertEquals(par2, out.get(1).getIri());
@@ -361,7 +361,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0002"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(1, out.get(0).getChildren().size());
@@ -379,7 +379,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(priloha, prilohyRoot + "/frag_6668611", "Příloha", "priloha", "9999"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(priloha, out.get(1).getIri());
@@ -406,7 +406,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(footnote, VERSION_IRI + "/dokument/poznamkypodcarou", "1)", "frag", "0004"),
                 new FragmentModel(annex, annexGrouper, "Příloha 1", "priloha", "0005"));
 
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
 
         // Walk the assembled tree and collect every IRI; must equal the 5 input IRIs.
         java.util.Set<String> seen = new java.util.HashSet<>();
@@ -433,7 +433,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(ghost, ghost + "-no-such", "ghost", "odst", "0003"));
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(ghost, out.get(1).getIri());
@@ -445,20 +445,20 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = new ArrayList<>();
         String parent = NORMA_ROOT;
         String tip = null;
-        for (int i = 1; i <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH + 2; i++) {
+        for (int i = 1; i <= EsbirkaFragmentTree.MAX_FRAGMENT_DEPTH + 2; i++) {
             String iri = VERSION_IRI + "/level_" + i;
             rows.add(new FragmentModel(iri, parent, "L" + i, "frag", String.format("%04d", i)));
             parent = iri;
             tip = iri;
         }
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(1, out.size());
 
         // capDepth fires when depth > MAX_FRAGMENT_DEPTH, clearing children of depth-MAX
         // nodes; so levels 1..MAX survive in the tree, level MAX+1 is trimmed.
         // Walking from level 1 to level MAX is MAX-1 hops; level MAX+1 has empty children.
         FragmentDto cursor = out.get(0);
-        for (int hop = 1; hop <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH; hop++) {
+        for (int hop = 1; hop <= EsbirkaFragmentTree.MAX_FRAGMENT_DEPTH; hop++) {
             assertEquals(1, cursor.getChildren().size(),
                     "expected one child at hop " + hop);
             cursor = cursor.getChildren().get(0);
@@ -476,7 +476,7 @@ class EsbirkaServiceImplTest {
             String iri = VERSION_IRI + "/par_" + i;
             rows.add(new FragmentModel(iri, NORMA_ROOT, "§ " + i, "par", String.format("%05d", i)));
         }
-        List<FragmentDto> out = EsbirkaServiceImpl.assembleTree(rows, VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(5_001, out.size());
     }
 
@@ -605,22 +605,22 @@ class EsbirkaServiceImplTest {
 
     @Test
     void anIriAndItsNumberYearShareTheLawHalfOfTheCacheKey() {
-        assertEquals("49/1997", service.normalizeLawRef(V_2020));
-        assertEquals("49/1997", service.normalizeLawRef(LAW_49_IRI));
-        assertEquals(service.normalizeLawRef("49/1997"), service.normalizeLawRef(LAW_49_IRI));
+        assertEquals("49/1997", contentReader.normalizeLawRef(V_2020));
+        assertEquals("49/1997", contentReader.normalizeLawRef(LAW_49_IRI));
+        assertEquals(contentReader.normalizeLawRef("49/1997"), contentReader.normalizeLawRef(LAW_49_IRI));
     }
 
     @Test
     void versionIriCarriedByTheLawRefKeysItsOwnCacheEntry() {
         // Without this the version half is "" for every IRI, so two different znění of one act
         // would collide on the same key and serve each other's ~2 MB payload.
-        assertEquals(V_2020, service.resolveContentVersionIri(V_2020, null));
-        assertEquals(V_2026, service.resolveContentVersionIri(V_2026, null));
-        assertEquals("", service.resolveContentVersionIri(LAW_49_IRI, null));
-        assertEquals("", service.resolveContentVersionIri("49/1997", null));
+        assertEquals(V_2020, contentReader.resolveContentVersionIri(V_2020, null));
+        assertEquals(V_2026, contentReader.resolveContentVersionIri(V_2026, null));
+        assertEquals("", contentReader.resolveContentVersionIri(LAW_49_IRI, null));
+        assertEquals("", contentReader.resolveContentVersionIri("49/1997", null));
         // Explicit parameter wins, and a legacy host collapses onto the canonical entry.
-        assertEquals(V_2026, service.resolveContentVersionIri(V_2020, V_2026));
-        assertEquals(V_2020, service.resolveContentVersionIri("49/1997",
+        assertEquals(V_2026, contentReader.resolveContentVersionIri(V_2020, V_2026));
+        assertEquals(V_2020, contentReader.resolveContentVersionIri("49/1997",
                 "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49/2020-01-01"));
     }
 
@@ -916,20 +916,20 @@ class EsbirkaServiceImplTest {
         // normalizeLawRef is the SpEL key expression for @Cacheable on getLawContent
         // (#root.target.normalizeLawRef(#lawRef)). It MUST collapse trim/Sb.-suffix
         // variants to a single key, or equivalent refs each store a separate ~2 MB entry.
-        assertEquals("49/1997", service.normalizeLawRef("49/1997"));
-        assertEquals("49/1997", service.normalizeLawRef("  49/1997  "));
-        assertEquals("49/1997", service.normalizeLawRef("49/1997 Sb."));
-        assertEquals("49/1997", service.normalizeLawRef("  49/1997 Sb. "));
+        assertEquals("49/1997", contentReader.normalizeLawRef("49/1997"));
+        assertEquals("49/1997", contentReader.normalizeLawRef("  49/1997  "));
+        assertEquals("49/1997", contentReader.normalizeLawRef("49/1997 Sb."));
+        assertEquals("49/1997", contentReader.normalizeLawRef("  49/1997 Sb. "));
         // Leading-zero year is normalized via Integer parse (1997, not "1997 ").
-        assertEquals("262/2006", service.normalizeLawRef("262/2006 Sb."));
+        assertEquals("262/2006", contentReader.normalizeLawRef("262/2006 Sb."));
     }
 
     @Test
     void normalizeLawRefRejectsPartialInputLikeGetLawContent() {
         // Same parser as getLawContent, so the cache-key path rejects junk identically
         // rather than producing a bogus key.
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("49"));
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("abc/1997"));
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("  "));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("49"));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("abc/1997"));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("  "));
     }
 }

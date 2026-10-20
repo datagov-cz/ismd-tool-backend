@@ -33,7 +33,7 @@ final class EsbirkaNameSearchResult {
                         .cislo(law.getCislo())
                         .count(1)
                         .exactNumberMatch(false)
-                        .laws(List.of(EsbirkaServiceImpl.toLawDto(law)))
+                        .laws(List.of(EsbirkaLawSearch.toLawDto(law)))
                         .build())
                 .toList();
         return LawSearchResultDto.builder()
