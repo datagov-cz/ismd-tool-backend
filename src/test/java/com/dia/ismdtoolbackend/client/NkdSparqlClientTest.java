@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
+import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -86,13 +87,15 @@ class NkdSparqlClientTest {
         return newClient(configWithEndpoint(""), extractor);
     }
 
-    /**
-     * Builds the client without Spring. {@code self} is null here: it exists only so the cache
-     * proxy is re-entered in production, and these tests drive the real HTTP path with no cache,
-     * so no call under test dereferences it.
-     */
+    /** Builds the client and its fetcher without Spring, over one executor as in production. */
     private NkdSparqlClient newClient(NkdConfig cfg, OntologyDetailExtractor extractor) {
-        return new NkdSparqlClient(cfg, extractor, HttpClient.newHttpClient(), null);
+        HttpSparqlExecutor executor = new HttpSparqlExecutor(
+                NkdSparqlClient.NKD_LABEL,
+                cfg.getSparql().getEndpoint(),
+                cfg.getSparql().getTimeout(),
+                HttpClient.newHttpClient(),
+                cfg.getSparql().getMaxConcurrentRequests());
+        return new NkdSparqlClient(executor, extractor, new NkdPublishedResourceFetcher(executor, extractor));
     }
 
     private static void stubTurtle(String turtle) {

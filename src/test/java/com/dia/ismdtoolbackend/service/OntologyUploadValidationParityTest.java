@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -15,10 +16,8 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.UploadConceptGate;
-import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Model;
@@ -36,7 +35,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.StringWriter;
@@ -48,6 +46,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -93,14 +92,9 @@ class OntologyUploadValidationParityTest {
 
     @BeforeEach
     void setUp() {
-        service = new OntologyUploadServiceImpl(ontologyMetadataMapper, ontologyMetadataRepository,
+        service = OntologyUploadServiceWiring.build(ontologyMetadataMapper, ontologyMetadataRepository,
                 conceptMetadataRepository, validationClient, validationReportRepository, jenaTDB2Repository,
-                publishedResourceUtil,
-                new UploadConceptGate(new OntologyDetailExtractor(conceptMetadataRepository),
-                        new NkdLinkDetector(), conceptMetadataRepository));
-        ReflectionTestUtils.setField(service, "self", service);
-        ReflectionTestUtils.setField(service, "maxFileSizeConfig", "10MB");
-        ReflectionTestUtils.setField(service, "rdfParsingTimeoutSeconds", 60);
+                publishedResourceUtil);
 
         OntologyMetadataEntity entity = new OntologyMetadataEntity();
         entity.setId(1L);
@@ -358,10 +352,21 @@ class OntologyUploadValidationParityTest {
     // --- Role guard -----------------------------------------------------------
 
     @Test
+    void conceptTypedAsBothPropertyAndRelationshipFailsTheWholeUpload() {
+        OntologyUploadConflictingTypesException ex = assertThrows(OntologyUploadConflictingTypesException.class,
+                () -> upload(vocabulary()
+                        + concept(GOOD, "owl:Class", "")
+                        + concept(BAD, "owl:DatatypeProperty, owl:ObjectProperty", "")));
+
+        assertEquals(List.of(BAD), ex.getConceptIris());
+        assertNull(storedTurtle, "nothing may reach TDB2");
+    }
+
+    @Test
     void conceptWithoutASingleRoleIsReportedAndLeavesNoOwnedTriples() throws Exception {
         OntologyMetadataModel uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:Class", "")
-                + concept(BAD, "owl:DatatypeProperty, owl:ObjectProperty", ""));
+                + concept(BAD, "owl:Class, owl:DatatypeProperty", ""));
 
         assertEquals(List.of(GOOD), savedConceptIris());
         assertEquals(List.of(BAD), rejectedIris(uploaded));

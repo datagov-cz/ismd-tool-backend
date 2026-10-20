@@ -1,12 +1,12 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.config.FusekiConnectionConfig;
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.env.MockEnvironment;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.net.http.HttpClient;
 import java.util.concurrent.Semaphore;
@@ -19,14 +19,17 @@ import static org.junit.jupiter.api.Assertions.*;
 @ExtendWith(MockitoExtension.class)
 class JenaTDB2RepositorySemaphoreTest {
 
+    private static final String UNREACHABLE_ENDPOINT = "http://localhost:9999/nonexistent";
+
     private JenaTDB2Repository repository;
     private Semaphore semaphore;
 
     @BeforeEach
     void setUp() {
         semaphore = new Semaphore(10);
-        repository = new JenaTDB2Repository(HttpClient.newHttpClient(), semaphore, 50, new MockEnvironment());
-        ReflectionTestUtils.setField(repository, "fusekiEndpoint", "http://localhost:9999/nonexistent");
+        repository = new JenaTDB2Repository(
+                new FusekiConnectionConfig(HttpClient.newHttpClient(), semaphore, 50, UNREACHABLE_ENDPOINT),
+                new MockEnvironment());
     }
 
     @Test
@@ -73,8 +76,8 @@ class JenaTDB2RepositorySemaphoreTest {
     void semaphoreInterrupted_shouldThrowAndPreserveInterruptFlag() {
         // Use a long timeout and drain permits so tryAcquire blocks
         JenaTDB2Repository longTimeoutRepo = new JenaTDB2Repository(
-                HttpClient.newHttpClient(), new Semaphore(0), 10000, new MockEnvironment());
-        ReflectionTestUtils.setField(longTimeoutRepo, "fusekiEndpoint", "http://localhost:9999/nonexistent");
+                new FusekiConnectionConfig(HttpClient.newHttpClient(), new Semaphore(0), 10000, UNREACHABLE_ENDPOINT),
+                new MockEnvironment());
 
         Thread.currentThread().interrupt();
 

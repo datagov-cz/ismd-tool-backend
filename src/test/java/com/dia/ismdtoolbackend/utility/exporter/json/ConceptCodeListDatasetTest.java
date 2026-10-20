@@ -14,18 +14,18 @@ import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("ConceptProcessor - Code List Dataset (Datová sada v NKOD)")
+@DisplayName("ConceptJsonMapper - Code List Dataset (Datová sada v NKOD)")
 class ConceptCodeListDatasetTest {
 
     private static final String NKOD_DATASET_URL = "https://data.gov.cz/zdroj/datové-sady/test-dataset-123";
     private static final String CODE_LIST_IRI =
             "https://data.mvcr.gov.cz/zdroj/číselníky/typy-turistických-cílů";
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     /** Writes the code-list structure the class write paths produce: a named číselník subject. */

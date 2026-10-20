@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
@@ -90,7 +91,7 @@ class ConceptEditFlowIntegrationTest {
         // empty so reconcileNkdLinks is a no-op and never calls the (mocked) snapshot service.
         com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector linkDetector =
                 new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
-        conceptService = new ConceptServiceImpl(
+        conceptService = ConceptServiceWiring.build(
                 conceptMetadataRepository, ontologyMetadataRepository,
                 org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.impl.MetadataTouchService.class),
                 conceptMetadataMapper,

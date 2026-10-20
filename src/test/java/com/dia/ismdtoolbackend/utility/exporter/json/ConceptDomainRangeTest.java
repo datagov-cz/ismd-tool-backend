@@ -12,14 +12,14 @@ import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("ConceptProcessor - Domain and Range")
+@DisplayName("ConceptJsonMapper - Domain and Range")
 class ConceptDomainRangeTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     @Test

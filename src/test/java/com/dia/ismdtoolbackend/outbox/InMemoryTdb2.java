@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.outbox;
 
+import com.dia.ismdtoolbackend.config.FusekiConnectionConfig;
 import com.dia.ismdtoolbackend.exception.JenaTDB2Exception;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import org.apache.jena.query.Dataset;
@@ -24,13 +25,16 @@ import java.util.concurrent.Semaphore;
  */
 public class InMemoryTdb2 extends JenaTDB2Repository {
 
+    private static final String UNUSED_ENDPOINT = "http://localhost/unused";
+
     private Dataset dataset = DatasetFactory.createTxnMem();
     private String failingGraph;
     /** Whole-graph fetches since the last {@link #resetFetchCount()}, for fan-out assertions. */
     private int fetchGraphCount;
 
     public InMemoryTdb2() {
-        super(HttpClient.newHttpClient(), new Semaphore(4), 5000, new MockEnvironment());
+        super(new FusekiConnectionConfig(HttpClient.newHttpClient(), new Semaphore(4), 5000, UNUSED_ENDPOINT),
+                new MockEnvironment());
     }
 
     @Override
