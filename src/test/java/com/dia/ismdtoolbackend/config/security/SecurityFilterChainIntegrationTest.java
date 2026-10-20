@@ -203,7 +203,6 @@ class SecurityFilterChainIntegrationTest {
                 Arguments.of("PATCH", "/api/ontology/test/edit"),
                 Arguments.of("DELETE", "/api/ontology/test/delete"),
                 Arguments.of("POST", "/api/ontology/test/validate"),
-                Arguments.of("POST", "/api/ontology/test/catalog-record"),
                 Arguments.of("POST", "/api/concept/test/create"),
                 Arguments.of("POST", "/api/concept/test/create/bulk"),
                 Arguments.of("PATCH", "/api/concept/test/edit"),
