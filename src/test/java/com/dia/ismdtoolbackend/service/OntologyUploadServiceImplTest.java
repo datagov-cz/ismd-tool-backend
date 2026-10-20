@@ -11,7 +11,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
-import com.dia.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
 import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;

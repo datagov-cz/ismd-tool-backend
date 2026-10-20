@@ -21,7 +21,7 @@ import org.mockito.quality.Strictness;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 

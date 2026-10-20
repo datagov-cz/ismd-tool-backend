@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.controller.dto;
 
 /**
  * One blocking validation error, flattened for display. Mirrors the fields of
- * {@code com.dia.validation.ValidationResult} that identify a problem to a user; severity is
+ * {@code com.dia.ismdtoolbackend.client.validation.ValidationResult} that identify a problem to a user; severity is
  * omitted because every entry here is an error.
  *
  * @param ruleName     the validation rule that failed

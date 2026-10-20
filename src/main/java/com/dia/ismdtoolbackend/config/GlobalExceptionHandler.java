@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.config;
 
-import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.DownloadBlockedByValidationDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
@@ -285,21 +284,9 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.ONTOLOGY_PROCESSING_FAILED, e.getMessage());
     }
 
+    /** The tool's own {@link ValidationException}: a failure to store or read a validation report. */
     @ExceptionHandler(ValidationException.class)
-    public ResponseEntity<ApiResponseDto<Void>> handleValidationException(ValidationException e) {
-        log.error("Validation failed: {}", e.getMessage(), e);
-        return error(ErrorCode.VALIDATION_FAILED, e.getMessage());
-    }
-
-    /**
-     * Distinct from {@link com.dia.exceptions.ValidationException} above: that one is the validator
-     * library's and signals bad input, this one is the tool's own and wraps a failure to store or
-     * read a validation report. Both names are written out in full — the wildcard import of the
-     * tool's exception package makes it otherwise unclear which class either handler binds to.
-     */
-    @ExceptionHandler(com.dia.ismdtoolbackend.exception.ValidationException.class)
-    public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(
-            com.dia.ismdtoolbackend.exception.ValidationException e) {
+    public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(ValidationException e) {
         log.error("Validation report operation failed: {}", e.getMessage(), e);
         return error(ErrorCode.VALIDATION_REPORT_FAILED, e.getMessage());
     }

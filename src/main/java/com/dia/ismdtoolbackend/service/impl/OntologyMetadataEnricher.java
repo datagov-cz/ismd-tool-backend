@@ -5,7 +5,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.repository.*;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Literal;
@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 import org.springframework.stereotype.Component;
 
 /** Fills an ontology's name and description from RDF, singly or for a whole page. */

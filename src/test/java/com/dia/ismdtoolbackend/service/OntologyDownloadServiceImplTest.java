@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.exceptions.JsonExportException;
+import com.dia.ismdtoolbackend.exception.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
@@ -28,7 +28,7 @@ import java.net.http.HttpClient;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 
-import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.SLOVNIKY_NS;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;

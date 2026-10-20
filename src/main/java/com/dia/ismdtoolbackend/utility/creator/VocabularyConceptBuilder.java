@@ -9,8 +9,8 @@ import com.dia.ismdtoolbackend.models.concept.*;
 import com.dia.ismdtoolbackend.utility.validation.ConceptCreateValidator;
 import com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 
 import java.net.URI;
 import java.util.*;

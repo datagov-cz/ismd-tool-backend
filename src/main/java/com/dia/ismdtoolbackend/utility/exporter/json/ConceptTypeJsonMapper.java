@@ -8,7 +8,7 @@ import org.apache.jena.vocabulary.RDF;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Decides which resources are concepts and maps their RDF types to JSON type names. */
 final class ConceptTypeJsonMapper {

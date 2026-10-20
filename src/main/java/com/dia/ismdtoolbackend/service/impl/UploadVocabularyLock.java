@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.exception.OntologyUploadInProgressException;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;

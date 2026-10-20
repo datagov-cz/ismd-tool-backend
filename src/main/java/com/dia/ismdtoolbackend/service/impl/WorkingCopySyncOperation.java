@@ -29,10 +29,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ;
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE_LEGAL;
-import static com.dia.constants.VocabularyConstants.USTANOVENI_NEVEREJNOST;
-import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.NEVEREJNY_UDAJ;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE_LEGAL;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.USTANOVENI_NEVEREJNOST;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VEREJNY_UDAJ;
 import org.springframework.stereotype.Component;
 
 /** Syncs a working copy with its published NKD twin, field by field, and severs it when only some are accepted. */

@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.utility.DataTypeConverter;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
 
 import java.util.HashSet;
@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.*;
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 

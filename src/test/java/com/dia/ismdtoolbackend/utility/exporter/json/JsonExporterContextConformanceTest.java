@@ -23,7 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**

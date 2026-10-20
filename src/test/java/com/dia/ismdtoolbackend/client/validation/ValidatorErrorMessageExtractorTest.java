@@ -24,6 +24,13 @@ class ValidatorErrorMessageExtractorTest {
     }
 
     @Test
+    void validatorApiResponseBody_extractsMessageField() {
+        String body = "{\"data\":null,\"message\":\"Nepodporovaný typ souboru: x.txt\",\"success\":false,"
+                + "\"errorCode\":\"UNSUPPORTED_FORMAT\"}";
+        assertEquals("Nepodporovaný typ souboru: x.txt", extractor.extract(with(body)));
+    }
+
+    @Test
     void blankBody_returnsFallback() {
         String result = extractor.extract(with(""));
         assertEquals("Validační služba odmítla požadavek.", result);

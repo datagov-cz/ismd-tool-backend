@@ -4,8 +4,8 @@ import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
@@ -19,7 +19,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 @Component
 @RequiredArgsConstructor

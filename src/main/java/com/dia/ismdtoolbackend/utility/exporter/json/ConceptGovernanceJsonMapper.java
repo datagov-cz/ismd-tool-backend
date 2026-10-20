@@ -5,7 +5,7 @@ import org.apache.jena.rdf.model.*;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps sharing, acquisition and content type, plus the PPDF flag, AIS and agenda. */
 final class ConceptGovernanceJsonMapper {

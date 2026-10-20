@@ -12,8 +12,8 @@ import org.apache.jena.vocabulary.RDFS;
 import java.util.*;
 import java.util.function.Function;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.detail.DetailDtoBuilders.*;
 import static com.dia.ismdtoolbackend.utility.detail.DetailValues.*;
 

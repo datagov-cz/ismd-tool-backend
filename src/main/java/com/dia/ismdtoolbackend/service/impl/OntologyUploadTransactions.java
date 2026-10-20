@@ -6,7 +6,7 @@ import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
-import com.dia.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;

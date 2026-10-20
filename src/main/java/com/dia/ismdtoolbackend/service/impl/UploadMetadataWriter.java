@@ -10,7 +10,7 @@ import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.service.impl.UploadConceptRoleResolver.POJEM_GENERIC;
 
 /** Writes the Postgres metadata rows of an uploaded vocabulary and its concepts. */

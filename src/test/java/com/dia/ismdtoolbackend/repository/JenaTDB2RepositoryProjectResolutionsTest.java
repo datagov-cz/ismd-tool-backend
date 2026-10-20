@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**

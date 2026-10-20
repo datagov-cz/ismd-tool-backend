@@ -22,10 +22,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;

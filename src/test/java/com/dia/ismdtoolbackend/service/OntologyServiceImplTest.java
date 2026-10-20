@@ -45,9 +45,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.dia.constants.VocabularyConstants.POJEM_JSON_LD;
-import static com.dia.constants.VocabularyConstants.TRIDA_JSON_LD;
-import static com.dia.constants.VocabularyConstants.VZTAH_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.POJEM_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA_JSON_LD;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH_JSON_LD;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;

@@ -7,7 +7,7 @@ import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
-import com.dia.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
@@ -21,8 +21,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
-import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /**
  * A — ClassConcept (TRIDA) tests

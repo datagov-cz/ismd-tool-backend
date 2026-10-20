@@ -1,10 +1,4 @@
 version: 2
-registries:
-  validator-packages:
-    type: maven-repository
-    url: https://maven.pkg.github.com/datagov-cz/ismd-validator-backend
-    username: x-access-token
-    password: ${{ secrets.PACKAGES_READ_TOKEN }}
 
 updates:
   - package-ecosystem: maven
@@ -17,8 +11,6 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
-    registries:
-      - validator-packages
     # One grouped PR per run instead of a separate PR per dependency.
     groups:
       maven-dependencies:

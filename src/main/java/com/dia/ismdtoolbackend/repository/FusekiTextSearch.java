@@ -20,10 +20,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /** Text-index search and relation filtering against Fuseki. Reached through {@link JenaTDB2Repository}. */
 @Slf4j

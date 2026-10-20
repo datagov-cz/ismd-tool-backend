@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.entity;
 
-import com.dia.validation.ValidationReport;
-import com.dia.validation.ValidationResult;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationResult;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.DeserializationFeature;

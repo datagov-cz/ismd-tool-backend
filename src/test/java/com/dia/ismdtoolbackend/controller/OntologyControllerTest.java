@@ -25,9 +25,9 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
-import com.dia.validation.ValidationReportDto;
-import com.dia.validation.ValidationResult;
-import com.dia.validation.ValidationSeverity;
+import com.dia.ismdtoolbackend.client.validation.ValidationReportDto;
+import com.dia.ismdtoolbackend.client.validation.ValidationResult;
+import com.dia.ismdtoolbackend.client.validation.ValidationSeverity;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -1027,8 +1027,8 @@ class OntologyControllerTest {
         metadataModel.setGraphName("http://example.org/test-ontology");
 
         java.time.Instant timestamp = java.time.Instant.parse("2026-08-24T10:15:30Z");
-        com.dia.validation.ValidationResult result = new com.dia.validation.ValidationResult(
-                com.dia.validation.ValidationSeverity.ERROR,
+        com.dia.ismdtoolbackend.client.validation.ValidationResult result = new com.dia.ismdtoolbackend.client.validation.ValidationResult(
+                com.dia.ismdtoolbackend.client.validation.ValidationSeverity.ERROR,
                 "Chybí název pojmu",
                 "rule-name-required",
                 "http://example.org/test-ontology/pojem/1",
@@ -1037,7 +1037,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
+                new com.dia.ismdtoolbackend.client.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1059,7 +1059,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
+                new com.dia.ismdtoolbackend.client.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1250,7 +1250,7 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+        com.dia.ismdtoolbackend.client.validation.ValidationReportDto validationReport = new com.dia.ismdtoolbackend.client.validation.ValidationReportDto();
 
         TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
@@ -1278,7 +1278,7 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+        com.dia.ismdtoolbackend.client.validation.ValidationReportDto validationReport = new com.dia.ismdtoolbackend.client.validation.ValidationReportDto();
 
         TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))

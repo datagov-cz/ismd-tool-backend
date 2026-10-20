@@ -1,0 +1,36 @@
+{
+  "id": 0,
+  "results": [
+    {
+      "severity": "ERROR",
+      "message": "Pojem nemá název.",
+      "ruleName": "local-rule",
+      "focusNodeUri": "https://example.org/slovnik/pojem/a",
+      "resultPathUri": "http://www.w3.org/2004/02/skos/core#prefLabel",
+      "value": null,
+      "nkdResource": null,
+      "error": true,
+      "warning": false,
+      "info": false,
+      "focusNodeName": "a"
+    },
+    {
+      "severity": "WARNING",
+      "message": "Pojem již existuje v NKD.",
+      "ruleName": "global-rule",
+      "focusNodeUri": "https://example.org/slovnik/pojem/b",
+      "resultPathUri": null,
+      "value": "b",
+      "nkdResource": {
+        "iri": "https://slovník.gov.cz/pojem/b",
+        "prefLabel": "Pojem B"
+      },
+      "error": false,
+      "warning": true,
+      "info": false,
+      "focusNodeName": "b"
+    }
+  ],
+  "timestamp": "2026-01-01T00:00:00Z",
+  "ontologyIri": "https://example.org/slovnik"
+}

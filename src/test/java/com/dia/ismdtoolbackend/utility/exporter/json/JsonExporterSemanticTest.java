@@ -19,7 +19,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**

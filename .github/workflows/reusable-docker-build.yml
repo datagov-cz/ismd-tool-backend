@@ -81,8 +81,6 @@ jobs:
           echo "git_sha=$GIT_SHA" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
-        env:
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
         run: |
           IMAGE_TAG="ghcr.io/${{ env.REPO_PATH }}:${{ steps.version.outputs.version }}"
           LATEST_TAG="ghcr.io/${{ env.REPO_PATH }}:latest"
@@ -106,8 +104,6 @@ jobs:
           docker buildx build \
             -f Dockerfile \
             $PLATFORM_FLAG \
-            --secret id=github_token,env=GITHUB_TOKEN \
-            --build-arg GITHUB_ACTOR="${{ github.actor }}" \
             -t "$IMAGE_TAG" \
             -t "$LATEST_TAG" \
             $PUSH_FLAG \

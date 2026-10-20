@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 

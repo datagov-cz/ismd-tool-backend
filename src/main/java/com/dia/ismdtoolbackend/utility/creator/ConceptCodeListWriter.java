@@ -6,7 +6,7 @@ import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Writes the code list that defines a concept's instances, with its NKOD dataset. */
 final class ConceptCodeListWriter {
