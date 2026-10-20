@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
-import com.dia.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
 import org.apache.jena.ontology.OntModel;
 
 /** The working model and IRI generator of one concept build. */

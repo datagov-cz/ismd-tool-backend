@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.models.OFNBaseModel;
-import com.dia.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.models.OFNBaseModel;
+import com.dia.ismdtoolbackend.utility.DataTypeConverter;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -10,8 +10,8 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import java.time.LocalDateTime;
 import java.util.Map;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 public final class OntologyModelFactory {
     private OntologyModelFactory() {}

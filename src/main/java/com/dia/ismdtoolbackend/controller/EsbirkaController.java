@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
+import static com.dia.ismdtoolbackend.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 
 @RestController
 @RequestMapping("/api/eli")

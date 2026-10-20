@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.enums;
 
-import com.dia.constants.DataTypeConstants;
+import com.dia.ismdtoolbackend.constants.DataTypeConstants;
 import com.dia.ismdtoolbackend.controller.dto.DataTypeDto;
 import org.junit.jupiter.api.Test;
 

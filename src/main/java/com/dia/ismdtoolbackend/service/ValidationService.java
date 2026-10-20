@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.exception.ValidationException;
 import com.dia.ismdtoolbackend.models.OntologyRef;
-import com.dia.validation.ValidationReport;
-import com.dia.validation.ValidationReportDto;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReportDto;
 
 public interface ValidationService {
     void saveValidationReport(ValidationReport validationReport, OntologyRef ontology, String userId) throws ValidationException;

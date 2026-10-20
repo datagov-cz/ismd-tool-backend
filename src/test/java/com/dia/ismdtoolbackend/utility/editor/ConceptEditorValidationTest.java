@@ -13,10 +13,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DEFAULT_NS;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -97,7 +97,7 @@ class ConceptEditorValidationTest {
         assertThatCode(() -> conceptEditor.editConcept(conceptIri, m, model, null)).doesNotThrowAnyException();
 
         org.apache.jena.rdf.model.Property defining =
-                model.createProperty(OFN_NAMESPACE + com.dia.constants.VocabularyConstants.DEFINUJICI_USTANOVENI);
+                model.createProperty(OFN_NAMESPACE + com.dia.ismdtoolbackend.constants.VocabularyConstants.DEFINUJICI_USTANOVENI);
         String stored = model.getResource(conceptIri).listProperties(defining)
                 .nextStatement().getObject().asResource().getURI();
         assertThat(stored)

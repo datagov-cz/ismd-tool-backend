@@ -9,7 +9,7 @@ import org.apache.jena.vocabulary.SKOS;
 
 import java.util.*;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 
 /** Edits the name, description, definition and alternative names of a concept. */
@@ -106,7 +106,7 @@ class ConceptLabelUpdater {
      * whole property. This is the shared MERGE semantics for prefLabel /
      * description / definition (an edit touching one language preserves the
      * others). A blank/empty incoming value deletes that language tag; a blank
-     * tag falls back to {@link com.dia.constants.ExportConstants.Common#DEFAULT_LANG}.
+     * tag falls back to {@link com.dia.ismdtoolbackend.constants.ExportConstants.Common#DEFAULT_LANG}.
      *
      * <p>NOTE: callers decide what an empty/absent incoming map means. Name is
      * required and never cleared; description/definition clear-all on an empty

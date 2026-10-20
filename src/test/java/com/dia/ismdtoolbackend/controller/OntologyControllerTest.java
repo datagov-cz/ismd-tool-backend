@@ -30,9 +30,9 @@ import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import com.dia.ismdtoolbackend.testsupport.web.StubOntologySecurityService;
-import com.dia.validation.ValidationReportDto;
-import com.dia.validation.ValidationResult;
-import com.dia.validation.ValidationSeverity;
+import com.dia.ismdtoolbackend.client.validation.ValidationReportDto;
+import com.dia.ismdtoolbackend.client.validation.ValidationResult;
+import com.dia.ismdtoolbackend.client.validation.ValidationSeverity;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -1034,8 +1034,8 @@ class OntologyControllerTest {
         OntologyRef metadataModel = new OntologyRef(null, slug, "http://example.org/test-ontology", null);
 
         java.time.Instant timestamp = java.time.Instant.parse("2026-08-24T10:15:30Z");
-        com.dia.validation.ValidationResult result = new com.dia.validation.ValidationResult(
-                com.dia.validation.ValidationSeverity.ERROR,
+        com.dia.ismdtoolbackend.client.validation.ValidationResult result = new com.dia.ismdtoolbackend.client.validation.ValidationResult(
+                com.dia.ismdtoolbackend.client.validation.ValidationSeverity.ERROR,
                 "Chybí název pojmu",
                 "rule-name-required",
                 "http://example.org/test-ontology/pojem/1",
@@ -1044,7 +1044,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.graphName(), timestamp));
+                new com.dia.ismdtoolbackend.client.validation.ValidationReportDto(List.of(result), metadataModel.graphName(), timestamp));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1064,7 +1064,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.graphName(), null));
+                new com.dia.ismdtoolbackend.client.validation.ValidationReportDto(List.of(), metadataModel.graphName(), null));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1253,7 +1253,7 @@ class OntologyControllerTest {
 
         OntologyRef ontologyMetadata = new OntologyRef(1L, slug, "http://example.org/test-ontology", null);
 
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+        com.dia.ismdtoolbackend.client.validation.ValidationReportDto validationReport = new com.dia.ismdtoolbackend.client.validation.ValidationReportDto();
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
@@ -1276,7 +1276,7 @@ class OntologyControllerTest {
 
         OntologyRef ontologyMetadata = new OntologyRef(1L, slug, "http://example.org/test-ontology", null);
 
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+        com.dia.ismdtoolbackend.client.validation.ValidationReportDto validationReport = new com.dia.ismdtoolbackend.client.validation.ValidationReportDto();
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(ontologyMetadata);
         when(ontologyService.getTtlContentFromOntology(any()))
@@ -1357,7 +1357,7 @@ class OntologyControllerTest {
         when(ontologyService.getOntologyMetadataBySlug("test-ontology")).thenReturn(owned);
         when(ontologyService.getTtlContentFromOntology(owned)).thenReturn("ttl");
         when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))
-                .thenReturn(java.util.Optional.of(new com.dia.validation.ValidationReportDto()));
+                .thenReturn(java.util.Optional.of(new com.dia.ismdtoolbackend.client.validation.ValidationReportDto()));
 
         mockMvc.perform(post("/api/ontology/{slug}/validate", "test-ontology")
                         .contentType(MediaType.APPLICATION_JSON)
