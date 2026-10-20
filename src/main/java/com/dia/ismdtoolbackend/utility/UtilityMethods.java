@@ -2,11 +2,6 @@ package com.dia.ismdtoolbackend.utility;
 
 import lombok.experimental.UtilityClass;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.SGOV_NAMESPACE;
-
 /** IRI and code-list value helpers (originally from the retired ismd-validator-common library). */
 @UtilityClass
 public class UtilityMethods {
@@ -248,26 +243,6 @@ public class UtilityMethods {
         return normalized.equals("true") || normalized.equals("false") ||
                 normalized.equals("ano") || normalized.equals("ne") ||
                 normalized.equals("yes") || normalized.equals("no");
-    }
-
-    public String extractNamespace(String ontologyIRI) {
-        Pattern pattern = Pattern.compile("(https://slovník\\.gov\\.cz/[^/]+/[^/]+)");
-        Matcher matcher = pattern.matcher(ontologyIRI);
-
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-
-        if (ontologyIRI.endsWith("/")) {
-            ontologyIRI = ontologyIRI.substring(0, ontologyIRI.length() - 1);
-        }
-
-        int lastSlash = ontologyIRI.lastIndexOf('/');
-        if (lastSlash > SGOV_NAMESPACE.length()) {
-            return ontologyIRI.substring(0, lastSlash);
-        }
-
-        return ontologyIRI;
     }
 
     public String extractNameFromIRI(String iri) {

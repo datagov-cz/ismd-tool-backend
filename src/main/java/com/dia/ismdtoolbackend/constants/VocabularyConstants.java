@@ -1,7 +1,5 @@
 package com.dia.ismdtoolbackend.constants;
 
-import java.util.Set;
-
 /**
  * Consolidated vocabulary constants for OFN and related vocabularies.
  * Merges constants from: ArchiConstants, OFNJsonConstants, SSPConstants, ValidationConstants.
@@ -13,14 +11,12 @@ public class VocabularyConstants {
     public static final String SGOV_NAMESPACE = DEFAULT_NS; // Alias for SSP compatibility
     public static final String OFN_NAMESPACE = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";
     public static final String SLOVNIKY_NS = OFN_NAMESPACE; // Alias - same as OFN_NAMESPACE
-    public static final String ARCHI_NS = "http://www.opengroup.org/xsd/archimate/3.0/";
     public static final String XSD = "http://www.w3.org/2001/XMLSchema#";
     public static final String DCT_NS = "http://purl.org/dc/terms/";
     public static final String SKOS_NS = "http://www.w3.org/2004/02/skos/core#";
     public static final String CAS_NS = "https://slovník.gov.cz/generický/čas/pojem/";
     public static final String CONTEXT = "https://ofn.gov.cz/slovníky/2026-02-26/kompletní/kontext.jsonld";
     public static final String SCHEMA_URL = "http://schema.org/url";
-    public static final String IDENT = "identifier";
     public static final String OFN_NAMESPACE_VS = "https://slovník.gov.cz/veřejný-sektor/pojem/";
     public static final String OFN_NAMESPACE_LEGAL = "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/";
     public static final String DIGITALNI_OBJEKT = "https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt";
@@ -192,67 +188,5 @@ public class VocabularyConstants {
 
         private PropertySets() {
         }
-    }
-
-    /**
-     * Organized sets for OFN class and property identification
-     */
-    public static final class OFNSets {
-
-        public static final Set<String> OFN_CLASSES = Set.of(
-                POJEM,
-                TRIDA,
-                TSP,
-                TOP,
-                UDAJ,
-                VEREJNY_UDAJ,
-                NEVEREJNY_UDAJ,
-                DATOVY_TYP,
-                POLOZKA_CISELNIKU,
-                ZPUSOBY_SDILENI_UDAJE,
-                ZPUSOB_ZISKANI_UDAJE,
-                CASOVY_OKAMZIK,
-                SLOVNIK,
-                DIGITALNI_DOKUMENT,
-                CISELNIK,
-                TYP_VLASTNOSTI
-        );
-
-        public static final Set<String> OFN_PROPERTIES = Set.of(
-                NAZEV,
-                ALTERNATIVNI_NAZEV,
-                POPIS,
-                DEFINICE,
-                DEFINUJICI_USTANOVENI,
-                SOUVISEJICI_USTANOVENI,
-                DEFINUJICI_NELEGISLATIVNI_ZDROJ,
-                SOUVISEJICI_NELEGISLATIVNI_ZDROJ,
-                JE_PPDF,
-                AGENDA,
-                AIS,
-                USTANOVENI_NEVEREJNOST,
-                DEFINICNI_OBOR,
-                OBOR_HODNOT,
-                NADRAZENA_TRIDA,
-                ZPUSOB_SDILENI,
-                ZPUSOB_ZISKANI,
-                TYP_OBSAHU,
-                OKAMZIK_POSLEDNI_ZMENY,
-                OKAMZIK_VYTVORENI,
-                DATUM,
-                DATUM_A_CAS
-        );
-
-        public static final Set<String> OFN_SPECIAL_PROPERTIES = Set.of(
-                SCHEMA_URL
-        );
-
-        public static final Set<String> OFN_NAMESPACES = Set.of(
-                DEFAULT_NS,
-                CAS_NS,
-                SLOVNIKY_NS
-        );
-
-        private OFNSets() {}
     }
 }

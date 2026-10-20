@@ -14,7 +14,6 @@ public class ExportConstants {
         public static final String TYP = "typ";
         public static final String NAZEV = "název";
         public static final String POPIS = "popis";
-        public static final String POJMY = "pojmy";
 
         public static final String TYPE_SLOVNIK = "Slovník";
         public static final String TYPE_TEZAURUS = "Tezaurus";
@@ -37,7 +36,6 @@ public class ExportConstants {
 
         // =============== JSON-LD TYPE MAPPINGS ===============
         public static final String POJEM_JSON_LD = "Pojem";
-        public static final String KONCEPT_JSON_LD = "Koncept";
         public static final String TRIDA_JSON_LD = "Třída";
         public static final String VZTAH_JSON_LD = "Vztah";
         public static final String VLASTNOST_JSON_LD = "Vlastnost";
@@ -45,7 +43,6 @@ public class ExportConstants {
         public static final String TOP_JSON_LD = "Typ objektu práva";
         public static final String VEREJNY_UDAJ_JSON_LD = "Veřejný údaj";
         public static final String NEVEREJNY_UDAJ_JSON_LD = "Neveřejný údaj";
-        public static final String OBOR_HODNOT_JSON_LD = "obor-hodnot";
 
         // Governance codelist CURIE prefixes. The namespace IRIs are shared with Turtle
         // (see ExportConstants.Turtle.NS_*), but the prefix labels match the JSON-LD
@@ -62,26 +59,11 @@ public class ExportConstants {
      * Turtle/RDF export specific constants
      */
     public static final class Turtle {
-        public static final String PREFIX_DCT = "dct";
-        public static final String PREFIX_OWL = "owl";
-        public static final String PREFIX_RDF = "rdf";
-        public static final String PREFIX_RDFS = "rdfs";
-        public static final String PREFIX_SKOS = "skos";
-        public static final String PREFIX_XSD = "xsd";
-
-        public static final String DEFAULT_PREFIX = "domain";
-
         // Governance codelist namespaces (data governance: content type, sharing method, acquisition method).
         // Prefix names match the codelist segment per OFN documentation.
         public static final String PREFIX_TYPY_OBSAHU = "typy-obsahu-údajů";
-        public static final String NS_TYPY_OBSAHU =
-                "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
         public static final String PREFIX_ZPUSOBY_SDILENI = "způsoby-sdílení-údajů";
-        public static final String NS_ZPUSOBY_SDILENI =
-                "https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/";
         public static final String PREFIX_ZPUSOBY_ZISKANI = "způsoby-získání-údajů";
-        public static final String NS_ZPUSOBY_ZISKANI =
-                "https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/";
 
         private Turtle() {
         }
@@ -92,11 +74,6 @@ public class ExportConstants {
      */
     public static final class Common {
         public static final String DEFAULT_LANG = "cs";
-
-        public static final String FORMAT_JSON = "application/json";
-        public static final String FORMAT_JSONLD = "application/ld+json";
-        public static final String FORMAT_TURTLE = "text/turtle";
-        public static final String FORMAT_RDFXML = "application/rdf+xml";
 
         private Common() {
         }

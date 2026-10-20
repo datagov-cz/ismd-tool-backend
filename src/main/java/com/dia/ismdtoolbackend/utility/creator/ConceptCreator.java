@@ -1,17 +1,15 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
-import com.dia.ismdtoolbackend.models.OFNBaseModel;
 import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntModelSpec;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Component;
-
-import java.util.Set;
 
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
@@ -24,10 +22,8 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 @Slf4j
 public class ConceptCreator {
 
-    private final ConceptSchemaSelector schemaSelector = new ConceptSchemaSelector();
-
     public Resource createSingleConcept(ConceptCreateModel createModel) {
-        OntModel ontModel = initializeModel(createModel);
+        OntModel ontModel = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
         try {
             URIGenerator uriGenerator = new URIGenerator();
             uriGenerator.setEffectiveNamespace(determineEffectiveNamespace(createModel.getOntologyGraphName()));
@@ -104,17 +100,6 @@ public class ConceptCreator {
                     : stmt.getObject();
             cleanModel.add(target, pred, obj);
         });
-    }
-
-    private OntModel initializeModel(ConceptCreateModel createModel) {
-        Set<String> requiredBaseClasses = schemaSelector.determineRequiredBaseClasses(createModel);
-        Set<String> requiredProperties = schemaSelector.determineRequiredProperties(createModel);
-
-        OFNBaseModel baseModel = new OFNBaseModel(requiredBaseClasses, requiredProperties);
-
-        log.debug("Initialized OntModel with base classes: {} and properties: {}",
-                requiredBaseClasses, requiredProperties);
-        return baseModel.getOntModel();
     }
 
     private String determineEffectiveNamespace(String namespace) {
