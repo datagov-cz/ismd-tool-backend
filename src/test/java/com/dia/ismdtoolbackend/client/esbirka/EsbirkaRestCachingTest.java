@@ -19,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
@@ -91,11 +93,18 @@ class EsbirkaRestCachingTest {
 
     @Test
     void concurrentColdLoadsShareOneFetchAndResolvesReuseIt() {
-        List<CompletableFuture<Integer>> loads = List.of(
-                CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size()),
-                CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size()),
-                CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size()));
-        loads.forEach(load -> assertEquals(2508, load.join()));
+        // Not the common pool: the JDK HttpClient completes sendAsync through it, so callers blocked
+        // there can starve their own response (with 4 CPUs, three callers fill its three workers).
+        ExecutorService callers = Executors.newFixedThreadPool(3);
+        try {
+            List<CompletableFuture<Integer>> loads = List.of(
+                    CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size(), callers),
+                    CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size(), callers),
+                    CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size(), callers));
+            loads.forEach(load -> assertEquals(2508, load.join()));
+        } finally {
+            callers.shutdownNow();
+        }
 
         assertTrue(client.resolveFragment(V_49 + "/dokument/norma/cast_1/par_1", V_49, B + "/sb/1997/49").isPresent());
         assertTrue(client.resolveFragment(V_49 + "/dokument/norma/cast_1", V_49, B + "/sb/1997/49").isPresent());
