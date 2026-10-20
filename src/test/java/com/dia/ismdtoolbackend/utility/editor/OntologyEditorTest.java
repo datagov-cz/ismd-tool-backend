@@ -329,7 +329,7 @@ class OntologyEditorTest {
         void editOntology_ShouldRemoveDescription_WhenNewDescriptionIsBlank() { // E3
             // Arrange
             String oldOntologyIRI = "https://example.com/vocab/ontology-with-desc";
-            String oldNamespace = UtilityMethods.extractNamespace(oldOntologyIRI);
+            String oldNamespace = "https://example.com/vocab";
 
             Resource ontology = model.createResource(oldOntologyIRI);
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");

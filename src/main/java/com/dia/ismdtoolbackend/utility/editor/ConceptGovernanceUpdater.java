@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.utility.DataTypeConverter;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
 
@@ -51,12 +50,7 @@ class ConceptGovernanceUpdater {
 
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformed = UtilityMethods.transformAgendaValue(agendaCode);
-            if (DataTypeConverter.isUri(transformed)) {
-                toAdd.add(model.createStatement(newConcept, agendaProperty, model.createResource(transformed)));
-            } else {
-                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, AGENDA_LONG);
-                toAdd.add(model.createStatement(newConcept, agendaProperty, typedLiteral));
-            }
+            toAdd.add(model.createStatement(newConcept, agendaProperty, model.createResource(transformed)));
         }
     }
 
@@ -75,12 +69,7 @@ class ConceptGovernanceUpdater {
 
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformed = UtilityMethods.transformAISValue(aisCode);
-            if (DataTypeConverter.isUri(transformed)) {
-                toAdd.add(model.createStatement(newConcept, aisProperty, model.createResource(transformed)));
-            } else {
-                Literal typedLiteral = DataTypeConverter.createTypedLiteral(transformed, model, null, UDAJE_AIS);
-                toAdd.add(model.createStatement(newConcept, aisProperty, typedLiteral));
-            }
+            toAdd.add(model.createStatement(newConcept, aisProperty, model.createResource(transformed)));
         }
     }
 

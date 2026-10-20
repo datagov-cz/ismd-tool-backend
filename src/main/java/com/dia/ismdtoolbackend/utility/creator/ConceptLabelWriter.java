@@ -37,8 +37,8 @@ final class ConceptLabelWriter {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                             ? entry.getKey()
                             : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(resource, SKOS.prefLabel,
-                            entry.getValue().trim(), languageTag, ontModel);
+                    DataTypeConverter.addLangLiteral(resource, SKOS.prefLabel,
+                            entry.getValue().trim(), languageTag);
                 }
             }
         }
@@ -52,8 +52,8 @@ final class ConceptLabelWriter {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                             ? entry.getKey()
                             : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(resource, descProperty,
-                            entry.getValue().trim(), languageTag, ontModel);
+                    DataTypeConverter.addLangLiteral(resource, descProperty,
+                            entry.getValue().trim(), languageTag);
                 }
             }
         }
@@ -66,8 +66,8 @@ final class ConceptLabelWriter {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                             ? entry.getKey()
                             : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(resource, SKOS.definition,
-                            entry.getValue().trim(), languageTag, ontModel);
+                    DataTypeConverter.addLangLiteral(resource, SKOS.definition,
+                            entry.getValue().trim(), languageTag);
                 }
             }
         }
@@ -84,8 +84,8 @@ final class ConceptLabelWriter {
                     : DEFAULT_LANG;
                 for (String value : entry.getValue()) {
                     if (value != null && !value.trim().isEmpty()) {
-                        DataTypeConverter.addTypedProperty(resource, SKOS.altLabel,
-                            value.trim(), languageTag, ontModel);
+                        DataTypeConverter.addLangLiteral(resource, SKOS.altLabel,
+                            value.trim(), languageTag);
                     }
                 }
             }

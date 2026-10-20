@@ -153,8 +153,7 @@ class UtilityMethodsUnitTest {
     @Test
     void testTrailingSlashIsRemovedFromConceptIdentifier() {
         URIGenerator uriGenerator = new URIGenerator();
-        uriGenerator.setEffectiveNamespace("https://example.com/");
-        uriGenerator.setVocabularyName("slovnik");
+        uriGenerator.setEffectiveNamespace("https://example.com/slovnik/");
 
         assertEquals("https://example.com/slovnik/pojem/adresa",
                 uriGenerator.generateConceptURI("Adresa", "https://example.com/slovnik/pojem/adresa/"));

@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.ismdtoolbackend.utility.DataTypeConverter;
 import com.dia.ismdtoolbackend.utility.URIGenerator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
@@ -76,12 +75,7 @@ final class ConceptGovernanceWriter {
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformedAgenda = UtilityMethods.transformAgendaValue(agendaCode);
             Property agendaProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
-
-            if (DataTypeConverter.isUri(transformedAgenda)) {
-                resource.addProperty(agendaProperty, ontModel.createResource(transformedAgenda));
-            } else {
-                DataTypeConverter.addTypedProperty(resource, agendaProperty, transformedAgenda, null, ontModel);
-            }
+            resource.addProperty(agendaProperty, ontModel.createResource(transformedAgenda));
         }
     }
 
@@ -89,12 +83,7 @@ final class ConceptGovernanceWriter {
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformedAIS = UtilityMethods.transformAISValue(aisCode);
             Property aisProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
-
-            if (DataTypeConverter.isUri(transformedAIS)) {
-                resource.addProperty(aisProperty, ontModel.createResource(transformedAIS));
-            } else {
-                DataTypeConverter.addTypedProperty(resource, aisProperty, transformedAIS, null, ontModel);
-            }
+            resource.addProperty(aisProperty, ontModel.createResource(transformedAIS));
         }
     }
 
@@ -118,8 +107,7 @@ final class ConceptGovernanceWriter {
     void addIsInPPDF(Resource resource, Boolean isInPPDF) {
         if (isInPPDF != null) {
             Property ppdfProperty = ontModel.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
-            DataTypeConverter.addTypedProperty(resource, ppdfProperty,
-                    isInPPDF.toString(), null, ontModel);
+            resource.addLiteral(ppdfProperty, ontModel.createTypedLiteral(isInPPDF));
         }
     }
 }

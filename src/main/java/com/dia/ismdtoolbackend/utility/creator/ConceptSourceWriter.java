@@ -105,14 +105,14 @@ final class ConceptSourceWriter {
 
         if (source.getName() != null && !source.getName().trim().isEmpty()) {
             Property titleProperty = ontModel.createProperty(DCT_NS + "title");
-            DataTypeConverter.addTypedProperty(digitalDocument, titleProperty,
-                    source.getName().trim(), DEFAULT_LANG, ontModel);
+            DataTypeConverter.addLangLiteral(digitalDocument, titleProperty,
+                    source.getName().trim(), DEFAULT_LANG);
         }
 
         if (source.getDescription() != null && !source.getDescription().trim().isEmpty()) {
             Property descriptionProperty = ontModel.createProperty(DCT_NS + "description");
-            DataTypeConverter.addTypedProperty(digitalDocument, descriptionProperty,
-                    source.getDescription().trim(), DEFAULT_LANG, ontModel);
+            DataTypeConverter.addLangLiteral(digitalDocument, descriptionProperty,
+                    source.getDescription().trim(), DEFAULT_LANG);
         }
 
         resource.addProperty(property, digitalDocument);
