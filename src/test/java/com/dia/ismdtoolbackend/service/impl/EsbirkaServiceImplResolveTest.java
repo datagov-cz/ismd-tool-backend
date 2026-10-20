@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
@@ -33,23 +33,21 @@ class EsbirkaServiceImplResolveTest {
     private static final String LEGACY_FRAGMENT_URL =
             "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01/dokument/norma/par_2/pism_d";
 
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
     private EsbirkaFragmentResolutionCache cache;
     private EsbirkaSubtreeBodyCache subtreeBodyCache;
     private EsbirkaServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        client = mock(EsbirkaSparqlClient.class);
+        client = mock(EsbirkaClient.class);
         cache = mock(EsbirkaFragmentResolutionCache.class);
         subtreeBodyCache = mock(EsbirkaSubtreeBodyCache.class);
         // Working baseline: the version resolves, it simply holds no subtree for this fragment.
         // Without it the degraded (fallback-unavailable) path would be the fixture default and
         // every "no body" assertion would pass for the wrong reason.
         lenient().when(subtreeBodyCache.bodiesByFragmentIri(any())).thenReturn(Map.of());
-        // self is only used by the one-arg getLawContent overload, which this suite
-        // never exercises; null keeps the constructor honest without a stub.
-        service = new EsbirkaServiceImpl(client, cache, subtreeBodyCache, null);
+        service = EsbirkaServiceWiring.build(client, cache, subtreeBodyCache);
     }
 
     @Test

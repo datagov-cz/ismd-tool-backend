@@ -23,6 +23,7 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
 import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
+import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.apache.jena.rdf.model.Model;
@@ -36,7 +37,6 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Propagation;
@@ -71,7 +71,7 @@ import static org.mockito.Mockito.when;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
-@Import({DiagramInvisibleOverlayIntegrationTest.Beans.class, TransactionTemplateConfig.class,
+@Import({DiagramInvisibleOverlayIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
         com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
@@ -509,19 +509,12 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
             return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
         }
 
-        /** Proxied self so {@code commitLayout} runs in a transaction — see the version test for why. */
         @Bean OntologyLabelLookup ontologyLabelLookup() {
             return mock(OntologyLabelLookup.class);
         }
 
-        @Bean DiagramServiceImpl diagramServiceImpl(
-                DiagramRepository diagramRepo, OntologyMetadataRepository ontologyRepo,
-                ConceptMetadataRepository conceptRepo, OntologyDetailExtractor extractor,
-                JenaTDB2Repository tdb2, DiagramLayoutReconciler reconciler,
-                DiagramPendingEditRepository pendingEditRepo, DiagramMapper mapper,
-                OntologyLabelLookup labelLookup, @Lazy DiagramServiceImpl self) {
-            return new DiagramServiceImpl(diagramRepo, ontologyRepo, conceptRepo, extractor, tdb2,
-                    mock(DiagramMaterializeService.class), reconciler, pendingEditRepo, mapper, labelLookup, self);
+        @Bean DiagramMaterializeService diagramMaterializeService() {
+            return mock(DiagramMaterializeService.class);
         }
     }
 

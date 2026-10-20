@@ -1,18 +1,19 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberGroupModel;
+import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -36,27 +37,28 @@ class EsbirkaServiceImplTest {
     private static final String NORMA_ROOT = VERSION_IRI + "/dokument/norma";
 
     @Mock
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
 
     private EsbirkaServiceImpl service;
+    private EsbirkaLawContentReader contentReader;
 
     @BeforeEach
     void setUp() {
-        // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
-        // the same delegation path without a Spring context.
-        service = new EsbirkaServiceImpl(client, null, null, null);
-        ReflectionTestUtils.setField(service, "self", service);
+        EsbirkaLawVersionsReader versionsReader = new EsbirkaLawVersionsReader(client);
+        contentReader = new EsbirkaLawContentReader(client, versionsReader);
+        service = new EsbirkaServiceImpl(new EsbirkaLawSearch(client), versionsReader, contentReader,
+                new EsbirkaLegalSourceResolver(null, null));
     }
 
-    // -------- searchLaws --------
+    // -------- searchLawsGrouped: DTO mapping --------
 
     @Test
-    void searchLawsMapsModelToDtoWithDisplayNameAndEliPath() {
-        when(client.searchLaws("187", 20)).thenReturn(List.of(
-                new LawModel(LAW_IRI, "187/2006 Sb.", "187", 2006, "sb")));
-        List<LawDto> out = service.searchLaws("187", 20);
-        assertEquals(1, out.size());
-        LawDto dto = out.get(0);
+    void groupedSearchMapsModelToDtoWithDisplayNameAndEliPath() {
+        when(client.searchLawsByNumber("187", null, 20)).thenReturn(new LawNumberSearchModel(
+                List.of(new LawNumberGroupModel("187", 1)),
+                List.of(new LawModel(LAW_IRI, "187/2006 Sb.", "187", 2006, "sb")),
+                false));
+        LawDto dto = service.searchLawsGrouped("187", 20).getGroups().get(0).getLaws().get(0);
         assertEquals(LAW_IRI, dto.getIri());
         assertEquals("/eli/cz/sb/2006/187", dto.getEliPath());
         assertEquals("https://opendata.eselpoint.gov.cz", dto.getDomain());
@@ -65,12 +67,6 @@ class EsbirkaServiceImplTest {
         assertEquals("187", dto.getCislo());
         assertEquals(2006, dto.getRok());
         assertEquals("sb", dto.getSbirka());
-    }
-
-    @Test
-    void searchLawsEmptyReturnsEmpty() {
-        when(client.searchLaws(null, 20)).thenReturn(List.of());
-        assertEquals(List.of(), service.searchLaws(null, 20));
     }
 
     // -------- getVersions --------
@@ -132,41 +128,17 @@ class EsbirkaServiceImplTest {
         assertTrue(dto.isLatest());
     }
 
-    // -------- getFragments: validation + plumbing --------
-
-    @Test
-    void getFragmentsRejectsNonEsbirkaIri() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> service.getFragments("javascript:alert(1)"));
-        assertEquals("Neplatný identifikátor znění právního aktu.", ex.getMessage());
-    }
-
-    @Test
-    void getFragmentsAcceptsLegacyHostAndQueriesTheCanonicalIri() {
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of());
-
-        service.getFragments("https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01");
-
-        verify(client).fetchFragments(VERSION_IRI);
-    }
-
-    @Test
-    void getFragmentsEmptyReturnsEmpty() {
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of());
-        assertEquals(List.of(), service.getFragments(VERSION_IRI));
-    }
-
-    // -------- getFragments: tree assembly (G7) --------
+    // -------- assembleTree (G7) --------
 
     @Test
     void singleRootBuildsLinearChain() {
         // norma -> par_1 -> odst_1
         String par = VERSION_IRI + "/par_1";
         String odst = par + "/odst_1";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(odst, par, "§ 1 odst. 1", "odst", "0002")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(odst, par, "§ 1 odst. 1", "odst", "0002"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(1, out.size());
         FragmentDto root = out.get(0);
         assertEquals(par, root.getIri());
@@ -185,11 +157,11 @@ class EsbirkaServiceImplTest {
         String par = VERSION_IRI + "/par_1";
         String fn1 = poznamkyRoot + "/frag_1";
         String fn2 = poznamkyRoot + "/frag_2";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
                 new FragmentModel(fn1, poznamkyRoot, "1)", "frag", "9001"),
-                new FragmentModel(fn2, poznamkyRoot, "2)", "frag", "9002")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(fn2, poznamkyRoot, "2)", "frag", "9002"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(3, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(fn1, out.get(1).getIri());
@@ -205,11 +177,11 @@ class EsbirkaServiceImplTest {
         String dokument = VERSION_IRI + "/dokument";
         String norma = dokument + "/norma";
         String prilohy = dokument + "/prilohy";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(dokument, null, null, "dokument", "0001"),
                 new FragmentModel(norma, dokument, null, "norma", "0002"),
-                new FragmentModel(prilohy, dokument, null, "prilohy", "0003")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(prilohy, dokument, null, "prilohy", "0003"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         FragmentDto root = out.get(0);
         assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
         assertEquals("Přílohy", root.getChildren().get(1).getCitation());
@@ -220,11 +192,11 @@ class EsbirkaServiceImplTest {
         // Real IRIs include prilohy:2 / postfix:3; parseKindFromIri splits only on '_', so the
         // suffix arrives as part of the kind and must not fall through to a blank label.
         String dokument = VERSION_IRI + "/dokument";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(dokument, null, null, "dokument", "0001"),
                 new FragmentModel(dokument + "/prilohy", dokument, null, "prilohy", "0002"),
-                new FragmentModel(dokument + "/prilohy:2", dokument, null, "prilohy:2", "0003")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(dokument + "/prilohy:2", dokument, null, "prilohy:2", "0003"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         List<FragmentDto> containers = out.get(0).getChildren();
         assertEquals("Přílohy", containers.get(0).getCitation());
         assertEquals("Přílohy (2)", containers.get(1).getCitation());
@@ -236,21 +208,21 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = List.of(
                 new FragmentModel(dokument, null, null, "dokument", "0001"));
 
-        // The fragment-tree endpoint resolves no law metadata, so the root stays unlabelled.
-        assertNull(service.assembleTree(rows, VERSION_IRI).get(0).getCitation());
+        // Without law metadata (the subtree body cache) the root stays unlabelled.
+        assertNull(EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getCitation());
 
         // The content endpoint knows the citation and labels the root with it.
         assertEquals("Zákon č. 49/1997 Sb.",
-                service.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
+                EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
     }
 
     @Test
     void upstreamCitationWinsOverContainerLabel() {
         String dokument = VERSION_IRI + "/dokument";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(dokument, null, null, "dokument", "0001"),
-                new FragmentModel(dokument + "/norma", dokument, "Vlastní název", "norma", "0002")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(dokument + "/norma", dokument, "Vlastní název", "norma", "0002"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals("Vlastní název", out.get(0).getChildren().get(0).getCitation());
     }
 
@@ -260,10 +232,10 @@ class EsbirkaServiceImplTest {
         // "§ 1 frag 6619443" — the trailing number is an internal upstream id, not a citation.
         String par = VERSION_IRI + "/par_1";
         String textBlock = par + "/frag_6619443";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(textBlock, par, null, "frag", "0002")));
-        FragmentDto leaf = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+                new FragmentModel(textBlock, par, null, "frag", "0002"));
+        FragmentDto leaf = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
         assertNull(leaf.getCitation());
         assertFalse(leaf.isNavigable());
     }
@@ -277,12 +249,12 @@ class EsbirkaServiceImplTest {
         String par = VERSION_IRI + "/par_105";
         String wrapper = par + "/frag_1234029045";
         String text = wrapper + "/frag_2";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 105", "par", "0001"),
                 new FragmentModel(wrapper, par, null, "frag", "0002"),
-                new FragmentModel(text, wrapper, null, "frag", "0003")));
+                new FragmentModel(text, wrapper, null, "frag", "0003"));
 
-        FragmentDto node = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+        FragmentDto node = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
 
         assertFalse(node.isNavigable(), "a frag wrapping only text blocks is not a nav target");
         assertNull(node.getCitation());
@@ -298,13 +270,13 @@ class EsbirkaServiceImplTest {
         String outer = par + "/frag_1";
         String inner = outer + "/frag_2";
         String pism = inner + "/pism_b";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 9", "par", "0001"),
                 new FragmentModel(outer, par, null, "frag", "0002"),
                 new FragmentModel(inner, outer, null, "frag", "0003"),
-                new FragmentModel(pism, inner, "§ 9 písm. b)", "pism", "0004")));
+                new FragmentModel(pism, inner, "§ 9 písm. b)", "pism", "0004"));
 
-        FragmentDto o = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+        FragmentDto o = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
         assertTrue(o.isNavigable(), "outer wrapper must stay reachable");
         FragmentDto i = o.getChildren().get(0);
         assertTrue(i.isNavigable(), "inner wrapper must stay reachable");
@@ -318,11 +290,11 @@ class EsbirkaServiceImplTest {
         String par = VERSION_IRI + "/par_3";
         String grouper = par + "/frag_6619455";
         String pism = par + "/pism_a";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 3", "par", "0001"),
                 new FragmentModel(grouper, par, null, "frag", "0002"),
-                new FragmentModel(pism, grouper, "§ 3 písm. a)", "pism", "0003")));
-        FragmentDto node = service.getFragments(VERSION_IRI).get(0).getChildren().get(0);
+                new FragmentModel(pism, grouper, "§ 3 písm. a)", "pism", "0003"));
+        FragmentDto node = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getChildren().get(0);
         assertTrue(node.isNavigable());
         assertEquals(1, node.getChildren().size());
         assertTrue(node.getChildren().get(0).isNavigable());
@@ -348,7 +320,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(odst, par, null, "odst", "0005"),
                 new FragmentModel(pism, odst, null, "pism", "0006"));
 
-        List<FragmentDto> out = service.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
 
         FragmentDto root = out.get(0);
         assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
@@ -368,10 +340,10 @@ class EsbirkaServiceImplTest {
     void multiRootIsSupported() {
         String par1 = VERSION_IRI + "/par_1";
         String par2 = VERSION_IRI + "/par_2";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par1, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(par2, NORMA_ROOT, "§ 2", "par", "0002")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(par2, NORMA_ROOT, "§ 2", "par", "0002"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals(par1, out.get(0).getIri());
         assertEquals(par2, out.get(1).getIri());
@@ -386,10 +358,10 @@ class EsbirkaServiceImplTest {
         String par = NORMA_ROOT + "/par_1";
         String missingGrouper = par + "/frag_6660499";
         String text = missingGrouper + "/text_1";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0002")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0002"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(1, out.get(0).getChildren().size());
@@ -404,10 +376,10 @@ class EsbirkaServiceImplTest {
         String par = NORMA_ROOT + "/par_1";
         String prilohyRoot = VERSION_IRI + "/dokument/prilohy";
         String priloha = prilohyRoot + "/priloha_0";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(priloha, prilohyRoot + "/frag_6668611", "Příloha", "priloha", "9999")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(priloha, prilohyRoot + "/frag_6668611", "Příloha", "priloha", "9999"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(priloha, out.get(1).getIri());
@@ -433,9 +405,8 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(text, missingGrouper, "§ 1 text", "text", "0003"),
                 new FragmentModel(footnote, VERSION_IRI + "/dokument/poznamkypodcarou", "1)", "frag", "0004"),
                 new FragmentModel(annex, annexGrouper, "Příloha 1", "priloha", "0005"));
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(rows);
 
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
 
         // Walk the assembled tree and collect every IRI; must equal the 5 input IRIs.
         java.util.Set<String> seen = new java.util.HashSet<>();
@@ -459,10 +430,10 @@ class EsbirkaServiceImplTest {
         // and warn, rather than silently dropping it.
         String par = NORMA_ROOT + "/par_1";
         String ghost = VERSION_IRI + "/par_99/odst_5";
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(List.of(
+        List<FragmentModel> rows = List.of(
                 new FragmentModel(par, NORMA_ROOT, "§ 1", "par", "0001"),
-                new FragmentModel(ghost, ghost + "-no-such", "ghost", "odst", "0003")));
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+                new FragmentModel(ghost, ghost + "-no-such", "ghost", "odst", "0003"));
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals(par, out.get(0).getIri());
         assertEquals(ghost, out.get(1).getIri());
@@ -474,21 +445,20 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = new ArrayList<>();
         String parent = NORMA_ROOT;
         String tip = null;
-        for (int i = 1; i <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH + 2; i++) {
+        for (int i = 1; i <= EsbirkaFragmentTree.MAX_FRAGMENT_DEPTH + 2; i++) {
             String iri = VERSION_IRI + "/level_" + i;
             rows.add(new FragmentModel(iri, parent, "L" + i, "frag", String.format("%04d", i)));
             parent = iri;
             tip = iri;
         }
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(rows);
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(1, out.size());
 
         // capDepth fires when depth > MAX_FRAGMENT_DEPTH, clearing children of depth-MAX
         // nodes; so levels 1..MAX survive in the tree, level MAX+1 is trimmed.
         // Walking from level 1 to level MAX is MAX-1 hops; level MAX+1 has empty children.
         FragmentDto cursor = out.get(0);
-        for (int hop = 1; hop <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH; hop++) {
+        for (int hop = 1; hop <= EsbirkaFragmentTree.MAX_FRAGMENT_DEPTH; hop++) {
             assertEquals(1, cursor.getChildren().size(),
                     "expected one child at hop " + hop);
             cursor = cursor.getChildren().get(0);
@@ -500,16 +470,13 @@ class EsbirkaServiceImplTest {
     }
 
     @Test
-    void over5000RowsTriggersWarnLogButReturnsTree() {
+    void largeTreeAssemblesFully() {
         List<FragmentModel> rows = new ArrayList<>(5_001);
         for (int i = 0; i < 5_001; i++) {
             String iri = VERSION_IRI + "/par_" + i;
             rows.add(new FragmentModel(iri, NORMA_ROOT, "§ " + i, "par", String.format("%05d", i)));
         }
-        when(client.fetchFragments(VERSION_IRI)).thenReturn(rows);
-        List<FragmentDto> out = service.getFragments(VERSION_IRI);
-        // We don't assert the warn-log message here (covered by absence of failure);
-        // but the tree itself still assembles fully.
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI);
         assertEquals(5_001, out.size());
     }
 
@@ -517,7 +484,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentParsesNumberYearAndResolvesLatestVersion() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         String olderIri = LAW_IRI + "/2020-01-01";
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
@@ -547,7 +514,7 @@ class EsbirkaServiceImplTest {
     private static final String V_2020 = LAW_49_IRI + "/2020-01-01";
 
     private void stubLaw49() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_49_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_49_IRI)).thenReturn(List.of(
                 new LawVersionModel(V_2026, LocalDate.of(2026, 4, 1), null, "t", true),
@@ -638,32 +605,32 @@ class EsbirkaServiceImplTest {
 
     @Test
     void anIriAndItsNumberYearShareTheLawHalfOfTheCacheKey() {
-        assertEquals("49/1997", service.normalizeLawRef(V_2020));
-        assertEquals("49/1997", service.normalizeLawRef(LAW_49_IRI));
-        assertEquals(service.normalizeLawRef("49/1997"), service.normalizeLawRef(LAW_49_IRI));
+        assertEquals("49/1997", contentReader.normalizeLawRef(V_2020));
+        assertEquals("49/1997", contentReader.normalizeLawRef(LAW_49_IRI));
+        assertEquals(contentReader.normalizeLawRef("49/1997"), contentReader.normalizeLawRef(LAW_49_IRI));
     }
 
     @Test
     void versionIriCarriedByTheLawRefKeysItsOwnCacheEntry() {
         // Without this the version half is "" for every IRI, so two different znění of one act
         // would collide on the same key and serve each other's ~2 MB payload.
-        assertEquals(V_2020, service.resolveContentVersionIri(V_2020, null));
-        assertEquals(V_2026, service.resolveContentVersionIri(V_2026, null));
-        assertEquals("", service.resolveContentVersionIri(LAW_49_IRI, null));
-        assertEquals("", service.resolveContentVersionIri("49/1997", null));
+        assertEquals(V_2020, contentReader.resolveContentVersionIri(V_2020, null));
+        assertEquals(V_2026, contentReader.resolveContentVersionIri(V_2026, null));
+        assertEquals("", contentReader.resolveContentVersionIri(LAW_49_IRI, null));
+        assertEquals("", contentReader.resolveContentVersionIri("49/1997", null));
         // Explicit parameter wins, and a legacy host collapses onto the canonical entry.
-        assertEquals(V_2026, service.resolveContentVersionIri(V_2020, V_2026));
-        assertEquals(V_2020, service.resolveContentVersionIri("49/1997",
+        assertEquals(V_2026, contentReader.resolveContentVersionIri(V_2020, V_2026));
+        assertEquals(V_2020, contentReader.resolveContentVersionIri("49/1997",
                 "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49/2020-01-01"));
     }
 
     @Test
     void contentNavigationTreeIsFullyLabelled() {
-        // The navigation tree is built from /law/content, not /law/fragments. This walks the
+        // The navigation tree is built from /law/content. This walks the
         // real 49/1997 shape through getLawContent to prove the labels reach that response:
         // the document root and its containers used to render blank, taking the top two
         // navigation levels with them.
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -701,7 +668,7 @@ class EsbirkaServiceImplTest {
     void getLawContentAssemblesNestedBodyHtmlInDocumentOrder() {
         // Server-side bodyHtml: a document-ordered, nested tree of <section> wrappers, each
         // carrying its fragment's body (null for structural nodes) followed by its children.
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -759,7 +726,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentEmptyContentYieldsEmptyBodyHtml() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -772,7 +739,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentPicksLatestEvenWhenNotFirstRow() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         String latestIri = LAW_IRI + "/2026-04-01";
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
@@ -786,7 +753,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentTrimsAndStripsSbSuffix() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -798,7 +765,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentUnknownLawThrows() {
-        when(client.findLawByNumberYear("999", 1997)).thenReturn(java.util.Optional.empty());
+        when(client.findLaw("sb", "999", 1997)).thenReturn(java.util.Optional.empty());
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.getLawContent("999/1997"));
         assertEquals("Právní akt č. 999/1997 nebyl nalezen.", ex.getMessage());
@@ -806,7 +773,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentRejectsPartialInput() {
-        // bare number is the FE's cue to use /law/search instead
+        // bare number is the FE's cue to use /law/search/grouped instead
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> service.getLawContent("49"));
         assertEquals("Referenci zadejte ve tvaru číslo/rok (např. 49/1997).", ex.getMessage());
@@ -832,7 +799,7 @@ class EsbirkaServiceImplTest {
     @Test
     void getLawContentRendersSelectedVersionNotLatest() {
         String olderIri = LAW_IRI + "/2020-01-01";
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true),
@@ -856,7 +823,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentNullVersionIriFallsBackToLatest() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
@@ -871,7 +838,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentBlankVersionIriFallsBackToLatest() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -886,7 +853,7 @@ class EsbirkaServiceImplTest {
         // list can reject it.
         String foreignVersion =
                 "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/262/2026-04-01";
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -906,7 +873,7 @@ class EsbirkaServiceImplTest {
         // "nepatří k právnímu aktu" — a wrong-act error for a right-act request.
         String legacyVersion =
                 "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2006/187/2026-04-01";
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -919,7 +886,7 @@ class EsbirkaServiceImplTest {
 
     @Test
     void getLawContentRejectsNonEsbirkaVersionIri() {
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(VERSION_IRI, LocalDate.of(2026, 4, 1), null, "t", true)));
@@ -932,7 +899,7 @@ class EsbirkaServiceImplTest {
     @Test
     void getLawContentSingleArgOverloadStillRendersLatest() {
         // The pre-existing one-arg contract must be unchanged for existing callers.
-        when(client.findLawByNumberYear("49", 1997)).thenReturn(java.util.Optional.of(
+        when(client.findLaw("sb", "49", 1997)).thenReturn(java.util.Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LAW_IRI + "/2020-01-01", LocalDate.of(2020, 1, 1), null, "t", false),
@@ -949,31 +916,20 @@ class EsbirkaServiceImplTest {
         // normalizeLawRef is the SpEL key expression for @Cacheable on getLawContent
         // (#root.target.normalizeLawRef(#lawRef)). It MUST collapse trim/Sb.-suffix
         // variants to a single key, or equivalent refs each store a separate ~2 MB entry.
-        assertEquals("49/1997", service.normalizeLawRef("49/1997"));
-        assertEquals("49/1997", service.normalizeLawRef("  49/1997  "));
-        assertEquals("49/1997", service.normalizeLawRef("49/1997 Sb."));
-        assertEquals("49/1997", service.normalizeLawRef("  49/1997 Sb. "));
+        assertEquals("49/1997", contentReader.normalizeLawRef("49/1997"));
+        assertEquals("49/1997", contentReader.normalizeLawRef("  49/1997  "));
+        assertEquals("49/1997", contentReader.normalizeLawRef("49/1997 Sb."));
+        assertEquals("49/1997", contentReader.normalizeLawRef("  49/1997 Sb. "));
         // Leading-zero year is normalized via Integer parse (1997, not "1997 ").
-        assertEquals("262/2006", service.normalizeLawRef("262/2006 Sb."));
+        assertEquals("262/2006", contentReader.normalizeLawRef("262/2006 Sb."));
     }
 
     @Test
     void normalizeLawRefRejectsPartialInputLikeGetLawContent() {
         // Same parser as getLawContent, so the cache-key path rejects junk identically
         // rather than producing a bogus key.
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("49"));
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("abc/1997"));
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("  "));
-    }
-
-    // -------- DTO mapping edge cases --------
-
-    @Test
-    void searchLawsHandlesNullCislo() {
-        when(client.searchLaws(null, 20)).thenReturn(List.of(
-                new LawModel(LAW_IRI, "187/2006 Sb.", null, 2006, "sb")));
-        List<LawDto> out = service.searchLaws(null, 20);
-        assertNull(out.get(0).getCislo());
-        assertEquals("Zákon č. 187/2006 Sb.", out.get(0).getDisplayName());
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("49"));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("abc/1997"));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("  "));
     }
 }

@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.repository;
 
+import com.dia.ismdtoolbackend.config.FusekiConnectionConfig;
 import org.apache.jena.query.Query;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
@@ -31,7 +32,8 @@ class JenaTDB2RepositoryReconcilerReadsTest {
         private final RDFConnection mockConn;
 
         TestableJenaTDB2Repository(HttpClient httpClient, Semaphore semaphore, int timeout, RDFConnection mockConn) {
-            super(httpClient, semaphore, timeout, new MockEnvironment());
+            super(new FusekiConnectionConfig(httpClient, semaphore, timeout, "http://localhost/unused"),
+                    new MockEnvironment());
             this.mockConn = mockConn;
         }
 

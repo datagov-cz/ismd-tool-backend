@@ -338,6 +338,12 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.UPLOAD_IRI_TRAILING_SLASH_COLLISION, e.getMessage());
     }
 
+    @ExceptionHandler(OntologyUploadInProgressException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadInProgress(OntologyUploadInProgressException e) {
+        log.warn("Ontology upload rejected, the vocabulary is already being uploaded: {}", e.getMessage());
+        return error(ErrorCode.UPLOAD_IN_PROGRESS, e.getMessage());
+    }
+
     /** 502, matching the diagram handlers: the failing party is the RDF store. */
     @ExceptionHandler(OntologyUploadRdfStoreException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadRdfStore(OntologyUploadRdfStoreException e) {

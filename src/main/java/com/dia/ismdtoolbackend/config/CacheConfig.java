@@ -3,7 +3,9 @@ package com.dia.ismdtoolbackend.config;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.cache.CacheManager;
+import org.springframework.core.env.Environment;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
@@ -22,7 +24,10 @@ import java.util.concurrent.TimeUnit;
  *       24 h TTL (fragments are immutable; only is-latest can shift when a new
  *       version is published).</li>
  *   <li>{@code esbirkaLawContent} — whole-version content trees (fragment tree + HTML
- *       bodies), 24 h TTL, capped at 200 entries (~2 MB each; published text is immutable).</li>
+ *       bodies), 24 h TTL (published text is immutable).</li>
+ *   <li>{@code esbirkaVersionContent} — a version's fragments as read from the e-Sbírka REST
+ *       API (all pages), 24 h TTL. Splits the weight budget with {@code esbirkaLawContent}.</li>
+ *   <li>{@code esbirkaRestVersions} — REST version lists per law, 5 min TTL.</li>
  *   <li>{@code esbirkaVersionSubtreeBodies} — per-version fragment IRI → assembled subtree
  *       HTML, backing the {@code /resolve} body fallback for structural fragments. Same
  *       TTL/sizing as {@code esbirkaLawContent}.</li>
@@ -41,10 +46,11 @@ public class CacheConfig {
     static final long ESBIRKA_RESOLUTION_TTL_HOURS = 24;
     static final long ESBIRKA_RESOLUTION_MAX_ENTRIES = 5_000;
 
-    // Whole-version content payloads are large (~2 MB each), so cap entry count tightly
-    // and keep a long TTL — a published version's text is immutable.
+    // Whole-version content runs to ~10 MB for the largest laws: bounded by weight
+    // (esbirka.cache-budget-mb), with a long TTL — a published version's text is immutable.
     static final long ESBIRKA_CONTENT_TTL_HOURS = 24;
-    static final long ESBIRKA_CONTENT_MAX_ENTRIES = 200;
+    static final long ESBIRKA_REST_VERSIONS_TTL_MINUTES = 5;
+    static final long ESBIRKA_SUBTREE_MAX_ENTRIES = 200;
 
     static final long CONCEPT_METADATA_TTL_HOURS = 24;
     static final long CONCEPT_METADATA_MAX_ENTRIES = 10_000;
@@ -56,8 +62,10 @@ public class CacheConfig {
     static final long NKD_PUBLISHED_MAX_ENTRIES = 10_000;
 
     @Bean
-    public CacheManager cacheManager() {
+    public CacheManager cacheManager(ObjectProvider<EsbirkaConfig> esbirkaConfig, Environment environment) {
         CaffeineCacheManager mgr = new CaffeineCacheManager();
+        EsbirkaConfig esbirka = esbirkaConfig.getIfAvailable(EsbirkaConfig::new);
+        long budgetBytes = esbirka.getCacheBudgetMb() * 1024L * 1024L;
 
         mgr.registerCustomCache("esbirkaLawSearch", Caffeine.newBuilder()
                 .expireAfterWrite(ESBIRKA_CATALOGUE_TTL_MINUTES, TimeUnit.MINUTES)
@@ -74,18 +82,26 @@ public class CacheConfig {
                 .maximumSize(ESBIRKA_RESOLUTION_MAX_ENTRIES)
                 .build());
 
-        mgr.registerCustomCache("esbirkaLawContent", Caffeine.newBuilder()
-                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
-                .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
+        boolean rest = "rest".equals(environment.getProperty("esbirka.provider", "sparql"));
+        long versionContentBytes = rest ? budgetBytes / 2 : 0;
+        mgr.registerCustomCache("esbirkaLawContent", contentCache(budgetBytes - versionContentBytes));
+        mgr.registerCustomCache("esbirkaVersionContent", contentCache(versionContentBytes));
+
+        // Short: dedups the historie call within one content load or burst of /resolve calls.
+        // esbirkaLawVersions caches /law/versions on top, so a new version shows within ~65 min.
+        mgr.registerCustomCache("esbirkaRestVersions", Caffeine.newBuilder()
+                .expireAfterWrite(ESBIRKA_REST_VERSIONS_TTL_MINUTES, TimeUnit.MINUTES)
+                .maximumSize(ESBIRKA_CATALOGUE_MAX_ENTRIES)
                 .build());
 
         // Per-version map of fragment IRI -> assembled subtree HTML, backing the /resolve
         // body fallback for structural fragments (document root, containers) that carry no
         // obsah of their own. Keyed by version IRI, so one fetch serves every container of
-        // that znění. Same immutability and sizing model as esbirkaLawContent.
+        // that znění. Built from fetchVersionContent, which the REST client serves from
+        // esbirkaVersionContent, so a version is not fetched twice.
         mgr.registerCustomCache("esbirkaVersionSubtreeBodies", Caffeine.newBuilder()
                 .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
-                .maximumSize(ESBIRKA_CONTENT_MAX_ENTRIES)
+                .maximumSize(ESBIRKA_SUBTREE_MAX_ENTRIES)
                 .build());
 
         // Backs the referenced-concept resolution engine (ReferencedConceptResolutionEngine),
@@ -101,7 +117,7 @@ public class CacheConfig {
         // NKD-published projections (NkdSparqlClient.PUBLISHED_RESOURCE_CACHE). Key shapes share it,
         // all NKD-sourced with the same 24h-TTL freshness model: 'concept:' / 'conceptWithScheme:' /
         // 'ontology:' / 'ontologyRaw:' from NkdSparqlClient, and 'conceptList:' from
-        // NkdDetailServiceImpl.listOntologyConcepts.
+        // NkdConceptListReader.listOntologyConcepts.
         //
         // Sizing note: maximumSize counts ENTRIES, not bytes, and 'ontologyRaw:' holds a whole Jena
         // model for one vocabulary (~400 KB for a 381-concept scheme) against ~1 KB for a 'concept:'
@@ -123,5 +139,13 @@ public class CacheConfig {
                 .build());
 
         return mgr;
+    }
+
+    private static com.github.benmanes.caffeine.cache.Cache<Object, Object> contentCache(long maxBytes) {
+        return Caffeine.newBuilder()
+                .expireAfterWrite(ESBIRKA_CONTENT_TTL_HOURS, TimeUnit.HOURS)
+                .maximumWeight(maxBytes)
+                .weigher(new EsbirkaContentWeigher())
+                .build();
     }
 }

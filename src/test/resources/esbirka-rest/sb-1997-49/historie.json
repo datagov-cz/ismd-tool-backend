@@ -1,0 +1,518 @@
+{
+ "historie": [
+  {
+   "datumUcinnostiZneniOd": "2025-11-01",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2025-11-01",
+   "typZneni": "AKTUALNI",
+   "novely": [
+    {
+     "staleUrl": "/sb/2025/370",
+     "kodDokumentuSbirky": "370/2025 Sb."
+    }
+   ],
+   "cisloZneni": 34,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2025-07-01",
+   "datumUcinnostiZneniDo": "2025-10-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2025-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2025/218",
+     "kodDokumentuSbirky": "218/2025 Sb."
+    }
+   ],
+   "cisloZneni": 33,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2024-01-01",
+   "datumUcinnostiZneniDo": "2025-06-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2024-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2019/277",
+     "kodDokumentuSbirky": "277/2019 Sb."
+    },
+    {
+     "staleUrl": "/sb/2021/284",
+     "kodDokumentuSbirky": "284/2021 Sb."
+    },
+    {
+     "staleUrl": "/sb/2023/152",
+     "kodDokumentuSbirky": "152/2023 Sb."
+    },
+    {
+     "staleUrl": "/sb/2023/464",
+     "kodDokumentuSbirky": "464/2023 Sb."
+    }
+   ],
+   "cisloZneni": 32,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2023-07-01",
+   "datumUcinnostiZneniDo": "2023-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2023-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2022/431",
+     "kodDokumentuSbirky": "431/2022 Sb."
+    },
+    {
+     "staleUrl": "/sb/2023/152",
+     "kodDokumentuSbirky": "152/2023 Sb."
+    }
+   ],
+   "cisloZneni": 31,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2023-01-01",
+   "datumUcinnostiZneniDo": "2023-06-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2023-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2022/431",
+     "kodDokumentuSbirky": "431/2022 Sb."
+    }
+   ],
+   "cisloZneni": 30,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2022-09-01",
+   "datumUcinnostiZneniDo": "2022-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2022-09-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2022/240",
+     "kodDokumentuSbirky": "240/2022 Sb."
+    }
+   ],
+   "cisloZneni": 29,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2022-02-01",
+   "datumUcinnostiZneniDo": "2022-08-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2022-02-01",
+   "typZneni": "MINULE",
+   "novely": [],
+   "cisloZneni": 28,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2019-04-24",
+   "datumUcinnostiZneniDo": "2022-01-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2019-04-24",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2019/111",
+     "kodDokumentuSbirky": "111/2019 Sb."
+    }
+   ],
+   "cisloZneni": 27,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2018-01-01",
+   "datumUcinnostiZneniDo": "2019-04-23",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2018-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2017/225",
+     "kodDokumentuSbirky": "225/2017 Sb."
+    }
+   ],
+   "cisloZneni": 26,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2017-11-16",
+   "datumUcinnostiZneniDo": "2017-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2017-11-16",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2017/261",
+     "kodDokumentuSbirky": "261/2017 Sb."
+    }
+   ],
+   "cisloZneni": 25,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2017-07-01",
+   "datumUcinnostiZneniDo": "2017-11-15",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2017-07-01",
+   "typZneni": "MINULE",
+   "novely": [],
+   "cisloZneni": 24,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2017-04-01",
+   "datumUcinnostiZneniDo": "2017-06-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2017-04-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/319",
+     "kodDokumentuSbirky": "319/2016 Sb."
+    }
+   ],
+   "cisloZneni": 23,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2016-09-19",
+   "datumUcinnostiZneniDo": "2017-03-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2016-09-19",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/298",
+     "kodDokumentuSbirky": "298/2016 Sb."
+    }
+   ],
+   "cisloZneni": 22,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2015-02-01",
+   "datumUcinnostiZneniDo": "2016-09-18",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2015-02-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2014/127",
+     "kodDokumentuSbirky": "127/2014 Sb."
+    }
+   ],
+   "cisloZneni": 21,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2015-01-01",
+   "datumUcinnostiZneniDo": "2015-01-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2015-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2014/250",
+     "kodDokumentuSbirky": "250/2014 Sb."
+    }
+   ],
+   "cisloZneni": 20,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2012-04-01",
+   "datumUcinnostiZneniDo": "2014-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2012-04-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2011/375",
+     "kodDokumentuSbirky": "375/2011 Sb."
+    }
+   ],
+   "cisloZneni": 19,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2012-03-27",
+   "datumUcinnostiZneniDo": "2012-03-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2012-03-27",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2006/225",
+     "kodDokumentuSbirky": "225/2006 Sb."
+    }
+   ],
+   "cisloZneni": 18,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2011-08-01",
+   "datumUcinnostiZneniDo": "2012-03-26",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2011-08-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2011/137",
+     "kodDokumentuSbirky": "137/2011 Sb."
+    }
+   ],
+   "cisloZneni": 17,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2011-02-01",
+   "datumUcinnostiZneniDo": "2011-07-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2011-02-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2010/407",
+     "kodDokumentuSbirky": "407/2010 Sb."
+    }
+   ],
+   "cisloZneni": 16,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2011-01-01",
+   "datumUcinnostiZneniDo": "2011-01-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2011-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2009/281",
+     "kodDokumentuSbirky": "281/2009 Sb."
+    }
+   ],
+   "cisloZneni": 15,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2010-07-01",
+   "datumUcinnostiZneniDo": "2010-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2010-07-01",
+   "typZneni": "MINULE",
+   "novely": [],
+   "cisloZneni": 14,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2010-05-17",
+   "datumUcinnostiZneniDo": "2010-06-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2010-05-17",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2009/301",
+     "kodDokumentuSbirky": "301/2009 Sb."
+    }
+   ],
+   "cisloZneni": 13,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2010-01-01",
+   "datumUcinnostiZneniDo": "2010-05-16",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2010-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2008/274",
+     "kodDokumentuSbirky": "274/2008 Sb."
+    },
+    {
+     "staleUrl": "/sb/2009/301",
+     "kodDokumentuSbirky": "301/2009 Sb."
+    }
+   ],
+   "cisloZneni": 12,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2008-07-01",
+   "datumUcinnostiZneniDo": "2009-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2008-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2008/124",
+     "kodDokumentuSbirky": "124/2008 Sb."
+    }
+   ],
+   "cisloZneni": 11,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2007-01-01",
+   "datumUcinnostiZneniDo": "2008-06-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2007-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2006/186",
+     "kodDokumentuSbirky": "186/2006 Sb."
+    }
+   ],
+   "cisloZneni": 10,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2006-07-01",
+   "datumUcinnostiZneniDo": "2006-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2006-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2006/225",
+     "kodDokumentuSbirky": "225/2006 Sb."
+    }
+   ],
+   "cisloZneni": 9,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2006-01-01",
+   "datumUcinnostiZneniDo": "2006-06-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2006-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2005/413",
+     "kodDokumentuSbirky": "413/2005 Sb."
+    }
+   ],
+   "cisloZneni": 8,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2004-05-01",
+   "datumUcinnostiZneniDo": "2005-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2004-05-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2004/167",
+     "kodDokumentuSbirky": "167/2004 Sb."
+    }
+   ],
+   "cisloZneni": 7,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2003-01-01",
+   "datumUcinnostiZneniDo": "2004-04-30",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2003-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2002/258",
+     "kodDokumentuSbirky": "258/2002 Sb."
+    }
+   ],
+   "cisloZneni": 6,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2002-06-28",
+   "datumUcinnostiZneniDo": "2002-12-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2002-06-28",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2002/258",
+     "kodDokumentuSbirky": "258/2002 Sb."
+    }
+   ],
+   "cisloZneni": 5,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2000-06-12",
+   "datumUcinnostiZneniDo": "2002-06-27",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/2000-06-12",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2000/146",
+     "kodDokumentuSbirky": "146/2000 Sb."
+    }
+   ],
+   "cisloZneni": 4,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "1999-11-01",
+   "datumUcinnostiZneniDo": "2000-06-11",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/1999-11-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/1999/189",
+     "kodDokumentuSbirky": "189/1999 Sb."
+    }
+   ],
+   "cisloZneni": 3,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "1997-04-01",
+   "datumUcinnostiZneniDo": "1999-10-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/1997-04-01",
+   "typZneni": "MINULE",
+   "novely": [],
+   "cisloZneni": 2,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "1997-03-28",
+   "datumUcinnostiZneniDo": "1997-03-31",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/1997-03-28",
+   "typZneni": "MINULE_NEUCINNE",
+   "novely": [],
+   "cisloZneni": 1,
+   "poznamky": [
+    "Minulé neúčinné znění právního aktu."
+   ]
+  },
+  {
+   "datumUcinnostiZneniOd": "1997-03-28",
+   "datumCasVyhlaseni": "1997-03-28T00:00:00.000+01:00",
+   "staleUrl": "/sb/1997/49/0000-00-00",
+   "typZneni": "VYHLASENE",
+   "novely": [],
+   "poznamky": []
+  }
+ ]
+}

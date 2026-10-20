@@ -142,9 +142,9 @@ class SecurityFilterChainIntegrationTest {
             "/api/rpp/agenda/search",
             "/api/rpp/ais/search",
             // e-Sbírka read endpoints
-            "/api/eli/law/search",
+            "/api/eli/law/search/grouped",
             "/api/eli/law/versions",
-            "/api/eli/law/fragments",
+            "/api/eli/law/content",
             "/api/eli/resolve",
             // Codelist (wildcard)
             "/api/codelist/property-datatypes",
@@ -283,6 +283,17 @@ class SecurityFilterChainIntegrationTest {
         assertThat(status)
                 .as("Unmatched endpoint should be denied (got %d)", status)
                 .isIn(401, 403);
+    }
+
+    /** Deleted e-Sbírka endpoints: no matcher left, so denyAll answers before any 404. */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/eli/law/search", "/api/eli/law/fragments"})
+    @WithMockSecurityUser
+    void removedEsbirkaEndpoint_deniedEvenWithAuth(String path) throws Exception {
+        mockMvc.perform(get(path)
+                        .with(testSecurityContext())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 
     @Test

@@ -21,7 +21,7 @@ import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Pins the {@code MemberIndex} invariants on the whole-ontology detail path. The index replaced
+ * Pins the {@code DetailMemberIndex} invariants on the whole-ontology detail path. The index replaced
  * two O(N^2) full rescans with a single-pass build, and the behaviours it had to preserve were
  * verified only by a JSON body diff at the time — no test covered them.
  *

@@ -29,47 +29,6 @@ public class EsbirkaSPARQLQuery {
     private static final String NS = "https://slovník.gov.cz/datový/sbírka/pojem/";
 
     /**
-     * Search laws by citation substring (server-side CONTAINS on citace-právního-aktu).
-     * citace is ASCII-only so plain LCASE works. Blank q omits the FILTER and orders
-     * rok desc, číslo asc.
-     *
-     * <p>With q, rows are ranked by where the needle matched: 0 = číslo equals it,
-     * 1 = citace starts with it, 2 = anything else; then rok desc, citace. Ordering by citace
-     * alone sorted lexicographically, so "49" put 1/1949 and 10/1949 ahead of 49/1997 — the
-     * act the user asked for ranked below every unrelated act of that year.
-     */
-    public static String buildLawSearchQuery(String q, int limit) {
-        boolean hasFilter = q != null && !q.isBlank();
-        StringBuilder sb = new StringBuilder();
-        sb.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n");
-        sb.append("SELECT ?akt ?citace ?cislo ?rok ?sbirka WHERE {\n");
-        sb.append("  ?akt a <").append(NS).append("právní-akt> ;\n");
-        sb.append("       <").append(NS).append("citace-právního-aktu> ?citace ;\n");
-        sb.append("       <").append(NS).append("číslo-předpisu> ?cislo ;\n");
-        sb.append("       <").append(NS).append("rok-předpisu> ?rok ;\n");
-        sb.append("       <").append(NS).append("patří-do-sbírky> ?sbirka .\n");
-        if (hasFilter) {
-            sb.append("  FILTER(CONTAINS(LCASE(STR(?citace)), LCASE(?qNeedle)))\n");
-            sb.append("  BIND(IF(LCASE(STR(?cislo)) = LCASE(?qNeedle), 0,\n");
-            sb.append("       IF(STRSTARTS(LCASE(STR(?citace)), LCASE(?qNeedle)), 1, 2)) AS ?rank)\n");
-        }
-        sb.append("}\n");
-        if (hasFilter) {
-            sb.append("ORDER BY ?rank DESC(?rok) ?citace\n");
-        } else {
-            sb.append("ORDER BY DESC(?rok) ?cislo\n");
-        }
-        sb.append("LIMIT ").append(limit);
-
-        ParameterizedSparqlString pss = new ParameterizedSparqlString();
-        pss.setCommandText(sb.toString());
-        if (hasFilter) {
-            pss.setLiteral("qNeedle", q);
-        }
-        return pss.toString();
-    }
-
-    /**
      * Step 1 of the grouped search: distinct předpis numbers prefix-matching {@code cisloPrefix},
      * each with its dataset-wide act count, capped at {@code limit} <em>groups</em>.
      *
@@ -210,33 +169,6 @@ public class EsbirkaSPARQLQuery {
                 ORDER BY DESC(?ucinnostOd)
                 """.formatted(NS));
         pss.setIri("inputAkt", lawIri);
-        return pss.toString();
-    }
-
-    /**
-     * All fragments of a given version with parent edge and lex-sortable order key.
-     * Top-level fragments have parent = <versionIri>/dokument/norma.
-     * versionIri must be canonicalized and validated by EsbirkaServiceImpl before it reaches here.
-     *
-     * <p>Only {@code pořadí} may be required — a required join upstream stops populating
-     * returns zero rows and renders the law blank. {@code citace} is absent dataset-wide and
-     * callers derive it from IRI path segments; document roots carry no {@code má-předka}.
-     */
-    public static String buildFragmentTreeQuery(String versionIri) {
-        ParameterizedSparqlString pss = new ParameterizedSparqlString();
-        pss.setCommandText("""
-                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-                SELECT ?fragment ?parent ?citace ?order
-                WHERE {
-                  ?inputZneni <%1$smá-fragment-znění> ?fragment .
-                  ?fragment <%1$spořadí-fragmentu-znění-právního-aktu> ?order .
-                  OPTIONAL { ?fragment <%1$smá-předka> ?parent }
-                  OPTIONAL { ?fragment <%1$scitace-označení-fragmentu-znění-právního-aktu> ?citace }
-                }
-                ORDER BY ?order
-                """.formatted(NS));
-        pss.setIri("inputZneni", versionIri);
         return pss.toString();
     }
 
