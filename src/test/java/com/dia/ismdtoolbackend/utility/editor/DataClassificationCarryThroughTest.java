@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * overlay — can no longer silently strip the classification.
  *
  * <p>These tests pin that guard (so it is not silently removed) and prove the carry-through path —
- * {@code ConceptServiceImpl.carryCurrentDataClassification} passes the CURRENT value through when the
+ * {@code WorkingCopySyncOperation.carryCurrentDataClassification} passes the CURRENT value through when the
  * user did not accept the field.
  */
 class DataClassificationCarryThroughTest {

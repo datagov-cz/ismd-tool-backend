@@ -47,10 +47,14 @@ class IsmdSearchProviderTest {
         // Baseline: labels resolve to nothing. An unstubbed mock would return null and NPE,
         // making "Fuseki is down" the fixture default rather than a case a test opts into.
         lenient().when(ontologyLabelLookup.labelsByGraph(any())).thenReturn(Map.of());
+        IsmdFusekiSearch fusekiSearch = new IsmdFusekiSearch(jenaTDB2Repository);
+        VisibleGraphResolver visibleGraphs = new VisibleGraphResolver(ontologyMetadataRepository);
         return new IsmdSearchProvider(
-                ontologyMetadataRepository, conceptMetadataRepository,
-                jenaTDB2Repository, diagramSearchLookup, ontologyLabelLookup,
-                directExecutor, 10_000L, 10_000L);
+                new IsmdOntologySearch(ontologyMetadataRepository, conceptMetadataRepository,
+                        fusekiSearch, visibleGraphs, directExecutor, 10_000L),
+                new IsmdDiagramSearch(diagramSearchLookup, ontologyLabelLookup),
+                new IsmdConceptSearch(conceptMetadataRepository, jenaTDB2Repository,
+                        fusekiSearch, visibleGraphs, directExecutor, 10_000L, 10_000L));
     }
 
     // --- Phase 3 tests ---

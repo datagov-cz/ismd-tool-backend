@@ -23,6 +23,7 @@ import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.OntologyServiceWiring;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
@@ -33,7 +34,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -107,7 +107,6 @@ class OntologyServiceImplTest {
     @Mock
     private NkdDetailService nkdDetailService;
 
-    @InjectMocks
     private OntologyServiceImpl ontologyService;
 
     private OntologyMetadataEntity testOntologyEntity;
@@ -119,6 +118,12 @@ class OntologyServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        ontologyService = OntologyServiceWiring.build(ontologyMetadataRepository, metadataTouchService,
+                conceptMetadataRepository, validationReportRepository, jenaTDB2Repository, commentRepository,
+                ontologyMetadataMapper, conceptMetadataMapper, ontologyEditor, detailExtractor, deviationChecker,
+                outboxWriter, outboxRepository, outboxRelayTrigger, null, null, nkdSnapshotService, null,
+                nkdDetailService);
+
         testOntologyEntity = new OntologyMetadataEntity();
         testOntologyEntity.setId(TEST_ONTOLOGY_ID);
         testOntologyEntity.setSlug(TEST_ONTOLOGY_SLUG);
@@ -136,7 +141,6 @@ class OntologyServiceImplTest {
         ValidationReportEntity validationReport = new ValidationReportEntity();
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(validationReport));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
 
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
@@ -160,22 +164,20 @@ class OntologyServiceImplTest {
     }
 
     @Test
-    void deleteOntology_EmptyModel() {
+    void deleteOntology_neverReadsTheGraph() {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(false);
 
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
+        ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
-        assertTrue(exception.getMessage().contains("prázdný"));
-        verify(jenaTDB2Repository, never()).deleteGraph(anyString());
+        verify(jenaTDB2Repository, never()).graphHasData(anyString());
+        verify(outboxWriter).enqueueDeleteGraph(TEST_GRAPH_NAME);
+        verify(ontologyMetadataRepository).deleteById(TEST_ONTOLOGY_ID);
     }
 
     @Test
     void deleteOntology_NoValidationReport() throws OntologyException {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
 
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
@@ -523,7 +525,7 @@ class OntologyServiceImplTest {
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(jenaTDB2Repository.countExternalDomainMembers(eq(TEST_GRAPH_NAME), anyList()))
-                .thenReturn(java.util.Map.of(classIri, new JenaTDB2Repository.ForeignMemberCount(3, 1)));
+                .thenReturn(java.util.Map.of(classIri, new ForeignMemberCount(3, 1)));
 
         OntologyDetailModel result = ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
 

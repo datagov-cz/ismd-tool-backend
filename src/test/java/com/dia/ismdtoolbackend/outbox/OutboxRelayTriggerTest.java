@@ -69,6 +69,8 @@ class OutboxRelayTriggerTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void reset() {
+        // The Postgres container is shared by every subclass; start from an empty table.
+        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
         tdb2.reset();
         config.setBatchSize(100);
         config.setMaxAttempts(10);

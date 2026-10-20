@@ -16,7 +16,7 @@ import java.util.Map;
 import static com.dia.constants.VocabularyConstants.*;
 
 /**
- * Shared test factory for constructing RDF models used by ConceptProcessor and TurtleFormatterUtil tests.
+ * Shared test factory for constructing RDF models used by ConceptJsonMapper and TurtleFormatterUtil tests.
  */
 public final class RdfTestModelFactory {
 

@@ -30,7 +30,9 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import java.util.List;
 import java.io.IOException;
 
 @Slf4j
@@ -338,6 +340,20 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.UPLOAD_IRI_TRAILING_SLASH_COLLISION, e.getMessage());
     }
 
+    @ExceptionHandler(OntologyUploadConflictingTypesException.class)
+    public ResponseEntity<ApiResponseDto<List<String>>> handleOntologyUploadConflictingTypes(
+            OntologyUploadConflictingTypesException e) {
+        log.warn("Ontology upload rejected, concepts typed as both property and relationship: {}",
+                e.getConceptIris());
+        return error(ErrorCode.UPLOAD_CONCEPT_TYPE_CONFLICT, e.getMessage(), e.getConceptIris());
+    }
+
+    @ExceptionHandler(OntologyUploadInProgressException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadInProgress(OntologyUploadInProgressException e) {
+        log.warn("Ontology upload rejected, the vocabulary is already being uploaded: {}", e.getMessage());
+        return error(ErrorCode.UPLOAD_IN_PROGRESS, e.getMessage());
+    }
+
     /** 502, matching the diagram handlers: the failing party is the RDF store. */
     @ExceptionHandler(OntologyUploadRdfStoreException.class)
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadRdfStore(OntologyUploadRdfStoreException e) {
@@ -416,6 +432,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleMissingParameter(MissingServletRequestParameterException e) {
         log.warn("Missing required parameter '{}'", e.getParameterName());
         String msg = "Chybí povinný parametr '" + e.getParameterName() + "'.";
+        return error(ErrorCode.MISSING_PARAMETER, msg);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleMissingPart(MissingServletRequestPartException e) {
+        log.warn("Missing required request part '{}'", e.getRequestPartName());
+        String msg = "Chybí povinná část požadavku '" + e.getRequestPartName() + "'.";
         return error(ErrorCode.MISSING_PARAMETER, msg);
     }
 

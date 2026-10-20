@@ -19,7 +19,7 @@ import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit coverage for {@link JenaTDB2Repository#projectResolutions} — specifically the
+ * Unit coverage for {@link ConceptResolutionProjection#projectResolutions} — specifically the
  * relationship domain/range projection: a relationship concept (rdf:type {@code …/vztah})
  * must yield iri-only domain/range stubs for the resolver's second hop, while
  * non-relationships must not.
@@ -50,7 +50,7 @@ class JenaTDB2RepositoryProjectResolutionsTest {
         rel.addProperty(RDFS.domain, res(m, DOMAIN_IRI));
         rel.addProperty(RDFS.range, res(m, RANGE_IRI));
 
-        Map<String, ResolvedConceptDto> out = JenaTDB2Repository.projectResolutions(m, SearchSource.ISMD);
+        Map<String, ResolvedConceptDto> out = ConceptResolutionProjection.projectResolutions(m, SearchSource.ISMD);
 
         ResolvedConceptDto dto = out.get(REL_IRI);
         assertThat(dto).isNotNull();
@@ -77,7 +77,7 @@ class JenaTDB2RepositoryProjectResolutionsTest {
         rel.addProperty(RDFS.domain, res(m, DOMAIN_IRI));
         rel.addProperty(RDFS.range, res(m, RANGE_IRI));
 
-        Map<String, ResolvedConceptDto> out = JenaTDB2Repository.projectResolutions(m, SearchSource.NKD);
+        Map<String, ResolvedConceptDto> out = ConceptResolutionProjection.projectResolutions(m, SearchSource.NKD);
 
         ResolvedConceptDto dto = out.get(REL_IRI);
         assertThat(dto).isNotNull();
@@ -98,7 +98,7 @@ class JenaTDB2RepositoryProjectResolutionsTest {
         // No rdf:type vztah; even if stray domain/range triples are present they must be ignored.
         clazz.addProperty(RDFS.domain, res(m, DOMAIN_IRI));
 
-        Map<String, ResolvedConceptDto> out = JenaTDB2Repository.projectResolutions(m, SearchSource.ISMD);
+        Map<String, ResolvedConceptDto> out = ConceptResolutionProjection.projectResolutions(m, SearchSource.ISMD);
 
         ResolvedConceptDto dto = out.get(CLASS_IRI);
         assertThat(dto).isNotNull();
@@ -117,7 +117,7 @@ class JenaTDB2RepositoryProjectResolutionsTest {
         // domain present, range absent
         rel.addProperty(RDFS.domain, res(m, DOMAIN_IRI));
 
-        Map<String, ResolvedConceptDto> out = JenaTDB2Repository.projectResolutions(m, SearchSource.ISMD);
+        Map<String, ResolvedConceptDto> out = ConceptResolutionProjection.projectResolutions(m, SearchSource.ISMD);
 
         ResolvedConceptDto dto = out.get(REL_IRI);
         assertThat(dto.resolvedDomain()).isNotNull();

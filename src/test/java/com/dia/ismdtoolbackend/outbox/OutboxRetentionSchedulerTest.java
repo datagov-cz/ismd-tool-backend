@@ -49,6 +49,8 @@ class OutboxRetentionSchedulerTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void reset() {
+        // The Postgres container is shared by every subclass; start from an empty table.
+        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
         config.setDoneRetention(Duration.ofDays(7));
     }
 

@@ -103,6 +103,21 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
     }
 
     @Test
+    void deletesOntologyWhoseGraphIsMissing() {
+        service.createWithConcepts(sample(), "creator");
+        Long id = ontologies.findByGraphName(GRAPH).orElseThrow().getId();
+        rdf.reset();
+        assertFalse(rdf.graphHasData(GRAPH));
+
+        service.deleteOntology(id);
+
+        assertEquals(0, ontologies.count());
+        assertEquals(0, concepts.count());
+        assertTrue(outbox.findAll().stream().allMatch(row -> row.getStatus() == OutboxStatus.DONE));
+        assertFalse(rdf.graphHasData(GRAPH));
+    }
+
+    @Test
     void repeatRequestConflictsWithoutChangingStoredGraph() {
         service.createWithConcepts(sample(), "creator");
         Model before = rdf.fetchGraph(GRAPH);
@@ -519,7 +534,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         @Bean ConceptServiceImpl conceptService(ConceptMetadataRepository concepts, OntologyMetadataRepository ontologies,
                                                FaultInjectingTdb2 rdf, OutboxConfig config, OutboxWriter writer,
                                                OutboxEntryRepository outbox, OutboxRelayTrigger trigger) {
-            return new ConceptServiceImpl(concepts, ontologies, mock(MetadataTouchService.class), new ConceptMetadataMapperImpl(),
+            return ConceptServiceWiring.build(concepts, ontologies, mock(MetadataTouchService.class), new ConceptMetadataMapperImpl(),
                     new com.dia.ismdtoolbackend.utility.creator.ConceptCreator(), new com.dia.ismdtoolbackend.utility.editor.ConceptEditor(), rdf,
                     mock(OntologyDetailExtractor.class), mock(CommentRepository.class), mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
                     mock(ConceptDeviationComparator.class), mock(com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder.class),
@@ -531,7 +546,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         }
         @Bean FaultInjectingTdb2 rdf() { return new FaultInjectingTdb2(); }
         @Bean OntologyServiceImpl ontologyService(OntologyMetadataRepository ontologies, ConceptMetadataRepository concepts, FaultInjectingTdb2 rdf, OutboxConfig config, OutboxWriter writer, OutboxEntryRepository outbox, OutboxRelayTrigger trigger) {
-            return new OntologyServiceImpl(ontologies, mock(MetadataTouchService.class), concepts,
+            return OntologyServiceWiring.build(ontologies, mock(MetadataTouchService.class), concepts,
                     mock(ValidationReportRepository.class), rdf, mock(CommentRepository.class),
                     new OntologyMetadataMapperImpl(), mock(ConceptMetadataMapper.class), new OntologyEditor(),
                     mock(OntologyDetailExtractor.class), mock(PublishedResourceUtil.class),

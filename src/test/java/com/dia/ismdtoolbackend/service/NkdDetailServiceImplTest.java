@@ -15,6 +15,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.rpp.RppAgenda;
 import com.dia.ismdtoolbackend.models.rpp.RppIsvs;
 import com.dia.ismdtoolbackend.service.impl.NkdDetailServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.NkdDetailServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
@@ -22,9 +23,9 @@ import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.sparql.engine.http.QueryExceptionHTTP;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -64,8 +65,13 @@ class NkdDetailServiceImplTest {
     @Mock
     private ReferencedConceptsEnricher referencedConceptsEnricher;
 
-    @InjectMocks
     private NkdDetailServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        service = NkdDetailServiceWiring.build(nkdSparqlClient, jsonExporter, rppSnapshotHolder, nkodCodelistService,
+                referencedConceptsEnricher);
+    }
 
     // ── Ontology ───────────────────────────────────────────────────────
 

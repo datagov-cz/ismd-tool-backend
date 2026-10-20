@@ -25,6 +25,9 @@ import java.time.LocalDateTime;
 @Slf4j
 public class CommentServiceImpl implements CommentService {
 
+    /** Width of {@code comments.comment}; Postgres counts characters, so the check counts code points. */
+    public static final int MAX_COMMENT_LENGTH = 255;
+
     private final CommentMapper commentMapper;
     private final CommentRepository commentRepository;
     private final OntologyMetadataRepository ontologyMetadataRepository;
@@ -82,6 +85,11 @@ public class CommentServiceImpl implements CommentService {
 
         if (commentCreateModel.getComment() == null || commentCreateModel.getComment().trim().isEmpty()) {
             throw new CommentException("Text komentáře je povinný");
+        }
+
+        String comment = commentCreateModel.getComment();
+        if (comment.codePointCount(0, comment.length()) > MAX_COMMENT_LENGTH) {
+            throw new CommentException("Text komentáře může mít nejvýše " + MAX_COMMENT_LENGTH + " znaků");
         }
 
         boolean hasOntologyIRI = commentCreateModel.getOntologyIRI() != null && !commentCreateModel.getOntologyIRI().isEmpty();
