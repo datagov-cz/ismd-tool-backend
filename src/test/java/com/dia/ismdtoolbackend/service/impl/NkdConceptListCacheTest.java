@@ -1,16 +1,16 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheSliceTest;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheTestSupport;
 import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
  * got cheaper but every warm request went to NKD live — measured at ~2ms → ~1s on a real endpoint.
  * These tests fail if that caching is lost again.
  */
-@SpringBootTest(classes = {CacheConfig.class, NkdDetailServiceImpl.class, NkdRequestGuard.class,
+@CacheSliceTest({NkdDetailServiceImpl.class, NkdRequestGuard.class,
         NkdConceptListReader.class, NkdOntologyListReader.class, NkdCatalogTotalsReader.class})
 @Import(NkdConceptListCacheTest.TestBeans.class)
 class NkdConceptListCacheTest {
@@ -56,7 +56,7 @@ class NkdConceptListCacheTest {
 
     @BeforeEach
     void setUp() {
-        Objects.requireNonNull(cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE)).clear();
+        CacheTestSupport.clearAll(cacheManager);
         reset(clientMock);
         when(clientMock.isEndpointConfigured()).thenReturn(true);
         when(clientMock.executeSelect(anyString())).thenReturn(List.of(

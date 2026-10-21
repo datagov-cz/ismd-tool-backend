@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.NameModel;
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
@@ -13,11 +12,10 @@ import org.junit.jupiter.api.Test;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
 
 /**
- * T1 (outbox plan) — pins {@link ConceptEditor.EditResult}'s {@code statementsToRemove} /
- * {@code statementsToAdd} as a FAITHFUL diff of the edit. The outbox write path (T4/T5) enqueues a
+ * Pins {@link ConceptEditor.EditResult}'s {@code statementsToRemove} /
+ * {@code statementsToAdd} as a faithful diff of the edit. The outbox write path enqueues a
  * concept-scoped {@code DELETE(remove)/INSERT(add)} delta built from these sets instead of a
  * whole-graph replace, so the sets must reproduce the editor's in-place mutation exactly — applying
  * them to the pre-edit graph must yield the post-edit graph. If this drifts, the relay would write
@@ -47,11 +45,7 @@ class ConceptEditorChangeSetTest extends ConceptEditorTestBase {
 
         Model preEdit = ModelFactory.createDefaultModel().add(model);
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null); // no rename
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(createDefinitionModel("cs", "New definition"));
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
+        classConceptEditModel.setDefinitionModel(createDefinitionModel("cs", "New definition"));
 
         ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 
@@ -79,11 +73,8 @@ class ConceptEditorChangeSetTest extends ConceptEditorTestBase {
         Model preEdit = ModelFactory.createDefaultModel().add(model);
 
         NameModel newName = createNameModel("cs", "New name");
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
+        classConceptEditModel.setNameModel(newName);
+        classConceptEditModel.setIdentifier("ID-1");
 
         ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
@@ -107,8 +98,6 @@ class ConceptEditorChangeSetTest extends ConceptEditorTestBase {
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
         Model preEdit = ModelFactory.createDefaultModel().add(model);
-
-        stubAllClassFieldsNull(classConceptEditModel);
 
         ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 

@@ -155,8 +155,7 @@ public class TurtleFormatterUtil {
         StmtIterator iter = model.listStatements(null, RDFS.subClassOf, (RDFNode) null);
         while (iter.hasNext()) {
             Statement stmt = iter.next();
-            if (stmt.getObject().isResource() &&
-                    !stmt.getObject().asResource().getURI().equals(RDFS.Resource.getURI())) {
+            if (stmt.getObject().isURIResource() && !stmt.getObject().equals(RDFS.Resource)) {
                 subClassStatements.add(stmt);
             }
         }

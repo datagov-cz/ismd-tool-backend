@@ -1,858 +1,422 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.models.DescriptionModel;
-import com.dia.ismdtoolbackend.models.NameModel;
-import com.dia.ismdtoolbackend.models.concept.AltNameModel;
-import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
-import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
-import com.dia.utility.URIGenerator;
+import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
+import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
+import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.iris;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.literals;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.types;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * A — ClassConcept (TRIDA) tests
- *   A1  – IRI rename when name changes
- *   A2  – Class-specific fields (type, agenda, governance, broader hierarchy)
- *   A3  – Legal sources (defining / related)
- *   A4  – Non-legal sources (defining / related)
- *   A5  – Common text fields (name / description / definition / altLabel)
- *   A5b – Clear common text fields
- *   A6  – Privacy provision (set / clear)
- *   A7  – Legal and non-legal sources removal when cleared
- *   A8  – IRI rename updates object references (concept as object of rdfs:domain)
- *   A9  – IRI rename + simultaneous field updates (predicate exclusion correctness)
- *   A10 – Exact match update + clear
- *   A10c – Sharing method list with multiple values
- *   A11a-d – Data classification (4 tests)
- *   A12 – inTezaurus boolean update
- *   A8b – Classification removal during rename
- */
+/** Edits of class concepts (TRIDA) through {@link ConceptEditor}. */
 class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
-    // A1 – IRI rename when name changes
-    @Test
-    void editConcept_ShouldRenameConceptIRI_WhenNameChanges() {
-        String oldIri = "https://slovnik.gov.cz/pojem/old-class";
-        Resource existing = model.createResource(oldIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, SKOS.Concept);
+    private static final String CONCEPT = DEFAULT_NS + "pojem/třída";
+    private static final String ELI_2021_12 = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/12";
+    private static final String ELI_2022_100 = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2022/100";
+    private static final String ELI_2023_50 = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50";
+    private static final String SHARING_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/";
+    private static final String ACQUISITION_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/";
+    private static final String CONTENT_TYPE_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
 
-        NameModel newName = createNameModel("cs", "New name");
+    private static final Property DESCRIPTION = Rdf.property(DCT_NS + "description");
+    private static final Property HIERARCHY = Rdf.property(DEFAULT_NS + "nadřazená-třída");
+    private static final Property DEFINING_LEGAL = Rdf.property(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+    private static final Property RELATED_LEGAL = Rdf.property(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
+    private static final Property DEFINING_NON_LEGAL = Rdf.property(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+    private static final Property RELATED_NON_LEGAL = Rdf.property(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
+    private static final Property PROVISION = Rdf.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+    private static final Property SHARING = Rdf.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
+    private static final Property ACQUISITION = Rdf.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
+    private static final Property CONTENT_TYPE = Rdf.property(OFN_NAMESPACE + TYP_OBSAHU);
+    private static final Property AGENDA = Rdf.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
+    private static final Property EXACT_MATCH = SKOS.exactMatch;
+    private static final Property IN_TEZAURUS = Rdf.property(DEFAULT_NS + "inTezaurus");
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("ID-1");
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-
-        ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
-
-        assertNotNull(result);
-        assertTrue(result.iriChanged);
-        assertNotEquals(oldIri, result.newConceptIRI);
-
-        Resource oldResource = model.getResource(oldIri);
-        assertFalse(model.containsResource(oldResource));
-
-        Resource newResource = model.getResource(result.newConceptIRI);
-        assertTrue(model.containsResource(newResource));
-        assertNotNull(newResource.getProperty(SKOS.prefLabel));
-        assertEquals("New name", newResource.getProperty(SKOS.prefLabel).getObject().asLiteral().getString());
-        assertTrue(result.changesCount > 0);
+    /** Seeds {@link #CONCEPT} as a class labelled "Třída" plus the given Turtle predicate-object list. */
+    private void seedClass(String extraPredicates) {
+        Rdf.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
     }
 
-    // A2 – Class-specific fields (type, agenda, governance, broader hierarchy)
-    @Test
-    void editConcept_ShouldUpdateClassSpecificFields() {
-        String conceptIri = DEFAULT_NS + "class-1";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
-
-        Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
-        existing.addProperty(agendaProperty, model.createLiteral("old-agenda"));
-
-        Property sharingProperty = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
-        existing.addProperty(
-                sharingProperty,
-                model.createResource(
-                        "https://data.dia.gov.cz/zdroj/číselníky/způsoby-sdílení-údajů/položky/old"
-                )
-        );
-
-        Property hierarchyProperty = model.createProperty(DEFAULT_NS + "nadřazená-třída");
-        Resource oldBroader = model.createResource("https://example.com/old-broader");
-        existing.addProperty(RDFS.subClassOf, oldBroader);
-        existing.addProperty(hierarchyProperty, oldBroader);
-
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
-
-        when(classConceptEditModel.getType()).thenReturn("subjekt");
-        when(classConceptEditModel.getAgendaCode()).thenReturn("");
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn("provozní");
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn("vlastní");
-        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("nesdílené"));
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(List.of("https://example.com/new-broader"));
-
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
-        assertTrue(result.changesCount > 0);
-
-        Resource updated = model.getResource(conceptIri);
-        assertTrue(model.containsResource(updated));
-
-        Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
-        Resource topType = model.getResource(OFN_NAMESPACE + TOP);
-
-        assertTrue(updated.hasProperty(RDF.type, tspType));
-        assertFalse(updated.hasProperty(RDF.type, topType));
-
-        assertFalse(updated.hasProperty(agendaProperty));
-
-        Property sharingProp = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
-        assertTrue(updated.hasProperty(sharingProp));
-        String sharingIri =
-                updated.getProperty(sharingProp).getObject().asResource().getURI();
-        assertTrue(sharingIri.startsWith("https://data.dia.gov.cz/zdroj/"));
-
-        Resource newBroader = model.getResource("https://example.com/new-broader");
-        assertTrue(updated.hasProperty(RDFS.subClassOf, newBroader));
-        assertTrue(updated.hasProperty(hierarchyProperty, newBroader));
-        assertFalse(updated.hasProperty(RDFS.subClassOf, oldBroader));
-        assertFalse(updated.hasProperty(hierarchyProperty, oldBroader));
+    private ConceptEditor.EditResult edit() {
+        return conceptEditor.editConcept(CONCEPT, classConceptEditModel, model, null);
     }
 
-    // A3 – Legal sources (defining / related)
-    @Test
-    void editConcept_ShouldUpdateLegalSources() {
-        String conceptIri = DEFAULT_NS + "class-legal";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class legal", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
-        Property relatedProp = model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
-
-        Resource oldDef = model.createResource("https://old.example.com/eli/cz/act/2000/1");
-        Resource oldRel = model.createResource("https://old.example.com/eli/cz/act/2000/2");
-        existing.addProperty(definingProp, oldDef);
-        existing.addProperty(relatedProp, oldRel);
-
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
-
-        when(classConceptEditModel.getType()).thenReturn(null);
-        when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn(null);
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
-
-        when(classConceptEditModel.getDefiningLegalSource())
-                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2021/12"));
-        when(classConceptEditModel.getRelatedLegalSource())
-                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2022/100"));
-
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
-        assertTrue(result.changesCount > 0);
-
-        Resource updated = model.getResource(conceptIri);
-        assertTrue(model.containsResource(updated));
-
-        assertFalse(updated.hasProperty(definingProp, oldDef));
-        assertFalse(updated.hasProperty(relatedProp, oldRel));
-
-        String definingIri = updated.listProperties(definingProp)
-                .nextStatement()
-                .getObject()
-                .asResource()
-                .getURI();
-        assertTrue(definingIri.startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
-        assertTrue(definingIri.contains("2021/12"));
-
-        String relatedIri = updated.listProperties(relatedProp)
-                .nextStatement()
-                .getObject()
-                .asResource()
-                .getURI();
-        assertTrue(relatedIri.startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
-        assertTrue(relatedIri.contains("2022/100"));
+    private Model snapshot() {
+        return ModelFactory.createDefaultModel().add(model);
     }
 
-    // A4 – Non-legal sources (defining / related)
-    @Test
-    void editConcept_ShouldUpdateNonLegalSources() {
-        String conceptIri = DEFAULT_NS + "class-nonlegal";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class nonlegal", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+    @Nested
+    class Rename {
 
-        Property definingProp = model.createProperty(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-        Property relatedProp = model.createProperty(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
-        Property schemaUrlProp = model.createProperty(SCHEMA_URL);
-        Property dctTitleProp = model.createProperty(DCT_NS + "title");
-        Property dctDescProp = model.createProperty(DCT_NS + "description");
+        @Test
+        void newNameMovesEveryTripleToTheIriDerivedFromTheIdentifier() {
+            String oldIri = "https://slovnik.gov.cz/pojem/old-class";
+            Rdf.add(model, "<" + oldIri + "> a skos:Concept ; skos:prefLabel \"Old name\"@cs .");
+            classConceptEditModel.setNameModel(Texts.name("cs", "New name"));
+            classConceptEditModel.setIdentifier("ID-1");
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
+            ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
-        when(classConceptEditModel.getType()).thenReturn(null);
-        when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn(null);
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
+            String newIri = DEFAULT_NS + "pojem/id-1";
+            assertThat(result.iriChanged).isTrue();
+            assertThat(result.newConceptIRI).isEqualTo(newIri);
+            assertThat(model.isIsomorphicWith(Rdf.model(
+                    "<" + newIri + "> a skos:Concept ; skos:prefLabel \"New name\"@cs ."))).isTrue();
+        }
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getDefiningNonLegalSource())
-                .thenReturn(List.of(new DigitalObjectModel("Doc 1", "Popis 1", "https://example.com/doc1")));
-        when(classConceptEditModel.getRelatedNonLegalSource())
-                .thenReturn(List.of(new DigitalObjectModel("Doc 2", "Popis 2", "https://example.com/doc2")));
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
+        @Test
+        void incomingReferencesFollowTheRename() {
+            String oldIri = DEFAULT_NS + "pojem/stará-třída";
+            Rdf.add(model, """
+                    <%s> a ofn:třída ; skos:prefLabel "Stará třída"@cs .
+                    pojem:vlastnost rdfs:domain <%s> .
+                    """.formatted(oldIri, oldIri));
+            classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+            ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
-        assertTrue(result.changesCount > 0);
+            assertThat(result.newConceptIRI).isEqualTo(DEFAULT_NS + "pojem/nová-třída");
+            assertThat(iris(model, DEFAULT_NS + "pojem/vlastnost", RDFS.domain))
+                    .containsExactly(result.newConceptIRI);
+            assertThat(model.containsResource(model.getResource(oldIri))).isFalse();
+        }
 
-        Resource updated = model.getResource(conceptIri);
-        assertTrue(model.containsResource(updated));
+        @Test
+        void fieldsEditedInTheSameRequestReplaceTheCopiedValues() {
+            String oldIri = DEFAULT_NS + "pojem/stará-třída";
+            Rdf.add(model, """
+                    <%s> a ofn:třída, ofn:typ-objektu-práva, l111:veřejný-údaj ;
+                        skos:prefLabel "Stará třída"@cs ;
+                        rdfs:subClassOf <https://example.com/old-broader> .
+                    """.formatted(oldIri));
+            classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
+            classConceptEditModel.setType("subjekt");
+            classConceptEditModel.setIsPublic(Boolean.FALSE);
+            classConceptEditModel.setBroaderConcept(List.of("https://example.com/new-broader"));
 
-        Resource definingDoc = updated.listProperties(definingProp)
-                .nextStatement()
-                .getObject()
-                .asResource();
-        assertTrue(definingDoc.hasProperty(schemaUrlProp, model.createResource("https://example.com/doc1")));
-        assertTrue(definingDoc.hasProperty(dctTitleProp, model.createLiteral("Doc 1", DEFAULT_LANG)));
-        assertTrue(definingDoc.hasProperty(dctDescProp, model.createLiteral("Popis 1", DEFAULT_LANG)));
+            ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
-        Resource relatedDoc = updated.listProperties(relatedProp)
-                .nextStatement()
-                .getObject()
-                .asResource();
-        assertTrue(relatedDoc.hasProperty(schemaUrlProp, model.createResource("https://example.com/doc2")));
-        assertTrue(relatedDoc.hasProperty(dctTitleProp, model.createLiteral("Doc 2", DEFAULT_LANG)));
-        assertTrue(relatedDoc.hasProperty(dctDescProp, model.createLiteral("Popis 2", DEFAULT_LANG)));
+            String newIri = result.newConceptIRI;
+            assertThat(types(model, newIri)).containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE + TSP);
+            assertThat(iris(model, newIri, RDFS.subClassOf)).containsExactly("https://example.com/new-broader");
+            assertThat(iris(model, newIri, HIERARCHY)).containsExactly("https://example.com/new-broader");
+            assertThat(model.containsResource(model.getResource(oldIri))).isFalse();
+        }
+
+        @Test
+        void unchangedNameKeepsTheIri() {
+            seedClass("");
+            classConceptEditModel.setNameModel(Texts.name("cs", "Třída"));
+
+            ConceptEditor.EditResult result = edit();
+
+            assertThat(result.iriChanged).isFalse();
+            assertThat(result.newConceptIRI).isEqualTo(CONCEPT);
+            assertThat(result.changesCount).isZero();
+        }
     }
 
-    // A5 – Common text fields update (name / description / definition / altLabel)
-    @Test
-    void editConcept_ShouldUpdateCommonTextFields() {
-        String conceptIri = DEFAULT_NS + "class-common-text";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+    @Nested
+    class ClassSpecificFields {
 
-        Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-        existing.addProperty(descProperty, model.createLiteral("Old description", "cs"));
-        existing.addProperty(SKOS.definition, model.createLiteral("Old definition", "cs"));
-        existing.addProperty(SKOS.altLabel, model.createLiteral("Old alt", "cs"));
+        @Test
+        void typeGovernanceAndHierarchyAreReplaced() {
+            seedClass("""
+                    ; a ofn:typ-objektu-práva
+                    ; a104:%s "old-agenda"
+                    ; ofn:%s <%sold>
+                    ; rdfs:subClassOf <https://example.com/old-broader>
+                    ; sl:nadřazená-třída <https://example.com/old-broader>
+                    """.formatted(AGENDA_LONG, ZPUSOB_SDILENI, SHARING_ITEMS));
+            classConceptEditModel.setType("subjekt");
+            classConceptEditModel.setAgendaCode("");
+            classConceptEditModel.setContentType("provozní");
+            classConceptEditModel.setAcquisitionMethod("vlastní");
+            classConceptEditModel.setSharingMethod(List.of("nesdílené"));
+            classConceptEditModel.setBroaderConcept(List.of("https://example.com/new-broader"));
 
-        NameModel newName = createNameModel("cs", "New name");
-        DescriptionModel newDesc = createDescriptionModel("cs", "New description");
-        DefinitionModel newDef = createDefinitionModel("cs", "New definition");
-        AltNameModel newAlt = createAltNameModel("cs", "New alt");
+            ConceptEditor.EditResult result = edit();
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
+            assertThat(result.iriChanged).isFalse();
+            assertThat(types(model, CONCEPT)).containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE + TSP);
+            assertThat(model.getResource(CONCEPT).hasProperty(AGENDA)).isFalse();
+            assertThat(iris(model, CONCEPT, SHARING)).containsExactly(SHARING_ITEMS + "nesdílené");
+            assertThat(iris(model, CONCEPT, ACQUISITION)).containsExactly(ACQUISITION_ITEMS + "vlastní");
+            assertThat(iris(model, CONCEPT, CONTENT_TYPE)).containsExactly(CONTENT_TYPE_ITEMS + "provozní");
+            assertThat(iris(model, CONCEPT, RDFS.subClassOf)).containsExactly("https://example.com/new-broader");
+            assertThat(iris(model, CONCEPT, HIERARCHY)).containsExactly("https://example.com/new-broader");
+        }
 
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(newDesc);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(newDef);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(newAlt);
+        @Test
+        void sharingMethodsKeepEveryValue() {
+            seedClass("");
+            classConceptEditModel.setSharingMethod(List.of("nesdílené", "veřejně přístupné"));
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
+            edit();
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+            assertThat(iris(model, CONCEPT, SHARING))
+                    .containsExactlyInAnyOrder(SHARING_ITEMS + "nesdílené", SHARING_ITEMS + "veřejně-přístupné");
+        }
 
-        assertNotNull(result);
-        assertTrue(result.iriChanged);
-        assertNotEquals(conceptIri, result.newConceptIRI);
+        @Test
+        void inTezaurusIsWrittenAsALiteral() {
+            seedClass("");
+            classConceptEditModel.setInTezaurus(Boolean.TRUE);
 
-        Resource updated = model.getResource(result.newConceptIRI);
+            edit();
 
-        assertEquals("New description",
-                updated.getProperty(descProperty).getObject().asLiteral().getString());
-        assertEquals("New definition",
-                updated.getProperty(SKOS.definition).getObject().asLiteral().getString());
-        assertEquals("New alt",
-                updated.getProperty(SKOS.altLabel).getObject().asLiteral().getString());
+            assertThat(literals(model, CONCEPT, IN_TEZAURUS)).containsExactly("true");
+        }
     }
 
-    // A5b – Common text fields clear when values are empty
-    @Test
-    void editConcept_ShouldClearCommonTextFieldsWhenEmpty() {
-        String conceptIri = DEFAULT_NS + "class-common-clear";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+    @Nested
+    class Sources {
 
-        Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-        existing.addProperty(descProperty, model.createLiteral("Description", "cs"));
-        existing.addProperty(SKOS.definition, model.createLiteral("Definition", "cs"));
-        existing.addProperty(SKOS.altLabel, model.createLiteral("Alt", "cs"));
+        @Test
+        void legalSourcesAreReplaced() {
+            seedClass("""
+                    ; ofn:%s <https://old.example.com/eli/cz/act/2000/1>
+                    ; ofn:%s <https://old.example.com/eli/cz/act/2000/2>
+                    """.formatted(DEFINUJICI_USTANOVENI, SOUVISEJICI_USTANOVENI));
+            classConceptEditModel.setDefiningLegalSource(List.of(ELI_2021_12));
+            classConceptEditModel.setRelatedLegalSource(List.of(ELI_2022_100));
 
-        DescriptionModel emptyDesc = createDescriptionModel("cs", "");
-        DefinitionModel emptyDef = createDefinitionModel("cs", " ");
+            edit();
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
+            assertThat(iris(model, CONCEPT, DEFINING_LEGAL)).containsExactly(ELI_2021_12);
+            assertThat(iris(model, CONCEPT, RELATED_LEGAL)).containsExactly(ELI_2022_100);
+        }
 
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(emptyDesc);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(emptyDef);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
+        @Test
+        void emptyLegalSourceListsRemoveTheSources() {
+            seedClass("""
+                    ; ofn:%s <%s>
+                    ; ofn:%s <%s>
+                    """.formatted(DEFINUJICI_USTANOVENI, ELI_2021_12, SOUVISEJICI_USTANOVENI, ELI_2022_100));
+            classConceptEditModel.setDefiningLegalSource(List.of());
+            classConceptEditModel.setRelatedLegalSource(List.of());
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
+            edit();
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+            assertThat(model.getResource(CONCEPT).hasProperty(DEFINING_LEGAL)).isFalse();
+            assertThat(model.getResource(CONCEPT).hasProperty(RELATED_LEGAL)).isFalse();
+        }
 
-        Resource updated = model.getResource(conceptIri);
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
+        @Test
+        void nonLegalSourcesAreWrittenAsDigitalObjects() {
+            seedClass("");
+            classConceptEditModel.setDefiningNonLegalSource(
+                    List.of(new DigitalObjectModel("Doc 1", "Popis 1", "https://example.com/doc1")));
+            classConceptEditModel.setRelatedNonLegalSource(
+                    List.of(new DigitalObjectModel("Doc 2", "Popis 2", "https://example.com/doc2")));
 
-        assertFalse(updated.hasProperty(descProperty));
-        assertFalse(updated.hasProperty(SKOS.definition));
-        assertTrue(updated.hasProperty(SKOS.altLabel));
+            edit();
+
+            Model expected = Rdf.model("""
+                    <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
+                        sl:%s [ a <%s> ; <%s> <https://example.com/doc1> ;
+                                dct:title "Doc 1"@cs ; dct:description "Popis 1"@cs ] ;
+                        sl:%s [ a <%s> ; <%s> <https://example.com/doc2> ;
+                                dct:title "Doc 2"@cs ; dct:description "Popis 2"@cs ] .
+                    """.formatted(CONCEPT, DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL,
+                    SOUVISEJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
+            assertThat(model.isIsomorphicWith(expected)).isTrue();
+        }
+
+        @Test
+        void invalidNonLegalUrlsRejectTheWholeEditAndNameEveryField() {
+            seedClass("""
+                    ; sl:%s sl:digitální-dokument-1
+                    ; sl:%s sl:digitální-dokument-2
+                    """.formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, SOUVISEJICI_NELEGISLATIVNI_ZDROJ));
+            Model before = snapshot();
+            classConceptEditModel.setDefiningNonLegalSource(List.of(new DigitalObjectModel("Bez url", "Popis", "")));
+            classConceptEditModel.setRelatedNonLegalSource(
+                    List.of(new DigitalObjectModel("Špatná url", "Popis", "not a url")));
+
+            assertThatThrownBy(ConceptEditorClassConceptTest.this::edit)
+                    .isExactlyInstanceOf(ConceptValidationException.class)
+                    .hasMessageStartingWith("Neplatné hodnoty v úpravě pojmu: ")
+                    .hasMessageContaining("definingNonLegalSource")
+                    .hasMessageContaining("relatedNonLegalSource");
+            assertThat(model.isIsomorphicWith(before)).isTrue();
+        }
     }
 
-    // A6 – Privacy provision updated from ELI URL
-    @Test
-    void editConcept_ShouldUpdatePrivacyProvisionFromEli() {
-        String conceptIri = DEFAULT_NS + "class-privacy";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class privacy", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+    @Nested
+    class TextFields {
 
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        @Test
+        void nameDescriptionDefinitionAndAltNameAreReplaced() {
+            seedClass("""
+                    ; dct:description "Old description"@cs
+                    ; skos:definition "Old definition"@cs
+                    ; skos:altLabel "Old alt"@cs
+                    """);
+            classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
+            classConceptEditModel.setDescriptionModel(Texts.description("cs", "New description"));
+            classConceptEditModel.setDefinitionModel(Texts.definition("cs", "New definition"));
+            classConceptEditModel.setAltNameModel(Texts.altName("cs", "New alt"));
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
+            ConceptEditor.EditResult result = edit();
 
-        when(classConceptEditModel.getPrivacyProvisions())
-                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getType()).thenReturn(null);
-        when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn(null);
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
+            assertThat(model.isIsomorphicWith(Rdf.model("""
+                    <%s> a ofn:třída ; skos:prefLabel "Nová třída"@cs ;
+                        dct:description "New description"@cs ;
+                        skos:definition "New definition"@cs ;
+                        skos:altLabel "New alt"@cs .
+                    """.formatted(result.newConceptIRI)))).isTrue();
+            assertThat(result.newConceptIRI).isEqualTo(DEFAULT_NS + "pojem/nová-třída");
+        }
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
+        @Test
+        void blankDescriptionAndDefinitionClearThemAndLeaveAltNamesAlone() {
+            seedClass("""
+                    ; dct:description "Description"@cs
+                    ; skos:definition "Definition"@cs
+                    ; skos:altLabel "Alt"@cs
+                    """);
+            classConceptEditModel.setDescriptionModel(Texts.description("cs", ""));
+            classConceptEditModel.setDefinitionModel(Texts.definition("cs", " "));
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+            edit();
 
-        Resource updated = model.getResource(conceptIri);
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
-
-        String provisionIri = updated.listProperties(provisionProperty)
-                .nextStatement()
-                .getObject()
-                .asResource()
-                .getURI();
-        assertTrue(provisionIri.startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
-        assertTrue(provisionIri.contains("2023/50"));
+            assertThat(model.getResource(CONCEPT).hasProperty(DESCRIPTION)).isFalse();
+            assertThat(model.getResource(CONCEPT).hasProperty(SKOS.definition)).isFalse();
+            assertThat(literals(model, CONCEPT, SKOS.altLabel)).containsExactly("Alt@cs");
+        }
     }
 
-    // A6 – Privacy provision cleared when value is blank
-    @Test
-    void editConcept_ShouldClearPrivacyProvisionWhenEmpty() {
-        String conceptIri = DEFAULT_NS + "class-privacy-clear";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class privacy clear", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+    @Nested
+    class ExactMatch {
 
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-        Resource oldProvision = model.createResource("https://opendata.eselpoint.gov.cz/esel-esb/2020/10");
-        existing.addProperty(provisionProperty, oldProvision);
+        @Test
+        void listReplacesTheMatchesAndSkipsBlanks() {
+            seedClass("; skos:exactMatch <https://example.com/old-match>");
+            classConceptEditModel.setExactMatch(
+                    List.of("https://example.com/new-uri-1", " ", "https://example.com/new-uri-2"));
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
+            edit();
 
-        when(classConceptEditModel.getPrivacyProvisions()).thenReturn(List.of(" "));
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getType()).thenReturn(null);
-        when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn(null);
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
+            assertThat(iris(model, CONCEPT, EXACT_MATCH))
+                    .containsExactlyInAnyOrder("https://example.com/new-uri-1", "https://example.com/new-uri-2");
+        }
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
+        @Test
+        void emptyListClearsTheMatches() {
+            seedClass("; skos:exactMatch <https://example.com/old-match>");
+            classConceptEditModel.setExactMatch(List.of());
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+            edit();
 
-        Resource updated = model.getResource(conceptIri);
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
-
-        assertFalse(updated.hasProperty(provisionProperty));
+            assertThat(model.getResource(CONCEPT).hasProperty(EXACT_MATCH)).isFalse();
+        }
     }
 
-    // A7 – Legal sources removed when lists are empty
-    @Test
-    void editConcept_ShouldRemoveLegalSourcesWhenListEmpty() {
-        String conceptIri = DEFAULT_NS + "class-legal-clear";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class legal clear", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
+    @Nested
+    class PrivacyAndClassification {
 
-        Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
-        Property relatedProp = model.createProperty(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
+        @Test
+        void provisionIsStoredVerbatim() {
+            seedClass("");
+            classConceptEditModel.setPrivacyProvisions(List.of(ELI_2023_50));
 
-        existing.addProperty(definingProp, model.createResource("https://opendata.eselpoint.gov.cz/esel-esb/2020/1"));
-        existing.addProperty(relatedProp, model.createResource("https://opendata.eselpoint.gov.cz/esel-esb/2020/2"));
+            edit();
 
-        when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        when(classConceptEditModel.getNameModel()).thenReturn(null);
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        when(classConceptEditModel.getAltNameModel()).thenReturn(null);
+            assertThat(iris(model, CONCEPT, PROVISION)).containsExactly(ELI_2023_50);
+        }
 
-        when(classConceptEditModel.getDefiningLegalSource()).thenReturn(Collections.emptyList());
-        when(classConceptEditModel.getRelatedLegalSource()).thenReturn(Collections.emptyList());
+        @Test
+        void blankProvisionClearsTheProvisions() {
+            seedClass("; l111:%s <%s>".formatted(USTANOVENI_NEVEREJNOST, ELI_2023_50));
+            classConceptEditModel.setPrivacyProvisions(List.of(" "));
 
-        when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        when(classConceptEditModel.getType()).thenReturn(null);
-        when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        when(classConceptEditModel.getContentType()).thenReturn(null);
-        when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
-        when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(null);
+            edit();
 
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
+            assertThat(model.getResource(CONCEPT).hasProperty(PROVISION)).isFalse();
+        }
 
-        Resource updated = model.getResource(conceptIri);
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
+        @Test
+        void publicWithoutProvisionsIsVerejnyUdaj() {
+            seedClass("");
+            classConceptEditModel.setIsPublic(Boolean.TRUE);
 
-        assertFalse(updated.hasProperty(definingProp));
-        assertFalse(updated.hasProperty(relatedProp));
+            edit();
+
+            assertThat(types(model, CONCEPT))
+                    .containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
+        }
+
+        @Test
+        void nonPublicWithAProvisionIsNeverejnyUdaj() {
+            seedClass("");
+            classConceptEditModel.setIsPublic(Boolean.FALSE);
+            classConceptEditModel.setPrivacyProvisions(List.of(ELI_2023_50));
+
+            edit();
+
+            assertThat(types(model, CONCEPT))
+                    .containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+        }
+
+        @Test
+        void nonPublicWithoutAProvisionDropsTheClassification() {
+            seedClass("; a l111:veřejný-údaj");
+            classConceptEditModel.setIsPublic(Boolean.FALSE);
+
+            edit();
+
+            assertThat(types(model, CONCEPT)).containsExactly(OFN_NAMESPACE + TRIDA);
+        }
+
+        @Test
+        void publicWithAProvisionIsRejectedWithoutAWrite() {
+            seedClass("");
+            Model before = snapshot();
+            classConceptEditModel.setIsPublic(Boolean.TRUE);
+            classConceptEditModel.setPrivacyProvisions(List.of(ELI_2023_50));
+
+            assertThatThrownBy(ConceptEditorClassConceptTest.this::edit)
+                    .isExactlyInstanceOf(ConceptValidationException.class)
+                    .hasMessageContaining("nemůže být současně veřejn");
+            assertThat(model.isIsomorphicWith(before)).isTrue();
+        }
+
+        @Test
+        void renameWithTypeChangeAndNonPublicDropsTheOldClassification() {
+            String oldIri = DEFAULT_NS + "pojem/stará";
+            Rdf.add(model, """
+                    <%s> a ofn:třída, ofn:typ-objektu-práva, l111:veřejný-údaj ; skos:prefLabel "Stará"@cs .
+                    """.formatted(oldIri));
+            classConceptEditModel.setNameModel(Texts.name("cs", "Nová"));
+            classConceptEditModel.setType("subjekt");
+            classConceptEditModel.setIsPublic(Boolean.FALSE);
+
+            ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
+
+            assertThat(types(model, result.newConceptIRI))
+                    .containsExactlyInAnyOrder(OFN_NAMESPACE + TRIDA, OFN_NAMESPACE + TSP);
+        }
     }
 
-    // A7 – Non-legal sources with blank/invalid url now REJECT the whole edit (HTTP 400),
-    // listing every offending field, and leave the model untouched (no partial write).
     @Test
-    void editConcept_ShouldRejectNonLegalSourcesWithInvalidUrl() {
-        String conceptIri = DEFAULT_NS + "class-nonlegal-clear";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class nonlegal clear", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        Property definingProp = model.createProperty(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-        Property relatedProp = model.createProperty(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
-
-        existing.addProperty(definingProp, model.createResource(DEFAULT_NS + "digitální-dokument-1"));
-        existing.addProperty(relatedProp, model.createResource(DEFAULT_NS + "digitální-dokument-2"));
-
-        long sizeBefore = model.size();
-
-        // Only the fields the pre-flight validator reads need stubbing — validation
-        // throws before the type dispatch, so e.g. getConceptTypeEnum is never reached.
-        lenient().when(classConceptEditModel.getDefiningNonLegalSource())
-                .thenReturn(List.of(new DigitalObjectModel("Doc with no url", "Popis", "")));
-        lenient().when(classConceptEditModel.getRelatedNonLegalSource())
-                .thenReturn(List.of(new DigitalObjectModel("Doc with invalid url", "Popis", "not a url")));
-        lenient().when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        lenient().when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        lenient().when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        lenient().when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        lenient().when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        lenient().when(classConceptEditModel.getPrivacyProvisions()).thenReturn(null);
-
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null));
-
-        // every offending field is named in the message
-        assertTrue(ex.getMessage().contains("definingNonLegalSource"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("relatedNonLegalSource"), ex.getMessage());
-
-        // no mutation occurred — the existing non-legal links are still present
-        Resource updated = model.getResource(conceptIri);
-        assertTrue(updated.hasProperty(definingProp));
-        assertTrue(updated.hasProperty(relatedProp));
-        assertEquals(sizeBefore, model.size(), "rejected edit must not change the model");
-    }
-
-    // A8 – IRI rename updates object references
-    @Test
-    void editConcept_ShouldRenameObjectReferences_WhenIRIChanges() {
-        String oldIri = DEFAULT_NS + "old-class-a8";
-        Resource existing = model.createResource(oldIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        Resource otherResource = model.createResource(DEFAULT_NS + "other-property");
-        otherResource.addProperty(RDFS.domain, existing);
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        NameModel newName = createNameModel("cs", "New name a8");
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("A8-ID");
-
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
-
-        assertTrue(result.iriChanged);
-        assertNotEquals(oldIri, result.newConceptIRI);
-
-        Resource oldResource = model.getResource(oldIri);
-        assertFalse(model.containsResource(oldResource));
-
-        Resource updatedOther = model.getResource(DEFAULT_NS + "other-property");
-        assertTrue(updatedOther.hasProperty(RDFS.domain, model.getResource(result.newConceptIRI)));
-        assertFalse(updatedOther.hasProperty(RDFS.domain, model.getResource(oldIri)));
-    }
-
-    // A9 – IRI rename + predicate exclusion
-    @Test
-    void editConcept_ShouldExcludeEditedPredicatesDuringRename() {
-        String oldIri = DEFAULT_NS + "old-class-a9";
-        Resource existing = model.createResource(oldIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
-        Resource oldBroader = model.createResource("https://example.com/old-broader-a9");
-        existing.addProperty(RDFS.subClassOf, oldBroader);
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        NameModel newName = createNameModel("cs", "New name a9");
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("A9-ID");
-        when(classConceptEditModel.getType()).thenReturn("subjekt");
-        when(classConceptEditModel.getBroaderConcept()).thenReturn(List.of("https://example.com/new-broader-a9"));
-
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
-
-        assertTrue(result.iriChanged);
-        Resource newResource = model.getResource(result.newConceptIRI);
-
-        Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
-        Resource topType = model.getResource(OFN_NAMESPACE + TOP);
-        assertTrue(newResource.hasProperty(RDF.type, tspType));
-        assertFalse(newResource.hasProperty(RDF.type, topType));
-
-        Resource newBroader = model.getResource("https://example.com/new-broader-a9");
-        assertTrue(newResource.hasProperty(RDFS.subClassOf, newBroader));
-        assertFalse(newResource.hasProperty(RDFS.subClassOf, oldBroader));
-
-        assertFalse(model.containsResource(model.getResource(oldIri)));
-    }
-
-    // A10 – Exact match update
-    @Test
-    void editConcept_ShouldUpdateExactMatchList() {
-        String conceptIri = DEFAULT_NS + "class-a10";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a10", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        Property exactMatchProp = model.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch");
-        existing.addProperty(exactMatchProp, model.createResource("https://example.com/old-match"));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getExactMatch())
-                .thenReturn(List.of("https://example.com/new-uri-1", " ", "https://example.com/new-uri-2"));
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        assertFalse(updated.hasProperty(exactMatchProp, model.createResource("https://example.com/old-match")));
-        assertTrue(updated.hasProperty(exactMatchProp, model.createResource("https://example.com/new-uri-1")));
-        assertTrue(updated.hasProperty(exactMatchProp, model.createResource("https://example.com/new-uri-2")));
-    }
-
-    // A10b – Exact match clear
-    @Test
-    void editConcept_ShouldClearExactMatch_WhenListIsEmpty() {
-        String conceptIri = DEFAULT_NS + "class-a10b";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a10b", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        Property exactMatchProp = model.createProperty("http://www.w3.org/2004/02/skos/core#exactMatch");
-        existing.addProperty(exactMatchProp, model.createResource("https://example.com/old-match"));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getExactMatch()).thenReturn(Collections.emptyList());
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        assertFalse(updated.hasProperty(exactMatchProp));
-    }
-
-    // A10c – Sharing method list with multiple values
-    @Test
-    void editConcept_ShouldUpdateSharingMethodList_WithMultipleValues() {
-        String conceptIri = DEFAULT_NS + "class-a10c";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a10c", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getSharingMethod()).thenReturn(List.of("nesdílené", "veřejně přístupné"));
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Property sharingProp = model.createProperty(OFN_NAMESPACE + ZPUSOB_SDILENI);
-
-        long count = updated.listProperties(sharingProp).toList().size();
-        assertEquals(2, count);
-
-        updated.listProperties(sharingProp).forEachRemaining(stmt -> {
-            assertTrue(stmt.getObject().isResource());
-            assertTrue(stmt.getObject().asResource().getURI().startsWith("https://data.dia.gov.cz/zdroj/"));
-        });
-    }
-
-    // A11a – Data classification: public, no provisions
-    @Test
-    void editConcept_ShouldClassifyAsVerejnyUdaj_WhenIsPublicTrueAndNoProvisions() {
-        String conceptIri = DEFAULT_NS + "class-a11a";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a11a", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.TRUE);
-        when(classConceptEditModel.getPrivacyProvisions()).thenReturn(null);
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Resource verejny = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        Resource neverejny = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
-        assertTrue(updated.hasProperty(RDF.type, verejny));
-        assertFalse(updated.hasProperty(RDF.type, neverejny));
-    }
-
-    // A11b – Data classification: private with provisions
-    @Test
-    void editConcept_ShouldClassifyAsNeverejnyUdaj_WhenIsPublicFalseAndHasProvisions() {
-        String conceptIri = DEFAULT_NS + "class-a11b";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a11b", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
-        when(classConceptEditModel.getPrivacyProvisions())
-                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Resource verejny = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        Resource neverejny = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
-        assertTrue(updated.hasProperty(RDF.type, neverejny));
-        assertFalse(updated.hasProperty(RDF.type, verejny));
-    }
-
-    // A11c – Data classification: private, no provisions = no classification
-    @Test
-    void editConcept_ShouldNotClassify_WhenIsPublicFalseAndNoProvisions() {
-        String conceptIri = DEFAULT_NS + "class-a11c";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a11c", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        Resource verejny = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        existing.addProperty(RDF.type, verejny);
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
-        when(classConceptEditModel.getPrivacyProvisions()).thenReturn(null);
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Resource neverejny = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
-        assertFalse(updated.hasProperty(RDF.type, verejny));
-        assertFalse(updated.hasProperty(RDF.type, neverejny));
-    }
-
-    // A11d – Data classification: public but has provisions
-    @Test
-    void editConcept_ShouldReject_WhenIsPublicTrueButHasProvisions() {
-        // isPublic=true together with privacy provisions is a contradiction and is
-        // now rejected up front by validation (400) — before reaching the editor.
-        String conceptIri = DEFAULT_NS + "class-a11d";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a11d", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        long sizeBefore = model.size();
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.TRUE);
-        when(classConceptEditModel.getPrivacyProvisions())
-                .thenReturn(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2023/50"));
-
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
-                conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null));
-        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
-        assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
-    }
-
-    // A12 – inTezaurus boolean update
-    @Test
-    void editConcept_ShouldUpdateInTezaurusFlag() {
-        String conceptIri = DEFAULT_NS + "class-a12";
-        Resource existing = model.createResource(conceptIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Class a12", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getInTezaurus()).thenReturn(Boolean.TRUE);
-
-        conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
-
-        Resource updated = model.getResource(conceptIri);
-        Property inTezaurusProp = model.createProperty(DEFAULT_NS + "inTezaurus");
-        assertTrue(updated.hasProperty(inTezaurusProp));
-        assertEquals("true", updated.getProperty(inTezaurusProp).getObject().asLiteral().getString());
-    }
-
-    // A8b – Classification removal during rename with type change
-    @Test
-    void editConcept_ShouldRemoveOldClassification_WhenIRIRenamedWithTypeChangeAndIsPublicFalse() {
-        String oldIri = DEFAULT_NS + "class-a8b";
-        Resource existing = model.createResource(oldIri);
-        existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name a8b", "cs"));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
-        existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
-        Resource verejny = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        existing.addProperty(RDF.type, verejny);
-
-        stubAllClassFieldsNull(classConceptEditModel);
-        NameModel newName = createNameModel("cs", "New name a8b");
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("A8B-ID");
-        when(classConceptEditModel.getType()).thenReturn("subjekt");
-        when(classConceptEditModel.getIsPublic()).thenReturn(Boolean.FALSE);
-
-        ConceptEditor.EditResult result =
-                conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
-
-        assertTrue(result.iriChanged);
-        Resource newResource = model.getResource(result.newConceptIRI);
-
-        Resource neverejny = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
-        assertFalse(newResource.hasProperty(RDF.type, verejny));
-        assertFalse(newResource.hasProperty(RDF.type, neverejny));
-
-        Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
-        assertTrue(newResource.hasProperty(RDF.type, tspType));
+    void missingConceptIsRejected() {
+        assertThatThrownBy(ConceptEditorClassConceptTest.this::edit)
+                .isExactlyInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Concept with IRI " + CONCEPT + " not found in the model");
     }
 }

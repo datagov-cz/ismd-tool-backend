@@ -9,6 +9,8 @@ import com.dia.ismdtoolbackend.outbox.*;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.impl.*;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
@@ -45,39 +47,23 @@ import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({OntologyCreateWithConceptsIntegrationTest.Beans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OntologyMetadataEntity.class, OutboxEntry.class})
-@EnableJpaRepositories(basePackageClasses = {OntologyMetadataRepository.class, OutboxEntryRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
     @Autowired OntologyService service;
     @Autowired ConceptService conceptService;
     @Autowired OntologyMetadataRepository ontologies;
     @Autowired ConceptMetadataRepository concepts;
-    @Autowired FaultInjectingTdb2 rdf;
+    @Autowired InMemoryTdb2 rdf;
     @Autowired TransactionTemplate tx;
     @Autowired OutboxEntryRepository outbox;
     @Autowired OutboxWriter writer;
     @Autowired OutboxRelay relay;
-    @Autowired OutboxConfig config;
     @Autowired JdbcTemplate jdbc;
 
     @BeforeEach
-    void reset() {
-        tx.executeWithoutResult(status -> { outbox.deleteAll(); concepts.deleteAll(); ontologies.deleteAll(); });
-        config.setBatchSize(100);
-        config.setMaxAttempts(3);
-        rdf.reset();
-        rdf.failAfterWrite = false;
-        rdf.failBeforeWrite = false;
-        rdf.beforeWrite = () -> {};
-        rdf.afterWrite = () -> {};
-        rdf.writes = 0;
-        rdf.deletes = 0;
+    void resetFixtures() {
+        outboxConfig.setBatchSize(100);
+        outboxConfig.setMaxAttempts(3);
     }
 
     @Test
@@ -130,7 +116,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void rdfOutageKeepsCommittedMetadataAndRetries(boolean ordinary) {
-        rdf.failBeforeWrite = true;
+        rdf.failBeforeWrite(true);
         if (ordinary) service.createOntology(sample().ontology(), "creator");
         else service.createWithConcepts(sample(), "creator");
         assertEquals(1, ontologies.count());
@@ -138,11 +124,11 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         assertEquals(OutboxStatus.PENDING, outbox.findAll().get(0).getStatus());
         assertEquals(1, outbox.findAll().get(0).getAttempts());
         assertFalse(rdf.graphHasData(GRAPH));
-        rdf.failBeforeWrite = false;
+        rdf.failBeforeWrite(false);
         assertEquals(1, relay.drainOnce());
         assertTrue(rdf.graphHasData(GRAPH));
         assertEquals(OutboxStatus.DONE, outbox.findAll().get(0).getStatus());
-        assertEquals(0, rdf.deletes);
+        assertEquals(0, rdf.deleteCount());
     }
 
     @ParameterizedTest
@@ -175,8 +161,8 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         assertEquals(0, ontologies.count());
         assertEquals(0, concepts.count());
         assertEquals(0, outbox.count());
-        assertEquals(0, rdf.writes);
-        assertEquals(0, rdf.deletes);
+        assertEquals(0, rdf.writeCount());
+        assertEquals(0, rdf.deleteCount());
         assertFalse(rdf.graphHasData(GRAPH));
     }
 
@@ -192,7 +178,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
 
     @Test
     void replayAfterRdfSuccessAndFailedDoneCommitIsIdempotentIncludingBlankNodes() {
-        config.setBatchSize(0); // defer the real after-commit nudge until fault injection is ready
+        outboxConfig.setBatchSize(0); // defer the real after-commit nudge until fault injection is ready
         service.createWithConcepts(sample(), "creator");
         // Include shared blank nodes on different subjects in the durable whole-graph payload.
         tx.executeWithoutResult(status -> {
@@ -204,24 +190,24 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
             outbox.save(row);
         });
         withDeferredCommitFailure(() -> {
-            config.setBatchSize(100);
-            rdf.afterWrite = this::injectCommitFailure;
+            outboxConfig.setBatchSize(100);
+            rdf.afterWrite(this::injectCommitFailure);
             assertThrows(RuntimeException.class, () -> relay.drainOnce());
             assertEquals(OutboxStatus.PENDING, outbox.findAll().get(0).getStatus());
             Model first = rdf.fetchGraph(GRAPH);
             assertTrue(first.listSubjects().toList().stream().anyMatch(r -> r.isAnon()));
-            rdf.afterWrite = () -> {};
+            rdf.afterWrite(() -> {});
             assertEquals(1, relay.drainOnce());
             assertTrue(first.isIsomorphicWith(rdf.fetchGraph(GRAPH)));
             assertEquals(first.size(), rdf.fetchGraph(GRAPH).size());
-            assertEquals(0, rdf.deletes);
+            assertEquals(0, rdf.deleteCount());
         });
     }
 
     @ParameterizedTest
     @EnumSource(value = OutboxStatus.class, names = {"PENDING", "FAILED"})
     void unfinishedCreateBlocksMutationsUntilRetryAndNeverOverwritesLaterEdit(OutboxStatus status) {
-        rdf.failAfterWrite = true; // graph exists, but initial PUT is not yet acknowledged durably
+        rdf.failAfterWrite(true); // graph exists, but initial PUT is not yet acknowledged durably
         var created = service.createWithConcepts(sample(), "creator");
         setInitialStatus(status);
         var edit = new OntologyEditModel();
@@ -236,7 +222,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         tx.executeWithoutResult(txStatus -> writer.enqueueUpsert(GRAPH, GRAPH + "/later", Set.of(), delta.listStatements().toSet()));
         assertEquals(0, relay.drainOnce());
         assertFalse(rdf.fetchGraph(GRAPH).containsResource(delta.createResource(GRAPH + "/later")));
-        rdf.failAfterWrite = false;
+        rdf.failAfterWrite(false);
         setInitialStatus(OutboxStatus.PENDING);
         assertEquals(2, relay.drainOnce());
         assertTrue(rdf.fetchGraph(GRAPH).containsAll(delta));
@@ -255,19 +241,19 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
 
     @Test
     void anotherWorkerCannotPassLockedCreateEvenAfterItsPutSucceeded() throws Exception {
-        config.setBatchSize(0);
+        outboxConfig.setBatchSize(0);
         service.createWithConcepts(sample(), "creator");
         Model delta = ModelFactory.createDefaultModel();
         delta.add(delta.createResource(GRAPH + "/later"), SKOS.prefLabel, "Later");
         tx.executeWithoutResult(status -> writer.enqueueUpsert(GRAPH, GRAPH + "/later", Set.of(), delta.listStatements().toSet()));
-        config.setBatchSize(1); // worker one claims only CREATE_GRAPH
+        outboxConfig.setBatchSize(1); // worker one claims only CREATE_GRAPH
         var reached = new CountDownLatch(1);
         var release = new CountDownLatch(1);
-        rdf.afterWrite = () -> {
+        rdf.afterWrite(() -> {
             reached.countDown();
             try { assertTrue(release.await(15, TimeUnit.SECONDS)); }
             catch (InterruptedException e) { throw new IllegalStateException(e); }
-        };
+        });
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             var first = executor.submit(() -> relay.drainOnce());
@@ -283,7 +269,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
 
     @Test
     void duplicateOrdinaryCreateWhilePendingReturnsOriginalPayloadAndOnlyOneTask() {
-        config.setBatchSize(0);
+        outboxConfig.setBatchSize(0);
         var original = service.createWithConcepts(sample(), "creator");
         var request = sample().ontology();
         request.getDescriptionModel().setDescription(java.util.Map.of("cs", "Must not replace original"));
@@ -292,7 +278,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         assertEquals(original.ontology().getName(), duplicate.getName());
         assertEquals(original.ontology().getPopis(), duplicate.getPopis());
         assertEquals(1, outbox.count());
-        assertEquals(0, rdf.writes);
+        assertEquals(0, rdf.writeCount());
         assertThrows(OntologyCreationConflictException.class, () -> service.createWithConcepts(sample(), "other"));
     }
 
@@ -315,8 +301,9 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         var ordinary = concepts.findByConceptIri(concept.getIdentifier()).orElseThrow();
         assertEquals("doprava-řidič-1", ordinary.getSlug());
 
-        // Clear only our test data and rebuild the same input via the batch endpoint.
-        reset();
+        // Start over from an empty database and rebuild the same input via the batch endpoint.
+        wipeDatabase();
+        resetFixtures();
         var otherOntology = new OntologyMetadataEntity();
         otherOntology.setSlug("other");
         otherOntology.setGraphName("https://other.example/other");
@@ -337,7 +324,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
 
     @Test
     void conceptMutationsRespectInitialGraphBarrier() {
-        rdf.failAfterWrite = true;
+        rdf.failAfterWrite(true);
         var created = service.createWithConcepts(sample(), "creator");
         var id = concepts.findByConceptIri(created.conceptIris().get("driver")).orElseThrow().getId();
         var edit = new com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel();
@@ -354,13 +341,13 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         concept.setNameModel(name);
         assertThrows(OntologyCreationConflictException.class, () -> conceptService.createConcept(concept, "creator"));
         assertEquals(1, outbox.count());
-        assertEquals(1, rdf.writes);
+        assertEquals(1, rdf.writeCount());
         assertEquals(4, concepts.count());
     }
 
     @Test
     void checkAndBothCreatesAgreeOnGlobalSlugCollision() {
-        config.setBatchSize(0);
+        outboxConfig.setBatchSize(0);
         service.createWithConcepts(sample(), "creator");
         var request = sample();
         request.ontology().setNamespace("https://other.example/");
@@ -398,11 +385,11 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
     void concurrentOrdinaryCreateCannotOverwriteOrDeleteTheWinningDraft() throws Exception {
         CountDownLatch rdfWriteReached = new CountDownLatch(1);
         CountDownLatch continueWrite = new CountDownLatch(1);
-        rdf.beforeWrite = () -> {
+        rdf.beforeWrite(() -> {
             rdfWriteReached.countDown();
             try { assertTrue(continueWrite.await(15, TimeUnit.SECONDS)); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
-        };
+        });
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             var draft = executor.submit(() -> service.createWithConcepts(sample(), "creator"));
@@ -417,7 +404,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
             assertEquals(1, ontologies.count());
             assertEquals(4, concepts.count());
             assertTrue(rdf.graphHasData(GRAPH));
-        } finally { continueWrite.countDown(); executor.shutdownNow(); rdf.beforeWrite = () -> {}; }
+        } finally { continueWrite.countDown(); executor.shutdownNow(); rdf.beforeWrite(() -> {}); }
     }
 
     @Test
@@ -440,7 +427,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
             });
             assertTrue(competitorStarted.await(15, TimeUnit.SECONDS));
             assertThrows(TimeoutException.class, () -> winningOrdinary.get(200, TimeUnit.MILLISECONDS));
-            assertEquals(0, rdf.writes);
+            assertEquals(0, rdf.writeCount());
             rollback.countDown();
             losingBatch.get(15, TimeUnit.SECONDS);
             assertNotNull(winningOrdinary.get(15, TimeUnit.SECONDS));
@@ -448,8 +435,8 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
             assertEquals(1, ontologies.count());
             assertEquals(0, concepts.count());
             assertEquals(1, outbox.count());
-            assertEquals(1, rdf.writes);
-            assertEquals(0, rdf.deletes);
+            assertEquals(1, rdf.writeCount());
+            assertEquals(0, rdf.deleteCount());
             assertTrue(rdf.graphHasData(GRAPH));
         } finally { rollback.countDown(); executor.shutdownNow(); }
     }
@@ -471,7 +458,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         rename.setNameModel(name);
         assertThrows(OntologyCreationConflictException.class, () -> service.editOntology(pending.ontology().getId(), rename));
 
-        config.setBatchSize(0); // do not accidentally retry the first graph while creating the second
+        outboxConfig.setBatchSize(0); // do not accidentally retry the first graph while creating the second
         var secondRequest = sample().ontology();
         secondRequest.getNameModel().setName(java.util.Map.of("cs", "Other"));
         var second = service.createOntology(secondRequest, "creator");
@@ -485,10 +472,10 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
             outbox.save(row);
         });
         name.setName(java.util.Map.of("cs", "Doprava"));
-        int writesBeforeRename = rdf.writes;
+        int writesBeforeRename = rdf.writeCount();
         assertThrows(OntologyCreationConflictException.class, () -> service.editOntology(second.getId(), rename));
-        assertEquals(writesBeforeRename, rdf.writes);
-        assertEquals(0, rdf.deletes);
+        assertEquals(writesBeforeRename, rdf.writeCount());
+        assertEquals(0, rdf.deleteCount());
         assertEquals(second.getGraphName(), ontologies.findById(second.getId()).orElseThrow().getGraphName());
     }
 
@@ -502,56 +489,5 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         assertEquals(0, ontologies.count());
         assertEquals(0, concepts.count());
         assertFalse(rdf.graphHasData(GRAPH));
-    }
-
-    public static class FaultInjectingTdb2 extends InMemoryTdb2 {
-        boolean failAfterWrite;
-        boolean failBeforeWrite;
-        int writes;
-        int deletes;
-        Runnable afterWrite = () -> {};
-        Runnable beforeWrite = () -> {};
-        @Override public void saveOntologyModel(String graph, Model model) {
-            beforeWrite.run();
-            if (failBeforeWrite) throw new JenaTDB2Exception("Injected outage before RDF PUT");
-            writes++;
-            super.saveOntologyModel(graph, model);
-            afterWrite.run();
-            if (failAfterWrite) throw new JenaTDB2Exception("Injected failure after RDF PUT");
-        }
-        @Override public void deleteGraph(String graph) {
-            deletes++;
-            super.deleteGraph(graph);
-        }
-    }
-
-    @TestConfiguration
-    static class Beans {
-        @Bean OutboxConfig config() { return new OutboxConfig(); }
-        @Bean OutboxWriter writer(OutboxEntryRepository r) { return new OutboxWriter(r); }
-        @Bean OutboxRelay relay(OutboxEntryRepository r, FaultInjectingTdb2 rdf, OutboxConfig c) { return new OutboxRelay(r, rdf, c); }
-        @Bean OutboxRelayTrigger trigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
-        @Bean ConceptServiceImpl conceptService(ConceptMetadataRepository concepts, OntologyMetadataRepository ontologies,
-                                               FaultInjectingTdb2 rdf, OutboxConfig config, OutboxWriter writer,
-                                               OutboxEntryRepository outbox, OutboxRelayTrigger trigger) {
-            return ConceptServiceWiring.build(concepts, ontologies, mock(MetadataTouchService.class), new ConceptMetadataMapperImpl(),
-                    new com.dia.ismdtoolbackend.utility.creator.ConceptCreator(), new com.dia.ismdtoolbackend.utility.editor.ConceptEditor(), rdf,
-                    mock(OntologyDetailExtractor.class), mock(CommentRepository.class), mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
-                    mock(ConceptDeviationComparator.class), mock(com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder.class),
-                    mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
-                    mock(ReferencedConceptsEnricher.class), writer, outbox, trigger, mock(NkdSnapshotService.class),
-                    new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
-                    new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(), mock(NkdSnapshotWarmer.class),
-                    new NkdConfig(), mock(WorkingCopyDeviationServiceImpl.class));
-        }
-        @Bean FaultInjectingTdb2 rdf() { return new FaultInjectingTdb2(); }
-        @Bean OntologyServiceImpl ontologyService(OntologyMetadataRepository ontologies, ConceptMetadataRepository concepts, FaultInjectingTdb2 rdf, OutboxConfig config, OutboxWriter writer, OutboxEntryRepository outbox, OutboxRelayTrigger trigger) {
-            return OntologyServiceWiring.build(ontologies, mock(MetadataTouchService.class), concepts,
-                    mock(ValidationReportRepository.class), rdf, mock(CommentRepository.class),
-                    new OntologyMetadataMapperImpl(), mock(ConceptMetadataMapper.class), new OntologyEditor(),
-                    mock(OntologyDetailExtractor.class), mock(PublishedResourceUtil.class),
-                    writer, outbox, trigger, mock(NkdConceptSnapshotRepository.class),
-                    mock(NkdSnapshotWarmer.class), mock(NkdSnapshotService.class), new NkdConfig(), mock(NkdDetailService.class));
-        }
     }
 }

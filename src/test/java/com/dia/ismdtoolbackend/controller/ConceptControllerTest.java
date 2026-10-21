@@ -1,8 +1,5 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.exception.ConceptNotFoundException;
 import com.dia.ismdtoolbackend.exception.ConceptStorageException;
@@ -13,15 +10,13 @@ import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import com.dia.ismdtoolbackend.service.ConceptService;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
-import org.junit.jupiter.api.BeforeEach;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
+import com.dia.ismdtoolbackend.testsupport.web.StubOntologySecurityService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -43,22 +38,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>
  * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
  * Authentication is provided via @WithMockSecurityUser annotation.
- * Authorization checks (@PreAuthorize) are mocked via OntologySecurityService.
+ * Authorization checks (@PreAuthorize) are answered by StubOntologySecurityService.
  * <p>
  * Note: @MockitoBean replaces Spring Boot's deprecated @MockBean in these MVC
  * slice tests.
  */
-@WebMvcTest(controllers = ConceptController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-    })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = ConceptController.class)
 class ConceptControllerTest {
+
+    @Autowired
+    private StubOntologySecurityService ontologySecurity;
 
     @Autowired
     private MockMvc mockMvc;
@@ -68,12 +57,6 @@ class ConceptControllerTest {
 
     @MockitoBean
     private NkdSnapshotEndpointService nkdSnapshotEndpointService;
-
-    @BeforeEach
-    void setUp() {
-        // Reset security service to allow modifications by default
-        TestOntologySecurityService.reset();
-    }
 
     // ========== Create Concept Tests ==========
 
@@ -106,7 +89,6 @@ class ConceptControllerTest {
         expectedMetadata.setConceptName("TestConcept");
         expectedMetadata.setUser(new UserModel(userId));
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenReturn(expectedMetadata);
 
@@ -140,7 +122,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         mockMvc.perform(post("/api/concept/{slug}/create", slug)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(jsonRequest))
@@ -180,7 +161,6 @@ class ConceptControllerTest {
         String jsonRequest = jsonBuilder.toString();
         String slug = "test-ontology";
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenThrow(new ConceptValidationException(expectedError));
 
@@ -199,7 +179,6 @@ class ConceptControllerTest {
         String slug = "test-ontology";
         String jsonRequest = "{\n    \"conceptType\": \"TRIDA\"\n}";
 
-        TestOntologySecurityService.setAllowModify(true);
 
         mockMvc.perform(post("/api/concept/{slug}/create", slug)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -229,7 +208,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenThrow(new ConceptStorageException("Nepodařilo se uložit pojem"));
 
@@ -260,7 +238,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenThrow(new IllegalArgumentException("Invalid argument provided"));
 
@@ -291,7 +268,7 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
 
         mockMvc.perform(post("/api/concept/{slug}/create", slug)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -320,7 +297,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcept(any(), eq(userId)))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
@@ -369,7 +345,6 @@ class ConceptControllerTest {
         secondMetadata.setId(2L);
         secondMetadata.setConceptName("SecondConcept");
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.createConcepts(argThat(models -> models.size() == 2), eq(userId)))
                 .thenReturn(List.of(firstMetadata, secondMetadata));
 
@@ -392,7 +367,6 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void testCreateConcepts_EmptyListRejected() throws Exception {
-        TestOntologySecurityService.setAllowModify(true);
 
         mockMvc.perform(post("/api/concept/{slug}/create/bulk", "test-ontology")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -424,7 +398,6 @@ class ConceptControllerTest {
                 ]
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
 
         mockMvc.perform(post("/api/concept/{slug}/create/bulk", "test-ontology")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -444,7 +417,6 @@ class ConceptControllerTest {
     void testDeleteConcept_Success() throws Exception {
         Long conceptId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(conceptService).deleteConcept(conceptId);
 
         mockMvc.perform(delete("/api/concept/{conceptId}/delete", conceptId))
@@ -459,7 +431,6 @@ class ConceptControllerTest {
     void testDeleteConcept_NotFound() throws Exception {
         Long conceptId = 999L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new ConceptNotFoundException("Pojem s ID 999 nebyl nalezen"))
                 .when(conceptService).deleteConcept(conceptId);
 
@@ -475,7 +446,6 @@ class ConceptControllerTest {
     void testDeleteConcept_UnexpectedException() throws Exception {
         Long conceptId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Neočekávaná chyba"))
                 .when(conceptService).deleteConcept(conceptId);
 
@@ -517,7 +487,6 @@ class ConceptControllerTest {
         expectedMetadata.setConceptName("UpdatedConcept");
         expectedMetadata.setUser(new UserModel(userId));
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.editConcept(anyLong(), any(ConceptEditModel.class)))
                 .thenReturn(expectedMetadata);
 
@@ -544,7 +513,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new ConceptValidationException("Invalid concept IRI"));
 
@@ -568,7 +536,7 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
         when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new SecurityException("Security violation"));
 
@@ -596,7 +564,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new org.springframework.dao.DataIntegrityViolationException(
                         "duplicate key value violates unique constraint"));
@@ -619,7 +586,6 @@ class ConceptControllerTest {
                 }
                 """;
 
-        TestOntologySecurityService.setAllowModify(true);
         when(conceptService.editConcept(anyLong(), any()))
                 .thenThrow(new RuntimeException("Unexpected error"));
 
@@ -908,7 +874,6 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void updateLocalCopy_returnsRefreshedSnapshotDto() throws Exception {
-        TestOntologySecurityService.setAllowModify(true);
         com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto dto =
                 com.dia.ismdtoolbackend.controller.dto.LinkSnapshotDto.builder()
                         .snapshotId(7L)
@@ -931,7 +896,7 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "other")
     void updateLocalCopy_notOwner_forbidden() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // canModifyConcept → false
+        ontologySecurity.denyModify();   // canModifyConcept → false
 
         mockMvc.perform(post("/api/concept/{conceptId}/localcopy/{snapshotId}/update", 1L, 7L))
                 .andExpect(status().isForbidden());
@@ -940,7 +905,6 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void updateLocalCopy_snapshotNotFound_badRequest() throws Exception {
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new com.dia.ismdtoolbackend.exception.OntologyValidationException(
                 "Lokální kopie s id 7 nebyla nalezena."))
                 .when(nkdSnapshotEndpointService).updateSnapshot(1L, 7L);
@@ -953,7 +917,6 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void removeLocalCopy_success() throws Exception {
-        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(nkdSnapshotEndpointService).removeSnapshot(1L, 7L);
 
         mockMvc.perform(delete("/api/concept/{conceptId}/localcopy/{snapshotId}", 1L, 7L))
@@ -965,7 +928,7 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "other")
     void removeLocalCopy_notOwner_forbidden() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
 
         mockMvc.perform(delete("/api/concept/{conceptId}/localcopy/{snapshotId}", 1L, 7L))
                 .andExpect(status().isForbidden());
@@ -975,7 +938,6 @@ class ConceptControllerTest {
     @Test
     @WithMockSecurityUser(userId = "user123")
     void syncWorkingCopy_returnsDetailReadAfterTheSync() throws Exception {
-        TestOntologySecurityService.setAllowModify(true);
         String slug = "test-concept";
         ConceptMetadataModel metadataModel = new ConceptMetadataModel();
         metadataModel.setId(1L);

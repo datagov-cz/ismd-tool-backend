@@ -17,7 +17,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPOutputStream;
 
@@ -68,20 +71,26 @@ class CodelistDistributionReaderTest {
             + "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/číselníky/151/2025-01-01,151,Pohlaví,x\n";
 
     private HttpServer server;
+    private ExecutorService serverThreads;
+    /** Holds a deliberately slow response until the test ends. */
+    private final CountDownLatch releaseSlowResponses = new CountDownLatch(1);
     private String base;
     private final List<String> requestedPaths = new CopyOnWriteArrayList<>();
 
     @BeforeEach
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.setExecutor(Executors.newCachedThreadPool());
+        serverThreads = Executors.newCachedThreadPool();
+        server.setExecutor(serverThreads);
         server.start();
         base = "http://127.0.0.1:" + server.getAddress().getPort();
     }
 
     @AfterEach
     void stopServer() {
+        releaseSlowResponses.countDown();
         server.stop(0);
+        serverThreads.shutdownNow();
     }
 
     private CodelistDistributionReader reader(long maxBytes, Duration timeout) {
@@ -293,7 +302,7 @@ class CodelistDistributionReaderTest {
     void slowResponse_timesOut() {
         server.createContext("/slow.jsonld", exchange -> {
             try {
-                Thread.sleep(2000);
+                releaseSlowResponses.await(10, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

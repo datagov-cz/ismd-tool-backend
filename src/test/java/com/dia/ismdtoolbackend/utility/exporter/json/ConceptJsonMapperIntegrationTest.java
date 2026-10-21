@@ -67,7 +67,7 @@ class ConceptJsonMapperIntegrationTest {
     }
 
     @Test
-    @DisplayName("processAllConcepts result count matches processConceptByIri calls")
+    @DisplayName("processAllConcepts maps each concept as processConceptByIri does")
     void allConcepts_matchesIndividual() {
         OntModel model = createDefaultModel();
         addOwlClass(model, "osoba", "Osoba");
@@ -76,16 +76,12 @@ class ConceptJsonMapperIntegrationTest {
         ModelStructure structure = createModelStructure(model);
 
         ConceptData data = processor.processAllConcepts(model, structure);
-        int totalFromAll = data.getTotalConceptCount();
-
-        // Each individual concept should be processable
+        assertEquals(3, data.getTotalConceptCount());
+        assertEquals(3, data.getConcepts().size());
         for (Map<String, Object> concept : data.getConcepts()) {
             String iri = (String) concept.get("iri");
-            Map<String, Object> individual = processor.processConceptByIri(model, structure, iri);
-            assertEquals(iri, individual.get("iri"));
+            assertEquals(concept, processor.processConceptByIri(model, structure, iri));
         }
-
-        assertEquals(totalFromAll, data.getConcepts().size());
     }
 
     @Test

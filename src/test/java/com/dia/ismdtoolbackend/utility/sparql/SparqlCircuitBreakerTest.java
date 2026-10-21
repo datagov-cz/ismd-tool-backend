@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.sparql;
 
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
+import com.dia.ismdtoolbackend.testsupport.time.MutableClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,11 +14,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SparqlCircuitBreakerTest {
 
+    private static final long COOLDOWN_MS = 30_000;
+
+    private final MutableClock clock = MutableClock.of("2026-10-21T10:00:00Z");
     private SparqlCircuitBreaker breaker;
 
     @BeforeEach
     void setUp() {
-        breaker = new SparqlCircuitBreaker("test", 3, 50);
+        breaker = new SparqlCircuitBreaker("test", 3, COOLDOWN_MS, clock);
     }
 
     @Test
@@ -76,14 +80,14 @@ class SparqlCircuitBreakerTest {
     }
 
     @Test
-    void breakerHalfOpensAfterCooldownAndClosesOnSuccess() throws InterruptedException {
+    void breakerHalfOpensAfterCooldownAndClosesOnSuccess() {
         for (int i = 0; i < 3; i++) {
             assertThrows(SparqlEndpointUnavailableException.class,
                     () -> breaker.call(() -> { throw new SparqlEndpointUnavailableException("test", "boom"); }));
         }
         assertTrue(breaker.isOpen());
 
-        Thread.sleep(60); // cooldown is 50ms
+        clock.advanceMillis(COOLDOWN_MS + 1);
 
         // Trial call succeeds — breaker closes
         String out = breaker.call(() -> "ok");
@@ -92,17 +96,46 @@ class SparqlCircuitBreakerTest {
     }
 
     @Test
-    void breakerHalfOpensAfterCooldownAndReopensOnFailure() throws InterruptedException {
+    void breakerHalfOpensAfterCooldownAndReopensOnFailure() {
         for (int i = 0; i < 3; i++) {
             assertThrows(SparqlEndpointUnavailableException.class,
                     () -> breaker.call(() -> { throw new SparqlEndpointUnavailableException("test", "boom"); }));
         }
-        Thread.sleep(60);
+        clock.advanceMillis(COOLDOWN_MS + 1);
 
         // Trial call fails — breaker re-opens
         assertThrows(SparqlEndpointUnavailableException.class,
                 () -> breaker.call(() -> { throw new SparqlEndpointUnavailableException("test", "still down"); }));
         assertTrue(breaker.isOpen());
+
+        clock.advanceMillis(COOLDOWN_MS - 1);
+        assertTrue(breaker.isOpen(), "the new cooldown window counts from the failed trial");
+    }
+
+    @Test
+    void staysOpenUntilTheLastMillisecondOfTheCooldown() {
+        tripBreaker();
+
+        clock.advanceMillis(COOLDOWN_MS - 1);
+
+        assertTrue(breaker.isOpen());
+        AtomicInteger calls = new AtomicInteger();
+        assertThrows(SparqlEndpointUnavailableException.class,
+                () -> breaker.call(() -> calls.incrementAndGet()));
+        assertEquals(0, calls.get(), "one millisecond before the cooldown ends the breaker still fast-fails");
+
+        clock.advanceMillis(1);
+
+        assertFalse(breaker.isOpen(), "the cooldown has elapsed exactly");
+        assertEquals("ok", breaker.call(() -> "ok"), "the call at the cooldown boundary is the trial");
+    }
+
+    @Test
+    void publicConstructorUsesTheSystemClock() {
+        SparqlCircuitBreaker systemClocked = new SparqlCircuitBreaker("test", 1, COOLDOWN_MS);
+        assertThrows(SparqlEndpointUnavailableException.class,
+                () -> systemClocked.call(() -> { throw new SparqlEndpointUnavailableException("test", "boom"); }));
+        assertTrue(systemClocked.isOpen(), "a 30 s cooldown has not elapsed on the real clock");
     }
 
     @Test
@@ -112,5 +145,12 @@ class SparqlCircuitBreakerTest {
                     () -> breaker.call(() -> { throw new IllegalArgumentException("user input"); }));
         }
         assertFalse(breaker.isOpen(), "non-SPARQL exceptions are user/domain errors and must not count");
+    }
+
+    private void tripBreaker() {
+        for (int i = 0; i < 3; i++) {
+            assertThrows(SparqlEndpointUnavailableException.class,
+                    () -> breaker.call(() -> { throw new SparqlEndpointUnavailableException("test", "boom"); }));
+        }
     }
 }

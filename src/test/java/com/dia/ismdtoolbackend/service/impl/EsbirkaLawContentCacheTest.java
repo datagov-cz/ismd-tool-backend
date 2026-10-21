@@ -1,25 +1,28 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.EsbirkaClient;
-import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheSliceTest;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cache.CacheManager;
-import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,17 +43,7 @@ import static org.mockito.Mockito.when;
  * key is evaluated only through the Spring proxy, so these tests run the real cache manager —
  * a plain Mockito unit test cannot catch a key collision between two znění of one law.
  */
-@SpringBootTest(classes = {
-        CacheConfig.class,
-        EsbirkaServiceImpl.class,
-        EsbirkaLawSearch.class,
-        EsbirkaLawVersionsReader.class,
-        EsbirkaLawContentReader.class,
-        EsbirkaLegalSourceResolver.class,
-        EsbirkaFragmentResolutionCache.class,
-        EsbirkaSubtreeBodyCache.class
-})
-@Import(EsbirkaLawContentCacheTest.NoOpAppConfig.class)
+@CacheSliceTest(EsbirkaCacheSliceBeans.class)
 class EsbirkaLawContentCacheTest {
 
     private static final String LAW_IRI = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997/49";
@@ -75,8 +68,7 @@ class EsbirkaLawContentCacheTest {
 
     @BeforeEach
     void setUp() {
-        cacheManager.getCache("esbirkaLawContent").clear();
-        cacheManager.getCache("esbirkaLawSearch").clear();
+        CacheTestSupport.clearAll(cacheManager);
         when(client.findLaw("sb", "49", 1997)).thenReturn(Optional.of(
                 new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
@@ -131,22 +123,30 @@ class EsbirkaLawContentCacheTest {
 
     @Test
     void concurrentMissesOnOneKeyShareASingleFetch() throws Exception {
-        cacheManager.getCache("esbirkaLawVersions").clear();
         int callers = 5;
         CountDownLatch release = new CountDownLatch(1);
+        Set<Thread> inLoad = ConcurrentHashMap.newKeySet();
         when(client.fetchVersionContent(LATEST_IRI)).thenAnswer(inv -> {
+            inLoad.add(Thread.currentThread());
             release.await(5, TimeUnit.SECONDS);
             return List.of(fragment(LATEST_IRI, "<p>nové znění</p>"));
         });
 
-        ExecutorService pool = Executors.newFixedThreadPool(callers);
+        List<Thread> callerThreads = new CopyOnWriteArrayList<>();
+        ExecutorService pool = Executors.newFixedThreadPool(callers, task -> {
+            Thread t = new Thread(task, "law-content-caller");
+            callerThreads.add(t);
+            return t;
+        });
         try {
             List<Future<LawContentDto>> results = new ArrayList<>();
             for (int i = 0; i < callers; i++) {
                 results.add(pool.submit(() -> service.getLawContent("49/1997", LATEST_IRI)));
             }
-            // Let every caller reach the cache before the first load completes.
-            Thread.sleep(300);
+            // Hold the load until every caller is inside it or parked on the cache entry, so all
+            // five are concurrent misses; without single-flight each would run its own load.
+            assertTrue(awaitAllInLoadOrParkedOnCache(callerThreads, callers, inLoad),
+                    "every caller reaches the cache before the first load completes");
             release.countDown();
             for (Future<LawContentDto> r : results) {
                 assertEquals(LATEST_IRI, r.get(10, TimeUnit.SECONDS).getVersionIri());
@@ -235,7 +235,6 @@ class EsbirkaLawContentCacheTest {
     @Test
     void legacyHostLawIriSharesTheVersionListCacheEntry() {
         // getVersions is keyed on the canonical IRI for the same reason.
-        cacheManager.getCache("esbirkaLawVersions").clear();
         service.getVersions(LAW_IRI);
         service.getVersions(LEGACY_LAW_IRI);
 
@@ -282,8 +281,27 @@ class EsbirkaLawContentCacheTest {
         assertNotNull(cacheManager.getCache("esbirkaLawContent"));
     }
 
-    @org.springframework.boot.SpringBootConfiguration
-    @org.springframework.context.annotation.ComponentScan(useDefaultFilters = false)
-    static class NoOpAppConfig {
+    /** Polls thread states (bounded); a parked caller with Caffeine frames waits on an entry. */
+    private static boolean awaitAllInLoadOrParkedOnCache(List<Thread> threads, int expected, Set<Thread> inLoad)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (threads.size() == expected
+                    && threads.stream().allMatch(t -> inLoad.contains(t) || parkedInCaffeine(t))) {
+                return true;
+            }
+            Thread.sleep(5);
+        }
+        return false;
+    }
+
+    private static boolean parkedInCaffeine(Thread t) {
+        Thread.State state = t.getState();
+        if (state != Thread.State.BLOCKED && state != Thread.State.WAITING
+                && state != Thread.State.TIMED_WAITING) {
+            return false;
+        }
+        return Arrays.stream(t.getStackTrace())
+                .anyMatch(frame -> frame.getClassName().startsWith("com.github.benmanes.caffeine."));
     }
 }

@@ -94,7 +94,6 @@ class ConceptSourcePropertyTest {
         Resource concept = addOwlClass(model, "osoba", "Osoba");
         Resource doc = addDigitalDocument(model, TEST_POJEM_NS + "doc1", "Dokument A", "https://example.org/doc.pdf");
 
-        // Link using effective namespace property
         concept.addProperty(
                 model.createProperty(TEST_POJEM_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ),
                 doc);
@@ -102,14 +101,11 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        // The non-legislative source should be found via the effective namespace or local name fallback
-        if (result.containsKey(DEFINUJICI_NELEGISLATIVNI_ZDROJ)) {
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> sources = (List<Map<String, Object>>) result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-            assertFalse(sources.isEmpty());
-            Map<String, Object> docObj = sources.get(0);
-            assertTrue(docObj.containsKey("iri"));
-        }
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sources = (List<Map<String, Object>>) result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+        assertNotNull(sources, "source linked under any namespace is found by its local name");
+        assertEquals(1, sources.size());
+        assertEquals(TEST_POJEM_NS + "doc1", sources.get(0).get("iri"));
     }
 
     @Test
@@ -127,21 +123,20 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        if (result.containsKey(DEFINUJICI_NELEGISLATIVNI_ZDROJ)) {
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> sources = (List<Map<String, Object>>) result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-            Map<String, Object> docObj = sources.get(0);
-            assertEquals("https://example.org/doc/1", docObj.get("iri"));
-            assertEquals("Digitální objekt", docObj.get("typ"));
-            @SuppressWarnings("unchecked")
-            Map<String, Object> title = (Map<String, Object>) docObj.get(NAZEV);
-            assertEquals("Testovací dokument", title.get("cs"));
-            @SuppressWarnings("unchecked")
-            Map<String, Object> description = (Map<String, Object>) docObj.get(POPIS);
-            assertNotNull(description);
-            assertEquals("Popis dokumentu", description.get("cs"));
-            assertEquals("https://example.org/files/doc.pdf", docObj.get("url"));
-        }
+        assertNotNull(result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sources = (List<Map<String, Object>>) result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+        Map<String, Object> docObj = sources.get(0);
+        assertEquals("https://example.org/doc/1", docObj.get("iri"));
+        assertEquals("Digitální objekt", docObj.get("typ"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> title = (Map<String, Object>) docObj.get(NAZEV);
+        assertEquals("Testovací dokument", title.get("cs"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> description = (Map<String, Object>) docObj.get(POPIS);
+        assertNotNull(description);
+        assertEquals("Popis dokumentu", description.get("cs"));
+        assertEquals("https://example.org/files/doc.pdf", docObj.get("url"));
     }
 
     @Test

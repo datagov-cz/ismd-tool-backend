@@ -30,6 +30,9 @@ class EsbirkaRateGateTest {
         AtomicInteger inFlight = new AtomicInteger();
         AtomicInteger maxInFlight = new AtomicInteger();
         CountDownLatch start = new CountDownLatch(1);
+        // The first MAX_IN_FLIGHT calls hold until all of them are in flight, so the cap is
+        // reached however late the scheduler runs a caller; the latch is open for later calls.
+        CountDownLatch capReached = new CountDownLatch(MAX_IN_FLIGHT);
         ExecutorService pool = Executors.newFixedThreadPool(CALLERS);
         try {
             List<Future<?>> futures = new ArrayList<>();
@@ -39,7 +42,9 @@ class EsbirkaRateGateTest {
                     departures.add(gate.acquire(EsbirkaDeadline.after(Duration.ofSeconds(10))));
                     maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
                     try {
-                        Thread.sleep(100); // the "call": longer than the spacing, so the cap is reached
+                        capReached.countDown();
+                        capReached.await(5, TimeUnit.SECONDS);
+                        Thread.sleep(100); // the "call": longer than the spacing
                     } finally {
                         inFlight.decrementAndGet();
                         gate.release();

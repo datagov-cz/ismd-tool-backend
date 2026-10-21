@@ -1,17 +1,14 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.SearchResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.SearchResultDto;
 import com.dia.ismdtoolbackend.controller.dto.SourceStatusDto;
 import com.dia.ismdtoolbackend.enums.*;
 import com.dia.ismdtoolbackend.service.SearchService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -23,16 +20,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(controllers = SearchController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = SearchController.class)
 class SearchControllerTest {
 
     @Autowired

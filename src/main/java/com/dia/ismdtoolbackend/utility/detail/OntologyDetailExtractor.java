@@ -139,6 +139,10 @@ public class OntologyDetailExtractor {
 
         Map<String, OntologyDetailModel.ConceptDetailModel> out = new LinkedHashMap<>();
         for (String conceptIri : conceptIris) {
+            if (!processedModel.containsResource(processedModel.getResource(conceptIri))) {
+                out.put(conceptIri, null);
+                continue;
+            }
             Map<String, Object> conceptMap = conceptJsonMapper.processConceptByIri(ontModel, structure, conceptIri);
             out.put(conceptIri, mapper.mapToConceptDetailModel(conceptMap, null, ontModel, refResolver));
         }

@@ -80,12 +80,15 @@ class JenaTDB2RepositorySemaphoreTest {
                 new MockEnvironment());
 
         Thread.currentThread().interrupt();
+        try {
+            JenaTDB2Exception thrown = assertThrows(JenaTDB2Exception.class,
+                    () -> longTimeoutRepo.conceptNotFoundInGraph("urn:concept:1", "urn:graph:test"));
 
-        JenaTDB2Exception thrown = assertThrows(JenaTDB2Exception.class,
-                () -> longTimeoutRepo.conceptNotFoundInGraph("urn:concept:1", "urn:graph:test"));
-
-        assertTrue(thrown.getMessage().contains("Interrupted"));
-        // Clear interrupt flag
-        Thread.interrupted();
+            assertTrue(thrown.getMessage().contains("Interrupted"));
+            assertTrue(Thread.currentThread().isInterrupted(), "the interrupt flag is restored for the caller");
+        } finally {
+            // Surefire runs every class on this thread; a flag left set breaks the next blocking call.
+            Thread.interrupted();
+        }
     }
 }

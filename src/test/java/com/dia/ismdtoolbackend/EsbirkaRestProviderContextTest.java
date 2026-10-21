@@ -2,44 +2,72 @@ package com.dia.ismdtoolbackend;
 
 import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.config.EsbirkaConfig;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
+import tools.jackson.databind.json.JsonMapper;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.net.http.HttpClient;
 
-/** The application starts with {@code esbirka.provider=rest} and wires only the REST client. */
-@SpringBootTest
-@ActiveProfiles("junit")
-@TestPropertySource(properties = {
-        "esbirka.provider=rest",
-        "esbirka.rest.api-key=test-key",
-        // Own in-memory database: another context in this JVM may already hold testdb's schema.
-        "spring.datasource.url=jdbc:h2:mem:esbirka-rest-provider;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
-                + "INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
-        "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
-        "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
-        "spring.security.oauth2.client.registration.keycloak.provider=keycloak-test",
-        "spring.security.oauth2.client.provider.keycloak-test.authorization-uri=http://localhost/auth",
-        "spring.security.oauth2.client.provider.keycloak-test.token-uri=http://localhost/token",
-        "spring.security.oauth2.client.provider.keycloak-test.user-info-uri=http://localhost/userinfo",
-        "spring.security.oauth2.client.provider.keycloak-test.jwk-set-uri=http://localhost/jwks",
-        "spring.security.oauth2.client.provider.keycloak-test.user-name-attribute=preferred_username",
-        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost/jwks"
-})
+import static org.assertj.core.api.Assertions.assertThat;
+
+/** {@code esbirka.provider} wires exactly one {@link EsbirkaClient}, and the REST provider its deadline filter. */
 class EsbirkaRestProviderContextTest {
 
-    @Autowired
-    private ApplicationContext context;
+    private final ApplicationContextRunner runner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
+            .withUserConfiguration(EsbirkaClients.class)
+            .withBean(JsonMapper.class, () -> JsonMapper.builder().build())
+            .withBean(MeterRegistry.class, SimpleMeterRegistry::new)
+            .withBean("externalSparqlHttpClient", HttpClient.class, HttpClient::newHttpClient);
 
     @Test
-    void wiresOnlyTheRestClient() {
-        assertEquals("EsbirkaRestClient", context.getBean(EsbirkaClient.class).getClass().getSimpleName());
-        assertEquals(0, context.getBeanNamesForType(EsbirkaSparqlClient.class).length);
-        assertTrue(context.containsBean("esbirkaDeadlineFilter"));
+    void restProviderWiresOnlyTheRestClient() {
+        runner.withPropertyValues("esbirka.provider=rest", "esbirka.rest.api-key=test-key")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(EsbirkaClient.class).getClass().getSimpleName())
+                            .isEqualTo("EsbirkaRestClient");
+                    assertThat(context).doesNotHaveBean(EsbirkaSparqlClient.class);
+                    assertThat(context).hasBean("esbirkaDeadlineFilter");
+                });
+    }
+
+    @Test
+    void missingProviderWiresOnlyTheSparqlClient() {
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).getBean(EsbirkaClient.class).isInstanceOf(EsbirkaSparqlClient.class);
+            assertThat(context).doesNotHaveBean("esbirkaDeadlineFilter");
+            assertThat(context).doesNotHaveBean("esbirkaRestTransport");
+        });
+    }
+
+    @Test
+    void sparqlProviderWiresOnlyTheSparqlClient() {
+        runner.withPropertyValues("esbirka.provider=sparql").run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).getBean(EsbirkaClient.class).isInstanceOf(EsbirkaSparqlClient.class);
+            assertThat(context).doesNotHaveBean("esbirkaDeadlineFilter");
+        });
+    }
+
+    /**
+     * Both providers' beans, each behind its {@code @ConditionalOnProperty}. Configuration classes are
+     * skipped: test configurations in the same package would otherwise be scanned too.
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ComponentScan(basePackages = "com.dia.ismdtoolbackend.client.esbirka",
+            excludeFilters = @ComponentScan.Filter(type = FilterType.ANNOTATION, classes = Configuration.class))
+    @Import({EsbirkaConfig.class, EsbirkaSparqlClient.class})
+    static class EsbirkaClients {
     }
 }

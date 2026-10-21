@@ -1,8 +1,9 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.config.ExternalSparqlConfig;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheSliceTest;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheTestSupport;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import org.apache.jena.rdf.model.Model;
@@ -11,13 +12,11 @@ import org.mockito.ArgumentMatchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
-import java.util.Objects;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -38,7 +37,7 @@ import static org.mockito.Mockito.when;
  * <p>The shared {@link HttpSparqlExecutor} bean is a mock, so the test exercises both proxies and
  * the cache without any HTTP.
  */
-@SpringBootTest(classes = {CacheConfig.class, NkdSparqlClient.class, NkdPublishedResourceFetcher.class})
+@CacheSliceTest({NkdSparqlClient.class, NkdPublishedResourceFetcher.class})
 @Import(NkdPublishedResourceCacheTest.TestBeans.class)
 class NkdPublishedResourceCacheTest {
 
@@ -56,7 +55,7 @@ class NkdPublishedResourceCacheTest {
 
     @BeforeEach
     void setUp() {
-        Objects.requireNonNull(cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE)).clear();
+        CacheTestSupport.clearAll(cacheManager);
         reset(executorMock);
         when(executorMock.isConfigured()).thenReturn(true);
     }

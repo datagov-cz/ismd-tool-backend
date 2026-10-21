@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.exceptions.JsonExportException;
+import com.dia.ismdtoolbackend.exception.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;

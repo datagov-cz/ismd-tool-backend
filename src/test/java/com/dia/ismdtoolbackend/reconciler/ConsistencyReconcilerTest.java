@@ -14,6 +14,11 @@ import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -214,23 +219,29 @@ class ConsistencyReconcilerTest {
     @Test
     void reentrancyGuard_secondConcurrentRunReturnsNull() throws Exception {
         // Hold the run inside listNamedGraphs while a second thread tries to reconcile.
-        java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1);
-        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        CountDownLatch inside = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
         when(jenaTDB2Repository.listNamedGraphs()).thenAnswer(inv -> {
             inside.countDown();
-            release.await();
+            release.await(10, TimeUnit.SECONDS);
             return List.of();
         });
 
-        Thread first = new Thread(() -> reconciler.reconcile("FIRST"));
-        first.start();
-        assertTrue(inside.await(2, java.util.concurrent.TimeUnit.SECONDS), "first run should start");
+        ExecutorService firstRunner = Executors.newSingleThreadExecutor();
+        try {
+            Future<ReconciliationReport> first =
+                    firstRunner.submit(() -> reconciler.reconcile("FIRST"));
+            assertTrue(inside.await(5, TimeUnit.SECONDS), "first run should start");
 
-        ReconciliationReport second = reconciler.reconcile("SECOND");
-        assertNull(second, "A run already in progress must return null");
+            ReconciliationReport second = reconciler.reconcile("SECOND");
+            assertNull(second, "A run already in progress must return null");
 
-        release.countDown();
-        first.join(2000);
+            release.countDown();
+            first.get(5, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            firstRunner.shutdownNow();
+        }
     }
 
     @Test

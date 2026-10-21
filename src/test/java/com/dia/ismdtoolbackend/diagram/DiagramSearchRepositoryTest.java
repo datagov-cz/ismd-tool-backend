@@ -1,20 +1,15 @@
 package com.dia.ismdtoolbackend.diagram;
 
-import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
+import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -26,12 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * ontology's slug, accent-insensitively (via {@code ismd_schema.unaccent}), and the total count agrees with
  * the row count. An ontology with no diagram never appears.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@EntityScan(basePackageClasses = DiagramEntity.class)
-@EnableJpaRepositories(basePackageClasses = DiagramRepository.class)
-@Import(JpaAuditingConfig.class)
+@PlainJpaIT
+@Transactional
 class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
 
     @Autowired private DiagramRepository diagramRepository;
@@ -99,11 +90,9 @@ class DiagramSearchRepositoryTest extends PostgresIntegrationTestBase {
         diagramFor(ontology("a-slovnik"));
         diagramFor(ontology("b-slovnik"));
 
-        // '%%' matches every diagram — assert against the total row count rather than a fixed 2,
-        // so committed rows leaked by sibling Testcontainer tests (shared singleton container) don't
-        // make this brittle.
+        // '%%' matches every diagram; the database starts empty, so that is exactly these two.
         List<DiagramRepository.DiagramSearchRow> all = search("");
-        assertThat(all).hasSize((int) diagramRepository.count());
+        assertThat(all).hasSize(2);
         assertThat(all).extracting(DiagramRepository.DiagramSearchRow::getSlug)
                 .contains("a-slovnik", "b-slovnik");
     }

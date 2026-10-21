@@ -3,13 +3,15 @@ package com.dia.ismdtoolbackend.client.esbirka;
 import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.config.EsbirkaConfig;
-import com.github.tomakehurst.wiremock.WireMockServer;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheTestSupport;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -36,14 +38,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestPropertySource(properties = "esbirka.provider=rest")
 class EsbirkaRestCachingTest {
 
-    private static final WireMockServer WM = new WireMockServer(wireMockConfig().dynamicPort());
+    /** Started before the Spring context loads, which reads its base URL. */
+    @RegisterExtension
+    static final WireMockExtension WM = WireMockExtension.newInstance()
+            .options(wireMockConfig().dynamicPort())
+            .build();
     private static final String B = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz";
     private static final String V_49 = B + "/sb/1997/49/2025-11-01";
     private static final String PAGES = "/dokumenty-sbirky/%2Fsb%2F1997%2F49%2F2025-11-01/fragmenty";
-
-    static {
-        WM.start();
-    }
 
     @Configuration
     @Import({CacheConfig.class, EsbirkaRestTransport.class, EsbirkaRestReader.class, EsbirkaRestNameSearch.class,
@@ -72,14 +74,12 @@ class EsbirkaRestCachingTest {
     @Autowired
     private EsbirkaClient client;
 
-    @AfterAll
-    static void stopServer() {
-        WM.stop();
-    }
+    @Autowired
+    private CacheManager cacheManager;
 
     @BeforeEach
     void stub() {
-        WM.resetAll();
+        CacheTestSupport.clearAll(cacheManager);
         for (int n = 0; n < 3; n++) {
             WM.stubFor(get(urlEqualTo(PAGES + "?cisloStranky=" + n)).willReturn(aResponse().withStatus(200)
                     .withHeader("Content-Type", "application/json")

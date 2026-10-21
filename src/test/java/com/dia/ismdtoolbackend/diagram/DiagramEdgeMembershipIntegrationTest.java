@@ -3,55 +3,30 @@ package com.dia.ismdtoolbackend.diagram;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
-import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
-import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
-import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
-import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
-import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
+import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 /**
@@ -72,20 +47,11 @@ import static org.mockito.Mockito.when;
  * <p>The waypoint rules live alongside membership because they share the row: {@code segments} omitted keeps
  * the stored routing, {@code []} clears it. Neither affects membership.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramEdgeMembershipIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@DiagramServiceIT
 class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/em";
     private static final String SLUG = "edge-membership-ontology";
-    private static final String USER = "user123";
     private static final String CLASS_A = GRAPH + "/pojem/trida-a";
     private static final String CLASS_B = GRAPH + "/pojem/trida-b";
     /** A VZTAH, live domain A → range B; its edge id is its own concept IRI. */
@@ -94,17 +60,15 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
     private static final String SUBCLASS_EDGE = "edge|SUBCLASS_OF|" + CLASS_A + "|" + CLASS_B;
 
     @Autowired private ConceptMetadataRepository conceptRepo;
-    @Autowired private OntologyMetadataRepository ontologyRepo;
-    @Autowired private DiagramRepository diagramRepo;
-    @Autowired private DiagramNodeRepository nodeRepo;
-    @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
     @Autowired private OntologyDetailExtractor extractor;
+    @Autowired private PgTestData data;
+
+    private Long diagramId;
 
     @BeforeEach
     void setUp() {
-        reset(tdb2, extractor);
         Model nonEmpty = ModelFactory.createDefaultModel();
         nonEmpty.add(nonEmpty.createResource(CLASS_A),
                 org.apache.jena.vocabulary.RDF.type,
@@ -112,24 +76,11 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
         when(tdb2.fetchGraph(any())).thenReturn(nonEmpty);
         when(extractor.applyOFNTransformations(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        txTemplate.executeWithoutResult(tx -> {
-            nodeRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity ont = new OntologyMetadataEntity();
-            ont.setSlug(SLUG);
-            ont.setGraphName(GRAPH);
-            ont.setUserId(USER);
-            ont.setIsPublished(false);
-            ont.setCreatedAt(LocalDateTime.now());
-            OntologyMetadataEntity saved = ontologyRepo.save(ont);
-            seedConcept(saved, CLASS_A, "Třída A", ConceptType.TRIDA);
-            seedConcept(saved, CLASS_B, "Třída B", ConceptType.TRIDA);
-            seedConcept(saved, REL, "vztah A-B", ConceptType.VZTAH);
-        });
+        OntologyMetadataEntity ontology = data.createOntology(SLUG, GRAPH);
+        data.createConcept(ontology, CLASS_A, "Třída A", ConceptType.TRIDA);
+        data.createConcept(ontology, CLASS_B, "Třída B", ConceptType.TRIDA);
+        data.createConcept(ontology, REL, "vztah A-B", ConceptType.VZTAH);
+        diagramId = data.createDiagram(ontology, "Test diagram");
     }
 
     // ---- membership -----------------------------------------------------------------------------
@@ -292,20 +243,6 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
                 .iri(REL).name(Map.of("cs", "vztah A-B")).domain(CLASS_A).range(CLASS_B).build();
     }
 
-    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name, ConceptType type) {
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setConceptName(name);
-        c.setConceptType(type);
-        c.setGraphName(GRAPH);
-        c.setUserId(USER);
-        c.setOntologyMetadata(ontology);
-        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1));
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        conceptRepo.save(c);
-    }
-
     private DiagramLayoutDto.Node node(String iri, double x) {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri,
                 new PositionDto(x, 0.0), null, false, List.of());
@@ -323,60 +260,7 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
             nodes.add(node(iri, x));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, diagramId(),
-                new DiagramLayoutDto(storedVersion(), null, nodes, edges, null));
-    }
-
-    private Long storedVersion() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
-                .findFirst().map(DiagramEntity::getVersion).orElse(null);
-    }
-
-    private Long ontologyId() {
-        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
-    }
-
-    private Long diagramId() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
-                .findFirst()
-                .map(DiagramEntity::getId)
-                .orElseGet(() -> txTemplate.execute(tx -> {
-                    DiagramEntity d = new DiagramEntity();
-                    d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
-                    d.setName("Test diagram");
-                    return diagramRepo.saveAndFlush(d).getId();
-                }));
-    }
-
-    @TestConfiguration
-    static class Beans {
-
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
-            return mock(OntologyDetailExtractor.class);
-        }
-
-        @Bean DiagramMapper diagramMapper() {
-            return new DiagramMapper();
-        }
-
-        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo,
-                                                              DiagramPendingEditRepository pendingEditRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
-        }
-
-        @Bean OntologyLabelLookup ontologyLabelLookup() {
-
-            return mock(OntologyLabelLookup.class);
-
-        }
-
-        @Bean DiagramMaterializeService diagramMaterializeService() {
-            return mock(DiagramMaterializeService.class);
-        }
+        return diagramService.saveLayout(SLUG, diagramId,
+                new DiagramLayoutDto(data.diagramVersion(diagramId), null, nodes, edges, null));
     }
 }

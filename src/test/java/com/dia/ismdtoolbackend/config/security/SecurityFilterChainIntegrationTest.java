@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.config.security;
 
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
+import com.dia.ismdtoolbackend.testsupport.context.FullContextTest;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistSnapshotHolder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -9,7 +10,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.security.web.SecurityFilterChain;
@@ -39,32 +39,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * This test guards against accidental @Order swaps or securityMatcher removal
  * that could silently break authentication.
  */
-@SpringBootTest
+@FullContextTest
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
-@TestPropertySource(properties = {
-        // This profile points at live endpoints; tests stay offline.
-        "nkd.sparql.endpoint=",
-        "nkod.sparql.endpoint=",
-        "rpp.sparql.endpoint=",
-        "esbirka.sparql.endpoint=",
-        "esbirka.rest.base-url=http://127.0.0.1:9",
-        "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
-        "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
-        "spring.security.oauth2.client.registration.keycloak.provider=keycloak-test",
-        "spring.security.oauth2.client.provider.keycloak-test.authorization-uri=http://localhost/auth",
-        "spring.security.oauth2.client.provider.keycloak-test.token-uri=http://localhost/token",
-        "spring.security.oauth2.client.provider.keycloak-test.user-info-uri=http://localhost/userinfo",
-        "spring.security.oauth2.client.provider.keycloak-test.jwk-set-uri=http://localhost/jwks",
-        "spring.security.oauth2.client.provider.keycloak-test.user-name-attribute=preferred_username",
-        "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost/jwks",
-        "spring.datasource.url=jdbc:h2:mem:testdb-local-security;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS ismd_schema",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=password",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.jpa.database=h2",
-        "spring.liquibase.liquibase-schema=PUBLIC"
-})
+@TestPropertySource(properties = "full-context.db-name=local-security")
 class SecurityFilterChainIntegrationTest {
 
     @Autowired

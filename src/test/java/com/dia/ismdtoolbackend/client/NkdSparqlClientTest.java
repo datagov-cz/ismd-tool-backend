@@ -3,17 +3,14 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
-import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentMatchers;
 
 import java.net.http.HttpClient;
@@ -21,10 +18,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.literal;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.uri;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.sparqlJson;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.turtle;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
-import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,7 +37,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NkdSparqlClientTest {
 
     private static final String CONCEPT_IRI = "https://data.gov.cz/zdroj/pojem/koncept-1";
@@ -45,29 +44,12 @@ class NkdSparqlClientTest {
     private static final String ONTOLOGY_IRI = "https://data.gov.cz/zdroj/slovník/test";
     private static final String IN_SCHEME = "http://www.w3.org/2004/02/skos/core#inScheme";
 
-    private WireMockServer wm;
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
 
-    @BeforeAll
-    void startServer() {
-        wm = new WireMockServer(wireMockConfig().dynamicPort());
-        wm.start();
-        com.github.tomakehurst.wiremock.client.WireMock.configureFor("localhost", wm.port());
-    }
-
-    @AfterAll
-    void stopServer() {
-        wm.stop();
-    }
-
-    @BeforeEach
-    void reset() {
-        wm.resetAll();
-    }
-
-    @AfterEach
-    void tearDown() {
-        wm.resetAll();
-    }
+    @RegisterExtension
+    static final WireMockExtension WM = WireMockExtension.newInstance()
+            .options(wireMockConfig().dynamicPort())
+            .build();
 
     // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -80,7 +62,7 @@ class NkdSparqlClientTest {
     }
 
     private NkdSparqlClient newClient(OntologyDetailExtractor extractor) {
-        return newClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor);
+        return newClient(configWithEndpoint(WM.baseUrl() + "/sparql"), extractor);
     }
 
     private NkdSparqlClient newUnconfiguredClient(OntologyDetailExtractor extractor) {
@@ -93,25 +75,21 @@ class NkdSparqlClientTest {
                 NkdSparqlClient.NKD_LABEL,
                 cfg.getSparql().getEndpoint(),
                 cfg.getSparql().getTimeout(),
-                HttpClient.newHttpClient(),
+                HTTP,
                 cfg.getSparql().getMaxConcurrentRequests());
         return new NkdSparqlClient(executor, extractor, new NkdPublishedResourceFetcher(executor, extractor));
     }
 
-    private static void stubTurtle(String turtle) {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "text/turtle")
-                .withBody(turtle)));
+    private static void stubTurtle(String body) {
+        WM.stubFor(any(anyUrl()).willReturn(turtle(body)));
     }
 
     private static void stubEmptyTurtle() {
         stubTurtle("");
     }
 
-    private static void stubSparqlJson(String body) {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withBody(body)));
+    private static void stubSparqlJson(SparqlJson result) {
+        WM.stubFor(any(anyUrl()).willReturn(sparqlJson(result)));
     }
 
     // ─── fetchPublishedConcept / fetchPublishedConceptWithScheme ────────────────
@@ -346,17 +324,9 @@ class NkdSparqlClientTest {
     @Test
     void executeSelect_resourceAndLiteralBindings_areProjected() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
-        String json = """
-                {
-                  "head": { "vars": ["s", "label"] },
-                  "results": { "bindings": [
-                    { "s": {"type":"uri","value":"https://example.org/x"},
-                      "label": {"type":"literal","value":"Hello"} },
-                    { "s": {"type":"uri","value":"https://example.org/y"} }
-                  ] }
-                }
-                """;
-        stubSparqlJson(json);
+        stubSparqlJson(SparqlJson.select("s", "label")
+                .row(uri("s", "https://example.org/x"), literal("label", "Hello"))
+                .row(uri("s", "https://example.org/y")));
 
         List<Map<String, String>> rows = newClient(extractor).executeSelect("SELECT * WHERE { ?s ?p ?o }");
         assertEquals(2, rows.size());
@@ -418,7 +388,7 @@ class NkdSparqlClientTest {
         assertEquals(d2, out.get(CONCEPT_IRI_2).orElseThrow().detail());
         assertEquals(ONTOLOGY_IRI, out.get(CONCEPT_IRI).orElseThrow().ontologyIri());
         // One HTTP call for the whole batch — the entire point.
-        wm.verify(1, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        WM.verify(1, anyRequestedFor(anyUrl()));
     }
 
     @Test
@@ -513,7 +483,7 @@ class NkdSparqlClientTest {
 
         assertTrue(out.containsKey("not a valid iri"));
         assertTrue(out.get("not a valid iri").isEmpty());
-        wm.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        WM.verify(0, anyRequestedFor(anyUrl()));
     }
 
     // ─── derivePublishedConceptsFromOntology (merged round-trip) ────────────────
@@ -556,7 +526,7 @@ class NkdSparqlClientTest {
         assertEquals(ONTOLOGY_IRI, out.get(CONCEPT_IRI).orElseThrow().ontologyIri());
         assertTrue(out.get(CONCEPT_IRI_2).isPresent());
         // No network at all — the saving the whole change exists for.
-        wm.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        WM.verify(0, anyRequestedFor(anyUrl()));
         // Same slicing discipline as the batched path: a slice carries only its own subject, so the
         // scheme's triples and the neighbouring concept stay out.
         Model slice = slicesSeen.get(CONCEPT_IRI);
@@ -638,17 +608,5 @@ class NkdSparqlClientTest {
 
         assertTrue(out.containsKey("not a valid iri"));
         assertTrue(out.get("not a valid iri").isEmpty());
-    }
-
-    // ─── compile-time noop to keep ModelFactory import alive in case of evolution ───
-
-    @SuppressWarnings("unused")
-    private static Model emptyModel() {
-        return ModelFactory.createDefaultModel();
-    }
-
-    @SuppressWarnings("unused")
-    private static void unusedCheck() {
-        assertNotNull(IN_SCHEME);
     }
 }

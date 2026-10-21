@@ -1,14 +1,14 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.EsbirkaClient;
-import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheSliceTest;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheTestSupport;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.cache.CacheManager;
-import org.springframework.context.annotation.Import;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -20,11 +20,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@SpringBootTest(classes = {
-        CacheConfig.class,
-        EsbirkaFragmentResolutionCache.class
-})
-@Import(EsbirkaFragmentResolutionCacheTest.NoOpAppConfig.class)
+@CacheSliceTest(EsbirkaCacheSliceBeans.class)
 class EsbirkaFragmentResolutionCacheTest {
 
     private static final String FRAGMENT_IRI =
@@ -43,6 +39,11 @@ class EsbirkaFragmentResolutionCacheTest {
     @Autowired
     private CacheManager cacheManager;
 
+    @BeforeEach
+    void clearCaches() {
+        CacheTestSupport.clearAll(cacheManager);
+    }
+
     @Test
     void fetch_delegatesToClient() {
         FragmentResolutionModel model = new FragmentResolutionModel("§ 2 písm. d)", LocalDate.of(2024, 12, 31), true, null);
@@ -57,7 +58,6 @@ class EsbirkaFragmentResolutionCacheTest {
 
     @Test
     void fetch_isCached_secondCallSkipsClient() {
-        cacheManager.getCache("esbirkaFragmentResolution").clear();
         FragmentResolutionModel model = new FragmentResolutionModel("§ 2 písm. d)", null, true, null);
         when(client.resolveFragment(eq(FRAGMENT_IRI), eq(VERSION_IRI), eq(LAW_IRI)))
                 .thenReturn(Optional.of(model));
@@ -75,10 +75,5 @@ class EsbirkaFragmentResolutionCacheTest {
                 "esbirkaFragmentResolution cache must be registered");
         assertNotNull(cacheManager.getCache("esbirkaLawSearch"));
         assertNotNull(cacheManager.getCache("esbirkaLawVersions"));
-    }
-
-    @org.springframework.boot.SpringBootConfiguration
-    @org.springframework.context.annotation.ComponentScan(useDefaultFilters = false)
-    static class NoOpAppConfig {
     }
 }

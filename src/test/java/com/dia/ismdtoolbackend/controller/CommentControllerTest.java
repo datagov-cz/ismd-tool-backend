@@ -1,20 +1,15 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.exception.CommentException;
 import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.service.CommentService;
-import org.junit.jupiter.api.BeforeEach;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -30,19 +25,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>
  * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
  * Authentication is provided via @WithMockSecurityUser annotation.
- * Authorization checks (@PreAuthorize) are mocked via OntologySecurityService.
+ * Authorization checks (@PreAuthorize) are answered by StubOntologySecurityService.
  * <p>
  */
-@WebMvcTest(controllers = CommentController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-    })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = CommentController.class)
 class CommentControllerTest {
 
     @Autowired
@@ -50,12 +36,6 @@ class CommentControllerTest {
 
     @MockitoBean
     private CommentService commentService;
-
-    @BeforeEach
-    void setUp() {
-        // Reset security service to allow modifications by default
-        TestOntologySecurityService.reset();
-    }
 
     // ========== Post Comment Tests ==========
 
@@ -206,7 +186,6 @@ class CommentControllerTest {
     void testDeleteComment_Success() throws Exception {
         Long commentId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(commentService).deleteComment(commentId);
 
         mockMvc.perform(delete("/api/comment/{commentId}/delete", commentId))
@@ -221,7 +200,6 @@ class CommentControllerTest {
     void testDeleteComment_NotFound() throws Exception {
         Long commentId = 999L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new CommentNotFoundException("Komentář s ID 999 nebyl nalezen"))
                 .when(commentService).deleteComment(commentId);
 
@@ -237,7 +215,6 @@ class CommentControllerTest {
     void testDeleteComment_CommentException() throws Exception {
         Long commentId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new CommentException("Chyba při mazání komentáře"))
                 .when(commentService).deleteComment(commentId);
 
@@ -253,7 +230,6 @@ class CommentControllerTest {
     void testDeleteComment_UnexpectedException() throws Exception {
         Long commentId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Nastala neočekávaná chyba."))
                 .when(commentService).deleteComment(commentId);
 
@@ -269,7 +245,6 @@ class CommentControllerTest {
     void testDeleteComment_InvalidCommentId() throws Exception {
         Long commentId = -1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new CommentException("Neplatné ID komentáře"))
                 .when(commentService).deleteComment(commentId);
 

@@ -12,6 +12,11 @@ import com.dia.ismdtoolbackend.exception.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntologyException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -153,6 +158,35 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.RDF_STORE_ERROR, e.getMessage());
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        log.warn("Method not supported: {}", e.getMessage());
+        String[] allowed = e.getSupportedMethods();
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus());
+        if (allowed != null && allowed.length > 0) {
+            response.header(HttpHeaders.ALLOW, String.join(", ", allowed));
+        }
+        return response.body(ApiResponseDto.error(ErrorCode.METHOD_NOT_ALLOWED, null, null));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
+        log.warn("Media type not supported: {}", e.getMessage());
+        return error(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleNoResource(NoResourceFoundException e) {
+        log.debug("No endpoint: {}", e.getMessage());
+        return error(ErrorCode.ENDPOINT_NOT_FOUND);
+    }
+
+    @ExceptionHandler(NoHandlerFoundException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleNoHandler(NoHandlerFoundException e) {
+        log.debug("No endpoint: {}", e.getMessage());
+        return error(ErrorCode.ENDPOINT_NOT_FOUND);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponseDto<Void>> handleGenericException(Exception e) {
         log.error("Unexpected error: {}", e.getMessage(), e);
@@ -189,12 +223,6 @@ public class GlobalExceptionHandler {
         DownloadBlockedByValidationDto data = new DownloadBlockedByValidationDto(
                 e.getGraphName(), e.getErrorCount(), e.getErrors(), e.isTruncated());
         return error(ErrorCode.ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION, e.getMessage(), data);
-    }
-
-    @ExceptionHandler(OntologyStorageException.class)
-    public ResponseEntity<ApiResponseDto<Void>> handleOntologyStorageException(OntologyStorageException e) {
-        log.error("Ontology storage failed: {}", e.getMessage(), e);
-        return error(ErrorCode.ONTOLOGY_STORAGE_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(EmptyFileException.class)
@@ -377,12 +405,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleJsonExportException(JsonExportException e) {
         log.error("JSON export failed: {}", e.getMessage(), e);
         return error(ErrorCode.EXPORT_FAILED, e.getMessage());
-    }
-
-    @ExceptionHandler(OntologyAnalysisException.class)
-    public ResponseEntity<ApiResponseDto<Void>> handleOntologyAnalysisException(OntologyAnalysisException e) {
-        log.error("Ontology analysis failed: {}", e.getMessage(), e);
-        return error(ErrorCode.ONTOLOGY_ANALYSIS_FAILED, e.getMessage());
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

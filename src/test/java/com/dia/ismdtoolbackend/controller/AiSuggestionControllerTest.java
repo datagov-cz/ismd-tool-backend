@@ -1,10 +1,5 @@
 package com.dia.ismdtoolbackend.controller;
 
-import static org.mockito.ArgumentMatchers.eq;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
-import com.dia.ismdtoolbackend.config.security.JwtAuthenticationConverter;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionsJobResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiClassSuggestionRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.ai.AiFeedbackRequestDto;
@@ -18,19 +13,14 @@ import com.dia.ismdtoolbackend.controller.dto.ai.AiSelectedClassSuggestionReques
 import com.dia.ismdtoolbackend.enums.AiJobStatus;
 import com.dia.ismdtoolbackend.enums.AiTermType;
 import com.dia.ismdtoolbackend.service.AiSuggestionService;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
+import com.dia.ismdtoolbackend.testsupport.web.WithMockJwt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -42,6 +32,11 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -50,19 +45,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = AiSuggestionController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = AiSuggestionController.class)
+@WithMockJwt(tokenValue = AiSuggestionControllerTest.BEARER_TOKEN, subject = "user-123", realmRoles = "user")
 class AiSuggestionControllerTest {
 
-    private static final String BEARER_TOKEN = "raw.jwt.from.frontend";
+    static final String BEARER_TOKEN = "raw.jwt.from.frontend";
     private static final UUID FIRST_JOB_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID SECOND_JOB_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
@@ -72,29 +59,14 @@ class AiSuggestionControllerTest {
     @MockitoBean
     private AiSuggestionService aiSuggestionService;
 
-    @BeforeEach
-    void setUpJwtAuthentication() {
-        Jwt jwt = Jwt.withTokenValue(BEARER_TOKEN)
-                .header("alg", "RS256")
-                .claim("sub", "user-123")
-                .claim("realm_access", Map.of("roles", List.of("user")))
-                .build();
-        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationConverter().convert(jwt));
-    }
-
-    @AfterEach
-    void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
-
     @Test
     void startClassSuggestions_returnsAcceptedAndMapsRequest() throws Exception {
         when(aiSuggestionService.startClassSuggestions(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.any(LocalDate.class),
-                org.mockito.ArgumentMatchers.any(AiClassSuggestionRequestDto.class)
+                anyString(),
+                anyInt(),
+                anyInt(),
+                any(LocalDate.class),
+                any(AiClassSuggestionRequestDto.class)
         )).thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
 
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/class-suggestions")
@@ -113,10 +85,10 @@ class AiSuggestionControllerTest {
         ArgumentCaptor<AiClassSuggestionRequestDto> requestCaptor =
                 ArgumentCaptor.forClass(AiClassSuggestionRequestDto.class);
         verify(aiSuggestionService).startClassSuggestions(
-                org.mockito.ArgumentMatchers.eq(BEARER_TOKEN),
-                org.mockito.ArgumentMatchers.eq(2024),
-                org.mockito.ArgumentMatchers.eq(1),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2024, 1, 15)),
+                eq(BEARER_TOKEN),
+                eq(2024),
+                eq(1),
+                eq(LocalDate.of(2024, 1, 15)),
                 requestCaptor.capture()
         );
 
@@ -130,11 +102,11 @@ class AiSuggestionControllerTest {
     @Test
     void startPropertySuggestions_returnsAccepted() throws Exception {
         when(aiSuggestionService.startPropertySuggestions(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.any(LocalDate.class),
-                org.mockito.ArgumentMatchers.any(AiSelectedClassSuggestionRequestDto.class)
+                anyString(),
+                anyInt(),
+                anyInt(),
+                any(LocalDate.class),
+                any(AiSelectedClassSuggestionRequestDto.class)
         )).thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
 
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/property-suggestions")
@@ -166,11 +138,11 @@ class AiSuggestionControllerTest {
     @Test
     void startRelationshipSuggestions_returnsAccepted() throws Exception {
         when(aiSuggestionService.startRelationshipSuggestions(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.any(LocalDate.class),
-                org.mockito.ArgumentMatchers.any(AiSelectedClassSuggestionRequestDto.class)
+                anyString(),
+                anyInt(),
+                anyInt(),
+                any(LocalDate.class),
+                any(AiSelectedClassSuggestionRequestDto.class)
         )).thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
 
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/relationship-suggestions")
@@ -454,9 +426,9 @@ class AiSuggestionControllerTest {
 
     @Test
     void vocabularyStartMapsCamelCaseAndAcceptsEmptyOptions() throws Exception {
-        when(aiSuggestionService.startVocabularySuggestions(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(aiSuggestionService.startVocabularySuggestions(anyString(),
+                anyInt(), anyInt(),
+                any(), any()))
                 .thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions")
                         .contentType(MediaType.APPLICATION_JSON).content("""
@@ -510,11 +482,11 @@ class AiSuggestionControllerTest {
 
     @Test
     void editingEndpointsAcceptCurrentModelAndForwardAuthenticatedRequests() throws Exception {
-        when(aiSuggestionService.expandVocabulary(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(aiSuggestionService.expandVocabulary(anyString(), anyInt(),
+                anyInt(), any(), any()))
                 .thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
-        when(aiSuggestionService.regenerateVocabularyConcept(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        when(aiSuggestionService.regenerateVocabularyConcept(anyString(), anyInt(),
+                anyInt(), any(), any()))
                 .thenReturn(new AiJobStartResponseDto(FIRST_JOB_ID, AiJobStatus.IN_PROGRESS));
         String model = "{\"classes\":[{\"termID\":\"class-draft\",\"name\":{\"cs\":\"Motocykl\"},\"type\":\"CLASS\"}],\"attributes\":[],\"relationships\":[]}";
         mockMvc.perform(post("/api/ai/legal-acts/2024/1/2024-01-15/vocabulary-suggestions/expand")

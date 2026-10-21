@@ -4,7 +4,6 @@ import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.AltNameModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
@@ -17,14 +16,11 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
 import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /**
- * Characterization tests that pin the language-map handling asymmetry BEFORE the
- * ConceptEditor refactor, so the refactor provably preserves it:
+ * Language-map handling of the concept editor:
  *
  *   - prefLabel / description / definition  → MERGE by language tag
  *     (a single-language edit keeps the other languages)
@@ -32,9 +28,6 @@ import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
  *     (a single-language edit drops the other languages)
  *   - empty-string value for a tag          → deletes just that tag
  *   - blank / missing tag                   → falls back to DEFAULT_LANG
- *
- * These are intentionally written against current behavior; they must stay green
- * through every refactor step.
  */
 class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
 
@@ -68,28 +61,6 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
     }
 
     private void stubCommonNull() {
-        lenient().when(classConceptEditModel.getConceptTypeEnum()).thenReturn(ConceptType.TRIDA);
-        lenient().when(classConceptEditModel.getNameModel()).thenReturn(null);
-        lenient().when(classConceptEditModel.getDescriptionModel()).thenReturn(null);
-        lenient().when(classConceptEditModel.getDefinitionModel()).thenReturn(null);
-        lenient().when(classConceptEditModel.getAltNameModel()).thenReturn(null);
-        lenient().when(classConceptEditModel.getDefiningLegalSource()).thenReturn(null);
-        lenient().when(classConceptEditModel.getRelatedLegalSource()).thenReturn(null);
-        lenient().when(classConceptEditModel.getDefiningNonLegalSource()).thenReturn(null);
-        lenient().when(classConceptEditModel.getRelatedNonLegalSource()).thenReturn(null);
-        lenient().when(classConceptEditModel.getExactMatch()).thenReturn(null);
-        lenient().when(classConceptEditModel.getInTezaurus()).thenReturn(null);
-        lenient().when(classConceptEditModel.getType()).thenReturn(null);
-        lenient().when(classConceptEditModel.getPrivacyProvisions()).thenReturn(null);
-        lenient().when(classConceptEditModel.getBroaderConcept()).thenReturn(null);
-        lenient().when(classConceptEditModel.getIsInPPDF()).thenReturn(null);
-        lenient().when(classConceptEditModel.getAgendaCode()).thenReturn(null);
-        lenient().when(classConceptEditModel.getAgendaSystemCode()).thenReturn(null);
-        lenient().when(classConceptEditModel.getSharingMethod()).thenReturn(null);
-        lenient().when(classConceptEditModel.getAcquisitionMethod()).thenReturn(null);
-        lenient().when(classConceptEditModel.getContentType()).thenReturn(null);
-        lenient().when(classConceptEditModel.getIsPublic()).thenReturn(null);
-        lenient().when(classConceptEditModel.getCodeListDataset()).thenReturn(null);
     }
 
     private Resource seedBilingual(String iri, Property property) {
@@ -119,7 +90,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newName.setName(Map.of("cs", "Nové cs"));
 
         stubCommonNull();
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
+        classConceptEditModel.setNameModel(newName);
 
         ConceptEditor.EditResult res = conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -139,7 +110,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newDesc.setDescription(Map.of("cs", "Nový popis"));
 
         stubCommonNull();
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(newDesc);
+        classConceptEditModel.setDescriptionModel(newDesc);
 
         conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -158,7 +129,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newDef.setDefinition(Map.of("cs", "Nová definice"));
 
         stubCommonNull();
-        when(classConceptEditModel.getDefinitionModel()).thenReturn(newDef);
+        classConceptEditModel.setDefinitionModel(newDef);
 
         conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -181,7 +152,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newAlt.setAltName(Map.of("cs", List.of("Nový alt")));
 
         stubCommonNull();
-        when(classConceptEditModel.getAltNameModel()).thenReturn(newAlt);
+        classConceptEditModel.setAltNameModel(newAlt);
 
         conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -203,7 +174,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newAlt.setAltName(Map.of("cs", List.of("Obec", "Municipalita")));
 
         stubCommonNull();
-        when(classConceptEditModel.getAltNameModel()).thenReturn(newAlt);
+        classConceptEditModel.setAltNameModel(newAlt);
 
         conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -225,7 +196,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         sameAlt.setAltName(Map.of("cs", List.of("Municipalita", "Obec")));
 
         stubCommonNull();
-        when(classConceptEditModel.getAltNameModel()).thenReturn(sameAlt);
+        classConceptEditModel.setAltNameModel(sameAlt);
 
         conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -244,7 +215,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newName.setName(m);
 
         stubCommonNull();
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
+        classConceptEditModel.setNameModel(newName);
 
         conceptEditor.editConcept(iri, classConceptEditModel, model, null);
 
@@ -270,7 +241,7 @@ class ConceptEditorLanguageMergeTest extends ConceptEditorTestBase {
         newName.setName(m);
 
         stubCommonNull();
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
+        classConceptEditModel.setNameModel(newName);
 
         // Adding a label under DEFAULT_LANG changes the name → IRI rename; read from new IRI.
         ConceptEditor.EditResult res = conceptEditor.editConcept(iri, classConceptEditModel, model, null);

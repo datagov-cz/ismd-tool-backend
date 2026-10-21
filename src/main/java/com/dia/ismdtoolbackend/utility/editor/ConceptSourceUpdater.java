@@ -98,7 +98,7 @@ class ConceptSourceUpdater {
         }
 
         if (validSources.isEmpty()) {
-            removeAllByPredicate(oldConcept, property, toRemove, toAdd);
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
             return;
         }
 

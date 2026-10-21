@@ -7,12 +7,20 @@ import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static com.dia.constants.VocabularyConstants.*;
 
 
 @Slf4j
 public class JsonFormatter {
+
+    private static final String JSON_VYTVORENO = "vytvořeno";
+    private static final String JSON_AKTUALIZOVANO = "aktualizováno";
+    private static final String CASOVY_OKAMZIK_JSON_LD = "Časový okamžik";
+    private static final String JSON_DATUM = "datum";
+    private static final String JSON_DATUM_A_CAS = "datum_a_čas";
+    private static final Pattern DATE_ONLY = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
 
     private final ObjectMapper objectMapper;
 
@@ -64,12 +72,20 @@ public class JsonFormatter {
         }
 
         if (structure.getCreationDate() != null) {
-            root.put(OKAMZIK_VYTVORENI, structure.getCreationDate());
+            root.put(JSON_VYTVORENO, temporalInstant(structure.getCreationDate()));
         }
 
         if (structure.getModificationDate() != null) {
-            root.put(OKAMZIK_POSLEDNI_ZMENY, structure.getModificationDate());
+            root.put(JSON_AKTUALIZOVANO, temporalInstant(structure.getModificationDate()));
         }
+    }
+
+    /** A {@code Časový okamžik} object: a date-only value as {@code datum}, anything else as {@code datum_a_čas}. */
+    private Map<String, Object> temporalInstant(String value) {
+        Map<String, Object> instant = new LinkedHashMap<>();
+        instant.put(JSON_TYP, CASOVY_OKAMZIK_JSON_LD);
+        instant.put(DATE_ONLY.matcher(value).matches() ? JSON_DATUM : JSON_DATUM_A_CAS, value);
+        return instant;
     }
 
 

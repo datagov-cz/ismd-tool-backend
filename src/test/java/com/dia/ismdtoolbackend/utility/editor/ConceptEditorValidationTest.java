@@ -158,7 +158,7 @@ class ConceptEditorValidationTest {
         assertNotNull(result);
     }
 
-    // ---- domain rules folded in from the (previously unwired) *EditModel.validateSpecificFields ----
+    // ---- domain rules: privacy/public conflict, NKOD dataset, governance allowlist ----
 
     @Test
     void rejectsPrivacyPublicConflict() {

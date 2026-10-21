@@ -1,9 +1,6 @@
 package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.config.EsbirkaConfig;
-import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
@@ -16,13 +13,11 @@ import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentS
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -41,16 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = EsbirkaController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = EsbirkaController.class)
 class EsbirkaControllerTest {
 
     private static final String LAW_IRI = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187";

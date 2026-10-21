@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyListDto;
@@ -9,14 +8,12 @@ import com.dia.ismdtoolbackend.exception.NkdEndpointException;
 import com.dia.ismdtoolbackend.exception.NkdResourceNotFoundException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -35,16 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = NkdDetailController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = NkdDetailController.class)
 class NkdDetailControllerTest {
 
     private static final String ONTOLOGY_IRI = "https://example.org/ontology/1";

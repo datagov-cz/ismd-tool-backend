@@ -2,8 +2,6 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.ValidationConfig;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -25,6 +23,8 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
+import com.dia.ismdtoolbackend.testsupport.web.StubOntologySecurityService;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
 import com.dia.validation.ValidationSeverity;
@@ -34,15 +34,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.jena.riot.Lang;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -56,22 +51,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>
  * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
  * Authentication is provided via @WithMockSecurityUser annotation.
- * Authorization checks (@PreAuthorize) are handled via TestOntologySecurityService.
+ * Authorization checks (@PreAuthorize) are answered by StubOntologySecurityService.
  * <p>
  * Note: @MockitoBean replaces Spring Boot's deprecated @MockBean in these MVC
  * slice tests.
  */
-@WebMvcTest(controllers = OntologyController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-    })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = OntologyController.class)
 class OntologyControllerTest {
+
+    @Autowired
+    private StubOntologySecurityService ontologySecurity;
 
     @Autowired
     private MockMvc mockMvc;
@@ -101,12 +90,6 @@ class OntologyControllerTest {
     private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @BeforeEach
-    void setUp() {
-        // Reset security service to allow modifications by default
-        TestOntologySecurityService.reset();
-    }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
@@ -202,7 +185,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -230,7 +212,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("generated-graph-name");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -254,11 +235,9 @@ class OntologyControllerTest {
                 new byte[0]
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
-        TestOntologySecurityService.setAllowModify(true);
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(emptyFile))
                 .andExpect(status().isBadRequest())
@@ -278,7 +257,6 @@ class OntologyControllerTest {
                 "some content".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
@@ -300,7 +278,6 @@ class OntologyControllerTest {
                 "invalid rdf content".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new RuntimeException("Parse error"));
 
@@ -322,7 +299,6 @@ class OntologyControllerTest {
                 "".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
@@ -359,7 +335,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -382,7 +357,6 @@ class OntologyControllerTest {
 
         String graphName = "https://slovník.gov.cz/a3791";
         String conceptIri = graphName + "/pojem/vysoká-škola";
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new InSchemeDecisionRequiredException(
                         graphName,
@@ -412,7 +386,6 @@ class OntologyControllerTest {
         expected.setGraphName("file");
         expected.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expected);
 
@@ -441,7 +414,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("large-ontology");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -486,7 +458,6 @@ class OntologyControllerTest {
         existingMetadata.setGraphName("file");
         existingMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(existingMetadata);
 
@@ -657,7 +628,6 @@ class OntologyControllerTest {
     void testDeleteOntology_Success() throws Exception {
         Long ontologyId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
@@ -672,7 +642,6 @@ class OntologyControllerTest {
     void testDeleteOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník s ID 999 nebyl nalezen"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
@@ -688,7 +657,7 @@ class OntologyControllerTest {
     void testDeleteOntology_AccessDenied() throws Exception {
         Long ontologyId = 1L;
 
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
                 .andExpect(status().isForbidden())
@@ -702,7 +671,6 @@ class OntologyControllerTest {
     void testDeleteOntology_UnexpectedException() throws Exception {
         Long ontologyId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Neočekávaná chyba"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
@@ -781,7 +749,6 @@ class OntologyControllerTest {
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(eq(ontologyId), any(OntologyEditModel.class)))
                 .thenReturn(expectedMetadata);
 
@@ -800,7 +767,6 @@ class OntologyControllerTest {
         Long ontologyId = 999L;
         OntologyEditModel editModel = new OntologyEditModel();
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(eq(ontologyId), any()))
                 .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník nebyl nalezen"));
 
@@ -1252,7 +1218,6 @@ class OntologyControllerTest {
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         when(validationClient.requestValidation(anyString(), anyString()))
@@ -1280,7 +1245,6 @@ class OntologyControllerTest {
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         when(validationClient.requestValidation(anyString(), anyString()))
@@ -1305,7 +1269,6 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         // Validator down → client throws the unavailable exception → 503.
@@ -1332,7 +1295,6 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("bad ttl");
         // Validator answered with a 4xx → client throws a rejection carrying the validator's message → 400.
@@ -1358,7 +1320,7 @@ class OntologyControllerTest {
         ontologyMetadata.setId(1L);
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
 
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
 
         mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
                         .contentType(MediaType.APPLICATION_JSON)

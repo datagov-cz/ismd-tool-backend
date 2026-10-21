@@ -1,28 +1,17 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.NameModel;
-import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.utility.URIGenerator;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
-import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
 import static com.dia.constants.VocabularyConstants.*;
 
-/**
- * D — Cross-cutting / edge cases
- *   D1  – Name unchanged = no IRI change
- *   D1b – Identifier-based IRI generation
- *   D2  – Null fields do not cause removals
- */
+/** Edit behavior shared by every concept type: IRI stability and null-means-unchanged. */
 class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
-
-    // D1 – Name unchanged = no IRI change
     @Test
     void editConcept_ShouldNotChangeIRI_WhenNameStaysTheSame() {
         String conceptIri = DEFAULT_NS + "class-d1";
@@ -31,10 +20,9 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP));
 
-        stubAllClassFieldsNull(classConceptEditModel);
         NameModel sameName = createNameModel("cs", "Same name");
-        when(classConceptEditModel.getNameModel()).thenReturn(sameName);
-        when(classConceptEditModel.getType()).thenReturn("subjekt");
+        classConceptEditModel.setNameModel(sameName);
+        classConceptEditModel.setType("subjekt");
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
@@ -48,8 +36,6 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         assertTrue(updated.hasProperty(RDF.type, tspType));
         assertFalse(updated.hasProperty(RDF.type, topType));
     }
-
-    // D1b – Identifier-based IRI generation
     @Test
     void editConcept_ShouldUseIdentifier_WhenIdentifierIsNonNull() {
         String oldIri = DEFAULT_NS + "class-d1b";
@@ -57,13 +43,11 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         existing.addProperty(SKOS.prefLabel, model.createLiteral("Old name", "cs"));
         existing.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA));
 
-        stubAllClassFieldsNull(classConceptEditModel);
         NameModel newName = createNameModel("cs", "New name d1b");
-        when(classConceptEditModel.getNameModel()).thenReturn(newName);
-        when(classConceptEditModel.getIdentifier()).thenReturn("CUSTOM-ID-123");
+        classConceptEditModel.setNameModel(newName);
+        classConceptEditModel.setIdentifier("CUSTOM-ID-123");
 
-        URIGenerator uriGen = new URIGenerator();
-        String expectedIri = uriGen.generateConceptURI("New name d1b", "CUSTOM-ID-123");
+        String expectedIri = DEFAULT_NS + "pojem/custom-id-123";
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
@@ -71,8 +55,6 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         assertTrue(result.iriChanged);
         assertEquals(expectedIri, result.newConceptIRI);
     }
-
-    // D2 – Null fields do not cause removals
     @Test
     void editConcept_ShouldNotRemoveExistingData_WhenEditFieldsAreNull() {
         String conceptIri = DEFAULT_NS + "class-d2";
@@ -93,8 +75,6 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         existing.addProperty(ppdfProperty, model.createLiteral("true"));
 
         long originalStatementCount = model.size();
-
-        stubAllClassFieldsNull(classConceptEditModel);
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);

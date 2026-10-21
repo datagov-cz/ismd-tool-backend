@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptEditModel;
@@ -17,6 +18,7 @@ import java.util.List;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Granular branch coverage for the per-field updaters in ConceptFieldUpdaters,
@@ -414,8 +416,9 @@ class ConceptEditorFieldEdgeCasesTest {
         ClassConceptEditModel m = classModel();
         m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-2");
 
-        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
-                "dataset without a číselník IRI must be rejected");
+        assertThatThrownBy(() -> editor.editConcept(iri, m, model, null))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Neplatné hodnoty v úpravě pojmu: Je uvedena datová sada v NKOD, ale chybí IRI číselníku");
     }
 
     @Test
@@ -425,8 +428,10 @@ class ConceptEditorFieldEdgeCasesTest {
         ClassConceptEditModel m = classModel();
         m.setCodeListIri("https://data.mvcr.gov.cz/zdroj/číselníky/ciselnik-2");
 
-        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
-                "číselník IRI without a dataset must be rejected");
+        assertThatThrownBy(() -> editor.editConcept(iri, m, model, null))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Neplatné hodnoty v úpravě pojmu: "
+                        + "Je uvedeno IRI číselníku, ale chybí IRI zastřešující datové sady v NKOD");
     }
 
     @Test
@@ -437,8 +442,9 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setCodeListIri("nikoliv-iri");
         m.setCodeListDataset("https://data.gov.cz/zdroj/datové-sady/ciselnik-3");
 
-        assertThrows(RuntimeException.class, () -> editor.editConcept(iri, m, model, null),
-                "a non-absolute číselník IRI must be rejected");
+        assertThatThrownBy(() -> editor.editConcept(iri, m, model, null))
+                .isExactlyInstanceOf(ConceptValidationException.class)
+                .hasMessage("Neplatné hodnoty v úpravě pojmu: Neplatné IRI číselníku: nikoliv-iri");
     }
 
     // ---- updateSuperPropertyList (relationship superRelation): clear ----

@@ -17,7 +17,7 @@ import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Regression guard for the field-scoped classification edit (V4). A diagram-overlay materialize builds a
+ * Field-scoped classification edits. A diagram-overlay materialize builds a
  * {@code ConceptEditModel} carrying only the changed structural predicates, so {@code isPublic} arrives
  * {@code null}. Without the null-safe guard {@code updateDataClassification} strips the veřejný/neveřejný
  * {@code rdf:type} and never re-adds it, silently dropping the classification. These tests lock the guard

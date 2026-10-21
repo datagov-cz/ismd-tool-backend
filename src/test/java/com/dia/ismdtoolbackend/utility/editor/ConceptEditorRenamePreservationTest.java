@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.NameModel;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -14,20 +13,14 @@ import static com.dia.constants.VocabularyConstants.VLASTNOST;
 import static com.dia.constants.VocabularyConstants.VZTAH;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.when;
 
 /**
  * Renaming a concept must carry ALL of its characteristics onto the new IRI,
  * not just the fields whose value changed.
  *
- * <p>Regression for the rename data-loss bug: the FE re-sends the whole concept
- * on a rename (every field populated, most unchanged). The old design excluded
- * those predicates from {@code renameConceptIRI}'s copy and relied on the field
- * updaters to rewrite them — but the updaters only write when the value
- * <em>changed</em>. So an unchanged domain/range/super-property was deleted from
- * the old IRI and never re-added to the new one, leaving "a new concept with just
- * the edited characteristic". These tests pin that unchanged characteristics
- * survive a rename.
+ * <p>The FE re-sends the whole concept on a rename (every field populated, most unchanged). The
+ * field updaters write only what changed, so the rename itself copies every predicate; unchanged
+ * characteristics such as domain, range and super-property therefore survive.
  */
 class ConceptEditorRenamePreservationTest extends ConceptEditorTestBase {
 
@@ -52,13 +45,11 @@ class ConceptEditorRenamePreservationTest extends ConceptEditorTestBase {
         existing.addProperty(RDFS.subPropertyOf, superProp);
 
         // FE re-sends the whole concept: name changes, everything else unchanged.
-        stubAllPropertyFieldsNull(propertyConceptEditModel);
-        when(propertyConceptEditModel.getNameModel()).thenReturn(createNameModel("cs", "New property"));
-        when(propertyConceptEditModel.getIdentifier()).thenReturn(null);
+        propertyConceptEditModel.setNameModel(createNameModel("cs", "New property"));
         // Unchanged values, re-sent exactly as stored.
-        when(propertyConceptEditModel.getDomain()).thenReturn(domain.getURI());
-        when(propertyConceptEditModel.getDataType()).thenReturn("string");
-        when(propertyConceptEditModel.getSuperProperty()).thenReturn(java.util.List.of(superProp.getURI()));
+        propertyConceptEditModel.setDomain(domain.getURI());
+        propertyConceptEditModel.setDataType("string");
+        propertyConceptEditModel.setSuperProperty(java.util.List.of(superProp.getURI()));
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(oldIri, propertyConceptEditModel, model, ONTOLOGY);
@@ -96,11 +87,9 @@ class ConceptEditorRenamePreservationTest extends ConceptEditorTestBase {
         existing.addProperty(RDFS.domain, domain);
         existing.addProperty(RDFS.range, range);
 
-        stubAllRelationshipFieldsNull(relationshipConceptEditModel);
-        when(relationshipConceptEditModel.getNameModel()).thenReturn(createNameModel("cs", "New rel"));
-        when(relationshipConceptEditModel.getIdentifier()).thenReturn(null);
-        when(relationshipConceptEditModel.getDomain()).thenReturn(domain.getURI());
-        when(relationshipConceptEditModel.getRange()).thenReturn(range.getURI());
+        relationshipConceptEditModel.setNameModel(createNameModel("cs", "New rel"));
+        relationshipConceptEditModel.setDomain(domain.getURI());
+        relationshipConceptEditModel.setRange(range.getURI());
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(oldIri, relationshipConceptEditModel, model, ONTOLOGY);
@@ -130,12 +119,10 @@ class ConceptEditorRenamePreservationTest extends ConceptEditorTestBase {
         existing.addProperty(dctDescription, model.createLiteral("A description", "cs"));
         existing.addProperty(inScheme, scheme);
 
-        stubAllClassFieldsNull(classConceptEditModel);
-        when(classConceptEditModel.getNameModel()).thenReturn(createNameModel("cs", "New class"));
-        when(classConceptEditModel.getIdentifier()).thenReturn(null);
+        classConceptEditModel.setNameModel(createNameModel("cs", "New class"));
         // Re-send unchanged description + alt name.
-        when(classConceptEditModel.getDescriptionModel()).thenReturn(createDescriptionModel("cs", "A description"));
-        when(classConceptEditModel.getAltNameModel()).thenReturn(createAltNameModel("cs", "Alias"));
+        classConceptEditModel.setDescriptionModel(createDescriptionModel("cs", "A description"));
+        classConceptEditModel.setAltNameModel(createAltNameModel("cs", "Alias"));
 
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(oldIri, classConceptEditModel, model, ONTOLOGY);

@@ -1,8 +1,5 @@
 package com.dia.ismdtoolbackend.controller;
 
-import com.dia.ismdtoolbackend.config.GlobalExceptionHandler;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
@@ -14,14 +11,12 @@ import com.dia.ismdtoolbackend.exception.DiagramContentUnavailableException;
 import com.dia.ismdtoolbackend.exception.DiagramReadbackFailedException;
 import com.dia.ismdtoolbackend.service.DiagramService;
 import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
+import com.dia.ismdtoolbackend.testsupport.web.StubOntologySecurityService;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.mockito.ArgumentCaptor;
@@ -49,27 +44,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ownership-gated ({@code belongsToUserBySlug}) and 403 for a non-owner. Service is mocked — this exercises
  * routing + authz, not the fat-read join.
  */
-@WebMvcTest(controllers = DiagramController.class,
-        excludeAutoConfiguration = {
-                org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-                org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-                org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-        })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = DiagramController.class)
 class DiagramControllerTest {
+
+    @Autowired
+    private StubOntologySecurityService ontologySecurity;
 
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private DiagramService diagramService;
     @MockitoBean private DiagramConceptUsageService conceptUsageService;
-
-    @BeforeEach
-    void setUp() {
-        TestOntologySecurityService.reset();   // allowModify = true (owner) by default
-    }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
@@ -133,7 +117,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void getDetail_readableByNonOwner() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // not the owner → writes would 403
+        ontologySecurity.denyModify();   // not the owner → writes would 403
         when(diagramService.getDiagram(eq("pracovni-pomer"), eq(5L)))
                 .thenReturn(new DiagramDto(5L, "Hlavní diagram", "pracovni-pomer", 0L, null, List.of(), List.of(), List.of()));
 
@@ -175,7 +159,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void rename_forbiddenForNonOwner() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // belongsToUserBySlug → false
+        ontologySecurity.denyModify();   // belongsToUserBySlug → false
 
         mockMvc.perform(patch("/api/diagram/pracovni-pomer/5/rename")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -189,7 +173,7 @@ class DiagramControllerTest {
     @Test
     @WithMockSecurityUser(userId = "not-the-owner")
     void materialize_forbiddenForNonOwner() throws Exception {
-        TestOntologySecurityService.setAllowModify(false);   // belongsToUserBySlug → false
+        ontologySecurity.denyModify();   // belongsToUserBySlug → false
 
         mockMvc.perform(post("/api/diagram/pracovni-pomer/5/materialize"))
                 .andExpect(status().isForbidden());

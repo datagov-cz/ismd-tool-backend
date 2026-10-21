@@ -1,21 +1,15 @@
 package com.dia.ismdtoolbackend.diagram;
 
-import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import org.junit.jupiter.api.AfterEach;
+import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -28,22 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>A diagram carries no owner of its own; ownership is the owning ontology's {@code userId}, which
  * is what this filters on.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@EntityScan(basePackageClasses = DiagramEntity.class)
-@EnableJpaRepositories(basePackageClasses = DiagramRepository.class)
-@Import(JpaAuditingConfig.class)
+@PlainJpaIT
+@Transactional
 class DiagramSummaryFilterIntegrationTest extends PostgresIntegrationTestBase {
 
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
-
-    @AfterEach
-    void cleanUp() {
-        diagramRepository.deleteAll();
-        ontologyRepository.deleteAll();
-    }
 
     private OntologyMetadataEntity ontology(String slug, String userId) {
         OntologyMetadataEntity o = new OntologyMetadataEntity();
@@ -81,10 +65,8 @@ class DiagramSummaryFilterIntegrationTest extends PostgresIntegrationTestBase {
 
         List<DiagramRepository.DiagramSummaryRow> rows = diagramRepository.findSummaries(null, null);
 
-        // `contains`, not `containsExactly`: the Testcontainers database is shared across test
-        // classes, so an unfiltered read may legitimately see rows this class did not create.
         assertThat(rows).extracting(DiagramRepository.DiagramSummaryRow::getName)
-                .contains("Alice diagram", "Bob diagram");
+                .containsExactlyInAnyOrder("Alice diagram", "Bob diagram");
     }
 
     @Test

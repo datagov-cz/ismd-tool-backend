@@ -6,23 +6,25 @@ import com.dia.ismdtoolbackend.models.eli.FragmentModel;
 import com.dia.ismdtoolbackend.models.eli.FragmentResolutionModel;
 import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
-import com.github.tomakehurst.wiremock.WireMockServer;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
+import com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.net.http.HttpClient;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.literal;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.typed;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.uri;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.xsdBoolean;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.serverError;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.sparqlJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
-import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,7 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class EsbirkaSparqlClientTest {
 
     private static final String LAW_IRI =
@@ -41,61 +42,44 @@ class EsbirkaSparqlClientTest {
 
     private static final int BREAKER_THRESHOLD = 3;
 
-    private WireMockServer wm;
+    private static final String[] LAW_VARS = {"akt", "citace", "cislo", "rok", "sbirka"};
+    private static final String[] FRAGMENT_VARS = {"fragment", "parent", "citace", "order"};
+    private static final String[] CONTENT_VARS = {"fragment", "parent", "citace", "order", "obsah"};
+    private static final String[] RESOLUTION_VARS = {"citace", "ucinnostDo", "isLatest"};
+
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+    @RegisterExtension
+    static final WireMockExtension WM = WireMockExtension.newInstance()
+            .options(wireMockConfig().dynamicPort())
+            .build();
+
     private EsbirkaSparqlClient client;
-
-    @BeforeAll
-    void startServer() {
-        wm = new WireMockServer(wireMockConfig().dynamicPort());
-        wm.start();
-        com.github.tomakehurst.wiremock.client.WireMock.configureFor("localhost", wm.port());
-    }
-
-    @AfterAll
-    void stopServer() {
-        wm.stop();
-    }
 
     @BeforeEach
     void setUp() {
-        wm.resetAll();
-        client = clientFor(wm.baseUrl() + "/sparql");
+        client = clientFor(WM.baseUrl() + "/sparql");
     }
 
     private static EsbirkaSparqlClient clientFor(String endpoint) {
-        EsbirkaConfig config = new EsbirkaConfig();
-        config.getSparql().setEndpoint(endpoint);
-        config.getSparql().setTimeout(2000);
-        config.getSparql().getCircuitBreaker().setFailureThreshold(BREAKER_THRESHOLD);
-        return new EsbirkaSparqlClient(config, HttpClient.newHttpClient());
+        return clientFor(endpoint, 2000);
     }
 
-    @AfterEach
-    void tearDown() {
-        wm.resetAll();
+    private static EsbirkaSparqlClient clientFor(String endpoint, int timeoutMs) {
+        EsbirkaConfig config = new EsbirkaConfig();
+        config.getSparql().setEndpoint(endpoint);
+        config.getSparql().setTimeout(timeoutMs);
+        config.getSparql().getCircuitBreaker().setFailureThreshold(BREAKER_THRESHOLD);
+        return new EsbirkaSparqlClient(config, HTTP);
     }
 
     // --- law row mapping (grouped search, law lookup) -----------------------
 
     @Test
     void lawRows_skipRowMissingCitace() {
-        String json = """
-                {
-                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
-                  "results": { "bindings": [
-                    { "akt":     {"type":"uri","value":"%1$s"},
-                      "cislo":   {"type":"literal","value":"187"},
-                      "rok":     {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#gYear","value":"2006"},
-                      "sbirka":  {"type":"literal","value":"sb"} },
-                    { "akt":     {"type":"uri","value":"%1$s/2025"},
-                      "citace":  {"type":"literal","value":"99/2025 Sb."},
-                      "cislo":   {"type":"literal","value":"99"},
-                      "rok":     {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#gYear","value":"2025"},
-                      "sbirka":  {"type":"literal","value":"sb"} }
-                  ] }
-                }
-                """.formatted(LAW_IRI);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(LAW_VARS)
+                .row(lawRow(LAW_IRI, null, "187", typed("rok", "2006", "xsd:gYear")))
+                .row(lawRow(LAW_IRI + "/2025", "99/2025 Sb.", "99", typed("rok", "2025", "xsd:gYear"))));
         Optional<LawModel> out = client.findLawByNumberYear("99", 2025);
         assertTrue(out.isPresent());
         assertEquals("99/2025 Sb.", out.get().getCitace());
@@ -103,19 +87,8 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void lawRows_unparseableYearBecomesNull() {
-        String json = """
-                {
-                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
-                  "results": { "bindings": [
-                    { "akt":     {"type":"uri","value":"%s"},
-                      "citace":  {"type":"literal","value":"99/9999 Sb."},
-                      "cislo":   {"type":"literal","value":"99"},
-                      "rok":     {"type":"literal","value":"not-a-number"},
-                      "sbirka":  {"type":"literal","value":"sb"} }
-                  ] }
-                }
-                """.formatted(LAW_IRI);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(LAW_VARS)
+                .row(lawRow(LAW_IRI, "99/9999 Sb.", "99", literal("rok", "not-a-number"))));
         Optional<LawModel> out = client.findLawByNumberYear("99", 9999);
         assertTrue(out.isPresent());
         assertNull(out.get().getRok());
@@ -125,22 +98,15 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void fetchVersions_mapsAllOptionalFieldsAndLatestFlag() {
-        String json = """
-                {
-                  "head": { "vars": ["zneni", "ucinnostOd", "ucinnostDo", "typ", "isLatest"] },
-                  "results": { "bindings": [
-                    { "zneni":      {"type":"uri","value":"%1$s"},
-                      "ucinnostOd": {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#date","value":"2026-04-01"},
-                      "ucinnostDo": {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#date","value":"2026-06-30"},
-                      "typ":        {"type":"uri","value":"https://example.org/typ/KONSOL"},
-                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"true"} },
-                    { "zneni":      {"type":"uri","value":"%1$s-old"},
-                      "ucinnostOd": {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#date","value":"2025-01-01"},
-                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"false"} }
-                  ] }
-                }
-                """.formatted(VERSION_IRI);
-        stubSparql(json);
+        stubSparql(SparqlJson.select("zneni", "ucinnostOd", "ucinnostDo", "typ", "isLatest")
+                .row(uri("zneni", VERSION_IRI),
+                        typed("ucinnostOd", "2026-04-01", "xsd:date"),
+                        typed("ucinnostDo", "2026-06-30", "xsd:date"),
+                        uri("typ", "https://example.org/typ/KONSOL"),
+                        xsdBoolean("isLatest", true))
+                .row(uri("zneni", VERSION_IRI + "-old"),
+                        typed("ucinnostOd", "2025-01-01", "xsd:date"),
+                        xsdBoolean("isLatest", false)));
         List<LawVersionModel> out = client.fetchVersions(LAW_IRI);
         assertEquals(2, out.size());
 
@@ -160,17 +126,8 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void fetchVersions_unparseableDateBecomesNull() {
-        String json = """
-                {
-                  "head": { "vars": ["zneni", "ucinnostOd", "isLatest"] },
-                  "results": { "bindings": [
-                    { "zneni":      {"type":"uri","value":"%s"},
-                      "ucinnostOd": {"type":"literal","value":"not-a-date"},
-                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"true"} }
-                  ] }
-                }
-                """.formatted(VERSION_IRI);
-        stubSparql(json);
+        stubSparql(SparqlJson.select("zneni", "ucinnostOd", "isLatest")
+                .row(uri("zneni", VERSION_IRI), literal("ucinnostOd", "not-a-date"), xsdBoolean("isLatest", true)));
         List<LawVersionModel> out = client.fetchVersions(LAW_IRI);
         assertEquals(1, out.size());
         assertNull(out.get(0).getUcinnostOd());
@@ -181,26 +138,17 @@ class EsbirkaSparqlClientTest {
     @Test
     void fragmentKind_parsesAllKnownKindsFromIri() {
         String basePath = VERSION_IRI + "/dokument/norma";
-        String json = ("""
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order"] },
-                  "results": { "bindings": [
-                   \s""" +
-                fragmentRow(basePath + "/cast_5",                      basePath,                "Část 5",          "6AC0") + ",\n" +
-                fragmentRow(basePath + "/cast_5/hlava_4",              basePath + "/cast_5",    "Hlava 4",         "6ADA") + ",\n" +
-                fragmentRow(basePath + "/cast_5/hlava_4/dil_3",        basePath + "/cast_5/hlava_4", "Díl 3",      "6ADAD0") + ",\n" +
-                fragmentRow(basePath + "/cast_5/oddil_2",              basePath + "/cast_5",    "Oddíl 2",         "6ADB") + ",\n" +
-                fragmentRow(basePath + "/par_122",                     basePath,                "§ 122",           "6ADE") + ",\n" +
-                fragmentRow(basePath + "/par_122/odst_4",              basePath + "/par_122",   "§ 122 odst. 4",   "6ADED5") + ",\n" +
-                fragmentRow(basePath + "/par_122/odst_4/pism_g",       basePath + "/par_122/odst_4", "§ 122 odst. 4 písm. g)", "6ADED580") + ",\n" +
-                fragmentRow(basePath + "/par_122/odst_4/pism_g/bod_1", basePath + "/par_122/odst_4/pism_g", "bod 1", "6ADED5C0") + ",\n" +
-                fragmentRow(basePath + "/ppc_1",                       basePath,                "PPC 1",           "6AEE") + ",\n" +
-                fragmentRow(basePath + "/frag_1",                      basePath,                "Frag 1",          "6AEF") +
-                """
-                  ] }
-                }
-                """);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(FRAGMENT_VARS)
+                .row(fragmentRow(basePath + "/cast_5",                      basePath,                "Část 5",          "6AC0"))
+                .row(fragmentRow(basePath + "/cast_5/hlava_4",              basePath + "/cast_5",    "Hlava 4",         "6ADA"))
+                .row(fragmentRow(basePath + "/cast_5/hlava_4/dil_3",        basePath + "/cast_5/hlava_4", "Díl 3",      "6ADAD0"))
+                .row(fragmentRow(basePath + "/cast_5/oddil_2",              basePath + "/cast_5",    "Oddíl 2",         "6ADB"))
+                .row(fragmentRow(basePath + "/par_122",                     basePath,                "§ 122",           "6ADE"))
+                .row(fragmentRow(basePath + "/par_122/odst_4",              basePath + "/par_122",   "§ 122 odst. 4",   "6ADED5"))
+                .row(fragmentRow(basePath + "/par_122/odst_4/pism_g",       basePath + "/par_122/odst_4", "§ 122 odst. 4 písm. g)", "6ADED580"))
+                .row(fragmentRow(basePath + "/par_122/odst_4/pism_g/bod_1", basePath + "/par_122/odst_4/pism_g", "bod 1", "6ADED5C0"))
+                .row(fragmentRow(basePath + "/ppc_1",                       basePath,                "PPC 1",           "6AEE"))
+                .row(fragmentRow(basePath + "/frag_1",                      basePath,                "Frag 1",          "6AEF")));
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(10, out.size());
 
@@ -229,18 +177,9 @@ class EsbirkaSparqlClientTest {
         // parseKindFromIri returns the whole last segment when it contains no underscore
         // (e.g. a "poznamkypodcarou" container or a bare "frag" leaf).
         String basePath = VERSION_IRI + "/dokument/norma";
-        String json = ("""
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order"] },
-                  "results": { "bindings": [
-                   \s""" +
-                fragmentRow(basePath + "/poznamkypodcarou", basePath, "Poznámky", "FFFF") + ",\n" +
-                fragmentRow(basePath + "/frag",             basePath, "Frag",     "FFFE") +
-                """
-                  ] }
-                }
-                """);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(FRAGMENT_VARS)
+                .row(fragmentRow(basePath + "/poznamkypodcarou", basePath, "Poznámky", "FFFF"))
+                .row(fragmentRow(basePath + "/frag",             basePath, "Frag",     "FFFE")));
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals("poznamkypodcarou", out.get(0).getKind());
@@ -251,17 +190,8 @@ class EsbirkaSparqlClientTest {
     void fragmentKind_iriEndingInSlash_kindIsUnknown() {
         // Defensive branch: an IRI whose last char is '/' has no parseable last segment.
         String basePath = VERSION_IRI + "/dokument/norma";
-        String json = ("""
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order"] },
-                  "results": { "bindings": [
-                   \s""" +
-                fragmentRow(basePath + "/trailing/", basePath, "Trailing", "FFFD") +
-                """
-                  ] }
-                }
-                """);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(FRAGMENT_VARS)
+                .row(fragmentRow(basePath + "/trailing/", basePath, "Trailing", "FFFD")));
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals("unknown", out.get(0).getKind());
@@ -275,19 +205,10 @@ class EsbirkaSparqlClientTest {
         // (cast) carries none — the OPTIONAL obsah join leaves it unbound, and the
         // mapper must surface that as a null bodyHtml rather than dropping the row.
         String basePath = VERSION_IRI + "/dokument/norma";
-        String json = ("""
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
-                  "results": { "bindings": [
-                   \s""" +
-                contentRow(basePath + "/cast_1", basePath, "Část 1", "6AC0", null) + ",\n" +
-                contentRow(basePath + "/cast_1/par_1", basePath + "/cast_1", "§ 1", "6AC1",
-                        "<var>§ 1</var> Tělo paragrafu.") +
-                """
-                  ] }
-                }
-                """);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(CONTENT_VARS)
+                .row(contentRow(basePath + "/cast_1", basePath, "Část 1", "6AC0", null))
+                .row(contentRow(basePath + "/cast_1/par_1", basePath + "/cast_1", "§ 1", "6AC1",
+                        "<var>§ 1</var> Tělo paragrafu.")));
 
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(2, out.size());
@@ -305,24 +226,11 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void fetchVersionContent_keepsRowMissingParent() {
-        // Same iri/parent guard as the lean fragment path: a row without a parent edge
-        // is dropped (it cannot be placed in the tree), even when it carries an obsah body.
+        // A row without a parent edge is kept, with its obsah body.
         String basePath = VERSION_IRI + "/dokument/norma";
-        String json = ("""
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
-                  "results": { "bindings": [
-                    { "fragment": {"type":"uri","value":"%1$s/par_1"},
-                      "citace":   {"type":"literal","value":"§ 1"},
-                      "order":    {"type":"literal","value":"6AC0"},
-                      "obsah":    {"type":"literal","value":"<var>orphan</var>"} },
-                   \s""" +
-                contentRow(basePath + "/par_2", basePath, "§ 2", "6AC1", "<var>§ 2</var>") +
-                """
-                  ] }
-                }
-                """).formatted(basePath);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(CONTENT_VARS)
+                .row(contentRow(basePath + "/par_1", null, "§ 1", "6AC0", "<var>orphan</var>"))
+                .row(contentRow(basePath + "/par_2", basePath, "§ 2", "6AC1", "<var>§ 2</var>")));
 
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         // A missing parent must NOT drop the row — its obsah body would be lost with it.
@@ -335,12 +243,7 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void fetchVersionContent_emptyResultSet() {
-        stubSparql("""
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order", "obsah"] },
-                  "results": { "bindings": [] }
-                }
-                """);
+        stubSparql(SparqlJson.select(CONTENT_VARS));
         assertEquals(0, client.fetchVersionContent(VERSION_IRI).size());
     }
 
@@ -348,19 +251,8 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void findLawByNumberYear_happyPath_mapsFirstRow() {
-        String json = """
-                {
-                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
-                  "results": { "bindings": [
-                    { "akt":     {"type":"uri","value":"%s"},
-                      "citace":  {"type":"literal","value":"49/1997 Sb."},
-                      "cislo":   {"type":"literal","value":"49"},
-                      "rok":     {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#gYear","value":"1997"},
-                      "sbirka":  {"type":"literal","value":"sb"} }
-                  ] }
-                }
-                """.formatted(LAW_IRI);
-        stubSparql(json);
+        stubSparql(SparqlJson.select(LAW_VARS)
+                .row(lawRow(LAW_IRI, "49/1997 Sb.", "49", typed("rok", "1997", "xsd:gYear"))));
 
         Optional<LawModel> out = client.findLawByNumberYear("49", 1997);
         assertTrue(out.isPresent());
@@ -372,12 +264,7 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void findLawByNumberYear_noMatch_returnsEmptyOptional() {
-        stubSparql("""
-                {
-                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
-                  "results": { "bindings": [] }
-                }
-                """);
+        stubSparql(SparqlJson.select(LAW_VARS));
         assertTrue(client.findLawByNumberYear("999", 1997).isEmpty());
     }
 
@@ -386,17 +273,10 @@ class EsbirkaSparqlClientTest {
     @Test
     void resolveFragment_happyPath_returnsCitationAndMetadata() {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
-        String json = """
-                {
-                  "head": { "vars": ["citace", "ucinnostDo", "isLatest"] },
-                  "results": { "bindings": [
-                    { "citace":     {"type":"literal","value":"§ 2 písm. d)"},
-                      "ucinnostDo": {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#date","value":"2024-12-31"},
-                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"true"} }
-                  ] }
-                }
-                """;
-        stubSparql(json);
+        stubSparql(SparqlJson.select(RESOLUTION_VARS)
+                .row(literal("citace", "§ 2 písm. d)"),
+                        typed("ucinnostDo", "2024-12-31", "xsd:date"),
+                        xsdBoolean("isLatest", true)));
 
         Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
 
@@ -409,12 +289,7 @@ class EsbirkaSparqlClientTest {
     @Test
     void resolveFragment_emptyResult_returnsEmptyOptional() {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
-        stubSparql("""
-                {
-                  "head": { "vars": ["citace", "ucinnostDo", "isLatest"] },
-                  "results": { "bindings": [] }
-                }
-                """);
+        stubSparql(SparqlJson.select(RESOLUTION_VARS));
 
         Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
 
@@ -424,16 +299,8 @@ class EsbirkaSparqlClientTest {
     @Test
     void resolveFragment_noUcinnostDo_returnsNullValidUntil() {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
-        String json = """
-                {
-                  "head": { "vars": ["citace", "ucinnostDo", "isLatest"] },
-                  "results": { "bindings": [
-                    { "citace":     {"type":"literal","value":"§ 2 písm. d)"},
-                      "isLatest":   {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#boolean","value":"false"} }
-                  ] }
-                }
-                """;
-        stubSparql(json);
+        stubSparql(SparqlJson.select(RESOLUTION_VARS)
+                .row(literal("citace", "§ 2 písm. d)"), xsdBoolean("isLatest", false)));
 
         Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
 
@@ -446,7 +313,7 @@ class EsbirkaSparqlClientTest {
     @Test
     void resolveFragment_endpointDown_throwsSparqlEndpointUnavailable() {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
-        stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
+        WM.stubFor(any(anyUrl()).willReturn(serverError()));
 
         assertThrows(SparqlEndpointUnavailableException.class,
                 () -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI));
@@ -455,9 +322,7 @@ class EsbirkaSparqlClientTest {
     @Test
     void resolveFragment_malformedBody_throwsSparqlEndpointUnavailable() {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withBody("{ malformed")));
+        stubSparql("{ malformed");
 
         assertThrows(SparqlEndpointUnavailableException.class,
                 () -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI));
@@ -467,26 +332,22 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void upstream500ThrowsEsbirkaUnavailable() {
-        stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
+        WM.stubFor(any(anyUrl()).willReturn(serverError()));
         assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
     }
 
     @Test
     void upstreamTimeoutThrowsEsbirkaUnavailable() {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withFixedDelay(5000)
-                .withBody(emptyLawResults())));
+        EsbirkaSparqlClient impatient = clientFor(WM.baseUrl() + "/sparql", 250);
+        WM.stubFor(any(anyUrl()).willReturn(sparqlJson(SparqlJson.select(LAW_VARS)).withFixedDelay(1_500)));
         SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> client.findLawByNumberYear("49", 1997));
+                () -> impatient.findLawByNumberYear("49", 1997));
         assertNotNull(ex.getMessage());
     }
 
     @Test
     void malformedBodyThrowsEsbirkaUnavailable() {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withBody("{ this is not valid sparql json")));
+        stubSparql("{ this is not valid sparql json");
         assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
     }
 
@@ -507,60 +368,50 @@ class EsbirkaSparqlClientTest {
 
     @Test
     void breakerOpensAfterConsecutiveFailuresAndStopsCallingUpstream() {
-        stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
+        WM.stubFor(any(anyUrl()).willReturn(serverError()));
         for (int i = 0; i < BREAKER_THRESHOLD; i++) {
             assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
         }
-        int upstreamCalls = wm.getAllServeEvents().size();
+        int upstreamCalls = WM.getAllServeEvents().size();
 
         // Every operation shares the breaker, not just the one that failed.
         SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
                 () -> client.fetchVersions(LAW_IRI));
 
         assertTrue(ex.getMessage().contains("circuit breaker open"));
-        assertEquals(upstreamCalls, wm.getAllServeEvents().size(),
+        assertEquals(upstreamCalls, WM.getAllServeEvents().size(),
                 "an open breaker must not reach the endpoint");
     }
 
     // --- helpers ------------------------------------------------------------
 
-    private static String fragmentRow(String fragmentIri, String parentIri, String citace, String order) {
-        return """
-                { "fragment": {"type":"uri","value":"%s"},
-                  "parent":   {"type":"uri","value":"%s"},
-                  "citace":   {"type":"literal","value":"%s"},
-                  "order":    {"type":"literal","value":"%s"} }""".formatted(fragmentIri, parentIri, citace, order);
+    private static SparqlJson.Binding[] lawRow(String akt, String citace, String cislo, SparqlJson.Binding rok) {
+        return new SparqlJson.Binding[] {
+                uri("akt", akt), literal("citace", citace), literal("cislo", cislo), rok, literal("sbirka", "sb")};
+    }
+
+    private static SparqlJson.Binding[] fragmentRow(String fragmentIri, String parentIri, String citace, String order) {
+        return new SparqlJson.Binding[] {
+                uri("fragment", fragmentIri), uri("parent", parentIri),
+                literal("citace", citace), literal("order", order)};
     }
 
     /**
-     * A whole-version content row. A null {@code obsah} omits the binding entirely —
-     * modelling an unbound OPTIONAL (structural fragment with no text body), which the
-     * mapper must surface as a null bodyHtml.
+     * A whole-version content row. A null {@code obsah} or {@code parentIri} leaves the variable
+     * unbound, as an unmatched OPTIONAL does.
      */
-    private static String contentRow(String fragmentIri, String parentIri, String citace,
-                                     String order, String obsah) {
-        String obsahBinding = obsah == null ? ""
-                : ",\n                  \"obsah\": {\"type\":\"literal\",\"value\":\"%s\"}".formatted(obsah);
-        return """
-                { "fragment": {"type":"uri","value":"%s"},
-                  "parent":   {"type":"uri","value":"%s"},
-                  "citace":   {"type":"literal","value":"%s"},
-                  "order":    {"type":"literal","value":"%s"}%s }"""
-                .formatted(fragmentIri, parentIri, citace, order, obsahBinding);
+    private static SparqlJson.Binding[] contentRow(String fragmentIri, String parentIri, String citace,
+                                                   String order, String obsah) {
+        return new SparqlJson.Binding[] {
+                uri("fragment", fragmentIri), uri("parent", parentIri),
+                literal("citace", citace), literal("order", order), literal("obsah", obsah)};
     }
 
     private static void stubSparql(String body) {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withBody(body)));
+        WM.stubFor(any(anyUrl()).willReturn(sparqlJson(body)));
     }
 
-    private static String emptyLawResults() {
-        return """
-                {
-                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
-                  "results": { "bindings": [] }
-                }
-                """;
+    private static void stubSparql(SparqlJson result) {
+        stubSparql(result.toJson());
     }
 }

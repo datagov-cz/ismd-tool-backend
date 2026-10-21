@@ -16,11 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Phase C protects the one field where "leave it null" was NOT a safe no-op:
  * {@link ConceptFieldUpdaters#updateDataClassification} is called unconditionally by every type editor.
- * Its null guard now leaves the veřejný/neveřejný type untouched when nothing about the classification
+ * Its null guard leaves the veřejný/neveřejný type untouched when nothing about the classification
  * is being edited (a null {@code isPublic} and no provisions), so a field-scoped edit — e.g. the diagram
- * overlay — can no longer silently strip the classification.
+ * overlay — does not strip the classification.
  *
  * <p>These tests pin that guard (so it is not silently removed) and prove the carry-through path —
  * {@code WorkingCopySyncOperation.carryCurrentDataClassification} passes the CURRENT value through when the
@@ -52,7 +51,7 @@ class DataClassificationCarryThroughTest {
     }
 
     @Test
-    void nullIsPublic_leavesClassificationUntouched_theTrapPhaseCAvoids() {
+    void nullIsPublic_leavesClassificationUntouched() {
         Fixture f = publicConcept();
 
         // A field-scoped edit that does not touch the classification (null isPublic, no provisions):
@@ -68,7 +67,7 @@ class DataClassificationCarryThroughTest {
     void carriedThroughIsPublic_preservesClassification() {
         Fixture f = publicConcept();
 
-        // What Phase C actually does: carry the CURRENT value when the user did not accept the field.
+        // A carry-through edit sends the current value for a field the user did not accept.
         fields.updateDataClassification(f.concept(), Boolean.TRUE, null, f.concept(), f.model(),
                 f.toRemove(), f.toAdd());
 
