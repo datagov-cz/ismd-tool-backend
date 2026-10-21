@@ -75,42 +75,10 @@ class EsbirkaSparqlClientTest {
         wm.resetAll();
     }
 
-    // --- searchLaws ---------------------------------------------------------
+    // --- law row mapping (grouped search, law lookup) -----------------------
 
     @Test
-    void searchLaws_emptyResultSet() {
-        stubSparql(emptyLawResults());
-        List<LawModel> out = client.searchLaws(null, 20);
-        assertEquals(0, out.size());
-    }
-
-    @Test
-    void searchLaws_mapsAllFields() {
-        String json = """
-                {
-                  "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
-                  "results": { "bindings": [
-                    { "akt":     {"type":"uri","value":"%s"},
-                      "citace":  {"type":"literal","value":"187/2006 Sb."},
-                      "cislo":   {"type":"literal","value":"187"},
-                      "rok":     {"type":"typed-literal","datatype":"http://www.w3.org/2001/XMLSchema#gYear","value":"2006"},
-                      "sbirka":  {"type":"literal","value":"sb"} }
-                  ] }
-                }
-                """.formatted(LAW_IRI);
-        stubSparql(json);
-        List<LawModel> out = client.searchLaws("187", 20);
-        assertEquals(1, out.size());
-        LawModel law = out.get(0);
-        assertEquals(LAW_IRI, law.getIri());
-        assertEquals("187/2006 Sb.", law.getCitace());
-        assertEquals("187", law.getCislo());
-        assertEquals(Integer.valueOf(2006), law.getRok());
-        assertEquals("sb", law.getSbirka());
-    }
-
-    @Test
-    void searchLaws_skipsRowMissingCitace() {
+    void lawRows_skipRowMissingCitace() {
         String json = """
                 {
                   "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
@@ -128,13 +96,13 @@ class EsbirkaSparqlClientTest {
                 }
                 """.formatted(LAW_IRI);
         stubSparql(json);
-        List<LawModel> out = client.searchLaws(null, 20);
-        assertEquals(1, out.size());
-        assertEquals("99/2025 Sb.", out.get(0).getCitace());
+        Optional<LawModel> out = client.findLawByNumberYear("99", 2025);
+        assertTrue(out.isPresent());
+        assertEquals("99/2025 Sb.", out.get().getCitace());
     }
 
     @Test
-    void searchLaws_unparseableYearBecomesNull() {
+    void lawRows_unparseableYearBecomesNull() {
         String json = """
                 {
                   "head": { "vars": ["akt", "citace", "cislo", "rok", "sbirka"] },
@@ -148,9 +116,9 @@ class EsbirkaSparqlClientTest {
                 }
                 """.formatted(LAW_IRI);
         stubSparql(json);
-        List<LawModel> out = client.searchLaws(null, 20);
-        assertEquals(1, out.size());
-        assertNull(out.get(0).getRok());
+        Optional<LawModel> out = client.findLawByNumberYear("99", 9999);
+        assertTrue(out.isPresent());
+        assertNull(out.get().getRok());
     }
 
     // --- fetchVersions ------------------------------------------------------
@@ -208,10 +176,10 @@ class EsbirkaSparqlClientTest {
         assertNull(out.get(0).getUcinnostOd());
     }
 
-    // --- fetchFragments + parseKindFromIri ----------------------------------
+    // --- fragment kind from IRI -----------------------------------------------
 
     @Test
-    void fetchFragments_parsesAllKnownKindsFromIri() {
+    void fragmentKind_parsesAllKnownKindsFromIri() {
         String basePath = VERSION_IRI + "/dokument/norma";
         String json = ("""
                 {
@@ -233,7 +201,7 @@ class EsbirkaSparqlClientTest {
                 }
                 """);
         stubSparql(json);
-        List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
+        List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(10, out.size());
 
         // Order preserved (server-side ORDER BY ?order); kind parsed from last segment.
@@ -257,7 +225,7 @@ class EsbirkaSparqlClientTest {
     }
 
     @Test
-    void fetchFragments_lastSegmentWithoutUnderscore_usesSegmentAsKind() {
+    void fragmentKind_lastSegmentWithoutUnderscore_usesSegmentAsKind() {
         // parseKindFromIri returns the whole last segment when it contains no underscore
         // (e.g. a "poznamkypodcarou" container or a bare "frag" leaf).
         String basePath = VERSION_IRI + "/dokument/norma";
@@ -273,14 +241,14 @@ class EsbirkaSparqlClientTest {
                 }
                 """);
         stubSparql(json);
-        List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
+        List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(2, out.size());
         assertEquals("poznamkypodcarou", out.get(0).getKind());
         assertEquals("frag", out.get(1).getKind());
     }
 
     @Test
-    void fetchFragments_iriEndingInSlash_kindIsUnknown() {
+    void fragmentKind_iriEndingInSlash_kindIsUnknown() {
         // Defensive branch: an IRI whose last char is '/' has no parseable last segment.
         String basePath = VERSION_IRI + "/dokument/norma";
         String json = ("""
@@ -294,36 +262,9 @@ class EsbirkaSparqlClientTest {
                 }
                 """);
         stubSparql(json);
-        List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
+        List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         assertEquals(1, out.size());
         assertEquals("unknown", out.get(0).getKind());
-    }
-
-    @Test
-    void fetchFragments_keepsRowMissingParent() {
-        String json = """
-                {
-                  "head": { "vars": ["fragment", "parent", "citace", "order"] },
-                  "results": { "bindings": [
-                    { "fragment": {"type":"uri","value":"%1$s/dokument/norma/par_1"},
-                      "citace":   {"type":"literal","value":"§ 1"},
-                      "order":    {"type":"literal","value":"6AC0"} },
-                    { "fragment": {"type":"uri","value":"%1$s/dokument/norma/par_2"},
-                      "parent":   {"type":"uri","value":"%1$s/dokument/norma"},
-                      "citace":   {"type":"literal","value":"§ 2"},
-                      "order":    {"type":"literal","value":"6AC1"} }
-                  ] }
-                }
-                """.formatted(VERSION_IRI);
-        stubSparql(json);
-        List<FragmentModel> out = client.fetchFragments(VERSION_IRI);
-        // A missing parent must NOT drop the row: document roots (/dokument/prefix) have no
-        // má-předka, and assembleTree surfaces a parentless fragment as a tree root so its
-        // text is never lost.
-        assertEquals(2, out.size());
-        assertNull(out.get(0).getParentIri());
-        assertEquals("§ 1", out.get(0).getCitation());
-        assertEquals("§ 2", out.get(1).getCitation());
     }
 
     // --- fetchVersionContent (obsah body mapping) ---------------------------
@@ -527,7 +468,7 @@ class EsbirkaSparqlClientTest {
     @Test
     void upstream500ThrowsEsbirkaUnavailable() {
         stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
+        assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
     }
 
     @Test
@@ -537,7 +478,7 @@ class EsbirkaSparqlClientTest {
                 .withFixedDelay(5000)
                 .withBody(emptyLawResults())));
         SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> client.searchLaws(null, 20));
+                () -> client.findLawByNumberYear("49", 1997));
         assertNotNull(ex.getMessage());
     }
 
@@ -546,21 +487,21 @@ class EsbirkaSparqlClientTest {
         stubFor(any(anyUrl()).willReturn(aResponse()
                 .withHeader("Content-Type", "application/sparql-results+json")
                 .withBody("{ this is not valid sparql json")));
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
+        assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
     }
 
     @Test
     void connectionRefusedThrowsEsbirkaUnavailable() {
         // Point at a port that's not listening — a stopped wiremock instance equivalent.
         EsbirkaSparqlClient down = clientFor("http://127.0.0.1:1/sparql");
-        assertThrows(SparqlEndpointUnavailableException.class, () -> down.searchLaws(null, 20));
+        assertThrows(SparqlEndpointUnavailableException.class, () -> down.findLawByNumberYear("49", 1997));
     }
 
     @Test
     void unconfiguredEndpointThrowsEsbirkaUnavailable() {
         EsbirkaSparqlClient unconfigured = clientFor("");
         SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> unconfigured.searchLaws(null, 20));
+                () -> unconfigured.findLawByNumberYear("49", 1997));
         assertTrue(ex.getMessage().contains("not configured"));
     }
 
@@ -568,7 +509,7 @@ class EsbirkaSparqlClientTest {
     void breakerOpensAfterConsecutiveFailuresAndStopsCallingUpstream() {
         stubFor(any(anyUrl()).willReturn(aResponse().withStatus(500)));
         for (int i = 0; i < BREAKER_THRESHOLD; i++) {
-            assertThrows(SparqlEndpointUnavailableException.class, () -> client.searchLaws(null, 20));
+            assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
         }
         int upstreamCalls = wm.getAllServeEvents().size();
 

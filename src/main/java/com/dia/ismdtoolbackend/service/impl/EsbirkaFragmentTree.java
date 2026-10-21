@@ -37,8 +37,8 @@ final class EsbirkaFragmentTree {
     private static final String FRAG_KIND = "frag";
 
     /**
-     * Tree assembly without a law citation, so the document root stays unlabelled. Used by the
-     * lean fragment-tree endpoint, which resolves no law metadata.
+     * Tree assembly without a law citation, so the document root stays unlabelled. Used by
+     * {@link EsbirkaSubtreeBodyCache}, which resolves no law metadata.
      */
     static List<FragmentDto> assembleTree(List<FragmentModel> rows, String versionIri) {
         return assembleTree(rows, versionIri, null);
