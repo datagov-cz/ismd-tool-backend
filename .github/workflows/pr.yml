@@ -32,11 +32,8 @@ jobs:
           .github/scripts/check-migration-compat.sh "origin/${{ github.base_ref }}"
 
   run-tests:
+    # Coverage thresholds come from pom.xml.
     uses: ./.github/workflows/reusable-test.yml
-    with:
-      coverage_line: ${{ vars.JACOCO_LINE_MINIMUM || '0.55' }}
-      coverage_branch: ${{ vars.JACOCO_BRANCH_MINIMUM || '0.45' }}
-      coverage_complexity: ${{ vars.JACOCO_COMPLEXITY_MINIMUM || '0.45' }}
     secrets: inherit
 
   validate-docker-build:

@@ -31,9 +31,13 @@
         <ismd-validator-common.version>1.0.20</ismd-validator-common.version>
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
-        <jacoco.line.minimum>0.55</jacoco.line.minimum>
-        <jacoco.branch.minimum>0.45</jacoco.branch.minimum>
-        <jacoco.complexity.minimum>0.45</jacoco.complexity.minimum>
+        <!-- Coverage gate, the only place it is set. Raise it as coverage grows; never lower it.
+             Targets: line 92, instruction 92, branch 85, complexity 80, method 95. -->
+        <jacoco.line.minimum>0.88</jacoco.line.minimum>
+        <jacoco.instruction.minimum>0.89</jacoco.instruction.minimum>
+        <jacoco.branch.minimum>0.74</jacoco.branch.minimum>
+        <jacoco.complexity.minimum>0.72</jacoco.complexity.minimum>
+        <jacoco.method.minimum>0.92</jacoco.method.minimum>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -303,6 +307,16 @@
                                             <counter>COMPLEXITY</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>${jacoco.complexity.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.instruction.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>METHOD</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.method.minimum}</minimum>
                                         </limit>
                                     </limits>
                                 </rule>

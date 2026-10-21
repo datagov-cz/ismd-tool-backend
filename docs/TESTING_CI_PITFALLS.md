@@ -115,3 +115,50 @@ JAVA_HOME=$(/usr/libexec/java_home -v 17) ./mvnw clean verify
 `-DargLine` replaces the JaCoCo agent argument, so use it only to reproduce failures, not for
 coverage. If a test hangs, take a thread dump while it is stuck (`jstack <pid>`; `jps -l` lists
 the Surefire fork). Look at what the `ForkJoinPool.commonPool-worker-*` threads are waiting on.
+## 7. Tests never call outside services
+
+The `junit` profile (`src/test/resources/application-junit.yml`) blanks `nkd`, `nkod`, `rpp` and
+`esbirka` `.sparql.endpoint` and points `esbirka.rest.base-url` at a closed local port. A test
+that activates another profile (`local`, `production`) must repeat these overrides in its
+`@TestPropertySource`, because those profiles point at live endpoints.
+
+Without them every full Spring context started the NKOD and RPP warm-ups, which downloaded about
+30 000 datasets from production data.gov.cz and the live RPP registry. The suite got 40 s slower,
+depended on outside uptime, and earned coverage from network data that no test checks.
+
+Stub an outside service with WireMock (or a mocked client) and a recorded response instead.
+
+## 8. Coverage gate
+
+The JaCoCo minimums live only in `pom.xml` (`jacoco.*.minimum`). `pr.yml` uses them as they are;
+`check-coverage.yml` can override one for a manual run. Raise a minimum when coverage grows and
+never lower it to make a build pass. `push-to-dev.yml` runs the tests without the gate.
+
+## 9. Mocks that cannot fail a test
+
+- **Strict stubs.** Do not use `Strictness.LENIENT` at class level. Unused stubs then fail the
+  test, which exposes mocks that are never wired into the class under test.
+- **A mock must reach the code.** A test that stubs a collaborator the class never receives passes
+  whatever the code does. Build the class under test from the same mocks you stub.
+- **Fail-soft paths need a working baseline.** An unstubbed mock returns `null` or empty, so the
+  code takes its degraded path and a "falls back" test passes vacuously. Stub the healthy answer
+  first, then break one thing.
+- **Mock only what does I/O.** Use real Jena models, real DTOs and real mappers. A mocked mapper
+  or `Model` makes the test check what the mock returned.
+- **Mock beans in shared contexts.** Declare them with `@MockitoBean`, which Spring resets after
+  each test. A plain `Mockito.mock()` returned from a `@Bean` keeps its stubs for every later
+  class that shares the context.
+- **Security rules.** An anonymous request rejected by `denyAll` also gets 401, so checking that
+  anonymous gets 401 cannot catch a removed rule. Also check that an authenticated request is
+  **not** 403.
+
+## 10. Time and concurrency
+
+- Inject a `Clock` instead of reading `System.currentTimeMillis()`, and advance it in the test
+  instead of sleeping.
+- Coordinate threads with `CountDownLatch` or `CyclicBarrier`, never with `Thread.sleep`.
+  "Not finished within 200 ms" is not proof of locking on a loaded runner.
+- Restore thread and session state in `finally` (interrupt flag, `SET` on a pooled connection,
+  or use `SET LOCAL`), so a failing assertion cannot leak it into the next class.
+- Give timeout tests a short timeout of their own (about 250 ms) instead of waiting for the
+  production default.

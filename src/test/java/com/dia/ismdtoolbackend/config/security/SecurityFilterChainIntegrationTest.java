@@ -43,6 +43,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
+        // This profile points at live endpoints; tests stay offline.
+        "nkd.sparql.endpoint=",
+        "nkod.sparql.endpoint=",
+        "rpp.sparql.endpoint=",
+        "esbirka.sparql.endpoint=",
+        "esbirka.rest.base-url=http://127.0.0.1:9",
         "spring.security.oauth2.client.registration.keycloak.client-id=test-client-id",
         "spring.security.oauth2.client.registration.keycloak.client-secret=test-client-secret",
         "spring.security.oauth2.client.registration.keycloak.provider=keycloak-test",
