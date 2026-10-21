@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
@@ -222,7 +223,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
                 MetadataTouchService touchService, ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
                 OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger) {
-            return new ConceptServiceImpl(
+            return ConceptServiceWiring.build(
                     conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
                     mock(OntologyDetailExtractor.class),

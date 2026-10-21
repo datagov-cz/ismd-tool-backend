@@ -37,6 +37,7 @@ import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
@@ -1184,7 +1185,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
                 OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository,
                 OutboxRelayTrigger trigger) {
-            return new ConceptServiceImpl(
+            return ConceptServiceWiring.build(
                     conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
                     mock(OntologyDetailExtractor.class),

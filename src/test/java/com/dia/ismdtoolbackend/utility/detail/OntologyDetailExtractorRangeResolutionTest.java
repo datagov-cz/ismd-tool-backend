@@ -128,7 +128,7 @@ class OntologyDetailExtractorRangeResolutionTest {
                         .findFirst()
                         .orElseThrow(() -> new AssertionError("property concept missing"));
 
-        // Raw range stays exactly as ConceptProcessor wrote it.
+        // Raw range stays exactly as ConceptJsonMapper wrote it.
         assertThat(stringPropDetail.getRange()).isEqualTo("xsd:string");
         assertThat(stringPropDetail.getRangeResolved())
                 .isEqualTo(new DataTypeDto("string", "Řetězec"));

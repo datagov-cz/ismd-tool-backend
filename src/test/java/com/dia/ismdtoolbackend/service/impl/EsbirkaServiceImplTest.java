@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -39,13 +38,14 @@ class EsbirkaServiceImplTest {
     private EsbirkaSparqlClient client;
 
     private EsbirkaServiceImpl service;
+    private EsbirkaLawContentReader contentReader;
 
     @BeforeEach
     void setUp() {
-        // `self` is the @Cacheable proxy in production; a plain self-reference here exercises
-        // the same delegation path without a Spring context.
-        service = new EsbirkaServiceImpl(client, null, null, null);
-        ReflectionTestUtils.setField(service, "self", service);
+        EsbirkaLawVersionsReader versionsReader = new EsbirkaLawVersionsReader(client);
+        contentReader = new EsbirkaLawContentReader(client, versionsReader);
+        service = new EsbirkaServiceImpl(new EsbirkaLawSearch(client), versionsReader, contentReader,
+                new EsbirkaLegalSourceResolver(null, null));
     }
 
     // -------- searchLaws --------
@@ -237,11 +237,11 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(dokument, null, null, "dokument", "0001"));
 
         // The fragment-tree endpoint resolves no law metadata, so the root stays unlabelled.
-        assertNull(service.assembleTree(rows, VERSION_IRI).get(0).getCitation());
+        assertNull(EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI).get(0).getCitation());
 
         // The content endpoint knows the citation and labels the root with it.
         assertEquals("Zákon č. 49/1997 Sb.",
-                service.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
+                EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI, "49/1997 Sb.").get(0).getCitation());
     }
 
     @Test
@@ -348,7 +348,7 @@ class EsbirkaServiceImplTest {
                 new FragmentModel(odst, par, null, "odst", "0005"),
                 new FragmentModel(pism, odst, null, "pism", "0006"));
 
-        List<FragmentDto> out = service.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
+        List<FragmentDto> out = EsbirkaFragmentTree.assembleTree(rows, VERSION_IRI, "49/1997 Sb.");
 
         FragmentDto root = out.get(0);
         assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
@@ -474,7 +474,7 @@ class EsbirkaServiceImplTest {
         List<FragmentModel> rows = new ArrayList<>();
         String parent = NORMA_ROOT;
         String tip = null;
-        for (int i = 1; i <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH + 2; i++) {
+        for (int i = 1; i <= EsbirkaFragmentTree.MAX_FRAGMENT_DEPTH + 2; i++) {
             String iri = VERSION_IRI + "/level_" + i;
             rows.add(new FragmentModel(iri, parent, "L" + i, "frag", String.format("%04d", i)));
             parent = iri;
@@ -488,7 +488,7 @@ class EsbirkaServiceImplTest {
         // nodes; so levels 1..MAX survive in the tree, level MAX+1 is trimmed.
         // Walking from level 1 to level MAX is MAX-1 hops; level MAX+1 has empty children.
         FragmentDto cursor = out.get(0);
-        for (int hop = 1; hop <= EsbirkaServiceImpl.MAX_FRAGMENT_DEPTH; hop++) {
+        for (int hop = 1; hop <= EsbirkaFragmentTree.MAX_FRAGMENT_DEPTH; hop++) {
             assertEquals(1, cursor.getChildren().size(),
                     "expected one child at hop " + hop);
             cursor = cursor.getChildren().get(0);
@@ -638,22 +638,22 @@ class EsbirkaServiceImplTest {
 
     @Test
     void anIriAndItsNumberYearShareTheLawHalfOfTheCacheKey() {
-        assertEquals("49/1997", service.normalizeLawRef(V_2020));
-        assertEquals("49/1997", service.normalizeLawRef(LAW_49_IRI));
-        assertEquals(service.normalizeLawRef("49/1997"), service.normalizeLawRef(LAW_49_IRI));
+        assertEquals("49/1997", contentReader.normalizeLawRef(V_2020));
+        assertEquals("49/1997", contentReader.normalizeLawRef(LAW_49_IRI));
+        assertEquals(contentReader.normalizeLawRef("49/1997"), contentReader.normalizeLawRef(LAW_49_IRI));
     }
 
     @Test
     void versionIriCarriedByTheLawRefKeysItsOwnCacheEntry() {
         // Without this the version half is "" for every IRI, so two different znění of one act
         // would collide on the same key and serve each other's ~2 MB payload.
-        assertEquals(V_2020, service.resolveContentVersionIri(V_2020, null));
-        assertEquals(V_2026, service.resolveContentVersionIri(V_2026, null));
-        assertEquals("", service.resolveContentVersionIri(LAW_49_IRI, null));
-        assertEquals("", service.resolveContentVersionIri("49/1997", null));
+        assertEquals(V_2020, contentReader.resolveContentVersionIri(V_2020, null));
+        assertEquals(V_2026, contentReader.resolveContentVersionIri(V_2026, null));
+        assertEquals("", contentReader.resolveContentVersionIri(LAW_49_IRI, null));
+        assertEquals("", contentReader.resolveContentVersionIri("49/1997", null));
         // Explicit parameter wins, and a legacy host collapses onto the canonical entry.
-        assertEquals(V_2026, service.resolveContentVersionIri(V_2020, V_2026));
-        assertEquals(V_2020, service.resolveContentVersionIri("49/1997",
+        assertEquals(V_2026, contentReader.resolveContentVersionIri(V_2020, V_2026));
+        assertEquals(V_2020, contentReader.resolveContentVersionIri("49/1997",
                 "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49/2020-01-01"));
     }
 
@@ -949,21 +949,21 @@ class EsbirkaServiceImplTest {
         // normalizeLawRef is the SpEL key expression for @Cacheable on getLawContent
         // (#root.target.normalizeLawRef(#lawRef)). It MUST collapse trim/Sb.-suffix
         // variants to a single key, or equivalent refs each store a separate ~2 MB entry.
-        assertEquals("49/1997", service.normalizeLawRef("49/1997"));
-        assertEquals("49/1997", service.normalizeLawRef("  49/1997  "));
-        assertEquals("49/1997", service.normalizeLawRef("49/1997 Sb."));
-        assertEquals("49/1997", service.normalizeLawRef("  49/1997 Sb. "));
+        assertEquals("49/1997", contentReader.normalizeLawRef("49/1997"));
+        assertEquals("49/1997", contentReader.normalizeLawRef("  49/1997  "));
+        assertEquals("49/1997", contentReader.normalizeLawRef("49/1997 Sb."));
+        assertEquals("49/1997", contentReader.normalizeLawRef("  49/1997 Sb. "));
         // Leading-zero year is normalized via Integer parse (1997, not "1997 ").
-        assertEquals("262/2006", service.normalizeLawRef("262/2006 Sb."));
+        assertEquals("262/2006", contentReader.normalizeLawRef("262/2006 Sb."));
     }
 
     @Test
     void normalizeLawRefRejectsPartialInputLikeGetLawContent() {
         // Same parser as getLawContent, so the cache-key path rejects junk identically
         // rather than producing a bogus key.
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("49"));
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("abc/1997"));
-        assertThrows(IllegalArgumentException.class, () -> service.normalizeLawRef("  "));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("49"));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("abc/1997"));
+        assertThrows(IllegalArgumentException.class, () -> contentReader.normalizeLawRef("  "));
     }
 
     // -------- DTO mapping edge cases --------

@@ -10,14 +10,14 @@ import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("ConceptProcessor - Null/Empty Input Safety")
-class ConceptProcessorNullSafetyTest {
+@DisplayName("ConceptJsonMapper - Null/Empty Input Safety")
+class ConceptJsonMapperNullSafetyTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     @Test

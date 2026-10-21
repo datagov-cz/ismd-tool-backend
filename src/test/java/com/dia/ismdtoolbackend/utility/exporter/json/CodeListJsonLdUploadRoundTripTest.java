@@ -129,13 +129,13 @@ class CodeListJsonLdUploadRoundTripTest {
 
     @Test
     @DisplayName("Parsed triples match what the reader expects, so upload feeds the detail path")
-    void parsedTriplesAreReadableByConceptProcessor() {
+    void parsedTriplesAreReadableByConceptJsonMapper() {
         Model parsed = ModelFactory.createDefaultModel();
         RDFDataMgr.read(parsed,
                 new ByteArrayInputStream(uploadedDocument().getBytes(StandardCharsets.UTF_8)),
                 Lang.JSONLD);
 
-        // ConceptProcessor.addCodeListDatasetProperty reads via its own private copy of the
+        // ConceptCodeListJsonMapper.addCodeListDatasetProperty reads via its own private copy of the
         // 111/2009 namespace. Asserting the literal here catches that copy drifting away from
         // OFN_NAMESPACE_LEGAL, which would silently break the read path.
         String readerNamespace = "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/";

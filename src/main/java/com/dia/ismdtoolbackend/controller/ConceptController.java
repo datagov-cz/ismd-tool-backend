@@ -176,7 +176,9 @@ public class ConceptController {
         log.info("Working-copy sync requested, conceptId: {}, fields: {}, userId: {}",
                 conceptId, request.getFieldsToAccept(), securityUser.getUserId());
 
-        GetConceptDto synced = conceptService.syncWorkingCopy(conceptId, request.getFieldsToAccept());
+        // Read after the sync transaction has committed and its RDF delta has been applied.
+        String slug = conceptService.syncWorkingCopy(conceptId, request.getFieldsToAccept());
+        GetConceptDto synced = conceptService.getConceptDetail(slug);
         return ResponseEntity.ok().body(ApiResponseDto.success(synced, "Pracovní kopie byla synchronizována."));
     }
 

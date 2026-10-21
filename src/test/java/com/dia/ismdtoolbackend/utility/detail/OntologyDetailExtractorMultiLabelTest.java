@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
  * (observed live on {@code a124---datový-slovník-iskn}, concept {@code .../111/2009/pojem/fyzická-osoba},
  * which carries two {@code cs} {@code skos:prefLabel}s).
  *
- * <p>{@code ConceptProcessor.addValueToLanguageMap} promotes a duplicated language key to a
+ * <p>{@code ConceptLabelJsonMapper.addValueToLanguageMap} promotes a duplicated language key to a
  * {@code List}; the old raw {@code (Map<String, String>)} cast in the extractor let that List slip
  * past type erasure, and Jackson threw {@code ClassCastException} while serializing {@code název.cs}.
  */
