@@ -7,6 +7,7 @@ import org.apache.jena.vocabulary.SKOS;
 
 import java.util.*;
 
+import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 
 import static com.dia.constants.VocabularyConstants.*;
@@ -98,6 +99,8 @@ public class ConceptJsonMapper {
             Map<String, Object> conceptObject = createConceptObject(resource, ontModel, structure);
             concepts.add(conceptObject);
             return 0;
+        } catch (ConflictingConceptTypeException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("Failed to process concept: {} - {}", resource.getURI(), e.getMessage(), e);
             return 1;

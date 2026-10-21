@@ -141,7 +141,6 @@ class OntologyServiceImplTest {
         ValidationReportEntity validationReport = new ValidationReportEntity();
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(validationReport));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
 
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
@@ -165,22 +164,20 @@ class OntologyServiceImplTest {
     }
 
     @Test
-    void deleteOntology_EmptyModel() {
+    void deleteOntology_neverReadsTheGraph() {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(false);
 
-        OntologyException exception = assertThrows(OntologyException.class,
-                () -> ontologyService.deleteOntology(TEST_ONTOLOGY_ID));
+        ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 
-        assertTrue(exception.getMessage().contains("prázdný"));
-        verify(jenaTDB2Repository, never()).deleteGraph(anyString());
+        verify(jenaTDB2Repository, never()).graphHasData(anyString());
+        verify(outboxWriter).enqueueDeleteGraph(TEST_GRAPH_NAME);
+        verify(ontologyMetadataRepository).deleteById(TEST_ONTOLOGY_ID);
     }
 
     @Test
     void deleteOntology_NoValidationReport() throws OntologyException {
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(validationReportRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(Optional.empty());
-        when(jenaTDB2Repository.graphHasData(TEST_GRAPH_NAME)).thenReturn(true);
 
         ontologyService.deleteOntology(TEST_ONTOLOGY_ID);
 

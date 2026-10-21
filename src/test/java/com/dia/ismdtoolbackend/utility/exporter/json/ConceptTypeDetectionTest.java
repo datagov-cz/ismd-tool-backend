@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
+import com.dia.ismdtoolbackend.exception.ModelProcessingException;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.OWL2;
@@ -11,6 +12,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -141,38 +143,57 @@ class ConceptTypeDetectionTest {
         assertTrue(types.contains(TSP_JSON_LD));
     }
 
-    @Test
-    @DisplayName("Vlastnost type suppressed when concept is also a Vztah")
-    void vlastnostSuppressedWhenVztah() {
-        OntModel model = createDefaultModel();
-        Resource concept = addSkosConcept(model, "vztah-vlastnost", "Both");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH));
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VLASTNOST));
-        ModelStructure structure = createModelStructure(model);
-
-        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
-
-        @SuppressWarnings("unchecked")
-        List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VZTAH_JSON_LD));
-        assertFalse(types.contains(VLASTNOST_JSON_LD),
-                "Vlastnost should be suppressed when Vztah is present");
+    static Stream<Arguments> mixedPropertyRelationshipSignals() {
+        return Stream.of(
+                Arguments.of(OFN_NAMESPACE + VLASTNOST, OWL2.ObjectProperty.getURI()),
+                Arguments.of(OFN_NAMESPACE + VZTAH, OWL2.DatatypeProperty.getURI()),
+                Arguments.of(OFN_NAMESPACE + VLASTNOST, OFN_NAMESPACE + VZTAH),
+                Arguments.of(OWL2.DatatypeProperty.getURI(), OWL2.ObjectProperty.getURI())
+        );
     }
 
-    @Test
-    @DisplayName("DatatypeProperty type suppressed when concept is also a Vztah")
-    void datatypePropertySuppressedWhenVztah() {
+    @ParameterizedTest(name = "{0} + {1} is rejected")
+    @MethodSource("mixedPropertyRelationshipSignals")
+    @DisplayName("A concept typed as both a property and a relationship is rejected")
+    void mixedPropertyAndRelationshipSignals_throw(String firstType, String secondType) {
         OntModel model = createDefaultModel();
-        Resource concept = addSkosConcept(model, "vztah-dp", "Vztah+DP");
-        concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + VZTAH));
-        concept.addProperty(RDF.type, OWL2.DatatypeProperty);
+        Resource concept = addSkosConcept(model, "mixed", "Mixed");
+        concept.addProperty(RDF.type, model.createResource(firstType));
+        concept.addProperty(RDF.type, model.createResource(secondType));
+        ModelStructure structure = createModelStructure(model);
+
+        ModelProcessingException single = assertThrows(ModelProcessingException.class,
+                () -> processor.processConceptByIri(model, structure, concept.getURI()));
+        assertTrue(single.getMessage().contains(concept.getURI()));
+
+        // The whole-vocabulary path must fail too, not drop the concept and carry on.
+        ModelProcessingException all = assertThrows(ModelProcessingException.class,
+                () -> processor.processAllConcepts(model, structure));
+        assertTrue(all.getMessage().contains(concept.getURI()));
+    }
+
+    static Stream<Arguments> agreeingSignals() {
+        return Stream.of(
+                Arguments.of(OFN_NAMESPACE + VLASTNOST, OWL2.DatatypeProperty.getURI(), VLASTNOST_JSON_LD, VZTAH_JSON_LD),
+                Arguments.of(OFN_NAMESPACE + VZTAH, OWL2.ObjectProperty.getURI(), VZTAH_JSON_LD, VLASTNOST_JSON_LD)
+        );
+    }
+
+    @ParameterizedTest(name = "{0} + {1} is exactly {2}")
+    @MethodSource("agreeingSignals")
+    @DisplayName("Agreeing OFN and OWL types yield the kind exactly once")
+    void agreeingOfnAndOwlTypes_yieldTheKindOnce(String ofnType, String owlType, String expected, String absent) {
+        OntModel model = createDefaultModel();
+        Resource concept = addSkosConcept(model, "agreeing", "Agreeing");
+        concept.addProperty(RDF.type, model.createResource(ofnType));
+        concept.addProperty(RDF.type, model.createResource(owlType));
         ModelStructure structure = createModelStructure(model);
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VZTAH_JSON_LD));
-        assertFalse(types.contains(VLASTNOST_JSON_LD));
+        assertEquals(1, Collections.frequency(types, expected));
+        assertFalse(types.contains(absent));
     }
 }

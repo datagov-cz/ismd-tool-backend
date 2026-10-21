@@ -36,7 +36,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -314,7 +313,7 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void testUploadFromFile_MissingFile() throws Exception {
+    void testUploadFromFile_EmptyJsonLdFile() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -330,6 +329,19 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_noFilePart_returnsBadRequest() throws Exception {
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .param("normalizeMode", "NORMALIZE_ALL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Chybí povinná část požadavku 'file'."));
+
+        verifyNoInteractions(ontologyUploadService);
     }
 
     @Test
@@ -531,6 +543,23 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_PARSE_TIMEOUT"))
                 .andExpect(jsonPath("$.message").value("Zpracování RDF souboru překročilo časový limit (60 s)."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_conflictingConceptTypes_returnsBadRequestNamingTheConcepts() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException(
+                        List.of("https://x/y/pojem/a", "https://x/y/pojem/b")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_CONCEPT_TYPE_CONFLICT"))
+                .andExpect(jsonPath("$.data[0]").value("https://x/y/pojem/a"))
+                .andExpect(jsonPath("$.data[1]").value("https://x/y/pojem/b"));
     }
 
     @Test

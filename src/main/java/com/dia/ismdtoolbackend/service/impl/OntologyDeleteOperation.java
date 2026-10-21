@@ -24,7 +24,6 @@ class OntologyDeleteOperation {
     private final OntologyMetadataRepository ontologyMetadataRepository;
     private final ConceptMetadataRepository conceptMetadataRepository;
     private final ValidationReportRepository validationReportRepository;
-    private final JenaTDB2Repository jenaTDB2Repository;
     private final NkdSnapshotService nkdSnapshotService;
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
@@ -44,11 +43,6 @@ class OntologyDeleteOperation {
                 validationReportRepository.findByOntologyMetadataId(ontologyId);
         validationReport.ifPresent(validationReportRepository::delete);
 
-        if (!jenaTDB2Repository.graphHasData(graphName)) {
-            log.error("Ontology model is empty.");
-            throw new OntologyException("Slovník je prázdný, nebo nebyl nalezen.");
-        }
-
         // NKD local-copy cascade: drop the PG snapshot rows before the ontology (and its cascade-deleted
         // concepts) go. Copies live only in Postgres, so there is nothing of theirs in the graph for
         // DELETE_GRAPH to sweep. fk_nkd_snapshot_owning_concept is not db-cascade, so keying on the owned
@@ -58,7 +52,9 @@ class OntologyDeleteOperation {
                 .toList();
         nkdSnapshotService.cascadeGraphDeletion(ownedConceptIds, graphName);
 
-        // Enqueue the graph deletion, committed atomically with the PG metadata delete below.
+        // Enqueue the graph deletion, committed atomically with the PG metadata delete below. The graph
+        // is not read first: the delete is idempotent, so a vocabulary whose graph is already gone is
+        // still removable.
         outboxWriter.enqueueDeleteGraph(graphName);
         ontologyMetadataRepository.deleteById(ontologyId);
         outboxRelayTrigger.nudgeAfterCommit();
