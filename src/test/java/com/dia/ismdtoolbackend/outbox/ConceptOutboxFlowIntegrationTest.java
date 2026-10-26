@@ -12,16 +12,19 @@ import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
+import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * Review #8(c) — the end-to-end seam: the REAL {@link ConceptServiceImpl} (real editor/creator/mapper,
@@ -96,10 +99,14 @@ class ConceptOutboxFlowIntegrationTest extends OutboxFlowTestBase {
         Long id = conceptMetadataRepository.findAll().get(0).getId();
         tdb2.reset();
 
+        String iri = conceptMetadataRepository.findById(id).orElseThrow().getConceptIri();
+
         service.deleteConcept(id);
 
         assertThat(conceptMetadataRepository.count()).isZero();
-        assertThat(outboxRepository.findAll()).allMatch(row -> row.getStatus() == OutboxStatus.DONE);
+        assertThat(outboxRows()).containsExactly(
+                tuple(OutboxOperation.UPSERT_CONCEPT, iri, OutboxStatus.DONE),
+                tuple(OutboxOperation.DELETE_CONCEPTS, iri, OutboxStatus.DONE));
     }
 
     @Test
@@ -118,7 +125,10 @@ class ConceptOutboxFlowIntegrationTest extends OutboxFlowTestBase {
                 .containsExactly(beta.getId());
         Model graph = tdb2.dataset().getNamedModel(GRAPH);
         assertThat(graph.containsResource(graph.getResource(beta.getConceptIri()))).isTrue();
-        assertThat(outboxRepository.findAll()).allMatch(row -> row.getStatus() == OutboxStatus.DONE);
+        assertThat(outboxRows()).containsExactly(
+                tuple(OutboxOperation.UPSERT_CONCEPT, alpha.getConceptIri(), OutboxStatus.DONE),
+                tuple(OutboxOperation.UPSERT_CONCEPT, beta.getConceptIri(), OutboxStatus.DONE),
+                tuple(OutboxOperation.DELETE_CONCEPTS, alpha.getConceptIri(), OutboxStatus.DONE));
     }
 
     @Test
@@ -155,7 +165,16 @@ class ConceptOutboxFlowIntegrationTest extends OutboxFlowTestBase {
         assertThat(g.size()).as("concept survived the rename").isGreaterThan(0);
 
         // Both outbox rows applied (DONE) and keyed on the SAME aggregate (the old IRI) — the #4 fix.
-        assertThat(outboxRepository.findAll()).allMatch(r -> r.getStatus() == OutboxStatus.DONE);
-        assertThat(outboxRepository.findAll()).allMatch(r -> oldIri.equals(r.getAggregateIri()));
+        assertThat(outboxRows()).containsExactly(
+                tuple(OutboxOperation.UPSERT_CONCEPT, oldIri, OutboxStatus.DONE),
+                tuple(OutboxOperation.UPSERT_CONCEPT, oldIri, OutboxStatus.DONE));
+    }
+
+    /** Every outbox row as (operation, aggregate, status), in enqueue order. */
+    private List<Tuple> outboxRows() {
+        return outboxRepository.findAll().stream()
+                .sorted(Comparator.comparing(OutboxEntry::getId))
+                .map(e -> tuple(e.getOperation(), e.getAggregateIri(), e.getStatus()))
+                .toList();
     }
 }

@@ -7,6 +7,7 @@ import com.dia.ismdtoolbackend.outbox.OutboxEntry;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
+import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.service.impl.CommentServiceImpl;
 import com.dia.ismdtoolbackend.service.search.DiagramSearchLookup;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -29,8 +30,8 @@ import java.lang.annotation.Target;
  * Repositories and small JPA-only services against Postgres, with JPA auditing on as in production.
  * Every class carrying this annotation shares one Spring context.
  *
- * <p>The concept and pending-edit repositories are spies on the real repositories, so a test can
- * count queries; Spring resets them after every test.
+ * <p>The concept, pending-edit and diagram repositories are spies on the real repositories, so a
+ * test can count queries or observe the calling transaction; Spring resets them after every test.
  *
  * <p>No ambient test transaction by default: writes commit. A class that wants the rolled-back test
  * transaction adds a plain {@code @Transactional}. That keeps the shared context: the cache key
@@ -48,7 +49,7 @@ import java.lang.annotation.Target;
         CommentServiceImpl.class, CommentMapperImpl.class})
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
-@MockitoSpyBean(types = {ConceptMetadataRepository.class, DiagramPendingEditRepository.class})
+@MockitoSpyBean(types = {ConceptMetadataRepository.class, DiagramPendingEditRepository.class, DiagramRepository.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public @interface PlainJpaIT {
 }

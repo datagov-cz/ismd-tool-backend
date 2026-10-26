@@ -10,11 +10,19 @@ import com.dia.ismdtoolbackend.service.search.DiagramSearchLookup;
 import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
 import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import org.junit.jupiter.api.Test;
+import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mockingDetails;
 
 /**
  * Regression cover for the diagram-search lazy-loading bug (finding F4).
@@ -27,11 +35,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>{@link DiagramSearchLookup} exists to do that mapping inside its own read-only transaction.
  *
  * <p><strong>Every test here is {@code NOT_SUPPORTED}</strong>, which suspends the transaction
- * {@code @DataJpaTest} would otherwise wrap around it. That matters: inside the test's own
- * transaction the session stays open regardless, so the assertions pass even with the lookup's
- * {@code @Transactional} deleted — the test would prove nothing. Suspended, the lookup's own
- * annotation is the only thing keeping a session open, which is exactly the production condition.
- * Verified by mutation: removing {@code @Transactional} from {@code search()} fails these tests.
+ * {@code @DataJpaTest} would otherwise wrap around it, so the lookup's own annotation is the only
+ * transaction, as in production. The queries project columns, so mapping needs no open session;
+ * {@link #searchAndCount_runTheQueryInsideTheLookupsReadOnlyTransaction} checks the transaction
+ * directly on the spied repository.
  *
  * <p>Data is committed rather than rolled back; every test starts from an empty database.
  */
@@ -39,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
 
     @Autowired private DiagramSearchLookup lookup;
+    /** A spy ({@link PlainJpaIT}). */
     @Autowired private DiagramRepository diagramRepository;
     @Autowired private OntologyMetadataRepository ontologyRepository;
 
@@ -62,13 +70,38 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
         diagramRepository.save(d);
     }
 
-    private OntologyMetadataEntity publishedOntology(String slug, String graphName) {
+    private OntologyMetadataEntity publishedOntology() {
         OntologyMetadataEntity o = new OntologyMetadataEntity();
-        o.setSlug(slug);
-        o.setGraphName(graphName);
+        o.setSlug("published-pomer");
+        o.setGraphName("https://x/published-pomer");
         o.setUserId("u1");
         o.setIsPublished(true);
         return ontologyRepository.save(o);
+    }
+
+    /** Both queries run in the lookup's read-only transaction, not in a repository call of their own. */
+    @Test
+    void searchAndCount_runTheQueryInsideTheLookupsReadOnlyTransaction() {
+        diagramFor(ontology("pracovni-pomer", "https://x/pracovni-pomer"));
+        // The spy wraps a JDK proxy, so its default answer (not callRealMethod) reaches the real repository.
+        Answer<?> realRepository = mockingDetails(diagramRepository).getMockCreationSettings().getDefaultAnswer();
+        List<String> seen = new ArrayList<>();
+        Answer<Object> recordTransaction = inv -> {
+            seen.add(inv.getMethod().getName()
+                    + " active=" + TransactionSynchronizationManager.isActualTransactionActive()
+                    + " readOnly=" + TransactionSynchronizationManager.isCurrentTransactionReadOnly());
+            return realRepository.answer(inv);
+        };
+        doAnswer(recordTransaction).when(diagramRepository)
+                .searchByOntologyText(any(), anyBoolean(), anyInt(), anyInt());
+        doAnswer(recordTransaction).when(diagramRepository).countSearchByOntologyText(any(), anyBoolean());
+
+        assertThat(lookup.search("pomer", null, Integer.MAX_VALUE, 0)).hasSize(1);
+        assertThat(lookup.count("pomer", null)).isEqualTo(1);
+
+        assertThat(seen).containsExactly(
+                "searchByOntologyText active=true readOnly=true",
+                "countSearchByOntologyText active=true readOnly=true");
     }
 
     /**
@@ -77,7 +110,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void unpublishedFilterExcludesPublishedOntologiesDiagrams() {
-        diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
+        diagramFor(publishedOntology());
         diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));   // ontology() is unpublished
 
         List<SearchResultDto> unpublishedOnly = lookup.search("pomer", Boolean.FALSE, Integer.MAX_VALUE, 0);
@@ -90,7 +123,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     /** No publish filter (source=ISMD/ALL) returns diagrams regardless of their ontology's state. */
     @Test
     void noPublishedFilterReturnsBothPublishedAndUnpublished() {
-        diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
+        diagramFor(publishedOntology());
         diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));
 
         assertThat(lookup.search("pomer", null, Integer.MAX_VALUE, 0)).extracting(SearchResultDto::getSlug)
@@ -101,7 +134,7 @@ class DiagramSearchLookupIntegrationTest extends PostgresIntegrationTestBase {
     /** {@code isPublished} carries the ontology's value, so the FE can tell the two apart. */
     @Test
     void isPublishedMirrorsTheOntology() {
-        diagramFor(publishedOntology("published-pomer", "https://x/published-pomer"));
+        diagramFor(publishedOntology());
         diagramFor(ontology("draft-pomer", "https://x/draft-pomer"));
 
         assertThat(lookup.search("pomer", null, Integer.MAX_VALUE, 0))

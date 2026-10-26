@@ -27,6 +27,7 @@ class OutboxRelayTriggerTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String A = GRAPH + "/pojem/a";
+    private static final String B = GRAPH + "/pojem/b";
     private static final String PREF_LABEL = "http://www.w3.org/2004/02/skos/core#prefLabel";
 
     @Autowired
@@ -41,8 +42,12 @@ class OutboxRelayTriggerTest extends OutboxFlowTestBase {
     private TransactionTemplate txTemplate;
 
     private static Statement triple(String literal) {
+        return triple(A, literal);
+    }
+
+    private static Statement triple(String subject, String literal) {
         Model m = ModelFactory.createDefaultModel();
-        Resource s = m.createResource(A);
+        Resource s = m.createResource(subject);
         Property p = m.createProperty(PREF_LABEL);
         return m.createStatement(s, p, literal);
     }
@@ -66,15 +71,25 @@ class OutboxRelayTriggerTest extends OutboxFlowTestBase {
 
     @Test
     void nudge_doesNotDrainOnRollback() {
+        // A committed row for another aggregate: any drain would apply it.
+        txTemplate.executeWithoutResult(tx ->
+                writer.enqueueUpsert(GRAPH, B, Set.of(), Set.of(triple(B, "Committed earlier"))));
+
         assertThatThrownBy(() -> txTemplate.executeWithoutResult(tx -> {
             writer.enqueueUpsert(GRAPH, A, Set.of(), Set.of(triple("Rolled back")));
             trigger.nudgeAfterCommit();
             throw new IllegalStateException("boom after enqueue + nudge");
         })).isInstanceOf(IllegalStateException.class);
 
-        // The tx rolled back: the row never committed, and afterCommit never fired.
-        assertThat(repository.count()).isZero();
+        // The rolled-back row is gone and no drain ran: the earlier row is still pending.
+        assertThat(repository.findAll())
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.getAggregateIri()).isEqualTo(B);
+                    assertThat(e.getStatus()).isEqualTo(OutboxStatus.PENDING);
+                });
         assertThat(graphHas("Rolled back")).isFalse();
+        assertThat(tdb2.dataset().getNamedModel(GRAPH).contains(triple(B, "Committed earlier"))).isFalse();
     }
 
     @Test

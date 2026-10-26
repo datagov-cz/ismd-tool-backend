@@ -31,7 +31,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
@@ -278,7 +277,7 @@ class EsbirkaLawContentCacheTest {
 
     @Test
     void contentCacheRegistered() {
-        assertNotNull(cacheManager.getCache("esbirkaLawContent"));
+        CacheTestSupport.assertBoundedWithTtl(cacheManager, "esbirkaLawContent");
     }
 
     /** Polls thread states (bounded); a parked caller with Caffeine frames waits on an entry. */

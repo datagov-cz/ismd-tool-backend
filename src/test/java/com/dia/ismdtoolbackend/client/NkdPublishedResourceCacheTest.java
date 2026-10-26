@@ -19,7 +19,6 @@ import org.springframework.context.annotation.Import;
 
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -158,9 +157,8 @@ class NkdPublishedResourceCacheTest {
     }
 
     @Test
-    void cacheRegistered_withExpectedName() {
-        assertNotNull(cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE),
-                "nkdPublishedResource cache must be registered");
+    void cacheRegistered_withTtlAndBound() {
+        CacheTestSupport.assertBoundedWithTtl(cacheManager, NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);
     }
 
     private static String buildExpectedQuery() {

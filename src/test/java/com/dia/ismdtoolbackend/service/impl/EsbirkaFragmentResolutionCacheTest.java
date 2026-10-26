@@ -14,7 +14,6 @@ import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -70,10 +69,8 @@ class EsbirkaFragmentResolutionCacheTest {
     }
 
     @Test
-    void cacheRegistered_withExpectedName() {
-        assertNotNull(cacheManager.getCache("esbirkaFragmentResolution"),
-                "esbirkaFragmentResolution cache must be registered");
-        assertNotNull(cacheManager.getCache("esbirkaLawSearch"));
-        assertNotNull(cacheManager.getCache("esbirkaLawVersions"));
+    void cacheRegistered_withTtlAndBound() {
+        CacheTestSupport.assertBoundedWithTtl(cacheManager,
+                "esbirkaFragmentResolution", "esbirkaLawSearch", "esbirkaLawVersions");
     }
 }

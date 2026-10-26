@@ -11,6 +11,7 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
 import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
 import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
@@ -18,15 +19,21 @@ import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -60,6 +67,7 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
     private static final String SUBCLASS_EDGE = "edge|SUBCLASS_OF|" + CLASS_A + "|" + CLASS_B;
 
     @Autowired private ConceptMetadataRepository conceptRepo;
+    @Autowired private DiagramMaterializeService materializeService;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
     @Autowired private OntologyDetailExtractor extractor;
@@ -71,7 +79,7 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
     void setUp() {
         Model nonEmpty = ModelFactory.createDefaultModel();
         nonEmpty.add(nonEmpty.createResource(CLASS_A),
-                org.apache.jena.vocabulary.RDF.type,
+                RDF.type,
                 nonEmpty.createResource("http://www.w3.org/2002/07/owl#Class"));
         when(tdb2.fetchGraph(any())).thenReturn(nonEmpty);
         when(extractor.applyOFNTransformations(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -148,6 +156,13 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
         assertThat(conceptRepo.findByConceptIri(REL))
                 .as("removal is presentation-only: the relationship concept is untouched")
                 .isPresent();
+        // RDF is a mock: the saves only read the graph and never write or materialize.
+        verify(tdb2, never()).applyConceptDelta(any(), any(), any(), any());
+        verify(tdb2, never()).deleteConceptsFromGraph(any(), any());
+        verify(tdb2, never()).saveOntologyModel(any(), any());
+        verify(tdb2, never()).putOntologyModel(any(), any());
+        verify(tdb2, never()).deleteGraph(any());
+        verifyNoInteractions(materializeService);
 
         DiagramDto readdedAfterwards = save(List.of(new DiagramLayoutDto.Edge(REL, null)));
         assertThat(readdedAfterwards.edges())
@@ -254,7 +269,7 @@ class DiagramEdgeMembershipIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     private DiagramDto saveWith(List<String> canvasClasses, List<DiagramLayoutDto.Edge> edges) {
-        List<DiagramLayoutDto.Node> nodes = new java.util.ArrayList<>();
+        List<DiagramLayoutDto.Node> nodes = new ArrayList<>();
         double x = 0;
         for (String iri : canvasClasses) {
             nodes.add(node(iri, x));

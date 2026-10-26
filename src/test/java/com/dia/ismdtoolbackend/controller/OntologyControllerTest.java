@@ -10,6 +10,7 @@ import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.sample;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
@@ -194,7 +195,29 @@ class OntologyControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
-                .andExpect(jsonPath("$.message").isString());
+                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: file"));
+
+        verify(nkdSnapshotWarmer).warmGraphNow("file");
+    }
+
+    /** The upload is committed before the warm-up, so a warmer failure must not fail the request. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_warmerFailure_stillReturnsOk() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle",
+                "<http://example.org/test> a <http://www.w3.org/2002/07/owl#Ontology> .".getBytes());
+        OntologyMetadataModel saved = new OntologyMetadataModel();
+        saved.setGraphName("https://example.org/graph");
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), isNull(), isNull())).thenReturn(saved);
+        doThrow(new org.springframework.core.task.TaskRejectedException("executor saturated"))
+                .when(nkdSnapshotWarmer).warmGraphNow("https://example.org/graph");
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.graphName").value("https://example.org/graph"));
+
+        verify(nkdSnapshotWarmer).warmGraphNow("https://example.org/graph");
     }
 
     @Test
@@ -268,9 +291,10 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.message").value("RDF jazyk není podporován."));
     }
 
+    /** An unexpected service failure maps to the generic 500 without leaking its message or warming NKD. */
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_ServiceException() throws Exception {
-        String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.ttl",
@@ -278,14 +302,23 @@ class OntologyControllerTest {
                 "invalid rdf content".getBytes()
         );
 
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenThrow(new RuntimeException("Parse error"));
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), isNull(), isNull()))
+                .thenThrow(new RuntimeException("Parse error at line 7 in /srv/tdb2"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist());
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Parse error"))));
+
+        verify(ontologyUploadService).uploadFromFile(
+                argThat(f -> "test.ttl".equals(f.getOriginalFilename())), eq("user123"), isNull(), isNull());
+        verifyNoInteractions(nkdSnapshotWarmer);
     }
 
     @Test
@@ -813,14 +846,35 @@ class OntologyControllerTest {
 
     @Test
     void testDownloadOntology_InvalidFormat() throws Exception {
-        Long ontologyId = 1L;
-
-        when(ontologyDownloadService.downloadOntology(ontologyId, "invalid"))
-                .thenThrow(new IllegalArgumentException("Unsupported format"));
-
-        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L)
                         .param("format", "invalid"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_ARGUMENT"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith(
+                        "Nepodporovaný formát: invalid.")));
+
+        verifyNoInteractions(ontologyDownloadService, ontologyService, validationService);
+    }
+
+    @Test
+    void testDownloadOntology_UppercaseFormat_isNormalised() throws Exception {
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(true);
+        when(ontologyDownloadService.downloadOntology(1L, "ttl")).thenReturn("ttl body");
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L)
+                        .param("format", "TTL"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"ontology_1.ttl\""))
+                .andExpect(content().string("ttl body"));
+    }
+
+    @Test
+    void testDownloadOntology_MissingFormat_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(ontologyDownloadService, ontologyService, validationService);
     }
 
     @Test
@@ -1474,5 +1528,116 @@ class OntologyControllerTest {
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("source", "ISMD"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ========== Validate: no report ==========
+
+    /** An empty answer from the validator is an outage: 503, and nothing is saved. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_NoReportReceived_returns503AndSavesNothing() throws Exception {
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        when(ontologyService.getTtlContentFromOntology(any())).thenReturn("ttl");
+        when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))
+                .thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", "test-ontology")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("Validační služba není momentálně dostupná."));
+
+        verify(validationClient).requestValidation("ttl", "http://example.org/test-ontology");
+        verifyNoInteractions(validationService);
+    }
+
+    // ========== List: empty slug list ==========
+
+    /** An empty {@code slugs} parameter is no filter: the plain list is served. */
+    @Test
+    void testGetOntologyList_EmptySlugs_fallsBackToGetAll() throws Exception {
+        when(ontologyService.getAll(null, null)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/ontology/list").param("slugs", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        verify(ontologyService).getAll(null, null);
+        verify(ontologyService, never()).getBySlugs(any());
+    }
+
+    // ========== Resolve concept references ==========
+
+    private static final String RESOLVE_URL = "/api/ontology/concepts/resolve";
+
+    /** Datatype namespaces, CURIEs and non-http schemes are dropped before resolution; order is kept. */
+    @Test
+    void resolveConcepts_dropsDatatypeAndNonHttpIris_beforeResolving() throws Exception {
+        String httpIri = "http://example.org/pojem/a";
+        String httpsIri = "https://example.org/pojem/b";
+        ResolvedConceptDto resolvedA = ResolvedConceptDto.builder()
+                .iri(httpIri)
+                .conceptName(java.util.Map.of("cs", "Pojem A"))
+                .conceptSlug("pojem-a")
+                .ontologyIri("http://example.org/slovnik")
+                .source(SearchSource.ISMD)
+                .build();
+        when(referencedConceptResolutionEngine.resolveAllForDisplay(List.of(httpIri, httpsIri)))
+                .thenReturn(java.util.Map.of(httpIri, resolvedA));
+
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"iris":[
+                                  "http://example.org/pojem/a",
+                                  "http://www.w3.org/2001/XMLSchema#string",
+                                  "http://www.w3.org/2000/01/rdf-schema#Literal",
+                                  "xsd:date",
+                                  "urn:uuid:1234",
+                                  "ftp://example.org/x",
+                                  "https://example.org/pojem/b"
+                                ]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Metadata referencovaných pojmů byla úspěšně načtena."))
+                .andExpect(jsonPath("$.data.resolved.length()").value(1))
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].conceptSlug").value("pojem-a"))
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].source").value("ISMD"))
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].conceptName.cs").value("Pojem A"))
+                // NON_NULL: unresolved relationship ends are omitted, not null
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].resolvedRange").doesNotExist());
+
+        verify(referencedConceptResolutionEngine).resolveAllForDisplay(List.of(httpIri, httpsIri));
+        verifyNoMoreInteractions(referencedConceptResolutionEngine);
+    }
+
+    /** Only datatypes in the batch: the engine is asked for nothing and the map is empty, not an error. */
+    @Test
+    void resolveConcepts_onlyDatatypes_resolvesEmptyList() throws Exception {
+        when(referencedConceptResolutionEngine.resolveAllForDisplay(List.of())).thenReturn(java.util.Map.of());
+
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"iris\":[\"http://www.w3.org/2001/XMLSchema#integer\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolved").isMap())
+                .andExpect(jsonPath("$.data.resolved.length()").value(0));
+
+        verify(referencedConceptResolutionEngine).resolveAllForDisplay(List.of());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"{\"iris\":[]}", "{}", "{\"iris\":[\" \"]}"})
+    void resolveConcepts_emptyOrBlankIris_returns400WithoutResolving(String body) throws Exception {
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_VALIDATION_FAILED"));
+
+        verifyNoInteractions(referencedConceptResolutionEngine);
     }
 }

@@ -394,16 +394,26 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         try {
             var draft = executor.submit(() -> service.createWithConcepts(sample(), "creator"));
             assertTrue(rdfWriteReached.await(15, TimeUnit.SECONDS));
-            var ordinary = executor.submit(() -> {
-                try { return service.createOntology(sample().ontology(), "other"); }
-                catch (org.apache.jena.ontology.OntologyException e) { return null; }
-            });
+            var competing = sample().ontology();
+            competing.getDescriptionModel().setDescription(java.util.Map.of("cs", "Must not replace original"));
+            var ordinary = executor.submit(() -> service.createOntology(competing, "other"));
             continueWrite.countDown();
-            assertNotNull(draft.get(30, TimeUnit.SECONDS));
-            ordinary.get(30, TimeUnit.SECONDS);
+            var winner = draft.get(30, TimeUnit.SECONDS).ontology();
+            var duplicate = ordinary.get(30, TimeUnit.SECONDS);
+
+            // The competitor gets the draft back unchanged instead of creating or overwriting.
+            assertEquals(winner.getId(), duplicate.getId());
+            assertEquals(java.util.Map.of("cs", "Rozpracovaný slovník dopravy"), duplicate.getPopis());
+            var stored = ontologies.findByGraphName(GRAPH).orElseThrow();
+            assertEquals(winner.getId(), stored.getId());
+            assertEquals("creator", stored.getUserId());
             assertEquals(1, ontologies.count());
             assertEquals(4, concepts.count());
-            assertTrue(rdf.graphHasData(GRAPH));
+            assertEquals(1, outbox.count());
+            Model graph = rdf.fetchGraph(GRAPH);
+            assertEquals(java.util.List.of("Rozpracovaný slovník dopravy"),
+                    graph.listObjectsOfProperty(graph.getResource(GRAPH), DCTerms.description).toList().stream()
+                            .map(o -> o.asLiteral().getString()).toList());
         } finally { continueWrite.countDown(); executor.shutdownNow(); rdf.beforeWrite(() -> {}); }
     }
 
@@ -426,7 +436,7 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
                 return service.createOntology(sample().ontology(), "winner");
             });
             assertTrue(competitorStarted.await(15, TimeUnit.SECONDS));
-            assertThrows(TimeoutException.class, () -> winningOrdinary.get(200, TimeUnit.MILLISECONDS));
+            awaitBlockedOnOntologyInsert(winningOrdinary);
             assertEquals(0, rdf.writeCount());
             rollback.countDown();
             losingBatch.get(15, TimeUnit.SECONDS);
@@ -439,6 +449,21 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
             assertEquals(0, rdf.deleteCount());
             assertTrue(rdf.graphHasData(GRAPH));
         } finally { rollback.countDown(); executor.shutdownNow(); }
+    }
+
+    /** Returns once a backend waits on a row lock inside its ontology insert; fails if the competitor finishes first. */
+    private void awaitBlockedOnOntologyInsert(Future<?> competitor) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (true) {
+            Integer waiting = jdbc.queryForObject(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()"
+                            + " AND wait_event_type = 'Lock' AND query ILIKE 'insert into %ontologies%'",
+                    Integer.class);
+            if (waiting != null && waiting > 0) return;
+            assertFalse(competitor.isDone(), "the competitor finished without waiting on the uncommitted slug");
+            assertTrue(System.nanoTime() < deadline, "the competitor never waited on the uncommitted slug");
+            Thread.onSpinWait();
+        }
     }
 
     private static void await(CountDownLatch latch) {

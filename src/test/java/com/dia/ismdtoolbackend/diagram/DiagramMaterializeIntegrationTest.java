@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.diagram;
 
+import com.dia.constants.VocabularyConstants;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
@@ -29,7 +30,9 @@ import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
 import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
 import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
+import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -74,6 +77,7 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     private static final String USER = "user123";
     private static final String VICTIM_GRAPH = "https://slovnik.gov.cz/victim";
     private static final String VICTIM_USER = "victim-user-999";
+    private static final String VEREJNY = VocabularyConstants.OFN_NAMESPACE_LEGAL + VocabularyConstants.VEREJNY_UDAJ;
 
     @Autowired private ConceptMetadataRepository conceptRepo;
     @Autowired private OntologyMetadataRepository ontologyRepo;
@@ -100,13 +104,13 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
     // ---- concept-graph seeding via the real service ---------------------------------------------
 
-    private ClassConceptModel classModel(String name, boolean isPublic) {
+    private ClassConceptModel classModel(String name) {
         ClassConceptModel m = new ClassConceptModel();
         m.setConceptType("třída");
         m.setType("objekt");
         m.setOntologyGraphName(GRAPH);
         m.setNamespace(GRAPH);
-        m.setIsPublic(isPublic);
+        m.setIsPublic(true);
         m.setNameModel(name(name));
         return m;
     }
@@ -249,6 +253,14 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
         return tdb2.dataset().getNamedModel(GRAPH);
     }
 
+    /** The concept's current objects for one predicate in the live graph. */
+    private List<String> objectsOf(String conceptIri, org.apache.jena.rdf.model.Property predicate) {
+        Model g = graph();
+        return g.listObjectsOfProperty(g.getResource(conceptIri), predicate).toList().stream()
+                .map(Object::toString)
+                .toList();
+    }
+
     /** The concept's current {@code rdfs:subClassOf} targets in the live graph. */
     private List<String> broaderOf(String conceptIri) {
         Model g = graph();
@@ -265,10 +277,14 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // V4/V5: a domain-only overlay does NOT drop the public/private classification.
     @Test
     void materializeDomainOverlay_keepsIriAndClassification() {
-        ConceptMetadataEntity a = create(classModel("Třída A", true));
-        ConceptMetadataEntity b = create(classModel("Třída B", true));
-        ConceptMetadataEntity rel = create(relModel("je u", a.getConceptIri(), a.getConceptIri()));
+        ConceptMetadataEntity a = create(classModel("Třída A"));
+        ConceptMetadataEntity b = create(classModel("Třída B"));
+        RelationshipConceptModel publicRel = relModel("je u", a.getConceptIri(), a.getConceptIri());
+        publicRel.setIsPublic(true);
+        ConceptMetadataEntity rel = create(publicRel);
         String relIri = rel.getConceptIri();
+        assertThat(graph().contains(graph().getResource(relIri), RDF.type, graph().getResource(VEREJNY)))
+                .as("the VZTAH starts out classified veřejný").isTrue();
 
         // Overlay: repoint the VZTAH's range to B (a structural, field-scoped change).
         DiagramPendingEdit overlay = new DiagramPendingEdit();
@@ -284,10 +300,12 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
         // V1: the IRI is unchanged (no rename on Převzít).
         assertThat(conceptRepo.findById(rel.getId()).orElseThrow().getConceptIri()).isEqualTo(relIri);
-        // V4/V5: the VZTAH still carries its classification type in RDF (not stripped by the field-scoped edit).
+        // V4/V5: the field-scoped edit keeps the veřejný classification and applies the new range.
         Model g = graph();
-        assertThat(g.getResource(relIri).listProperties(org.apache.jena.vocabulary.RDF.type).toList())
-                .as("classification/type triples survive a structural-only materialize").isNotEmpty();
+        assertThat(g.contains(g.getResource(relIri), RDF.type, g.getResource(VEREJNY)))
+                .as("the classification survives a structural-only materialize").isTrue();
+        assertThat(g.getResource(relIri).getPropertyResourceValue(RDFS.range).getURI())
+                .isEqualTo(b.getConceptIri());
         // The staged edit was cleared on success.
         assertThat(stagedEdit(relIri)).isNull();
     }
@@ -296,13 +314,14 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // unmentioned fields null, and the field updaters treat null as "unchanged" (empty clears).
     @Test
     void materializeExactMatchOnlyOverlay_keepsDomainAndRange() {
-        ConceptMetadataEntity a = create(classModel("EM Třída A", true));
-        ConceptMetadataEntity b = create(classModel("EM Třída B", true));
+        ConceptMetadataEntity a = create(classModel("EM Třída A"));
+        ConceptMetadataEntity b = create(classModel("EM Třída B"));
         ConceptMetadataEntity rel = create(relModel("em vztah", a.getConceptIri(), b.getConceptIri()));
         String relIri = rel.getConceptIri();
 
+        String match = "https://slovnik.gov.cz/g/pojem/jiny";
         DiagramPendingEdit overlay = new DiagramPendingEdit();
-        overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/jiny"));
+        overlay.setExactMatch(List.of(match));
         stageNode(relIri, overlay);
 
         MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
@@ -311,17 +330,19 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
         assertThat(result.materialized()).hasSize(1);
 
         Model g = graph();
-        assertThat(g.getResource(relIri).getProperty(RDFS.domain))
-                .as("an exactMatch-only overlay must not drop rdfs:domain").isNotNull();
-        assertThat(g.getResource(relIri).getProperty(RDFS.range))
-                .as("an exactMatch-only overlay must not drop rdfs:range").isNotNull();
+        assertThat(objectsOf(relIri, RDFS.domain))
+                .as("an exactMatch-only overlay keeps rdfs:domain").containsExactly(a.getConceptIri());
+        assertThat(objectsOf(relIri, RDFS.range))
+                .as("an exactMatch-only overlay keeps rdfs:range").containsExactly(b.getConceptIri());
+        assertThat(objectsOf(relIri, SKOS.exactMatch))
+                .as("the staged exactMatch is written").containsExactly(match);
     }
 
     // Stale-base: the concept was edited (via normal /api/concept) after the overlay was staged → 409.
     @Test
     void materialize_staleBase_reports409() {
-        ConceptMetadataEntity a = create(classModel("Stale A", true));
-        ConceptMetadataEntity b = create(classModel("Stale B", true));
+        ConceptMetadataEntity a = create(classModel("Stale A"));
+        ConceptMetadataEntity b = create(classModel("Stale B"));
 
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of(b.getConceptIri()));
@@ -350,8 +371,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // rdfs:domain and the canvas draws the property on a class that no longer exists.
     @Test
     void materialize_domainTargetDeletedFromOwnGraph_reportsStaleBaseAndWritesNoDanglingTriple() {
-        ConceptMetadataEntity owner = create(classModel("Domain Owner", true));
-        ConceptMetadataEntity doomed = create(classModel("Doomed Target", true));
+        ConceptMetadataEntity owner = create(classModel("Domain Owner"));
+        ConceptMetadataEntity doomed = create(classModel("Doomed Target"));
         ConceptMetadataEntity prop = create(propModel("má vlastnost", owner.getConceptIri()));
         String propIri = prop.getConceptIri();
         String doomedIri = doomed.getConceptIri();
@@ -385,7 +406,7 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // object, so tightening the guard to "must resolve" would break legitimate cross-vocabulary references.
     @Test
     void materialize_domainTargetForeignAndUnresolvable_isStillApplied() {
-        ConceptMetadataEntity owner = create(classModel("Foreign Owner", true));
+        ConceptMetadataEntity owner = create(classModel("Foreign Owner"));
         ConceptMetadataEntity prop = create(propModel("má cizí vlastnost", owner.getConceptIri()));
         String propIri = prop.getConceptIri();
         String foreignIri = "https://slovnik.gov.cz/datovy/cizi/pojem/trida";
@@ -398,6 +419,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
         assertThat(result.failed()).as("a foreign, unresolvable domain is not a stale reference").isEmpty();
         assertThat(result.materialized()).hasSize(1);
+        assertThat(objectsOf(propIri, RDFS.domain))
+                .as("the foreign domain replaces the old one in RDF").containsExactly(foreignIri);
     }
 
     // skippedStale: the referenced concept no longer exists.
@@ -418,9 +441,9 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // the projection, and the edge silently leaves the canvas after Převzít — taking its waypoints with it.
     @Test
     void materializeRepointedHierarchy_movesMembershipToTheNewEdgeId() {
-        ConceptMetadataEntity child = create(classModel("Rekey Child", true));
-        ConceptMetadataEntity oldBroader = create(classModel("Rekey Old Broader", true));
-        ConceptMetadataEntity newBroader = create(classModel("Rekey New Broader", true));
+        ConceptMetadataEntity child = create(classModel("Rekey Child"));
+        ConceptMetadataEntity oldBroader = create(classModel("Rekey Old Broader"));
+        ConceptMetadataEntity newBroader = create(classModel("Rekey New Broader"));
 
         // The child already subclasses oldBroader in RDF...
         DiagramPendingEdit seed = new DiagramPendingEdit();
@@ -451,9 +474,9 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     /** An unplaced repoint writes no membership — re-keying must not invent a row. */
     @Test
     void materializeRepointedHierarchy_withNoMembership_writesNone() {
-        ConceptMetadataEntity child = create(classModel("Bare Child", true));
-        ConceptMetadataEntity oldBroader = create(classModel("Bare Old", true));
-        ConceptMetadataEntity newBroader = create(classModel("Bare New", true));
+        ConceptMetadataEntity child = create(classModel("Bare Child"));
+        ConceptMetadataEntity oldBroader = create(classModel("Bare Old"));
+        ConceptMetadataEntity newBroader = create(classModel("Bare New"));
 
         DiagramPendingEdit seed = new DiagramPendingEdit();
         seed.setBroaderConcept(List.of(oldBroader.getConceptIri()));
@@ -472,8 +495,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // tombstone, so the relationship appeared to live on beside the hierarchy that replaced it.
     @Test
     void op6_movesTheVztahRowToTheNewHierarchyEdge_keepingItsWaypoints() {
-        ConceptMetadataEntity a = create(classModel("Conv A", true));
-        ConceptMetadataEntity b = create(classModel("Conv B", true));
+        ConceptMetadataEntity a = create(classModel("Conv A"));
+        ConceptMetadataEntity b = create(classModel("Conv B"));
         ConceptMetadataEntity v = create(relModel("conv-rel", a.getConceptIri(), b.getConceptIri()));
         placeEdge(v.getConceptIri(), List.of(new EdgeWaypoint(10, 20)));
         stageNode(v.getConceptIri(), convert(b.getConceptIri(), a.getConceptIri()));
@@ -491,8 +514,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     /** The client already placed the hierarchy edge, so the VZTAH row is dropped rather than colliding. */
     @Test
     void op6_withTheHierarchyEdgeAlreadyPlaced_dropsTheVztahRow() {
-        ConceptMetadataEntity a = create(classModel("Both A", true));
-        ConceptMetadataEntity b = create(classModel("Both B", true));
+        ConceptMetadataEntity a = create(classModel("Both A"));
+        ConceptMetadataEntity b = create(classModel("Both B"));
         ConceptMetadataEntity v = create(relModel("both-rel", a.getConceptIri(), b.getConceptIri()));
         String hierarchyKey = "edge|SUBCLASS_OF|" + b.getConceptIri() + "|" + a.getConceptIri();
         placeEdge(v.getConceptIri(), null);
@@ -509,8 +532,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     /** Another canvas did not convert anything; the deletion is external to it and must render stale. */
     @Test
     void op6_leavesTheVztahRowOnOtherDiagramsForThemToRenderStale() {
-        ConceptMetadataEntity a = create(classModel("Other A", true));
-        ConceptMetadataEntity b = create(classModel("Other B", true));
+        ConceptMetadataEntity a = create(classModel("Other A"));
+        ConceptMetadataEntity b = create(classModel("Other B"));
         ConceptMetadataEntity v = create(relModel("other-rel", a.getConceptIri(), b.getConceptIri()));
         Long convertingDiagramId = diagramId;
         Long otherDiagramId = txTemplate.execute(tx -> {
@@ -568,7 +591,7 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     @Test
     void orderedWorkList_classifiesInOneRead_notOnePerComparison() {
         for (int i = 0; i < 10; i++) {
-            ConceptMetadataEntity c = create(classModel("Order " + i, true));
+            ConceptMetadataEntity c = create(classModel("Order " + i));
             DiagramPendingEdit overlay = new DiagramPendingEdit();
             overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/x" + i));
             stageNode(c.getConceptIri(), overlay);
@@ -597,7 +620,7 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     void materialize_fetchesTheGraphAtMostTwicePerStagedEdit() {
         int edits = 10;
         for (int i = 0; i < edits; i++) {
-            ConceptMetadataEntity c = create(classModel("Fanout " + i, true));
+            ConceptMetadataEntity c = create(classModel("Fanout " + i));
             DiagramPendingEdit overlay = new DiagramPendingEdit();
             overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/x" + i));
             stageNode(c.getConceptIri(), overlay);
@@ -620,8 +643,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
      */
     @Test
     void aFailedChange_reportsItsOp() {
-        ConceptMetadataEntity a = create(classModel("Op A", true));
-        ConceptMetadataEntity b = create(classModel("Op B", true));
+        ConceptMetadataEntity a = create(classModel("Op A"));
+        ConceptMetadataEntity b = create(classModel("Op B"));
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setExactMatch(List.of(b.getConceptIri()));
         stageNode(a.getConceptIri(), overlay);
@@ -648,9 +671,9 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // The fix orders op-6 LAST, so A materializes (and clears) before op 6 bumps it → no false stale-base.
     @Test
     void op6AndTargetOverlay_inSameMaterialize_noFalseStaleBase() {
-        ConceptMetadataEntity a = create(classModel("Coll A", true));
-        ConceptMetadataEntity b = create(classModel("Coll B", true));
-        ConceptMetadataEntity broader = create(classModel("Coll Broader", true));
+        ConceptMetadataEntity a = create(classModel("Coll A"));
+        ConceptMetadataEntity b = create(classModel("Coll B"));
+        ConceptMetadataEntity broader = create(classModel("Coll Broader"));
         // VZTAH V with domain A, range B — convertible to a hierarchy on A.
         ConceptMetadataEntity v = create(relModel("v-rel", a.getConceptIri(), b.getConceptIri()));
 
@@ -687,8 +710,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // V8: op-6 blocked when another concept's domain/range points at the VZTAH (deleting it would cascade).
     @Test
     void op6_withIncomingReference_reportsCascadeConflict() {
-        ConceptMetadataEntity a = create(classModel("Casc A", true));
-        ConceptMetadataEntity broader = create(classModel("Casc Broader", true));
+        ConceptMetadataEntity a = create(classModel("Casc A"));
+        ConceptMetadataEntity broader = create(classModel("Casc Broader"));
         ConceptMetadataEntity v = create(relModel("casc-rel", a.getConceptIri(), a.getConceptIri()));
         // A property W whose rdfs:domain IS the VZTAH V → findRelatedConceptUris(V) is non-empty.
         create(propModel("casc-prop", v.getConceptIri()));
@@ -718,10 +741,10 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // all use freshly-created classes with no hierarchy, where replace and add are indistinguishable.
     @Test
     void op6_preservesTargetClassExistingBroaderConcepts() {
-        ConceptMetadataEntity a = create(classModel("Merge A", true));
-        ConceptMetadataEntity b = create(classModel("Merge B", true));
-        ConceptMetadataEntity existingParent = create(classModel("Merge Existing Parent", true));
-        ConceptMetadataEntity newBroader = create(classModel("Merge New Broader", true));
+        ConceptMetadataEntity a = create(classModel("Merge A"));
+        ConceptMetadataEntity b = create(classModel("Merge B"));
+        ConceptMetadataEntity existingParent = create(classModel("Merge Existing Parent"));
+        ConceptMetadataEntity newBroader = create(classModel("Merge New Broader"));
         ConceptMetadataEntity v = create(relModel("merge-rel", a.getConceptIri(), b.getConceptIri()));
 
         // Give A a pre-existing super-class through the normal edit path.
@@ -749,9 +772,9 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     /** An already-present broader must not be duplicated, and must not disturb the existing set. */
     @Test
     void op6_broaderAlreadyPresent_isNoOpOnHierarchy() {
-        ConceptMetadataEntity a = create(classModel("Dup A", true));
-        ConceptMetadataEntity b = create(classModel("Dup B", true));
-        ConceptMetadataEntity parent = create(classModel("Dup Parent", true));
+        ConceptMetadataEntity a = create(classModel("Dup A"));
+        ConceptMetadataEntity b = create(classModel("Dup B"));
+        ConceptMetadataEntity parent = create(classModel("Dup Parent"));
         ConceptMetadataEntity v = create(relModel("dup-rel", a.getConceptIri(), b.getConceptIri()));
 
         ClassConceptEditModel seed = new ClassConceptEditModel();
@@ -776,9 +799,9 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // the same convert tolerates the already-deleted VZTAH (skippedStale) rather than erroring.
     @Test
     void op6_retryAfterDelete_isIdempotent() {
-        ConceptMetadataEntity a = create(classModel("Idem A", true));
-        ConceptMetadataEntity b = create(classModel("Idem B", true));
-        ConceptMetadataEntity broader = create(classModel("Idem Broader", true));
+        ConceptMetadataEntity a = create(classModel("Idem A"));
+        ConceptMetadataEntity b = create(classModel("Idem B"));
+        ConceptMetadataEntity broader = create(classModel("Idem Broader"));
         ConceptMetadataEntity v = create(relModel("idem-rel", a.getConceptIri(), b.getConceptIri()));
 
         DiagramPendingEdit convert = new DiagramPendingEdit();
@@ -811,9 +834,9 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     // one failed, and the failed change's overlay is retained while the good one's is cleared.
     @Test
     void materialize_partialCommit_reportsPerChangeAndRetainsFailedOverlay() {
-        ConceptMetadataEntity good = create(classModel("Partial Good", true));
-        ConceptMetadataEntity target = create(classModel("Partial Target", true));
-        ConceptMetadataEntity bad = create(classModel("Partial Bad", true));
+        ConceptMetadataEntity good = create(classModel("Partial Good"));
+        ConceptMetadataEntity target = create(classModel("Partial Target"));
+        ConceptMetadataEntity bad = create(classModel("Partial Bad"));
 
         // Good: a valid subClassOf change on `good`.
         DiagramPendingEdit goodOverlay = new DiagramPendingEdit();
@@ -842,7 +865,7 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
     @Test
     void materialize_unexpectedFailure_reportsGenericMessageNotRawException() {
-        ConceptMetadataEntity subject = create(classModel("Leak Probe", true));
+        ConceptMetadataEntity subject = create(classModel("Leak Probe"));
 
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of("https://slovnik.gov.cz/g/pojem/leak-target"));
@@ -881,7 +904,7 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     void materialize_foreignGraphNode_refusedAndVictimConceptUntouched() {
         seedVictimOntology();
         ConceptMetadataEntity victimConcept = createVictimClass("Victim Secret");
-        ConceptMetadataEntity localTarget = create(classModel("Local Target", true));
+        ConceptMetadataEntity localTarget = create(classModel("Local Target"));
         List<String> before = triplesOf(victimGraph(), victimConcept.getConceptIri());
         assertThat(before).as("victim concept has triples to protect").isNotEmpty();
 
@@ -911,8 +934,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     void op6_foreignAddBroaderOn_refusedAndNothingDeleted() {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Class");
-        ConceptMetadataEntity a = create(classModel("Op6 Foreign A", true));
-        ConceptMetadataEntity b = create(classModel("Op6 Foreign B", true));
+        ConceptMetadataEntity a = create(classModel("Op6 Foreign A"));
+        ConceptMetadataEntity b = create(classModel("Op6 Foreign B"));
         ConceptMetadataEntity v = create(relModel("op6-foreign-rel", a.getConceptIri(), b.getConceptIri()));
         List<String> victimBefore = triplesOf(victimGraph(), victimClass.getConceptIri());
 
@@ -947,8 +970,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     void op6_foreignBroader_isApplied() {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Broader");
-        ConceptMetadataEntity a = create(classModel("Op6 Broader A", true));
-        ConceptMetadataEntity b = create(classModel("Op6 Broader B", true));
+        ConceptMetadataEntity a = create(classModel("Op6 Broader A"));
+        ConceptMetadataEntity b = create(classModel("Op6 Broader B"));
         ConceptMetadataEntity v = create(relModel("op6-broader-rel", a.getConceptIri(), b.getConceptIri()));
 
         DiagramPendingEdit convert = new DiagramPendingEdit();
@@ -977,8 +1000,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Target");
         String victimBefore = victimClass.getConceptIri();
-        ConceptMetadataEntity a = create(classModel("Op6 Target A", true));
-        ConceptMetadataEntity b = create(classModel("Op6 Target B", true));
+        ConceptMetadataEntity a = create(classModel("Op6 Target A"));
+        ConceptMetadataEntity b = create(classModel("Op6 Target B"));
         ConceptMetadataEntity v = create(relModel("op6-target-rel", a.getConceptIri(), b.getConceptIri()));
 
         DiagramPendingEdit convert = new DiagramPendingEdit();
@@ -1030,8 +1053,8 @@ class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
     /** The owner is unaffected — the assertion gates non-owners, not the legitimate edit path. */
     @Test
     void edit_byOwner_isPermitted() {
-        ConceptMetadataEntity a = create(classModel("Owner Edit A", true));
-        ConceptMetadataEntity parent = create(classModel("Owner Edit Parent", true));
+        ConceptMetadataEntity a = create(classModel("Owner Edit A"));
+        ConceptMetadataEntity parent = create(classModel("Owner Edit Parent"));
 
         authenticateAs(USER, false);
         try {
