@@ -1,7 +1,13 @@
 {
   "realm": "ismd",
+  "displayName": "Informační systém pro modelování dat",
+  "displayNameHtml": "Informační systém pro modelování dat",
   "enabled": true,
   "sslRequired": "none",
+  "loginTheme": "ismd",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["cs"],
+  "defaultLocale": "cs",
   "clients": [
     {
       "clientId": "ismd-app",
