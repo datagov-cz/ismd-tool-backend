@@ -27,8 +27,9 @@ import lombok.experimental.Accessors;
 import static org.mockito.Mockito.mock;
 
 /**
- * Builds a {@link ConceptServiceImpl} and its operation classes for tests. Every collaborator is a mock unless a
- * test replaces it, and a test reads its mocks from here, so it can only stub what the service really uses.
+ * Builds a {@link ConceptServiceImpl} and its operation classes for tests. Collaborators doing I/O are mocks and pure
+ * ones are real, unless a test replaces them; a test reads its mocks from here, so it can only stub what the service
+ * really uses.
  * Create the fixture in {@code @BeforeEach}: mocks made there are covered by the Mockito extension's strict stubs.
  */
 @Getter
@@ -47,7 +48,8 @@ public final class ConceptServiceFixture {
     private OntologyDetailExtractor detailExtractor = mock(OntologyDetailExtractor.class);
     private CommentRepository commentRepository = mock(CommentRepository.class);
     private NkdSparqlClient nkdSparqlClient = mock(NkdSparqlClient.class);
-    private ConceptDeviationComparator deviationComparator = mock(ConceptDeviationComparator.class);
+    /** Real: pure, so a sync test sees the deviation its inputs really produce. */
+    private ConceptDeviationComparator deviationComparator = new ConceptDeviationComparator();
     private RppSnapshotHolder rppSnapshotHolder = mock(RppSnapshotHolder.class);
     private NkodCodelistService nkodCodelistService = mock(NkodCodelistService.class);
     private ReferencedConceptsEnricher referencedConceptsEnricher = mock(ReferencedConceptsEnricher.class);

@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -121,11 +122,7 @@ class NkdSearchProviderTest {
         row.put("description", "Ontologie pro osoby");
         row.put("ontologyIri", "https://example.org/ontology/1");
 
-        // Two-stage call: IRI list → page query → count query.
-        stubOntologyIriList(List.of("https://example.org/ontology/1"));
-        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
-                .thenReturn(List.of(row))
-                .thenReturn(List.of(Map.of("total", "1")));
+        stubQueries(List.of("https://example.org/ontology/1"), List.of(row), List.of());
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("osoby", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null, false, null);
@@ -138,10 +135,26 @@ class NkdSearchProviderTest {
     }
 
     /**
-     * Stubs the candidate-IRI-list query (the first NKD call when wantsOntologies
-     * is true). The IRI list query is the only one that contains "owl:Ontology"
-     * but does NOT invoke bif:contains, so we match on that fingerprint.
+     * Answers each NKD query by its fingerprint, so the test does not depend on call order:
+     * the candidate-IRI list, the ontology and concept pages, the concept-count batch
+     * (empty) and both totals (1).
      */
+    private void stubQueries(List<String> ontologyIris, List<Map<String, String>> ontologyRows,
+                             List<Map<String, String>> conceptRows) {
+        when(nkdSparqlClient.executeSelect(anyString())).thenAnswer(inv -> {
+            String q = inv.getArgument(0);
+            if (q.contains("AS ?total")) return List.of(Map.of("total", "1"));
+            if (q.contains("AS ?cnt")) return List.of();
+            if (q.contains("?roleTrida")) return conceptRows;
+            if (q.contains("?ontologyIri")) return ontologyRows;
+            if (q.contains("owl:Ontology")) {
+                return ontologyIris.stream().map(iri -> Map.of("resource", iri)).toList();
+            }
+            throw new AssertionError("Unexpected NKD query: " + q);
+        });
+    }
+
+    /** Stubs the candidate-IRI-list query: the only one with "owl:Ontology" and no bif:contains. */
     private void stubOntologyIriList(List<String> iris) {
         List<Map<String, String>> rows = iris.stream()
                 .map(iri -> Map.of("resource", iri))
@@ -165,14 +178,7 @@ class NkdSearchProviderTest {
         conceptRow.put("label", "Koncept");
         conceptRow.put("ontology", "https://example.org/ontology/1");
 
-        // Two-stage ontology path: IRI list → page + count queries.
-        // Concept path: page + count queries (no IRI list prelude).
-        stubOntologyIriList(List.of("https://example.org/ontology/1"));
-        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
-                .thenReturn(List.of(ontologyRow))
-                .thenReturn(List.of(conceptRow))
-                .thenReturn(List.of(Map.of("total", "1")))
-                .thenReturn(List.of(Map.of("total", "1")));
+        stubQueries(List.of("https://example.org/ontology/1"), List.of(ontologyRow), List.of(conceptRow));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
@@ -185,28 +191,31 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         // Same IRI returned from ontology and concept searches
-        Map<String, String> row1 = new LinkedHashMap<>();
-        row1.put("resource", "https://example.org/resource/1");
-        row1.put("label", "First");
-        row1.put("ontologyIri", "https://example.org/resource/1");
+        String iri = "https://example.org/resource/1";
+        Map<String, String> ontologyRow = new LinkedHashMap<>();
+        ontologyRow.put("resource", iri);
+        ontologyRow.put("label", "First");
+        ontologyRow.put("description", "Popis slovníku");
+        ontologyRow.put("ontologyIri", iri);
 
-        Map<String, String> row2 = new LinkedHashMap<>();
-        row2.put("resource", "https://example.org/resource/1");
-        row2.put("label", "Second");
-        row2.put("ontology", "https://example.org/resource/1");
+        Map<String, String> conceptRow = new LinkedHashMap<>();
+        conceptRow.put("resource", iri);
+        conceptRow.put("label", "Second");
+        conceptRow.put("definition", "Definice pojmu");
+        conceptRow.put("ontology", iri);
 
-        stubOntologyIriList(List.of("https://example.org/resource/1"));
-        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
-                .thenReturn(List.of(row1))
-                .thenReturn(List.of(row2))
-                .thenReturn(List.of(Map.of("total", "1")))
-                .thenReturn(List.of(Map.of("total", "1")));
+        stubQueries(List.of(iri), List.of(ontologyRow), List.of(conceptRow));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
 
-        // Should be deduped to 1 result
-        assertEquals(1, result.results().size());
+        // The ontology row is kept; non-null concept fields fold into it.
+        assertThat(result.results()).singleElement().satisfies(dto -> {
+            assertThat(dto.getType()).isEqualTo(SearchType.ONTOLOGY);
+            assertThat(dto.getLabel()).isEqualTo("Second");
+            assertThat(dto.getDescription()).isEqualTo("Popis slovníku");
+            assertThat(dto.getDefinition()).isEqualTo("Definice pojmu");
+        });
     }
 
     @Test

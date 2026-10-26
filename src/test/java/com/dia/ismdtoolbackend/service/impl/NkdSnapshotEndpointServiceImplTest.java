@@ -18,15 +18,19 @@ import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -74,16 +78,30 @@ class NkdSnapshotEndpointServiceImplTest {
 
     }
 
+    private record FlushedDelta(Set<Statement> removed, Set<Statement> added) { }
+
+    /** The one owner-keyed upsert's remove and add sets. */
+    private FlushedDelta capturedFlush() {
+        ArgumentCaptor<Set<Statement>> removed = ArgumentCaptor.captor();
+        ArgumentCaptor<Set<Statement>> added = ArgumentCaptor.captor();
+        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), removed.capture(), added.capture());
+        return new FlushedDelta(removed.getValue(), added.getValue());
+    }
+
+    private static Statement copyLabelStatement() {
+        Model m = ModelFactory.createDefaultModel();
+        return m.createStatement(m.createResource(NKD_IRI), RDFS.label, "copy");
+    }
+
     @Test
     void update_refreshesAndReturnsDto_withOwnerKeyedFlush() {
+        Statement copyLabel = copyLabelStatement();
         when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
-        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
+        when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI),
+                eq(SnapshotLinkType.BROADER_CLASS.value()), any()))
                 .thenAnswer(inv -> {
                     OwnerChangeSet cs = inv.getArgument(3);
-                    cs.toAdd.add(ModelFactory.createDefaultModel().createStatement(
-                            ModelFactory.createDefaultModel().createResource(NKD_IRI),
-                            org.apache.jena.vocabulary.RDFS.label,
-                            "copy"));
+                    cs.toAdd.add(copyLabel);
                     return snapshot;
                 });
         when(nkdSnapshotService.evaluateDeviation(snapshot))
@@ -92,8 +110,10 @@ class NkdSnapshotEndpointServiceImplTest {
         LinkSnapshotDto dto = service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
 
         assertThat(dto.getStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
-        // C1: flush is one upsert keyed on the OWNER IRI, never the nkdIri.
-        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), any(), any());
+        // C1: flush is one upsert keyed on the OWNER IRI, never the nkdIri, carrying the change set.
+        FlushedDelta delta = capturedFlush();
+        assertThat(delta.removed()).isEmpty();
+        assertThat(delta.added()).containsExactly(copyLabel);
         verify(outboxRelayTrigger).nudgeAfterCommit();
     }
 
@@ -103,10 +123,15 @@ class NkdSnapshotEndpointServiceImplTest {
         // Service returns null = NKD confirmed gone; it folded copy-removal into the change set.
         when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
                 .thenReturn(null);
-        // Owner graph contains the link triple owner -> nkdIri, which the cascade must remove.
+        // Owner graph contains the link triple owner -> nkdIri, which the cascade must remove,
+        // next to owner statements and another subject's link that must stay.
         Model g = ModelFactory.createDefaultModel();
         Resource ownerRes = g.getResource(OWNER_IRI);
-        g.add(ownerRes, org.apache.jena.vocabulary.RDFS.subClassOf, g.getResource(NKD_IRI));
+        Statement link = g.createStatement(ownerRes, RDFS.subClassOf, g.getResource(NKD_IRI));
+        g.add(link);
+        g.add(ownerRes, RDFS.label, "Budova");
+        g.add(ownerRes, RDFS.subClassOf, g.getResource(NKD_IRI + "-jiny"));
+        g.add(g.getResource(GRAPH + "/pojem/jiny"), RDFS.subClassOf, g.getResource(NKD_IRI));
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(g);
 
         LinkSnapshotDto dto = service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
@@ -114,8 +139,10 @@ class NkdSnapshotEndpointServiceImplTest {
         assertThat(dto.getStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
         // Deviation is NOT evaluated for a gone concept (no live compare).
         verify(nkdSnapshotService, never()).evaluateDeviation(any());
-        // The link triple removal rides the owner-keyed flush.
-        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), any(), any());
+        // Only the owner→nkdIri link is removed, in the owner-keyed flush.
+        FlushedDelta delta = capturedFlush();
+        assertThat(delta.removed()).containsExactly(link);
+        assertThat(delta.added()).isEmpty();
     }
 
     @Test
@@ -141,12 +168,11 @@ class NkdSnapshotEndpointServiceImplTest {
         LocalDateTime before = LocalDateTime.now().minusDays(1);
         owner.setUpdatedAt(before);
         when(snapshotRepository.findById(SNAPSHOT_ID)).thenReturn(Optional.of(snapshot));
+        Statement copyLabel = copyLabelStatement();
         when(nkdSnapshotService.createOrRefreshSnapshot(eq(owner), eq(NKD_IRI), anyString(), any()))
                 .thenAnswer(inv -> {
                     OwnerChangeSet cs = inv.getArgument(3);
-                    cs.toAdd.add(ModelFactory.createDefaultModel().createStatement(
-                            ModelFactory.createDefaultModel().createResource(NKD_IRI),
-                            org.apache.jena.vocabulary.RDFS.label, "copy"));
+                    cs.toAdd.add(copyLabel);
                     return snapshot;
                 });
         when(nkdSnapshotService.evaluateDeviation(snapshot))
@@ -155,7 +181,7 @@ class NkdSnapshotEndpointServiceImplTest {
         service.updateSnapshot(CONCEPT_ID, SNAPSHOT_ID);
 
         // The RDF delta was enqueued AND the fingerprint moved with it — the two must not diverge.
-        verify(outboxWriter).enqueueUpsert(eq(GRAPH), eq(OWNER_IRI), any(), any());
+        assertThat(capturedFlush().added()).containsExactly(copyLabel);
         verify(conceptMetadataRepository).save(owner);
         assertThat(owner.getUpdatedAt()).isAfter(before);
     }

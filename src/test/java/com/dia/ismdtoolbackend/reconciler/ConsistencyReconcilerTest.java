@@ -18,6 +18,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -73,10 +76,6 @@ class ConsistencyReconcilerTest {
         return m;
     }
 
-    private long count(ReconciliationReport r, MismatchCategory c) {
-        return r.mismatches().stream().filter(m -> m.category() == c).count();
-    }
-
     @Test
     void cleanState_noMismatches() {
         when(jenaTDB2Repository.listNamedGraphs()).thenReturn(List.of(GRAPH));
@@ -100,8 +99,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.RDF_ORPHAN));
-        assertEquals(iri, r.mismatches().get(0).conceptIri());
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.RDF_ORPHAN, iri));
     }
 
     @Test
@@ -113,7 +113,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.PG_MISSING_RDF));
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.PG_MISSING_RDF, iri));
     }
 
     @Test
@@ -155,7 +157,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.GRAPH_ORPHAN));
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::graphName)
+                .containsExactly(tuple(MismatchCategory.GRAPH_ORPHAN, GRAPH));
     }
 
     @Test
@@ -169,8 +173,10 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.IRI_GRAPH_MISMATCH));
-        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF), "Found elsewhere ≠ missing");
+        // Found elsewhere ≠ missing: the mismatch is the only finding.
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.IRI_GRAPH_MISMATCH, iri));
     }
 
     @Test
@@ -187,13 +193,11 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.SUSPECTED_RENAME));
-        assertEquals(0, count(r, MismatchCategory.RDF_ORPHAN), "Paired orphan must not also be RDF_ORPHAN");
-        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF), "Paired old IRI must not also be PG_MISSING_RDF");
-        Mismatch rename = r.mismatches().stream()
-                .filter(m -> m.category() == MismatchCategory.SUSPECTED_RENAME).findFirst().orElseThrow();
-        assertEquals(newIri, rename.conceptIri(), "conceptIri = new (TDB2) IRI");
-        assertEquals(oldIri, rename.relatedIri(), "relatedIri = old (PG) IRI");
+        // One finding: conceptIri = new (TDB2) IRI, relatedIri = old (PG) IRI. The paired
+        // orphan and missing row are not reported on their own.
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri, Mismatch::relatedIri)
+                .containsExactly(tuple(MismatchCategory.SUSPECTED_RENAME, newIri, oldIri));
     }
 
     @Test
@@ -208,9 +212,11 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(0, count(r, MismatchCategory.SUSPECTED_RENAME));
-        assertEquals(1, count(r, MismatchCategory.RDF_ORPHAN));
-        assertEquals(1, count(r, MismatchCategory.PG_MISSING_RDF));
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactlyInAnyOrder(
+                        tuple(MismatchCategory.RDF_ORPHAN, newIri),
+                        tuple(MismatchCategory.PG_MISSING_RDF, oldIri));
     }
 
     @Test
@@ -242,6 +248,21 @@ class ConsistencyReconcilerTest {
     }
 
     @Test
+    void failedRun_releasesGuard_nextRunCompletes() {
+        when(jenaTDB2Repository.listNamedGraphs())
+                .thenThrow(new IllegalStateException("Fuseki down"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> reconciler.reconcile("FIRST"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Fuseki down");
+
+        ReconciliationReport second = reconciler.reconcile("SECOND");
+        assertThat(second).isNotNull();
+        assertThat(second.triggeredBy()).isEqualTo("SECOND");
+    }
+
+    @Test
     void crossGraphOwnership_ownedInDeclaredGraphPlusAnother_noMismatch() {
         // A4/R4 guard: a concept owned in its declared graph AND legitimately appearing as an
         // owned subject in another graph must NOT be flagged IRI_GRAPH_MISMATCH — its declared
@@ -270,9 +291,10 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.IRI_GRAPH_MISMATCH),
-                "Null graphName with a resolvable IRI is a data-quality finding");
-        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF));
+        // Null graphName with a resolvable IRI is a data-quality finding.
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.IRI_GRAPH_MISMATCH, iri));
     }
 
     @Test

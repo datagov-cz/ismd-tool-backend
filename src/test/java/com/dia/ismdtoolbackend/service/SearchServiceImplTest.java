@@ -148,6 +148,9 @@ class SearchServiceImplTest {
 
         assertEquals(50, response.getLimit());
         assertEquals(10, response.getOffset());
+        // The page window reaches the provider unchanged.
+        verify(nkdSearchProvider).search(eq("osoba"), isNull(), eq(50), eq(10), eq("cs"),
+                any(), any(), any(), anyBoolean(), any());
     }
 
     @Test

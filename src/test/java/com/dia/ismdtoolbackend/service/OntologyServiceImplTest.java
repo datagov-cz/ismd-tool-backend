@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
@@ -11,19 +10,14 @@ import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.entity.ValidationReportEntity;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
-import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
+import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
-import com.dia.ismdtoolbackend.service.NkdDetailService;
-import com.dia.ismdtoolbackend.service.NkdSnapshotService;
-import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -32,10 +26,12 @@ import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
@@ -47,6 +43,8 @@ import java.util.Optional;
 import static com.dia.constants.VocabularyConstants.POJEM_JSON_LD;
 import static com.dia.constants.VocabularyConstants.TRIDA_JSON_LD;
 import static com.dia.constants.VocabularyConstants.VZTAH_JSON_LD;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -54,15 +52,11 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class OntologyServiceImplTest {
 
-    private OutboxEntryRepository outboxRepository;
     private OntologyMetadataRepository ontologyMetadataRepository;
-    private MetadataTouchService metadataTouchService;
     private ConceptMetadataRepository conceptMetadataRepository;
     private ValidationReportRepository validationReportRepository;
     private JenaTDB2Repository jenaTDB2Repository;
     private CommentRepository commentRepository;
-    private OntologyMetadataMapper ontologyMetadataMapper;
-    private ConceptMetadataMapper conceptMetadataMapper;
     private OntologyEditor ontologyEditor;
     private OntologyDetailExtractor detailExtractor;
     private PublishedResourceUtil deviationChecker;
@@ -72,6 +66,8 @@ class OntologyServiceImplTest {
     private NkdDetailService nkdDetailService;
 
     private OntologyServiceImpl ontologyService;
+
+    @Captor private ArgumentCaptor<List<String>> irisCaptor;
 
     private OntologyMetadataEntity testOntologyEntity;
     private Model testModel;
@@ -83,15 +79,11 @@ class OntologyServiceImplTest {
     @BeforeEach
     void setUp() {
         OntologyServiceFixture fixture = new OntologyServiceFixture();
-        outboxRepository = fixture.outboxRepository();
         ontologyMetadataRepository = fixture.ontologyMetadataRepository();
-        metadataTouchService = fixture.metadataTouchService();
         conceptMetadataRepository = fixture.conceptMetadataRepository();
         validationReportRepository = fixture.validationReportRepository();
         jenaTDB2Repository = fixture.jenaTDB2Repository();
         commentRepository = fixture.commentRepository();
-        ontologyMetadataMapper = fixture.ontologyMetadataMapper();
-        conceptMetadataMapper = fixture.conceptMetadataMapper();
         ontologyEditor = fixture.ontologyEditor();
         detailExtractor = fixture.detailExtractor();
         deviationChecker = fixture.deviationChecker();
@@ -450,9 +442,25 @@ class OntologyServiceImplTest {
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
         when(commentRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(List.of(conceptEntity));
+        PublishedOntologyDeviationModel ontologyDeviation = PublishedOntologyDeviationModel.builder()
+                .status(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS)
+                .build();
+        PublishedConceptDeviationModel conceptDeviation = PublishedConceptDeviationModel.builder()
+                .status(PublishedConceptDeviationModel.DeviationStatus.HAS_DEVIATIONS)
+                .build();
+        Map<String, PublishedConceptDeviationModel> conceptDeviations =
+                Map.of(conceptEntity.getConceptIri(), conceptDeviation);
+        when(deviationChecker.checkOntologyDeviation(same(detailModel),
+                argThat(m -> m != null && TEST_ONTOLOGY_SLUG.equals(m.getSlug()))))
+                .thenReturn(ontologyDeviation);
+        when(deviationChecker.checkConceptsDeviation(same(modelWithData), eq(List.of(conceptEntity))))
+                .thenReturn(conceptDeviations);
 
         GetOntologyDto result = ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG);
 
+        assertThat(result.getPublishedOntologyDeviationModel()).isSameAs(ontologyDeviation);
+        assertThat(result.getPublishedConceptDeviations())
+                .containsExactly(entry(conceptEntity.getConceptIri(), conceptDeviation));
         assertNotNull(result);
         assertNotNull(result.getOntologyMetadata());
         assertNotNull(result.getOntologyDetail());
@@ -518,7 +526,6 @@ class OntologyServiceImplTest {
 
         ontologyService.getOntologyDetail(TEST_ONTOLOGY_SLUG);
 
-        ArgumentCaptor<List<String>> irisCaptor = ArgumentCaptor.forClass(List.class);
         verify(jenaTDB2Repository, times(1))
                 .countExternalDomainMembers(eq(TEST_GRAPH_NAME), irisCaptor.capture());
         assertEquals(List.of(a, b, c), irisCaptor.getValue());
@@ -645,17 +652,7 @@ class OntologyServiceImplTest {
         String newIRI = "http://example.org/new-ontology";
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(newIRI, true);
 
-        ConceptMetadataEntity concept1 = new ConceptMetadataEntity();
-        concept1.setConceptIri(TEST_GRAPH_NAME + "/pojem/concept1");
-        concept1.setConceptName("concept1");
-        concept1.setGraphName(TEST_GRAPH_NAME);
-
-        ConceptMetadataEntity concept2 = new ConceptMetadataEntity();
-        concept2.setConceptIri(TEST_GRAPH_NAME + "/pojem/concept2");
-        concept2.setConceptName("concept2");
-        concept2.setGraphName(TEST_GRAPH_NAME);
-
-        List<ConceptMetadataEntity> concepts = List.of(concept1, concept2);
+        List<ConceptMetadataEntity> concepts = getConceptMetadataEntities();
 
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
@@ -673,6 +670,20 @@ class OntologyServiceImplTest {
                     conceptList.stream().allMatch(c -> c.getGraphName().equals(newIRI)) &&
                     conceptList.stream().allMatch(c -> c.getConceptIri().startsWith(newIRI));
         }));
+    }
+
+    private static @NotNull List<ConceptMetadataEntity> getConceptMetadataEntities() {
+        ConceptMetadataEntity concept1 = new ConceptMetadataEntity();
+        concept1.setConceptIri(TEST_GRAPH_NAME + "/pojem/concept1");
+        concept1.setConceptName("concept1");
+        concept1.setGraphName(TEST_GRAPH_NAME);
+
+        ConceptMetadataEntity concept2 = new ConceptMetadataEntity();
+        concept2.setConceptIri(TEST_GRAPH_NAME + "/pojem/concept2");
+        concept2.setConceptName("concept2");
+        concept2.setGraphName(TEST_GRAPH_NAME);
+
+        return List.of(concept1, concept2);
     }
 
     @Test
@@ -1154,8 +1165,7 @@ class OntologyServiceImplTest {
      * Build a batch model that {@code partitionModelBySubject} will split into per-graph
      * submodels. Triples for o/1: only skos:prefLabel. For o/2: skos:prefLabel + dcterms:description.
      * Lets enrichMetadataFromModel exercise both the prefLabel branch and the description branch.
-     */
-    /**
+     * <p>
      * o/1 carries an untagged prefLabel (keys under DEFAULT_LANG); o/2 carries cs+en variants of
      * both prefLabel and description, so the list read is asserted to keep every language.
      */

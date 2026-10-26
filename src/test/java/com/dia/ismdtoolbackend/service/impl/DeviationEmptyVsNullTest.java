@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -91,7 +92,11 @@ class DeviationEmptyVsNullTest {
                 .build();
         ConceptDetailModel published = ConceptDetailModel.builder().build();
 
-        assertEquals(DeviationStatus.HAS_DEVIATIONS,
-                comparator.compareConceptDetails(local, published).getStatus());
+        PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(local, published);
+
+        assertThat(deviation.getStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
+        assertThat(deviation.getPrivacyProvisions()).isNotNull();
+        assertThat(deviation.getPrivacyProvisions().getLocalValue()).containsExactly("§ 1");
+        assertThat(deviation.getPrivacyProvisions().getPublishedValue()).isNull();
     }
 }

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -79,10 +80,21 @@ class NkdConceptListCacheTest {
 
     @Test
     void listOntologyConcepts_keyedPerOntology_differentIriMisses() {
+        // Each ontology's query answers with that ontology's own concept.
+        when(clientMock.executeSelect(anyString())).thenAnswer(inv -> {
+            String query = inv.getArgument(0);
+            String ontology = query.contains(OTHER_IRI) ? OTHER_IRI : ONTOLOGY_IRI;
+            return List.of(Map.of("concept", ontology + "/pojem/clen", "label", ontology));
+        });
+
         service.listOntologyConcepts(ONTOLOGY_IRI);
         service.listOntologyConcepts(OTHER_IRI);
+        List<MinimalConceptDto> first = service.listOntologyConcepts(ONTOLOGY_IRI);
+        List<MinimalConceptDto> other = service.listOntologyConcepts(OTHER_IRI);
 
         // A different ontology must not be served another's cached list.
+        assertThat(first).extracting(MinimalConceptDto::getIri).containsExactly(ONTOLOGY_IRI + "/pojem/clen");
+        assertThat(other).extracting(MinimalConceptDto::getIri).containsExactly(OTHER_IRI + "/pojem/clen");
         verify(clientMock, times(2)).executeSelect(anyString());
     }
 

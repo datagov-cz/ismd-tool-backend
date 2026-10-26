@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
@@ -12,20 +11,23 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,57 +35,73 @@ import static org.mockito.Mockito.when;
 /**
  * The single source of truth for a working copy's deviation. Both ontology detail and concept detail
  * route here, so this is where the comparison behaviour (match / not-found / endpoint-down) and the
- * canonical local read live. The @Cacheable behaviour itself is a Spring concern verified elsewhere;
- * these are the plain-logic tests.
+ * canonical local read live. The comparator is real, so each test checks which side reached which
+ * slot of the deviation. The @Cacheable behaviour itself is a Spring concern verified elsewhere.
  */
 @ExtendWith(MockitoExtension.class)
 class WorkingCopyDeviationServiceImplTest {
 
     private static final String IRI = "https://slovník.gov.cz/test/pojem/obec";
+    private static final String IRI_2 = "https://slovník.gov.cz/test/pojem/kraj";
     private static final String GRAPH = "https://slovník.gov.cz/test";
+
+    private static final String LOCAL_DEF = "Obec podle místní kopie";
+    private static final String NKD_DEF = "Obec podle NKD";
+    private static final String LOCAL_DEF_2 = "Kraj podle místní kopie";
+    private static final String NKD_DEF_2 = "Kraj podle NKD";
 
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
     @Mock private JenaTDB2Repository jenaTDB2Repository;
     @Mock private OntologyDetailExtractor detailExtractor;
-    @Mock private ConceptDeviationComparator conceptDeviationComparator;
     @Mock private NkdSparqlClient nkdSparqlClient;
     @Mock private DeviationResolutionEnricher deviationEnricher;
 
-    // A real no-op manager rather than a mock: the bulk path's cache hit/miss branching is behaviour
-    // under test, and a ConcurrentMapCache exercises it exactly as Caffeine would.
+    // A real manager: the bulk path's cache hit/miss branching is behaviour under test, and a
+    // ConcurrentMapCache exercises it exactly as Caffeine would.
     private final CacheManager cacheManager = new ConcurrentMapCacheManager(
             WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE,
             NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);
 
     private WorkingCopyDeviationServiceImpl service;
 
+    /** The local projection of {@link #IRI}; its definition differs from {@link #published}. */
     private ConceptDetailModel local;
+    /** The NKD twin of {@link #IRI}. */
+    private ConceptDetailModel published;
 
     @BeforeEach
     void setUp() {
-        service = new WorkingCopyDeviationServiceImpl(conceptDeviationComparator, nkdSparqlClient,
+        service = new WorkingCopyDeviationServiceImpl(new ConceptDeviationComparator(), nkdSparqlClient,
                 deviationEnricher, cacheManager,
                 new LocalConceptProjectionReader(conceptMetadataRepository, jenaTDB2Repository,
                         detailExtractor, cacheManager));
-        local = ConceptDetailModel.builder().iri(IRI).build();
+        local = detail(IRI, LOCAL_DEF);
+        published = detail(IRI, NKD_DEF);
     }
 
-    /** The concept's own graph, read and projected to {@link #local}. */
-    private void givenLocalGraph() {
-        ConceptMetadataEntity metadata = new ConceptMetadataEntity();
-        metadata.setConceptIri(IRI);
-        metadata.setGraphName(GRAPH);
-        when(conceptMetadataRepository.findByConceptIri(IRI)).thenReturn(Optional.of(metadata));
+    private static ConceptDetailModel detail(String iri, String csDefinition) {
+        return ConceptDetailModel.builder().iri(iri).definition(Map.of("cs", csDefinition)).build();
+    }
 
-        Model rawModel = ModelFactory.createDefaultModel();
-        // A bare resource adds no statement; add one so rawModel.isEmpty() is false.
-        rawModel.add(rawModel.createResource(IRI),
-                org.apache.jena.vocabulary.RDF.type,
-                rawModel.createResource("http://www.w3.org/2002/07/owl#Class"));
-        Model processedModel = ModelFactory.createDefaultModel();
-        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(rawModel);
-        when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(processedModel);
-        when(detailExtractor.extractConceptDetail(processedModel, IRI)).thenReturn(local);
+    private static NkdSparqlClient.PublishedConcept inScheme(ConceptDetailModel detail, String scheme) {
+        return new NkdSparqlClient.PublishedConcept(detail, scheme);
+    }
+
+    private void givenLocalGraph() {
+        LocalProjectionStubs.givenLocalGraph(conceptMetadataRepository, jenaTDB2Repository, detailExtractor,
+                IRI, GRAPH, local);
+    }
+
+    /** A working-copy deviation of {@code iri} whose only differing field is the definition. */
+    private static void assertDefinitionDeviation(PublishedConceptDeviationModel deviation, String iri,
+                                                  String localDef, String publishedDef) {
+        assertThat(deviation.getStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
+        assertThat(deviation.getOrigin()).isEqualTo(SnapshotOrigin.WORKING_COPY);
+        assertThat(deviation.getSource().getIri()).isEqualTo(iri);
+        assertThat(deviation.getDefinition().getLocalValue()).isEqualTo(Map.of("cs", localDef));
+        assertThat(deviation.getDefinition().getPublishedValue()).isEqualTo(Map.of("cs", publishedDef));
+        assertThat(deviation.getDescription()).isNull();
+        assertThat(deviation.getIdentifier()).isNull();
     }
 
     @Test
@@ -99,23 +117,19 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void canonicalLocal_fromCallerModel_skipsTheGraphRead() {
-        // Concept detail has already fetched this graph. Re-reading it from Fuseki is a wasted
-        // round-trip plus a second full-graph OFN transform.
+        // Concept detail has already fetched this graph; re-reading it is a wasted round-trip plus a
+        // second full-graph OFN transform.
         Model callerModel = ModelFactory.createDefaultModel();
-        callerModel.add(callerModel.createResource(IRI),
-                org.apache.jena.vocabulary.RDF.type,
+        callerModel.add(callerModel.createResource(IRI), RDF.type,
                 callerModel.createResource("http://www.w3.org/2002/07/owl#Class"));
         Model processed = ModelFactory.createDefaultModel();
         when(detailExtractor.applyOFNTransformations(callerModel)).thenReturn(processed);
-        ConceptDetailModel expected = ConceptDetailModel.builder().iri(IRI).build();
-        when(detailExtractor.extractConceptDetail(processed, IRI)).thenReturn(expected);
+        when(detailExtractor.extractConceptDetail(processed, IRI)).thenReturn(local);
 
         ConceptDetailModel result = service.canonicalLocalConcept(IRI, callerModel);
 
-        assertThat(result).isSameAs(expected);
+        assertThat(result).isSameAs(local);
         verify(jenaTDB2Repository, never()).fetchGraph(any());
-        // Same projection as the fetching overload: OFN transform then extract.
-        verify(detailExtractor).applyOFNTransformations(callerModel);
     }
 
     @Test
@@ -126,77 +140,57 @@ class WorkingCopyDeviationServiceImplTest {
     }
 
     @Test
-    void deviationForWithLocal_usesSuppliedProjection_withoutReReadingTheGraph() {
-        ConceptDetailModel supplied = ConceptDetailModel.builder().iri(IRI).build();
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
-        PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.NO_DEVIATION).build();
-        when(conceptDeviationComparator.compareConceptDetails(supplied, published, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(expected);
-
-        PublishedConceptDeviationModel result = service.deviationForWithLocal(IRI, supplied);
-
-        assertThat(result).isSameAs(expected);
-        verify(jenaTDB2Repository, never()).fetchGraph(any());
-        verify(conceptMetadataRepository, never()).findByConceptIri(any());
-    }
-
-    @Test
-    void deviationForWithLocal_nullLocal_fallsBackToReadingIt() {
-        givenLocalGraph();
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
-        when(conceptDeviationComparator.compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        service.deviationForWithLocal(IRI, null);
-
-        verify(jenaTDB2Repository).fetchGraph(GRAPH);
-    }
-
-    @Test
     void canonicalLocal_noMetadataRow_returnsNull() {
         when(conceptMetadataRepository.findByConceptIri(IRI)).thenReturn(Optional.empty());
         assertThat(service.canonicalLocalConcept(IRI)).isNull();
     }
 
     @Test
-    void deviation_nkdMatches_runsComparatorWithWorkingCopyOrigin() {
-        givenLocalGraph();
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
+    void deviationForWithLocal_comparesSuppliedProjection_withoutReReadingTheGraph() {
         when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
-        PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.NO_DEVIATION).build();
-        when(conceptDeviationComparator.compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(expected);
 
-        PublishedConceptDeviationModel result = service.deviationFor(IRI);
+        PublishedConceptDeviationModel result = service.deviationForWithLocal(IRI, local);
 
-        assertThat(result).isSameAs(expected);
-        verify(conceptDeviationComparator).compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI);
+        assertDefinitionDeviation(result, IRI, LOCAL_DEF, NKD_DEF);
+        verify(jenaTDB2Repository, never()).fetchGraph(any());
+        verify(conceptMetadataRepository, never()).findByConceptIri(any());
     }
 
     @Test
-    void deviation_enrichesTheResult() {
+    void deviationForWithLocal_nullLocal_comparesTheProjectionItReads() {
         givenLocalGraph();
-        // Resolution of concept/RPP refs is delegated to DeviationResolutionEnricher (own test); here we
-        // only pin that deviationFor runs it on the comparator's output before returning.
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
         when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
-        PublishedConceptDeviationModel deviation = PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.HAS_DEVIATIONS).build();
-        when(conceptDeviationComparator.compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(deviation);
 
-        PublishedConceptDeviationModel result = service.deviationFor(IRI);
+        PublishedConceptDeviationModel result = service.deviationForWithLocal(IRI, null);
 
-        assertThat(result).isSameAs(deviation);
-        verify(deviationEnricher).enrich(deviation);
+        assertDefinitionDeviation(result, IRI, LOCAL_DEF, NKD_DEF);
+        verify(jenaTDB2Repository).fetchGraph(GRAPH);
     }
 
     @Test
-    void deviation_notInNkd_returnsConceptNotFound_noComparison() {
+    void deviation_differingTwin_reportsLocalAndPublishedValues() {
+        givenLocalGraph();
+        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
+
+        PublishedConceptDeviationModel result = service.deviationFor(IRI);
+
+        assertDefinitionDeviation(result, IRI, LOCAL_DEF, NKD_DEF);
+        verify(deviationEnricher).enrich(result);
+    }
+
+    @Test
+    void deviation_identicalTwin_hasNoDeviation() {
+        givenLocalGraph();
+        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(detail(IRI, LOCAL_DEF)));
+
+        PublishedConceptDeviationModel result = service.deviationFor(IRI);
+
+        assertThat(result.getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
+        assertThat(result.getDefinition()).isNull();
+    }
+
+    @Test
+    void deviation_notInNkd_returnsConceptNotFound() {
         givenLocalGraph();
         when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.empty());
 
@@ -205,7 +199,8 @@ class WorkingCopyDeviationServiceImplTest {
         assertThat(result.getStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
         assertThat(result.getOrigin()).isEqualTo(SnapshotOrigin.WORKING_COPY);
         assertThat(result.getSource().getIri()).isEqualTo(IRI);
-        verify(conceptDeviationComparator, never()).compareConceptDetails(any(), any(), any(), any());
+        assertThat(result.getDefinition()).isNull();
+        verify(deviationEnricher, never()).enrich(any());
     }
 
     @Test
@@ -223,16 +218,14 @@ class WorkingCopyDeviationServiceImplTest {
     @Test
     void deviation_unexpectedFailure_returnsQueryErrorNotEndpointUnavailable() {
         givenLocalGraph();
-        // A fault on our side must not be reported as an NKD outage — that disguise hid an NPE here before.
-        when(nkdSparqlClient.fetchPublishedConcept(IRI))
-                .thenReturn(Optional.of(ConceptDetailModel.builder().iri(IRI).build()));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenThrow(new IllegalStateException("comparator bug"));
+        // A fault on our side must not be reported as an NKD outage.
+        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
+        doThrow(new IllegalStateException("enricher bug")).when(deviationEnricher).enrich(any());
 
         PublishedConceptDeviationModel result = service.deviationFor(IRI);
 
         assertThat(result.getStatus()).isEqualTo(DeviationStatus.QUERY_ERROR);
-        assertThat(result.getErrorMessage()).contains("comparator bug");
+        assertThat(result.getErrorMessage()).contains("enricher bug");
     }
 
     @Test
@@ -245,308 +238,263 @@ class WorkingCopyDeviationServiceImplTest {
         verify(nkdSparqlClient, never()).fetchPublishedConcept(any());
     }
 
-    // --- bulk path -------------------------------------------------------------------------------
-    // The ontology-detail entry point. Its whole reason to exist is that it must NOT re-read or
-    // re-transform the graph per concept, while still producing what deviationFor would.
+    /**
+     * The ontology-detail entry point. It must not re-read or re-transform the graph per concept, while
+     * still producing what deviationFor would.
+     */
+    @Nested
+    class Bulk {
 
-    private static final String IRI_2 = "https://slovník.gov.cz/test/pojem/kraj";
+        private final Model callerModel = ModelFactory.createDefaultModel();
+        private final ConceptDetailModel local2 = detail(IRI_2, LOCAL_DEF_2);
 
-    @Test
-    void bulk_extractsFromCallersModel_neverRefetchesOrRetransformsPerConcept() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        ConceptDetailModel local2 = ConceptDetailModel.builder().iri(IRI_2).build();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
-                .thenReturn(Map.of(IRI, local, IRI_2, local2));
+        @Test
+        void extractsFromCallersModel_neverRefetchesOrRetransformsPerConcept() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
+                    .thenReturn(Map.of(IRI, local, IRI_2, local2));
 
-        Map<String, ConceptDetailModel> result =
-                service.canonicalLocalConcepts(callerModel, List.of(IRI, IRI_2));
+            Map<String, ConceptDetailModel> result =
+                    service.canonicalLocalConcepts(callerModel, List.of(IRI, IRI_2));
 
-        assertThat(result).containsEntry(IRI, local).containsEntry(IRI_2, local2);
-        // The regression this fixes: one shared extraction, zero per-concept graph reads/transforms.
-        verify(detailExtractor).extractConceptDetails(callerModel, List.of(IRI, IRI_2));
-        verify(jenaTDB2Repository, never()).fetchGraph(any());
-        verify(detailExtractor, never()).applyOFNTransformations(any());
-        verify(detailExtractor, never()).extractConceptDetail(any(), any());
+            assertThat(result).containsEntry(IRI, local).containsEntry(IRI_2, local2);
+            verify(jenaTDB2Repository, never()).fetchGraph(any());
+            verify(detailExtractor, never()).applyOFNTransformations(any());
+            verify(detailExtractor, never()).extractConceptDetail(any(), any());
+        }
+
+        @Test
+        void populatesTheSamePerIriCache_soLaterSingleReadsHit() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
+
+            service.canonicalLocalConcepts(callerModel, List.of(IRI));
+
+            // Written under the plain conceptIri key, like a @Cacheable write, so the allEntries
+            // evictions cover it.
+            assertThat(cachedValue(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE, IRI)).isSameAs(local);
+        }
+
+        @Test
+        void servesCachedEntries_andOnlyExtractsMisses() {
+            cache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE).put(IRI, local);
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI_2)))
+                    .thenReturn(Map.of(IRI_2, local2));
+
+            Map<String, ConceptDetailModel> result =
+                    service.canonicalLocalConcepts(callerModel, List.of(IRI, IRI_2));
+
+            assertThat(result).containsEntry(IRI, local).containsEntry(IRI_2, local2);
+        }
+
+        @Test
+        void cachedNullIsAnAnswer_notAMiss() {
+            // A concept with no metadata row / empty graph caches as null; re-extracting it every request
+            // would add per-concept work for exactly the concepts that cannot benefit from it.
+            cache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE).put(IRI, null);
+
+            Map<String, ConceptDetailModel> result = service.canonicalLocalConcepts(callerModel, List.of(IRI));
+
+            assertThat(result).containsEntry(IRI, null);
+            verify(detailExtractor, never()).extractConceptDetails(any(), any());
+        }
+
+        @Test
+        void deviationForAll_readsLocalsInOnePass_notPerConcept() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
+                    .thenReturn(Map.of(IRI, local, IRI_2, local2));
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI, IRI_2))).thenReturn(Map.of(
+                    IRI, Optional.of(inScheme(published, GRAPH)),
+                    IRI_2, Optional.of(inScheme(detail(IRI_2, NKD_DEF_2), GRAPH))));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAll(callerModel, List.of(IRI, IRI_2));
+
+            // Each concept is compared against its own twin, local on the local side.
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+            assertDefinitionDeviation(result.get(IRI_2), IRI_2, LOCAL_DEF_2, NKD_DEF_2);
+            verify(jenaTDB2Repository, never()).fetchGraph(any());
+            verify(detailExtractor, never()).applyOFNTransformations(any());
+            verify(detailExtractor, never()).extractConceptDetail(any(), any());
+            // One enrichment for the whole set, none per concept.
+            verify(deviationEnricher).enrichAll(List.of(result.get(IRI), result.get(IRI_2)));
+            verify(deviationEnricher, never()).enrich(any());
+        }
+
+        @Test
+        void prefetchesNkdInOneBatch_thenPerConceptFetchesHitCache() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
+                    .thenReturn(Map.of(IRI, local, IRI_2, local2));
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI, IRI_2))).thenReturn(Map.of(
+                    IRI, Optional.of(inScheme(published, GRAPH)),
+                    IRI_2, Optional.empty()));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAll(callerModel, List.of(IRI, IRI_2));
+
+            verify(nkdSparqlClient, never()).fetchPublishedConcept(any());
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+            // A concept absent from NKD keeps its not-found status through the batched path.
+            assertThat(result.get(IRI_2).getStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
+        }
+
+        @Test
+        void prefetchSkipsAlreadyCachedConcepts() {
+            when(detailExtractor.extractConceptDetails(any(), any())).thenReturn(Map.of(IRI, local));
+            cache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).put("concept:" + IRI, Optional.of(published));
+            // The per-concept read that the cache entry serves in production (the client's @Cacheable).
+            when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
+
+            Map<String, PublishedConceptDeviationModel> result = service.deviationForAll(callerModel, List.of(IRI));
+
+            verify(nkdSparqlClient, never()).fetchPublishedConceptsBatched(any());
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+        }
+
+        @Test
+        void batchFailure_fallsBackToPerConceptFetch() {
+            when(detailExtractor.extractConceptDetails(any(), any())).thenReturn(Map.of(IRI, local));
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(any())).thenThrow(new RuntimeException("NKD down"));
+            when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
+
+            Map<String, PublishedConceptDeviationModel> result = service.deviationForAll(callerModel, List.of(IRI));
+
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+        }
+
+        @Test
+        void matchesPerIriResult_forTheSameConcept() {
+            givenLocalGraph();
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI)))
+                    .thenReturn(Map.of(IRI, Optional.of(inScheme(published, GRAPH))));
+            // The per-IRI read after the bulk prefetch; the client's @Cacheable serves it in production.
+            when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
+
+            PublishedConceptDeviationModel bulk = service.deviationForAll(callerModel, List.of(IRI)).get(IRI);
+            PublishedConceptDeviationModel single = service.deviationFor(IRI);
+
+            assertDefinitionDeviation(bulk, IRI, LOCAL_DEF, NKD_DEF);
+            assertThat(bulk).usingRecursiveComparison().isEqualTo(single);
+            // The bulk path enriches the set once; the per-IRI path enriches inline.
+            verify(deviationEnricher).enrichAll(anyList());
+            verify(deviationEnricher).enrich(single);
+        }
+
+        @Test
+        void localMissing_yieldsQueryErrorForThatConceptOnly() {
+            Map<String, ConceptDetailModel> extracted = new HashMap<>();
+            extracted.put(IRI, null);
+            extracted.put(IRI_2, local2);
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2))).thenReturn(extracted);
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI, IRI_2))).thenReturn(Map.of(
+                    IRI, Optional.of(inScheme(published, GRAPH)),
+                    IRI_2, Optional.of(inScheme(detail(IRI_2, NKD_DEF_2), GRAPH))));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAll(callerModel, List.of(IRI, IRI_2));
+
+            assertThat(result.get(IRI).getStatus()).isEqualTo(DeviationStatus.QUERY_ERROR);
+            assertDefinitionDeviation(result.get(IRI_2), IRI_2, LOCAL_DEF_2, NKD_DEF_2);
+        }
     }
 
-    @Test
-    void bulk_populatesTheSamePerIriCache_soLaterSingleReadsHit() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI)))
-                .thenReturn(Map.of(IRI, local));
+    /**
+     * The ontology CONSTRUCT already carries every in-scheme concept, so the batched concept query is
+     * redundant for concepts of that scheme.
+     */
+    @Nested
+    class InOntology {
 
-        service.canonicalLocalConcepts(callerModel, List.of(IRI));
+        private final Model callerModel = ModelFactory.createDefaultModel();
+        private final Model ontologyModel = ModelFactory.createDefaultModel();
 
-        // Written under the plain conceptIri key — indistinguishable from a @Cacheable write, so the
-        // existing allEntries evictions still cover it.
-        assertThat(cacheManager.getCache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE)
-                .get(IRI).get()).isSameAs(local);
+        @Test
+        void derivesConceptsFromOntologyModel_withoutBatchedConceptQuery() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
+            when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.of(ontologyModel));
+            when(nkdSparqlClient.derivePublishedConceptsFromOntology(ontologyModel, List.of(IRI)))
+                    .thenReturn(Map.of(IRI, Optional.of(inScheme(published, GRAPH))));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAllInOntology(callerModel, List.of(IRI), GRAPH);
+
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+            verify(nkdSparqlClient, never()).fetchPublishedConceptsBatched(any());
+        }
+
+        @Test
+        void seedsBothCacheKeys_soPerIriFetchesStayOffTheNetwork() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
+            when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.of(ontologyModel));
+            NkdSparqlClient.PublishedConcept twin = inScheme(published, GRAPH);
+            when(nkdSparqlClient.derivePublishedConceptsFromOntology(ontologyModel, List.of(IRI)))
+                    .thenReturn(Map.of(IRI, Optional.of(twin)));
+
+            service.deviationForAllInOntology(callerModel, List.of(IRI), GRAPH);
+
+            assertThat(cachedValue(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, "concept:" + IRI)).isEqualTo(Optional.of(published));
+            assertThat(cachedValue(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE, "conceptWithScheme:" + IRI)).isEqualTo(Optional.of(twin));
+        }
+
+        @Test
+        void conceptAbsentFromScheme_stillQueriedSeparately() {
+            // Absence from the scheme model is not absence from NKD: the concept may be published under
+            // a different scheme.
+            ConceptDetailModel local2 = detail(IRI_2, LOCAL_DEF_2);
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
+                    .thenReturn(Map.of(IRI, local, IRI_2, local2));
+            when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.of(ontologyModel));
+            Map<String, Optional<NkdSparqlClient.PublishedConcept>> derived = new HashMap<>();
+            derived.put(IRI, Optional.of(inScheme(published, GRAPH)));
+            derived.put(IRI_2, Optional.empty());
+            when(nkdSparqlClient.derivePublishedConceptsFromOntology(ontologyModel, List.of(IRI, IRI_2)))
+                    .thenReturn(derived);
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI_2))).thenReturn(Map.of(IRI_2,
+                    Optional.of(inScheme(detail(IRI_2, NKD_DEF_2), "https://slovník.gov.cz/other"))));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAllInOntology(callerModel, List.of(IRI, IRI_2), GRAPH);
+
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+            assertDefinitionDeviation(result.get(IRI_2), IRI_2, LOCAL_DEF_2, NKD_DEF_2);
+        }
+
+        @Test
+        void ontologyModelUnavailable_fallsBackToBatchedQuery() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
+            when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.empty());
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI)))
+                    .thenReturn(Map.of(IRI, Optional.of(inScheme(published, GRAPH))));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAllInOntology(callerModel, List.of(IRI), GRAPH);
+
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+        }
+
+        @Test
+        void nullOntologyIri_keepsBatchedBehaviour() {
+            when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
+            when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI)))
+                    .thenReturn(Map.of(IRI, Optional.of(inScheme(published, GRAPH))));
+
+            Map<String, PublishedConceptDeviationModel> result =
+                    service.deviationForAllInOntology(callerModel, List.of(IRI), null);
+
+            assertDefinitionDeviation(result.get(IRI), IRI, LOCAL_DEF, NKD_DEF);
+            verify(nkdSparqlClient, never()).fetchPublishedOntologyRaw(any());
+        }
     }
 
-    @Test
-    void bulk_servesCachedEntries_andOnlyExtractsMisses() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        cacheManager.getCache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE).put(IRI, local);
-        ConceptDetailModel local2 = ConceptDetailModel.builder().iri(IRI_2).build();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI_2)))
-                .thenReturn(Map.of(IRI_2, local2));
-
-        Map<String, ConceptDetailModel> result =
-                service.canonicalLocalConcepts(callerModel, List.of(IRI, IRI_2));
-
-        assertThat(result).containsEntry(IRI, local).containsEntry(IRI_2, local2);
-        verify(detailExtractor).extractConceptDetails(callerModel, List.of(IRI_2));
+    private Cache cache(String name) {
+        Cache cache = cacheManager.getCache(name);
+        if (cache == null) throw new AssertionError("no cache " + name);
+        return cache;
     }
 
-    @Test
-    void bulk_cachedNullIsAnAnswer_notAMiss() {
-        // A concept with no metadata row / empty graph caches as null. Re-extracting it every request
-        // would reintroduce per-concept work for exactly the concepts that can't benefit from it.
-        Model callerModel = ModelFactory.createDefaultModel();
-        cacheManager.getCache(WorkingCopyDeviationServiceImpl.LOCAL_CONCEPT_PROJECTION_CACHE).put(IRI, null);
-
-        Map<String, ConceptDetailModel> result = service.canonicalLocalConcepts(callerModel, List.of(IRI));
-
-        assertThat(result).containsEntry(IRI, null);
-        verify(detailExtractor, never()).extractConceptDetails(any(), any());
-    }
-
-    @Test
-    void bulk_deviationForAll_readsLocalsInOnePass_notPerConcept() {
-        // Guards the entry point the ontology-detail path actually calls. The tests above pin
-        // canonicalLocalConcepts directly, so they stay green even if deviationForAll stops using it —
-        // which is precisely the regression (per-IRI reads re-fetch + re-transform the whole graph).
-        Model callerModel = ModelFactory.createDefaultModel();
-        ConceptDetailModel local2 = ConceptDetailModel.builder().iri(IRI_2).build();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
-                .thenReturn(Map.of(IRI, local, IRI_2, local2));
-        when(nkdSparqlClient.fetchPublishedConcept(any())).thenReturn(Optional.empty());
-
-        service.deviationForAll(callerModel, List.of(IRI, IRI_2));
-
-        verify(detailExtractor).extractConceptDetails(callerModel, List.of(IRI, IRI_2));
-        verify(jenaTDB2Repository, never()).fetchGraph(any());
-        verify(detailExtractor, never()).applyOFNTransformations(any());
-        verify(detailExtractor, never()).extractConceptDetail(any(), any());
-    }
-
-    @Test
-    void bulk_prefetchesNkdInOneBatch_thenPerConceptFetchesHitCache() {
-        // The dominant cold cost: 129 serial ~180ms NKD round-trips. One batched call must replace them.
-        Model callerModel = ModelFactory.createDefaultModel();
-        ConceptDetailModel local2 = ConceptDetailModel.builder().iri(IRI_2).build();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
-                .thenReturn(Map.of(IRI, local, IRI_2, local2));
-        ConceptDetailModel pub = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI, IRI_2))).thenReturn(Map.of(
-                IRI, Optional.of(new NkdSparqlClient.PublishedConcept(pub, "https://slovník.gov.cz/test")),
-                IRI_2, Optional.empty()));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        Map<String, PublishedConceptDeviationModel> result =
-                service.deviationForAll(callerModel, List.of(IRI, IRI_2));
-
-        verify(nkdSparqlClient).fetchPublishedConceptsBatched(List.of(IRI, IRI_2));
-        // Seeded the shared cache, so the per-concept path never went to the network.
-        verify(nkdSparqlClient, never()).fetchPublishedConcept(any());
-        assertThat(result.get(IRI).getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-        // A concept absent from NKD keeps its not-found status through the batched path.
-        assertThat(result.get(IRI_2).getStatus()).isEqualTo(DeviationStatus.CONCEPT_NOT_FOUND_IN_NKD);
-    }
-
-    @Test
-    void bulk_prefetchSkipsAlreadyCachedConcepts() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        when(detailExtractor.extractConceptDetails(any(), any())).thenReturn(Map.of(IRI, local));
-        ConceptDetailModel cached = ConceptDetailModel.builder().iri(IRI).build();
-        cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).put("concept:" + IRI, Optional.of(cached));
-        // The per-concept read that the cache entry serves in production (the client's @Cacheable).
-        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(cached));
-        PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.NO_DEVIATION).build();
-        when(conceptDeviationComparator.compareConceptDetails(local, cached, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(expected);
-
-        Map<String, PublishedConceptDeviationModel> result = service.deviationForAll(callerModel, List.of(IRI));
-
-        verify(nkdSparqlClient, never()).fetchPublishedConceptsBatched(any());
-        assertThat(result.get(IRI)).isSameAs(expected);
-    }
-
-    @Test
-    void bulk_batchFailure_fallsBackToPerConceptFetch() {
-        // A batch failure must degrade, not fail the whole detail response.
-        Model callerModel = ModelFactory.createDefaultModel();
-        when(detailExtractor.extractConceptDetails(any(), any())).thenReturn(Map.of(IRI, local));
-        when(nkdSparqlClient.fetchPublishedConceptsBatched(any())).thenThrow(new RuntimeException("NKD down"));
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
-        PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.NO_DEVIATION).build();
-        when(conceptDeviationComparator.compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(expected);
-
-        Map<String, PublishedConceptDeviationModel> result = service.deviationForAll(callerModel, List.of(IRI));
-
-        assertThat(result.get(IRI)).isSameAs(expected);
-        verify(nkdSparqlClient).fetchPublishedConcept(IRI);
-    }
-
-    @Test
-    void bulk_matchesPerIriResult_forTheSameConcept() {
-        givenLocalGraph();
-        // The single-source-of-truth guarantee: bulk and per-IRI must not disagree.
-        Model callerModel = ModelFactory.createDefaultModel();
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
-        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
-        PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
-                .status(DeviationStatus.NO_DEVIATION).build();
-        when(conceptDeviationComparator.compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI))
-                .thenReturn(expected);
-
-        Map<String, PublishedConceptDeviationModel> bulk = service.deviationForAll(callerModel, List.of(IRI));
-
-        assertThat(bulk.get(IRI)).isSameAs(expected).isSameAs(service.deviationFor(IRI));
-        // Both surfaces enrich the same deviation, but via different entry points: the bulk path
-        // defers to one enrichAll for the whole set (so N deviations cost ONE resolve round-trip
-        // rather than N), while the per-IRI path enriches inline.
-        verify(deviationEnricher).enrichAll(org.mockito.ArgumentMatchers.anyList());
-        verify(deviationEnricher).enrich(expected);
-    }
-
-    @Test
-    void bulk_localMissing_yieldsQueryErrorForThatConceptOnly() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI_2).build();
-        // IRI has no local projection; IRI_2 does.
-        java.util.Map<String, ConceptDetailModel> extracted = new java.util.HashMap<>();
-        extracted.put(IRI, null);
-        extracted.put(IRI_2, ConceptDetailModel.builder().iri(IRI_2).build());
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2))).thenReturn(extracted);
-        when(nkdSparqlClient.fetchPublishedConcept(IRI_2)).thenReturn(Optional.of(published));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        Map<String, PublishedConceptDeviationModel> result =
-                service.deviationForAll(callerModel, List.of(IRI, IRI_2));
-
-        assertThat(result.get(IRI).getStatus()).isEqualTo(DeviationStatus.QUERY_ERROR);
-        assertThat(result.get(IRI_2).getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-        verify(nkdSparqlClient, never()).fetchPublishedConcept(IRI);
-    }
-
-    // --- Merged NKD round-trip: the ontology CONSTRUCT already carries every in-scheme concept, so
-    // the batched concept query is redundant for concepts of that scheme. ---
-
-    @Test
-    void inOntology_derivesConceptsFromOntologyModel_withoutBatchedConceptQuery() {
-        // The whole point of the merge: ONE NKD round-trip, not two.
-        Model callerModel = ModelFactory.createDefaultModel();
-        Model ontologyModel = ModelFactory.createDefaultModel();
-        ontologyModel.add(ontologyModel.createResource(IRI),
-                org.apache.jena.vocabulary.RDF.type,
-                ontologyModel.createResource("http://www.w3.org/2002/07/owl#Class"));
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
-        when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.of(ontologyModel));
-        ConceptDetailModel pub = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.derivePublishedConceptsFromOntology(ontologyModel, List.of(IRI)))
-                .thenReturn(Map.of(IRI, Optional.of(new NkdSparqlClient.PublishedConcept(pub, GRAPH))));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        Map<String, PublishedConceptDeviationModel> result =
-                service.deviationForAllInOntology(callerModel, List.of(IRI), GRAPH);
-
-        assertThat(result.get(IRI).getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-        verify(nkdSparqlClient).derivePublishedConceptsFromOntology(ontologyModel, List.of(IRI));
-        // The second round-trip is gone.
-        verify(nkdSparqlClient, never()).fetchPublishedConceptsBatched(any());
-    }
-
-    @Test
-    void inOntology_seedsBothCacheKeys_soPerIriFetchesStayOffTheNetwork() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        Model ontologyModel = ModelFactory.createDefaultModel();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
-        when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.of(ontologyModel));
-        ConceptDetailModel pub = ConceptDetailModel.builder().iri(IRI).build();
-        NkdSparqlClient.PublishedConcept published = new NkdSparqlClient.PublishedConcept(pub, GRAPH);
-        when(nkdSparqlClient.derivePublishedConceptsFromOntology(any(), any()))
-                .thenReturn(Map.of(IRI, Optional.of(published)));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        service.deviationForAllInOntology(callerModel, List.of(IRI), GRAPH);
-
-        var cache = cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);
-        assertThat(cache.get("concept:" + IRI, Optional.class)).contains(pub);
-        assertThat(cache.get("conceptWithScheme:" + IRI, Optional.class)).contains(published);
-    }
-
-    @Test
-    void inOntology_conceptAbsentFromScheme_stillQueriedSeparately() {
-        // Absence from the scheme model is not absence from NKD — the concept may be published under
-        // a different scheme. Coverage must not shrink relative to the batched path.
-        Model callerModel = ModelFactory.createDefaultModel();
-        Model ontologyModel = ModelFactory.createDefaultModel();
-        ConceptDetailModel local2 = ConceptDetailModel.builder().iri(IRI_2).build();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI, IRI_2)))
-                .thenReturn(Map.of(IRI, local, IRI_2, local2));
-        when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.of(ontologyModel));
-        ConceptDetailModel pub = ConceptDetailModel.builder().iri(IRI).build();
-        java.util.Map<String, Optional<NkdSparqlClient.PublishedConcept>> derived = new java.util.HashMap<>();
-        derived.put(IRI, Optional.of(new NkdSparqlClient.PublishedConcept(pub, GRAPH)));
-        derived.put(IRI_2, Optional.empty());
-        when(nkdSparqlClient.derivePublishedConceptsFromOntology(any(), any())).thenReturn(derived);
-        ConceptDetailModel pub2 = ConceptDetailModel.builder().iri(IRI_2).build();
-        when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI_2))).thenReturn(
-                Map.of(IRI_2, Optional.of(new NkdSparqlClient.PublishedConcept(pub2, "https://slovník.gov.cz/other"))));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        Map<String, PublishedConceptDeviationModel> result =
-                service.deviationForAllInOntology(callerModel, List.of(IRI, IRI_2), GRAPH);
-
-        // Only the unresolved one is re-queried, not the whole batch.
-        verify(nkdSparqlClient).fetchPublishedConceptsBatched(List.of(IRI_2));
-        assertThat(result.get(IRI).getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-        assertThat(result.get(IRI_2).getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-    }
-
-    @Test
-    void inOntology_ontologyModelUnavailable_fallsBackToBatchedQuery() {
-        Model callerModel = ModelFactory.createDefaultModel();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
-        when(nkdSparqlClient.fetchPublishedOntologyRaw(GRAPH)).thenReturn(Optional.empty());
-        ConceptDetailModel pub = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI))).thenReturn(
-                Map.of(IRI, Optional.of(new NkdSparqlClient.PublishedConcept(pub, GRAPH))));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        Map<String, PublishedConceptDeviationModel> result =
-                service.deviationForAllInOntology(callerModel, List.of(IRI), GRAPH);
-
-        verify(nkdSparqlClient).fetchPublishedConceptsBatched(List.of(IRI));
-        assertThat(result.get(IRI).getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
-    }
-
-    @Test
-    void nullOntologyIri_keepsBatchedBehaviour() {
-        // deviationForAll delegates with a null ontology, so the legacy path must be untouched.
-        Model callerModel = ModelFactory.createDefaultModel();
-        when(detailExtractor.extractConceptDetails(callerModel, List.of(IRI))).thenReturn(Map.of(IRI, local));
-        ConceptDetailModel pub = ConceptDetailModel.builder().iri(IRI).build();
-        when(nkdSparqlClient.fetchPublishedConceptsBatched(List.of(IRI))).thenReturn(
-                Map.of(IRI, Optional.of(new NkdSparqlClient.PublishedConcept(pub, GRAPH))));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
-
-        service.deviationForAllInOntology(callerModel, List.of(IRI), null);
-
-        verify(nkdSparqlClient).fetchPublishedConceptsBatched(List.of(IRI));
-        verify(nkdSparqlClient, never()).fetchPublishedOntologyRaw(any());
+    /** The stored value; fails when the key has no entry (a cached null is an entry). */
+    private Object cachedValue(String name, Object key) {
+        Cache.ValueWrapper entry = cache(name).get(key);
+        if (entry == null) throw new AssertionError("no entry " + key + " in cache " + name);
+        return entry.get();
     }
 }

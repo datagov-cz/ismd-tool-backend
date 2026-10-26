@@ -20,6 +20,7 @@ import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
 import java.util.*;
 import java.util.concurrent.Executor;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -352,25 +353,33 @@ class IsmdSearchProviderTest {
     }
 
     @Test
-    void search_relationFilterFails_returnsUnfilteredResults() {
-        ConceptMetadataEntity concept = createConcept(
-                "https://example.org/concept/1", "c1", "Concept 1",
-                ConceptType.TRIDA, "https://example.org/ontology/1", true);
+    void search_relationFilterFails_returnsUnfilteredResultsAsDegraded() {
+        String iri1 = "https://example.org/concept/1";
+        String iri2 = "https://example.org/concept/2";
+        ConceptMetadataEntity concept1 = createConcept(
+                iri1, "c1", "Concept 1", ConceptType.TRIDA, "https://example.org/ontology/1", true);
+        ConceptMetadataEntity concept2 = createConcept(
+                iri2, "c2", "Concept 2", ConceptType.TRIDA, "https://example.org/ontology/1", true);
 
         when(conceptMetadataRepository.searchByText(eq("concept"), eq(false), anyList(), eq(false), isNull()))
-                .thenReturn(List.of(concept));
+                .thenReturn(List.of(concept1, concept2));
         stubVisibleGraphs("user1", List.of());
         stubEmptyFusekiSearch();
         stubEmptyFetchConceptLabels();
 
-        when(jenaTDB2Repository.filterByRelationTypes(anyList(), anyList()))
+        when(jenaTDB2Repository.filterByRelationTypes(
+                argThat(iris -> iris != null && Set.copyOf(iris).equals(Set.of(iri1, iri2))),
+                eq(List.of(RelationType.SUBCLASS))))
                 .thenThrow(new RuntimeException("Fuseki down"));
 
         SearchProvider.SearchProviderResult result = createProvider().search(
                 "concept", SearchType.CONCEPT, 20, 0, "cs", null,
                 List.of(RelationType.SUBCLASS), "user1", false, null);
 
-        assertEquals(1, result.results().size());
+        // Every row survives the failed filter; the source reports DEGRADED because the filter was not applied.
+        assertThat(result.results()).extracting(SearchResultDto::getIri)
+                .containsExactlyInAnyOrder(iri1, iri2);
+        assertThat(result.status()).isEqualTo(SearchSourceStatus.DEGRADED);
     }
 
     @Test

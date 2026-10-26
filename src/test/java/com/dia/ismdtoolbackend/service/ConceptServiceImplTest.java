@@ -10,7 +10,6 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NkodCodelistStatus;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
@@ -27,7 +26,6 @@ import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceFixture;
@@ -45,10 +43,12 @@ import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -57,6 +57,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -66,7 +68,6 @@ import static org.mockito.Mockito.*;
 class ConceptServiceImplTest {
 
     private ConceptMetadataRepository conceptMetadataRepository;
-    private ConceptMetadataMapper conceptMetadataMapper;
     private OntologyMetadataRepository ontologyMetadataRepository;
     private MetadataTouchService metadataTouchService;
     private ConceptCreator conceptCreator;
@@ -77,7 +78,6 @@ class ConceptServiceImplTest {
     private OntologyDetailExtractor detailExtractor;
     private CommentRepository commentRepository;
     private NkdSparqlClient nkdSparqlClient;
-    private ConceptDeviationComparator deviationComparator;
     private ReferencedConceptsEnricher referencedConceptsEnricher;
     private OutboxWriter outboxWriter;
     private OutboxRelayTrigger outboxRelayTrigger;
@@ -85,6 +85,10 @@ class ConceptServiceImplTest {
     private WorkingCopyDeviationServiceImpl workingCopyDeviationService;
 
     private ConceptServiceImpl conceptService;
+
+    @Captor private ArgumentCaptor<Predicate<String>> iriTakenCaptor;
+    @Captor private ArgumentCaptor<Set<Statement>> addedCaptor;
+    @Captor private ArgumentCaptor<List<String>> askedCaptor;
 
     private ConceptMetadataEntity testConceptEntity;
     private Model testModel;
@@ -101,7 +105,6 @@ class ConceptServiceImplTest {
         // link reconcile is a no-op and never reaches the mocked snapshot service.
         ConceptServiceFixture fixture = new ConceptServiceFixture();
         conceptMetadataRepository = fixture.conceptMetadataRepository();
-        conceptMetadataMapper = fixture.conceptMetadataMapper();
         ontologyMetadataRepository = fixture.ontologyMetadataRepository();
         metadataTouchService = fixture.metadataTouchService();
         conceptCreator = fixture.conceptCreator();
@@ -112,7 +115,6 @@ class ConceptServiceImplTest {
         detailExtractor = fixture.detailExtractor();
         commentRepository = fixture.commentRepository();
         nkdSparqlClient = fixture.nkdSparqlClient();
-        deviationComparator = fixture.deviationComparator();
         referencedConceptsEnricher = fixture.referencedConceptsEnricher();
         outboxWriter = fixture.outboxWriter();
         outboxRelayTrigger = fixture.outboxRelayTrigger();
@@ -568,7 +570,6 @@ class ConceptServiceImplTest {
      * re-saving a concept under its own name is not a collision, while another concept's IRI is.
      */
     @Test
-    @SuppressWarnings("unchecked")
     void editConcept_uniquenessPredicate_excludesSelfButRejectsOthers() {
         ConceptEditModel editModel = createValidConceptEditModel();
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
@@ -583,10 +584,8 @@ class ConceptServiceImplTest {
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
-        ArgumentCaptor<java.util.function.Predicate<String>> captor =
-                ArgumentCaptor.forClass(java.util.function.Predicate.class);
-        verify(conceptEditor).editConcept(anyString(), any(), any(Model.class), anyString(), captor.capture());
-        java.util.function.Predicate<String> iriTaken = captor.getValue();
+        verify(conceptEditor).editConcept(anyString(), any(), any(Model.class), anyString(), iriTakenCaptor.capture());
+        Predicate<String> iriTaken = iriTakenCaptor.getValue();
 
         // The concept's own row is not a collision.
         testConceptEntity.setId(TEST_CONCEPT_ID);
@@ -636,17 +635,17 @@ class ConceptServiceImplTest {
     private static final org.apache.jena.rdf.model.Property RDFS_RANGE = org.apache.jena.vocabulary.RDFS.range;
 
     /** Stage an edit whose POST-edit model is {@code testModel} (which the test pre-populates) and which commits. */
-    private ConceptEditModel stageEdit(boolean iriChanged, String newIri) {
-        ConceptEditModel editModel = stageEditUpToValidation(iriChanged, newIri);
+    private ConceptEditModel stageEdit() {
+        ConceptEditModel editModel = stageEditUpToValidation();
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
         return editModel;
     }
 
     /** Stage an edit up to the NKD link validation, for edits that validation rejects. */
-    private ConceptEditModel stageEditUpToValidation(boolean iriChanged, String newIri) {
+    private ConceptEditModel stageEditUpToValidation() {
         ConceptEditModel editModel = createValidConceptEditModel();
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
-                iriChanged ? newIri : TEST_CONCEPT_IRI, iriChanged,
+                TEST_CONCEPT_IRI, false,
                 new java.util.HashSet<>(), new java.util.HashSet<>());
         when(conceptMetadataRepository.findWithLockById(TEST_CONCEPT_ID)).thenReturn(Optional.of(testConceptEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
@@ -659,7 +658,7 @@ class ConceptServiceImplTest {
     void editConcept_linkToPublishedNkdSuperclass_createsSnapshot() {
         // Post-edit model: this TRIDA concept now has subClassOf → an external (NKD) concept.
         testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEdit();
         when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
@@ -697,11 +696,8 @@ class ConceptServiceImplTest {
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<java.util.Set<org.apache.jena.rdf.model.Statement>> added =
-                ArgumentCaptor.forClass(java.util.Set.class);
-        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), added.capture());
-        assertTrue(added.getValue().contains(copyTriple),
+        verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), addedCaptor.capture());
+        assertTrue(addedCaptor.getValue().contains(copyTriple),
                 "the reconcile delta must be part of the enqueued change set");
     }
 
@@ -710,7 +706,7 @@ class ConceptServiceImplTest {
         // subClassOf an OWNED concept (same graph scheme) → not external → never snapshotted.
         String ownedParent = TEST_GRAPH_NAME + "/pojem/local-parent";
         testModel.add(testResource, SUBCLASS_OF, testModel.createResource(ownedParent));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEdit();
         when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
@@ -722,7 +718,7 @@ class ConceptServiceImplTest {
     void editConcept_domainPointsAtPublishedNkd_rejectedAs400() {
         // C3: rdfs:domain → a CONFIRMED-published NKD concept is invalid input → OntologyValidationException (400).
         testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEditUpToValidation(false, null);
+        ConceptEditModel editModel = stageEditUpToValidation();
         when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(java.util.List.of(NKD_SUPERCLASS));
 
         assertThrows(com.dia.ismdtoolbackend.exception.OntologyValidationException.class,
@@ -737,7 +733,7 @@ class ConceptServiceImplTest {
     void editConcept_domainPointsAtNkd_nkdOutage_failsOpen() {
         // C3 fail-OPEN: NKD published-check throws (outage) → enforcement skipped, edit commits.
         testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEdit();
         when(nkdSparqlClient.getPublishedResourcesList(anyList()))
                 .thenThrow(new RuntimeException("NKD down"));
         when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
@@ -768,7 +764,7 @@ class ConceptServiceImplTest {
         // Phase A trigger bug: domain → a working copy is our own concept, so it must not 400 — and NKD
         // must not even be asked, since the only candidate was locally owned.
         testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEdit();
         stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
         when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
 
@@ -784,7 +780,7 @@ class ConceptServiceImplTest {
         String foreign = "https://slovník.gov.cz/agendový/999/pojem/foreign";
         testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
         testModel.add(testResource, RDFS_RANGE, testModel.createResource(foreign));
-        ConceptEditModel editModel = stageEditUpToValidation(false, null);
+        ConceptEditModel editModel = stageEditUpToValidation();
         stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
         when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(java.util.List.of(foreign));
 
@@ -793,13 +789,12 @@ class ConceptServiceImplTest {
                 () -> conceptService.editConcept(TEST_CONCEPT_ID, editModel));
 
         assertTrue(ex.getMessage().contains(foreign), "reject must name the foreign IRI");
-        assertTrue(!ex.getMessage().contains(NKD_SUPERCLASS), "reject must not name the owned working copy");
+        assertFalse(ex.getMessage().contains(NKD_SUPERCLASS), "reject must not name the owned working copy");
 
         // Only the foreign IRI is worth asking NKD about; the owned one is filtered out first.
-        ArgumentCaptor<java.util.List<String>> asked = ArgumentCaptor.forClass(java.util.List.class);
-        verify(nkdSparqlClient).getPublishedResourcesList(asked.capture());
-        assertTrue(asked.getValue().contains(foreign));
-        assertTrue(!asked.getValue().contains(NKD_SUPERCLASS), "owned IRI must not be sent to NKD");
+        verify(nkdSparqlClient).getPublishedResourcesList(askedCaptor.capture());
+        assertTrue(askedCaptor.getValue().contains(foreign));
+        assertFalse(askedCaptor.getValue().contains(NKD_SUPERCLASS), "owned IRI must not be sent to NKD");
     }
 
     @Test
@@ -807,7 +802,7 @@ class ConceptServiceImplTest {
         // A link to a working copy is a first-class local link, never a LINK_TARGET snapshot of a
         // concept we already own.
         testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEdit();
         stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
         when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
 
@@ -821,7 +816,7 @@ class ConceptServiceImplTest {
         // The target is now locally owned, so it drops out of allowedTargets and the existing removal
         // loop tears down the snapshot row it no longer warrants.
         testModel.add(testResource, SUBCLASS_OF, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEdit();
         stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
         com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity stale =
                 new com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity();
@@ -840,7 +835,7 @@ class ConceptServiceImplTest {
         // Existing snapshot for an NKD IRI that is NO LONGER linked in the post-edit model → unlink + remove.
         // A benign triple keeps the graph non-empty (validateConceptInGraph) but is NOT a subClassOf link.
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
-        ConceptEditModel editModel = stageEdit(false, null);   // testModel has NO subClassOf triple now
+        ConceptEditModel editModel = stageEdit();   // testModel has NO subClassOf triple now
         com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity stale =
                 new com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity();
         stale.setNkdIri(NKD_SUPERCLASS);
@@ -1329,7 +1324,7 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchExternalDomainMembers(anyString())).thenReturn(ModelFactory.createDefaultModel());
     }
 
-    private OntologyDetailModel.ConceptDetailModel stubDetailWithCodeList(CodeListDto codeList) {
+    private void stubDetailWithCodeList(CodeListDto codeList) {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
@@ -1342,7 +1337,6 @@ class ConceptServiceImplTest {
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
 
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
-        return detail;
     }
 
     @Test

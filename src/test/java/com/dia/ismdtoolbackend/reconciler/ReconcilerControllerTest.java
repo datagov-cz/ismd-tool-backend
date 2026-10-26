@@ -10,7 +10,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.Instant;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -36,12 +37,15 @@ class ReconcilerControllerTest {
     @Test
     @WithMockSecurityUser(userId = "admin", roles = {"ROLE_ADMIN"})
     void run_asAdmin_returnsReport() throws Exception {
-        when(runService.run(anyString())).thenReturn(emptyReport("ADMIN:admin"));
+        when(runService.run("ADMIN:admin")).thenReturn(emptyReport("ADMIN:admin"));
 
         mockMvc.perform(post("/api/admin/reconciler/run"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.triggeredBy").value("ADMIN:admin"));
+
+        // The run is attributed to the authenticated admin.
+        verify(runService).run("ADMIN:admin");
     }
 
     @Test
@@ -49,16 +53,20 @@ class ReconcilerControllerTest {
     void run_asNonAdmin_isForbidden() throws Exception {
         mockMvc.perform(post("/api/admin/reconciler/run"))
                 .andExpect(status().isForbidden());
+
+        verifyNoInteractions(runService);
     }
 
     @Test
     @WithMockSecurityUser(userId = "admin", roles = {"ROLE_ADMIN"})
     void run_whenAlreadyInProgress_returns409() throws Exception {
-        when(runService.run(anyString())).thenReturn(null); // a run is already in progress
+        when(runService.run("ADMIN:admin")).thenReturn(null); // a run is already in progress
 
         mockMvc.perform(post("/api/admin/reconciler/run"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false));
+
+        verify(runService).run("ADMIN:admin");
     }
 
     @Test

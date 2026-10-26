@@ -11,14 +11,11 @@ import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.jena.ontology.OntologyException;
+import org.apache.jena.atlas.web.HttpException;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.rdfconnection.RDFConnectionRemote;
-import org.apache.jena.vocabulary.RDF;
 import org.springframework.stereotype.Service;
 
 import java.io.StringWriter;
@@ -26,8 +23,6 @@ import java.net.http.HttpClient;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
-import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
 
 @Service
 @RequiredArgsConstructor
@@ -67,7 +62,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 .gspEndpoint("data")
                 .httpClient(fusekiHttpClient)
                 .build()) {
-            Model model = conn.fetch(graphName);
+            Model model = fetchGraph(conn, graphName);
             Model processedModel = null;
             try {
                 if (model.isEmpty()) {
@@ -78,8 +73,6 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 processedModel = applyAllOFNTransformations(model);
                 model.close();
                 model = null;
-
-                validateNoDuplicateTransformations(processedModel);
 
                 String result;
                 if ("json-ld".equalsIgnoreCase(format)) {
@@ -119,24 +112,16 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
         }
     }
 
-    private void validateNoDuplicateTransformations(Model model) {
-        Property slovnikyPojem = model.getProperty(SLOVNIKY_NS + "pojem");
-
-        StmtIterator iter = model.listStatements(null, RDF.type, slovnikyPojem);
-        while (iter.hasNext()) {
-            Resource subject = iter.next().getSubject();
-
-            int count = 0;
-            StmtIterator typeIter = model.listStatements(subject, RDF.type, slovnikyPojem);
-            while (typeIter.hasNext()) {
-                typeIter.next();
-                count++;
+    /** An unknown graph (GSP 404) reads as an empty model. */
+    private Model fetchGraph(RDFConnection conn, String graphName) {
+        try {
+            return conn.fetch(graphName);
+        } catch (HttpException e) {
+            if (e.getStatusCode() == 404) {
+                log.error("Graph {} not found in Fuseki", graphName);
+                return ModelFactory.createDefaultModel();
             }
-
-            if (count > 1) {
-                log.warn("Duplicate type assertion detected for {}: {} times",
-                        subject.getURI(), count);
-            }
+            throw e;
         }
     }
 

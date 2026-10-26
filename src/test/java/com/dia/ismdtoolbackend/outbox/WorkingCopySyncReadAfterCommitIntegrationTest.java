@@ -17,7 +17,6 @@ import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.Dev
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
@@ -256,7 +255,6 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                     .jenaTDB2Repository(tdb2)
                     .detailExtractor(detailExtractor)
                     .nkdSparqlClient(nkdSparqlClient)
-                    .deviationComparator(new ConceptDeviationComparator())
                     .outboxWriter(writer)
                     .outboxRepository(outboxRepository)
                     .outboxRelayTrigger(trigger)
