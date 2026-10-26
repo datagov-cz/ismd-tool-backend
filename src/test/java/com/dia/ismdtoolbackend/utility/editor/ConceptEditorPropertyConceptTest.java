@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
@@ -14,7 +14,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
  * B — PropertyConcept (VLASTNOST) tests

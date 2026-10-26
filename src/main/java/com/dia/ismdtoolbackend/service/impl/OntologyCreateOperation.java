@@ -26,8 +26,8 @@ import com.dia.ismdtoolbackend.utility.creator.ConceptMetadataFactory;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import com.dia.ismdtoolbackend.utility.creator.OntologyModelFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,7 +39,7 @@ import org.apache.jena.vocabulary.SKOS;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 import org.springframework.stereotype.Component;
 
 /** Creates a vocabulary, alone or together with its first concepts, and checks IRI availability. */

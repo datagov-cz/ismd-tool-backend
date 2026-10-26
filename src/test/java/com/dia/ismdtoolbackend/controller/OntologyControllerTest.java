@@ -25,9 +25,9 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
-import com.dia.validation.ValidationReportDto;
-import com.dia.validation.ValidationResult;
-import com.dia.validation.ValidationSeverity;
+import com.dia.ismdtoolbackend.client.validation.ValidationReportDto;
+import com.dia.ismdtoolbackend.client.validation.ValidationResult;
+import com.dia.ismdtoolbackend.client.validation.ValidationSeverity;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
@@ -36,7 +36,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -314,7 +313,7 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void testUploadFromFile_MissingFile() throws Exception {
+    void testUploadFromFile_EmptyJsonLdFile() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -330,6 +329,19 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_noFilePart_returnsBadRequest() throws Exception {
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .param("normalizeMode", "NORMALIZE_ALL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Chybí povinná část požadavku 'file'."));
+
+        verifyNoInteractions(ontologyUploadService);
     }
 
     @Test
@@ -531,6 +543,23 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.errorCode").value("UPLOAD_RDF_PARSE_TIMEOUT"))
                 .andExpect(jsonPath("$.message").value("Zpracování RDF souboru překročilo časový limit (60 s)."));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_conflictingConceptTypes_returnsBadRequestNamingTheConcepts() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException(
+                        List.of("https://x/y/pojem/a", "https://x/y/pojem/b")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_CONCEPT_TYPE_CONFLICT"))
+                .andExpect(jsonPath("$.data[0]").value("https://x/y/pojem/a"))
+                .andExpect(jsonPath("$.data[1]").value("https://x/y/pojem/b"));
     }
 
     @Test
@@ -998,8 +1027,8 @@ class OntologyControllerTest {
         metadataModel.setGraphName("http://example.org/test-ontology");
 
         java.time.Instant timestamp = java.time.Instant.parse("2026-08-24T10:15:30Z");
-        com.dia.validation.ValidationResult result = new com.dia.validation.ValidationResult(
-                com.dia.validation.ValidationSeverity.ERROR,
+        com.dia.ismdtoolbackend.client.validation.ValidationResult result = new com.dia.ismdtoolbackend.client.validation.ValidationResult(
+                com.dia.ismdtoolbackend.client.validation.ValidationSeverity.ERROR,
                 "Chybí název pojmu",
                 "rule-name-required",
                 "http://example.org/test-ontology/pojem/1",
@@ -1008,7 +1037,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
+                new com.dia.ismdtoolbackend.client.validation.ValidationReportDto(List.of(result), metadataModel.getGraphName(), timestamp));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1030,7 +1059,7 @@ class OntologyControllerTest {
 
         when(ontologyService.getOntologyMetadataBySlug(slug)).thenReturn(metadataModel);
         when(validationService.getValidationReportOrEmpty(metadataModel)).thenReturn(
-                new com.dia.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
+                new com.dia.ismdtoolbackend.client.validation.ValidationReportDto(List.of(), metadataModel.getGraphName(), null));
 
         mockMvc.perform(get("/api/ontology/{slug}/validation-report", slug))
                 .andExpect(status().isOk())
@@ -1221,7 +1250,7 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+        com.dia.ismdtoolbackend.client.validation.ValidationReportDto validationReport = new com.dia.ismdtoolbackend.client.validation.ValidationReportDto();
 
         TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
@@ -1249,7 +1278,7 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
+        com.dia.ismdtoolbackend.client.validation.ValidationReportDto validationReport = new com.dia.ismdtoolbackend.client.validation.ValidationReportDto();
 
         TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))

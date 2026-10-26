@@ -4,8 +4,8 @@ import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.Getter;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
@@ -329,7 +329,7 @@ class OntologyEditorTest {
         void editOntology_ShouldRemoveDescription_WhenNewDescriptionIsBlank() { // E3
             // Arrange
             String oldOntologyIRI = "https://example.com/vocab/ontology-with-desc";
-            String oldNamespace = UtilityMethods.extractNamespace(oldOntologyIRI);
+            String oldNamespace = "https://example.com/vocab";
 
             Resource ontology = model.createResource(oldOntologyIRI);
             Property descProperty = model.createProperty("http://purl.org/dc/terms/description");

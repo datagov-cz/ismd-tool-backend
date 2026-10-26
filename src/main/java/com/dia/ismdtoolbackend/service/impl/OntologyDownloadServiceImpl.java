@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.exceptions.JsonExportException;
+import com.dia.ismdtoolbackend.exception.JsonExportException;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import static com.dia.constants.VocabularyConstants.SLOVNIKY_NS;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.SLOVNIKY_NS;
 
 @Service
 @RequiredArgsConstructor

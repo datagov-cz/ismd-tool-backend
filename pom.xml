@@ -28,16 +28,11 @@
     </scm>
     <properties>
         <java.version>17</java.version>
-        <ismd-validator-common.version>1.0.20</ismd-validator-common.version>
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
         <jacoco.line.minimum>0.55</jacoco.line.minimum>
         <jacoco.branch.minimum>0.45</jacoco.branch.minimum>
         <jacoco.complexity.minimum>0.45</jacoco.complexity.minimum>
-        <!-- Override Spring Boot 3.5.4's managed Testcontainers (1.21.3), which can't handshake
-             with Docker Engine 29.x (docker-java bug, testcontainers-java #11235/#11422). 1.21.4
-             is the same-train fix. -->
-        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -128,22 +123,12 @@
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
+            <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-liquibase</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.dia</groupId>
-            <artifactId>ismd-validator-common</artifactId>
-            <version>${ismd-validator-common.version}</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -201,6 +186,11 @@
             <artifactId>jena-text</artifactId>
             <version>${jena.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.jena</groupId>
+            <artifactId>jena-rdfconnection</artifactId>
+            <version>${jena.version}</version>
+        </dependency>
         <!-- https://mvnrepository.com/artifact/org.json/json -->
         <dependency>
             <groupId>org.json</groupId>
@@ -225,17 +215,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <repositories>
-        <repository>
-            <id>github</id>
-            <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/datagov-cz/ismd-validator-backend</url>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
 
     <build>
         <plugins>

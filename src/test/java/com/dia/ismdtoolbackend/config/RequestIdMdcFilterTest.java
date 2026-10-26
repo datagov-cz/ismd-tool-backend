@@ -12,7 +12,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.dia.constants.FormatConstants.Converter.LOG_REQUEST_ID;
+import static com.dia.ismdtoolbackend.constants.FormatConstants.Converter.LOG_REQUEST_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;

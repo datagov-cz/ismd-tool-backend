@@ -19,8 +19,8 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
-import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DEFAULT_NS;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /**
  * Characterization tests that pin the language-map handling asymmetry BEFORE the

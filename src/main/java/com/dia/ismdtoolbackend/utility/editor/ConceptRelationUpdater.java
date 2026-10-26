@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.utility.DataTypeConverter;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDFS;
 

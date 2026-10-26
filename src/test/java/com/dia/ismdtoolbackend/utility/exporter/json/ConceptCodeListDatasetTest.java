@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 

@@ -17,7 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
 
 /**
  * Resolves ontology {@code skos:prefLabel} language maps, keyed by graph IRI.
@@ -90,7 +90,7 @@ public class OntologyLabelLookup {
 
     /**
      * Language→value map for the resource's {@code skos:prefLabel}s. An untagged literal is keyed
-     * under {@link com.dia.constants.ExportConstants.Common#DEFAULT_LANG}, and the first value per
+     * under {@link com.dia.ismdtoolbackend.constants.ExportConstants.Common#DEFAULT_LANG}, and the first value per
      * language wins — matching {@code OntologyMetadataEnricher.extractMultilingualValue}.
      */
     private Map<String, String> extractMultilingualValue(Resource resource) {

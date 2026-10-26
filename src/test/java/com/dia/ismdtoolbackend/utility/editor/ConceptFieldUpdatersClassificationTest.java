@@ -11,9 +11,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.NEVEREJNY_UDAJ;
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE_LEGAL;
-import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.NEVEREJNY_UDAJ;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE_LEGAL;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VEREJNY_UDAJ;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**

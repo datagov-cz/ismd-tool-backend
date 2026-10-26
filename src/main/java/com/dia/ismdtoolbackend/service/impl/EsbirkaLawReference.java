@@ -3,7 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.eli.ParsedEli;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 
 /** Reads law references: a {@code číslo/rok} or an e-Sbírka ELI IRI, in any accepted host spelling. */
 final class EsbirkaLawReference {

@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
-import com.dia.utility.URIGenerator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.URIGenerator;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
@@ -12,7 +12,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Builds a property concept. */
 @Slf4j

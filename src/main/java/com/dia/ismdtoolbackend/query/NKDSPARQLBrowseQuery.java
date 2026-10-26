@@ -4,15 +4,15 @@ import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 
 import java.util.List;
 
-import static com.dia.constants.VocabularyConstants.CAS_NS;
-import static com.dia.constants.VocabularyConstants.DATUM;
-import static com.dia.constants.VocabularyConstants.DATUM_A_CAS;
-import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
-import static com.dia.constants.VocabularyConstants.OKAMZIK_POSLEDNI_ZMENY;
-import static com.dia.constants.VocabularyConstants.OKAMZIK_VYTVORENI;
-import static com.dia.constants.VocabularyConstants.TRIDA;
-import static com.dia.constants.VocabularyConstants.VLASTNOST;
-import static com.dia.constants.VocabularyConstants.VZTAH;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.CAS_NS;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DATUM;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.DATUM_A_CAS;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OFN_NAMESPACE;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OKAMZIK_POSLEDNI_ZMENY;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.OKAMZIK_VYTVORENI;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.TRIDA;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VLASTNOST;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.VZTAH;
 
 /**
  * SPARQL queries for browsing NKD ontologies (no text-search filter).

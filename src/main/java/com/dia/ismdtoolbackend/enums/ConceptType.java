@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.enums;
 
-import com.dia.constants.VocabularyConstants;
+import com.dia.ismdtoolbackend.constants.VocabularyConstants;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.swagger.v3.oas.annotations.media.Schema;

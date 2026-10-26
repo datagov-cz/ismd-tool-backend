@@ -21,7 +21,7 @@ import org.mockito.quality.Strictness;
 import java.util.List;
 import java.util.Map;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
@@ -926,6 +926,29 @@ class ConceptCreatorTest {
 
             // assert
             assertFalse(result.listProperties().toList().isEmpty());
+        }
+
+        @Test
+        void createSingleConcept_ShouldWritePpdfAsBooleanAndAgendaAndAisAsRppIris() {
+            // arrange
+            setupBasicPropertyConcept("Governed property", "xsd:string");
+            when(propertyConceptModel.getIdentifier()).thenReturn("PROP-GOV-2");
+            when(propertyConceptModel.getIsInPPDF()).thenReturn(Boolean.FALSE);
+            when(propertyConceptModel.getAgendaCode()).thenReturn("A104");
+            when(propertyConceptModel.getAgendaSystemCode()).thenReturn("326");
+
+            // act
+            Resource result = conceptCreator.createSingleConcept(propertyConceptModel);
+
+            // assert
+            Model model = result.getModel();
+            Literal ppdf = result.getProperty(model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG)).getLiteral();
+            assertEquals(org.apache.jena.vocabulary.XSD.xboolean.getURI(), ppdf.getDatatypeURI());
+            assertFalse(ppdf.getBoolean());
+            assertEquals("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A104",
+                    result.getPropertyResourceValue(model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG)).getURI());
+            assertEquals("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/326",
+                    result.getPropertyResourceValue(model.createProperty(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS)).getURI());
         }
 
         @Test

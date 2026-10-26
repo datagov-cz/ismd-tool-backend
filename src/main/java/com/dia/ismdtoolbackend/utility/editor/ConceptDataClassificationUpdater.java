@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.utility.UtilityMethods;
+import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
@@ -11,7 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.*;
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 

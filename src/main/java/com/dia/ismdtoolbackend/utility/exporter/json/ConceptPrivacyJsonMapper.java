@@ -5,7 +5,7 @@ import org.apache.jena.rdf.model.*;
 
 import java.util.*;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Maps the privacy provisions of a non-public concept. */
 final class ConceptPrivacyJsonMapper {

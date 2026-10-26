@@ -1,25 +1,31 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.models.OFNBaseModel;
-import com.dia.utility.DataTypeConverter;
+import com.dia.ismdtoolbackend.utility.DataTypeConverter;
+import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntModelSpec;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.ExportConstants.Common.DEFAULT_LANG;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 public final class OntologyModelFactory {
+    private static final ZoneId CREATION_ZONE = ZoneId.of("Europe/Prague");
+    /** Always prints seconds and the offset, both required by xsd:dateTimeStamp. */
+    private static final DateTimeFormatter DATE_TIME_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
+
     private OntologyModelFactory() {}
 
     public static OntModel create(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
-        OFNBaseModel ofnModel = new OFNBaseModel();
-
-        OntModel model = ofnModel.getOntModel();
+        OntModel model = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
         model.createOntology(ontologyIRI);
         Resource ontologyResource = model.getResource(ontologyIRI);
 
@@ -30,8 +36,8 @@ public final class OntologyModelFactory {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                             ? entry.getKey()
                             : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(ontologyResource, prefLabel,
-                            entry.getValue().trim(), languageTag, model);
+                    DataTypeConverter.addLangLiteral(ontologyResource, prefLabel,
+                            entry.getValue().trim(), languageTag);
                 }
             }
         }
@@ -46,8 +52,8 @@ public final class OntologyModelFactory {
                     String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
                             ? entry.getKey()
                             : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(ontologyResource, descProperty,
-                            entry.getValue().trim(), languageTag, model);
+                    DataTypeConverter.addLangLiteral(ontologyResource, descProperty,
+                            entry.getValue().trim(), languageTag);
                 }
             }
         }
@@ -57,8 +63,8 @@ public final class OntologyModelFactory {
         temporalMoment.addProperty(RDF.type, model.createResource(CAS_NS + CASOVY_OKAMZIK));
 
         Property datumACasProperty = model.createProperty(CAS_NS + DATUM_A_CAS);
-        String currentDateTime = LocalDateTime.now().toString();
-        temporalMoment.addProperty(datumACasProperty, currentDateTime);
+        String createdAt = OffsetDateTime.now(CREATION_ZONE).format(DATE_TIME_STAMP);
+        temporalMoment.addProperty(datumACasProperty, model.createTypedLiteral(createdAt, XSDDatatype.XSDdateTimeStamp));
 
         Property okamzikVytvoreniProperty = model.createProperty(SLOVNIKY_NS + OKAMZIK_VYTVORENI);
         ontologyResource.addProperty(okamzikVytvoreniProperty, temporalMoment);

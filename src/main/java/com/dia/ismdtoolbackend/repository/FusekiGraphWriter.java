@@ -224,7 +224,10 @@ final class FusekiGraphWriter {
                 conn -> {
                     log.info("=== DELETING ONTOLOGY ===");
                     log.info("Graph name: {}", graphName);
-                    conn.delete(graphName);
+                    // DROP SILENT, not a Graph Store DELETE: the latter answers 404 for an absent graph.
+                    ParameterizedSparqlString pss = new ParameterizedSparqlString("DROP SILENT GRAPH ?g");
+                    pss.setIri("g", graphName);
+                    conn.update(pss.toString());
                     log.info("Successfully deleted graph: {}", graphName);
                 });
     }

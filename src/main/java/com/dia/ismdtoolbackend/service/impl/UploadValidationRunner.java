@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.client.ValidationClient;
-import com.dia.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

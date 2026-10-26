@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
+import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
@@ -10,7 +11,7 @@ import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
-import com.dia.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
 import com.dia.ismdtoolbackend.exception.InSchemeDecisionRequiredException;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
@@ -578,11 +579,10 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_bothObjectAndDatatypeProperty_isRejectedNotCoerced() throws Exception {
+    void testUploadFromFile_bothObjectAndDatatypeProperty_failsTheWholeUpload() throws Exception {
         String userId = "user123";
-        // Contradictory input: the vocabulary claims the concept is both a vlastnost and a
-        // vztah. Broken data — dropped rather than repaired by picking a winner. The
-        // well-typed C2 in the same file must still import.
+        // Contradictory input: C1 is both a vlastnost and a vztah. The upload fails as a whole and
+        // names C1; the well-typed C2 in the same file is not imported either.
         String ttl = String.format(
                 "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
                         + " @prefix skos: <http://www.w3.org/2004/02/skos/core#> ."
@@ -596,16 +596,14 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
 
-        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
+        OntologyUploadConflictingTypesException ex = assertThrows(OntologyUploadConflictingTypesException.class,
+                () -> ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
 
-        List<ConceptMetadataEntity> saved = capturedSavedConcepts();
-        assertTrue(saved.stream().noneMatch(c -> DECISION_C1.equals(c.getConceptIri())),
-                "A concept typed both ObjectProperty and DatatypeProperty declares two roles — "
-                        + "it must be dropped, not silently coerced to one of them");
-        assertTrue(saved.stream().anyMatch(c -> DECISION_C2.equals(c.getConceptIri())),
-                "The well-formed concept in the same upload must still be imported");
+        assertEquals(List.of(DECISION_C1), ex.getConceptIris());
+        verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any(OntModel.class));
+        verify(ontologyMetadataRepository, never()).save(any());
+        verify(conceptMetadataRepository, never()).saveAll(any());
     }
 
     @Test

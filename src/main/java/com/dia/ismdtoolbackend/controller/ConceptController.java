@@ -44,7 +44,7 @@ public class ConceptController {
             @PathVariable String slug,
             @AuthenticationPrincipal SecurityUser securityUser
     ) {
-        log.info("Ontology create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
+        log.info("Concept create requested, namespace: {}, name: {}, description: {}, userId: {}", conceptCreateModel.getNamespace(), conceptCreateModel.getNameModel(), conceptCreateModel.getDescriptionModel(), securityUser.getUserId());
 
         ConceptMetadataModel createdConcept = conceptService.createConcept(conceptCreateModel, securityUser.getUserId());
         log.info("Concept create successful: {}", createdConcept);
@@ -68,10 +68,8 @@ public class ConceptController {
         log.info("Bulk concept create requested, count: {}, userId: {}",
                 conceptCreateModels.size(), securityUser.getUserId());
 
-        List<ConceptMetadataModel> createdConcepts = conceptCreateModels.stream()
-                .map(conceptCreateModel -> conceptService.createConcept(
-                        conceptCreateModel, securityUser.getUserId()))
-                .toList();
+        List<ConceptMetadataModel> createdConcepts =
+                conceptService.createConcepts(conceptCreateModels, securityUser.getUserId());
         log.info("Bulk concept create successful, count: {}", createdConcepts.size());
 
         return ResponseEntity.ok().body(ApiResponseDto.success(createdConcepts, "Pojmy úspěšně vytvořeny: "));

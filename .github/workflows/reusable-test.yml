@@ -26,14 +26,10 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_ACTOR: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -43,9 +39,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
 
       - name: Cache Maven packages
         uses: actions/cache@v6

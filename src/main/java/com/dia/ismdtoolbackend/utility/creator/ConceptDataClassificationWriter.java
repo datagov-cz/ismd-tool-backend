@@ -9,7 +9,7 @@ import org.apache.jena.vocabulary.RDF;
 
 import java.util.List;
 
-import static com.dia.constants.VocabularyConstants.*;
+import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /** Writes the public or non-public classification and its privacy provisions. */
 @Slf4j

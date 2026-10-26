@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.config;
 
-import com.dia.exceptions.ValidationException;
 import com.dia.ismdtoolbackend.controller.dto.ApiResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.DownloadBlockedByValidationDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingInSchemeDecisionDto;
@@ -30,7 +29,9 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import java.util.List;
 import java.io.IOException;
 
 @Slf4j
@@ -283,21 +284,9 @@ public class GlobalExceptionHandler {
         return error(ErrorCode.ONTOLOGY_PROCESSING_FAILED, e.getMessage());
     }
 
+    /** The tool's own {@link ValidationException}: a failure to store or read a validation report. */
     @ExceptionHandler(ValidationException.class)
-    public ResponseEntity<ApiResponseDto<Void>> handleValidationException(ValidationException e) {
-        log.error("Validation failed: {}", e.getMessage(), e);
-        return error(ErrorCode.VALIDATION_FAILED, e.getMessage());
-    }
-
-    /**
-     * Distinct from {@link com.dia.exceptions.ValidationException} above: that one is the validator
-     * library's and signals bad input, this one is the tool's own and wraps a failure to store or
-     * read a validation report. Both names are written out in full — the wildcard import of the
-     * tool's exception package makes it otherwise unclear which class either handler binds to.
-     */
-    @ExceptionHandler(com.dia.ismdtoolbackend.exception.ValidationException.class)
-    public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(
-            com.dia.ismdtoolbackend.exception.ValidationException e) {
+    public ResponseEntity<ApiResponseDto<Void>> handleValidationReportException(ValidationException e) {
         log.error("Validation report operation failed: {}", e.getMessage(), e);
         return error(ErrorCode.VALIDATION_REPORT_FAILED, e.getMessage());
     }
@@ -336,6 +325,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleOntologyUploadIriCollision(OntologyUploadIriCollisionException e) {
         log.warn("Ontology upload rejected, IRIs differ only by a trailing slash: {}", e.getMessage());
         return error(ErrorCode.UPLOAD_IRI_TRAILING_SLASH_COLLISION, e.getMessage());
+    }
+
+    @ExceptionHandler(OntologyUploadConflictingTypesException.class)
+    public ResponseEntity<ApiResponseDto<List<String>>> handleOntologyUploadConflictingTypes(
+            OntologyUploadConflictingTypesException e) {
+        log.warn("Ontology upload rejected, concepts typed as both property and relationship: {}",
+                e.getConceptIris());
+        return error(ErrorCode.UPLOAD_CONCEPT_TYPE_CONFLICT, e.getMessage(), e.getConceptIris());
     }
 
     @ExceptionHandler(OntologyUploadInProgressException.class)
@@ -422,6 +419,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDto<Void>> handleMissingParameter(MissingServletRequestParameterException e) {
         log.warn("Missing required parameter '{}'", e.getParameterName());
         String msg = "Chybí povinný parametr '" + e.getParameterName() + "'.";
+        return error(ErrorCode.MISSING_PARAMETER, msg);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponseDto<Void>> handleMissingPart(MissingServletRequestPartException e) {
+        log.warn("Missing required request part '{}'", e.getRequestPartName());
+        String msg = "Chybí povinná část požadavku '" + e.getRequestPartName() + "'.";
         return error(ErrorCode.MISSING_PARAMETER, msg);
     }
 

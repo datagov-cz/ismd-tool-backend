@@ -17,7 +17,6 @@ import com.dia.ismdtoolbackend.controller.dto.ValidationErrorSummaryDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.OntologyDownloadBlockedException;
-import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.exception.ValidationServiceUnavailableException;
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
@@ -28,9 +27,9 @@ import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
 import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
-import com.dia.validation.ValidationReport;
-import com.dia.validation.ValidationReportDto;
-import com.dia.validation.ValidationResult;
+import com.dia.ismdtoolbackend.client.validation.ValidationReport;
+import com.dia.ismdtoolbackend.client.validation.ValidationReportDto;
+import com.dia.ismdtoolbackend.client.validation.ValidationResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
@@ -80,7 +79,7 @@ public class OntologyController {
     )
     @PostMapping(path="/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponseDto<OntologyMetadataModel>> uploadFromFile(
-            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam("file") MultipartFile file,
             @RequestParam(value = "normalizeMode", required = false) NormalizeMode normalizeMode,
             @RequestParam(value = "conceptsToNormalize", required = false) List<String> conceptsToNormalize,
             @AuthenticationPrincipal SecurityUser securityUser) throws IOException {
