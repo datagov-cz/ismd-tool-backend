@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdfconnection.RDFConnection;
 import org.springframework.core.env.Environment;
 
@@ -191,9 +190,7 @@ final class FusekiTextSearch {
                     // Accept either the OFN role IRI (ISMD-internal data carries both) or the
                     // matching OWL type (so externally-imported owl:Class/ObjectProperty/
                     // DatatypeProperty concepts also satisfy the filter).
-                    String typeFilterClause = conceptTypeFilter == null ? ""
-                            : "    FILTER(EXISTS { ?resource a <" + ofnRoleIri(conceptTypeFilter) + "> }"
-                                    + " || EXISTS { ?resource a <" + owlTypeIri(conceptTypeFilter) + "> }) ";
+                    String typeFilterClause = conceptTypeFilter == null ? "" : roleFilterClause(conceptTypeFilter);
                     // text:query inside GRAPH — requires Jena 5.4+ where the property
                     // function is correctly wired through the TextDataset assembler.
                     //
@@ -237,12 +234,14 @@ final class FusekiTextSearch {
                             QuerySolution sol = rs.next();
                             Map<String, String> row = new HashMap<>();
                             row.put("resourceIri", sol.getResource("resource") != null ? sol.getResource("resource").getURI() : null);
-                            row.put("graphName", sol.getResource("g") != null ? sol.getResource("g").getURI() : null);
+                            // ?g comes from VALUES, so it is always bound.
+                            row.put("graphName", sol.getResource("g").getURI());
                             if (sol.getLiteral("prefLabel") != null) row.put("prefLabel", sol.getLiteral("prefLabel").getString());
                             if (sol.getLiteral("prefLabelLang") != null) row.put("prefLabelLang", sol.getLiteral("prefLabelLang").getString());
                             if (sol.getLiteral("altLabel") != null) row.put("altLabel", sol.getLiteral("altLabel").getString());
                             if (sol.getLiteral("description") != null) row.put("description", sol.getLiteral("description").getString());
                             if (sol.getLiteral("definition") != null) row.put("definition", sol.getLiteral("definition").getString());
+                            // An untyped resource leaves ?types unbound (STR of an unbound ?typeS is an error).
                             if (sol.getLiteral("types") != null) row.put("types", sol.getLiteral("types").getString());
                             results.add(row);
                         }
@@ -284,7 +283,6 @@ final class FusekiTextSearch {
      * escaped first so we don't double-process the ones we introduce for quotes.
      */
     private static String escapeForSparqlString(String input) {
-        if (input == null) return "";
         return input.replace("\\", "\\\\")
                 .replace("'", "\\'");
     }
@@ -324,10 +322,8 @@ final class FusekiTextSearch {
                         ResultSet rs = qExec.execSelect();
                         while (rs.hasNext()) {
                             QuerySolution sol = rs.next();
-                            Resource concept = sol.getResource("concept");
-                            if (concept != null && concept.isURIResource()) {
-                                matchingIris.add(concept.getURI());
-                            }
+                            // ?concept comes from VALUES, so it is always an IRI.
+                            matchingIris.add(sol.getResource("concept").getURI());
                         }
                     }
                     log.debug("Relation type filter: {} of {} concepts matched relation types {}",
@@ -348,21 +344,18 @@ final class FusekiTextSearch {
 
     // KONCEPT is the generic base type every concept carries, so it is not a
     // role narrowing — SearchType.toConceptType() never yields it here.
-    private static String ofnRoleIri(ConceptType type) {
+    private static String roleFilterClause(ConceptType type) {
         return switch (type) {
-            case TRIDA -> OFN_NAMESPACE + TRIDA;
-            case VLASTNOST -> OFN_NAMESPACE + VLASTNOST;
-            case VZTAH -> OFN_NAMESPACE + VZTAH;
+            case TRIDA -> roleFilterClause(OFN_NAMESPACE + TRIDA, "http://www.w3.org/2002/07/owl#Class");
+            case VLASTNOST -> roleFilterClause(OFN_NAMESPACE + VLASTNOST,
+                    "http://www.w3.org/2002/07/owl#DatatypeProperty");
+            case VZTAH -> roleFilterClause(OFN_NAMESPACE + VZTAH, ConceptResolutionProjection.OWL_OBJECT_PROPERTY);
             case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
         };
     }
 
-    private static String owlTypeIri(ConceptType type) {
-        return switch (type) {
-            case TRIDA -> "http://www.w3.org/2002/07/owl#Class";
-            case VLASTNOST -> "http://www.w3.org/2002/07/owl#DatatypeProperty";
-            case VZTAH -> ConceptResolutionProjection.OWL_OBJECT_PROPERTY;
-            case KONCEPT -> throw new IllegalArgumentException("KONCEPT is not a role-narrowing type");
-        };
+    private static String roleFilterClause(String ofnRoleIri, String owlTypeIri) {
+        return "    FILTER(EXISTS { ?resource a <" + ofnRoleIri + "> }"
+                + " || EXISTS { ?resource a <" + owlTypeIri + "> }) ";
     }
 }

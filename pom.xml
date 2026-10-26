@@ -33,10 +33,10 @@
         <jacoco.version>0.8.15</jacoco.version>
         <!-- Coverage gate, the only place it is set. Raise it as coverage grows; never lower it.
              Targets: line 92, instruction 92, branch 85, complexity 80, method 95. -->
-        <jacoco.line.minimum>0.93</jacoco.line.minimum>
-        <jacoco.instruction.minimum>0.94</jacoco.instruction.minimum>
-        <jacoco.branch.minimum>0.83</jacoco.branch.minimum>
-        <jacoco.complexity.minimum>0.80</jacoco.complexity.minimum>
+        <jacoco.line.minimum>0.95</jacoco.line.minimum>
+        <jacoco.instruction.minimum>0.96</jacoco.instruction.minimum>
+        <jacoco.branch.minimum>0.87</jacoco.branch.minimum>
+        <jacoco.complexity.minimum>0.85</jacoco.complexity.minimum>
         <jacoco.method.minimum>0.96</jacoco.method.minimum>
     </properties>
     <dependencyManagement>

@@ -44,6 +44,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -309,6 +311,131 @@ class EsbirkaRestTransportTest {
         WM.verify(BREAKER_THRESHOLD, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
 
         assertBreakerOpen(transport);
+    }
+
+    // --- configuration ---------------------------------------------------------------------------
+
+    @Test
+    void nullKeyIs503WithoutCallingUpstream() {
+        EsbirkaRestTransport transport = transport(c -> c.getRest().setApiKey(null));
+
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class)
+                .hasMessageContaining("API key is not configured");
+        WM.verify(0, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void trailingSlashOfTheBaseUrlIsDropped() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(200, HISTORIE_JSON)));
+        EsbirkaRestTransport transport = transport(c -> c.getRest().setBaseUrl(WM.baseUrl() + "/"));
+
+        assertThat(historieUri(transport).toString()).isEqualTo(WM.baseUrl() + HISTORIE_PATH);
+        transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
+        WM.verify(1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+    }
+
+    @Test
+    void backOffLongerThanTheDeadlineStopsRetryingAtOnce() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(html(429)));
+        EsbirkaRestTransport transport = transport(c -> {
+            c.getRest().getRetry().setInitialBackoffMs(60_000);
+            c.getRest().setRequestDeadlineMs(5_000);
+        });
+
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class)
+                .hasMessageContaining("rate limited (429)");
+        WM.verify(1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+        assertBreakerClosed(transport);
+    }
+
+    // --- content types -------------------------------------------------------------------------
+
+    @Test
+    void jsonSuffixMediaTypeIsJson() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/vnd.esbirka+json").withBody(HISTORIE_JSON)));
+        EsbirkaRestTransport transport = transport(c -> { });
+
+        Historie h = transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
+
+        assertThat(h.zaznamy()).hasSize(1);
+        assertThat(calls("success")).isEqualTo(1.0);
+    }
+
+    @Test
+    void nonJson200IsAnEdgePageAndRetried() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).inScenario("html").whenScenarioStateIs(Scenario.STARTED)
+                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "text/html").withBody("<html/>"))
+                .willSetStateTo("ok"));
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).inScenario("html").whenScenarioStateIs("ok")
+                .willReturn(json(200, HISTORIE_JSON)));
+        EsbirkaRestTransport transport = transport(c -> { });
+
+        Historie h = transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
+
+        assertThat(h.zaznamy()).hasSize(1);
+        WM.verify(2, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+        assertThat(calls("server_error")).isEqualTo(1.0);
+    }
+
+    @Test
+    void exhaustedNonJson5xxWithoutContentTypeTripsTheBreaker() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(aResponse().withStatus(502).withBody("Bad gateway")));
+        EsbirkaRestTransport transport = transport(c -> { });
+
+        for (int i = 0; i < BREAKER_THRESHOLD; i++) {
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class)
+                    .hasMessageContaining("non-JSON response 502");
+        }
+        WM.verify(4 * BREAKER_THRESHOLD, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+
+        assertBreakerOpen(transport);
+    }
+
+    @Test
+    void jsonErrorWithoutChybyIsRetriedLikeAnEdgePage() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(503, "{\"message\":\"maintenance\"}")));
+        EsbirkaRestTransport transport = transport(c -> c.getRest().getRetry().setMaxAttempts(2));
+
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class)
+                .hasMessageContaining("non-JSON response 503");
+        WM.verify(2, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+    }
+
+    @Test
+    void nonJson4xxIsNotRetriedAndNeverTripsTheBreaker() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(aResponse().withStatus(404)
+                .withHeader("Content-Type", "text/html").withBody("<html>Not Found</html>")));
+        EsbirkaRestTransport transport = transport(c -> { });
+
+        for (int i = 0; i < BREAKER_THRESHOLD + 1; i++) {
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class)
+                    .hasMessageContaining("non-JSON response 404");
+        }
+        WM.verify(BREAKER_THRESHOLD + 1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+        assertThat(calls("client_error")).isEqualTo(BREAKER_THRESHOLD + 1.0);
+
+        assertBreakerClosed(transport);
+    }
+
+    @Test
+    void unknownApiErrorBelow500IsAClientErrorNotRetriedAndNotCounted() {
+        WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(403, chyby("PRISTUP_ODEPREN"))));
+        EsbirkaRestTransport transport = transport(c -> { });
+
+        for (int i = 0; i < BREAKER_THRESHOLD + 1; i++) {
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class)
+                    .hasMessageContaining("client error 403 PRISTUP_ODEPREN");
+        }
+        WM.verify(BREAKER_THRESHOLD + 1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
+
+        assertBreakerClosed(transport);
     }
 
     // --- helpers -------------------------------------------------------------------------------

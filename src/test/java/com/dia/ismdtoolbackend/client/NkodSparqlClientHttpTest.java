@@ -2,6 +2,8 @@ package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.config.NkodConfig;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
+import com.dia.ismdtoolbackend.models.nkod.NkodCodelist;
+import com.dia.ismdtoolbackend.models.nkod.NkodCodelistEntry;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetDetail;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
@@ -182,5 +184,104 @@ class NkodSparqlClientHttpTest {
     void unsafeConceptIriIsNeverSent() {
         assertThat(client.fetchDatasetsByConcept("not an <iri>")).isEmpty();
         assertThat(sentQueries()).isEmpty();
+    }
+
+    // --- codelists -----------------------------------------------------------------------------
+
+    private static final String PUBLISHER = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/orgán-veřejné-moci/17651921";
+    private static final String UNNAMED_PUBLISHER = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/orgán-veřejné-moci/1";
+
+    @Test
+    void codelistsResolvePublisherNamesInASecondQuery() {
+        answer("DatasetSeries", sparqlJson(SparqlJson
+                .select("dataset", "title", "downloadUrl", "publisher", "description", "rppIdentifier", "validFrom")
+                .row(uri("dataset", DATASET), literal("title", "Pohlaví", "cs"),
+                        uri("downloadUrl", "https://example.test/b.jsonld"), uri("publisher", PUBLISHER),
+                        literal("description", " "), literal("rppIdentifier", "https://x/mdzastresujicids/151 "),
+                        literal("validFrom", ""))
+                .row(uri("dataset", DATASET), literal("title", "Pohlaví", "cs"),
+                        uri("downloadUrl", "https://example.test/a.jsonld"), uri("publisher", PUBLISHER))
+                .row(uri("dataset", DATASET + "/2"), literal("title", "Role", "cs"),
+                        uri("publisher", UNNAMED_PUBLISHER), uri("rppIdentifier", "https://x/mdzastresujicids/"))
+                .row(uri("dataset", DATASET + "/3"), literal("title", "Bez vydavatele", "cs"))
+                .row(literal("title", "Bez datové sady"))
+                .row(uri("dataset", DATASET + "/4"), literal("title", "  "))));
+        answer("foaf:name", sparqlJson(SparqlJson.select("publisher", "name")
+                .row(uri("publisher", PUBLISHER), literal("name", "Digitální a informační agentura", "cs"))
+                .row(uri("publisher", UNNAMED_PUBLISHER), literal("name", " "))
+                .row(literal("name", "Bez vydavatele"))
+                .row(uri("publisher", DATASET))));
+
+        List<NkodCodelistEntry> entries = client.fetchCodelists();
+
+        assertThat(entries).extracting(NkodCodelistEntry::datasetIri)
+                .containsExactly(DATASET, DATASET + "/2", DATASET + "/3");
+        NkodCodelist pohlavi = entries.get(0).codelist();
+        assertThat(pohlavi.getPublisher()).isEqualTo("Digitální a informační agentura");
+        assertThat(pohlavi.getDescription()).isNull();
+        assertThat(pohlavi.getValidFrom()).isNull();
+        assertThat(pohlavi.getCodeListNumber()).isEqualTo("151");
+        assertThat(entries.get(0).downloadUrls())
+                .containsExactly("https://example.test/a.jsonld", "https://example.test/b.jsonld");
+        assertThat(entries.get(1).codelist().getPublisher()).isEqualTo(UNNAMED_PUBLISHER);
+        assertThat(entries.get(1).codelist().getCodeListNumber()).isEqualTo("mdzastresujicids");
+        assertThat(entries.get(2).codelist().getPublisher()).isEmpty();
+        assertThat(entries.get(2).downloadUrls()).isEmpty();
+        assertThat(sentQueries()).hasSize(2).last().asString()
+                .contains("<" + UNNAMED_PUBLISHER + "> <" + PUBLISHER + ">");
+    }
+
+    @Test
+    void codelistsWithoutPublishersSkipTheNameQuery() {
+        answer("DatasetSeries", sparqlJson(SparqlJson.select("dataset", "title")
+                .row(uri("dataset", DATASET), literal("title", "Pohlaví", "cs"))));
+
+        List<NkodCodelistEntry> entries = client.fetchCodelists();
+
+        assertThat(entries).singleElement().satisfies(e -> assertThat(e.codelist().getPublisher()).isEmpty());
+        assertThat(sentQueries()).singleElement().asString().doesNotContain("foaf:name");
+    }
+
+    @Test
+    void failingPublisherNameQueryFailsTheWholeList() {
+        answer("DatasetSeries", sparqlJson(SparqlJson.select("dataset", "title", "publisher")
+                .row(uri("dataset", DATASET), literal("title", "Pohlaví", "cs"), uri("publisher", PUBLISHER))));
+        answer("foaf:name", serverError());
+
+        assertThatThrownBy(() -> client.fetchCodelists()).isInstanceOf(SparqlEndpointUnavailableException.class);
+    }
+
+    @Test
+    void harvestFilesBlankLanguageTagsUnderCzechAndSkipsDistributionlessRows() {
+        answer("SELECT", sparqlJson(SparqlJson.select("ds", "nazev", "nazevLang", "popis", "popisLang")
+                .row(uri("ds", DATASET), literal("nazev", "Adresní místa"), literal("nazevLang", ""),
+                        literal("popis", "Popis"), literal("popisLang", "en"))));
+
+        List<NkodDatasetRow> rows = client.harvestDatasets();
+
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.name()).containsExactly(Map.entry("cs", "Adresní místa"));
+            assertThat(row.description()).containsExactly(Map.entry("en", "Popis"));
+        });
+    }
+
+    @Test
+    void distributionRowsWithoutAnIriAreSkipped() {
+        answer("ASK", ask(true));
+        answer("SELECT", sparqlJson(SparqlJson.select("nazev").row(literal("nazev", "Adresní místa"))));
+        answer("dcat:distribution", sparqlJson(SparqlJson.select("dist", "stahovaciUrl")
+                .row(uri("stahovaciUrl", "https://example.test/orphan.csv"))
+                .row(uri("dist", DATASET + "/d1"), uri("stahovaciUrl", "https://example.test/data.csv"))));
+
+        NkodDatasetDetail detail = client.fetchDatasetDetail(DATASET).orElseThrow();
+
+        assertThat(detail.distributions()).singleElement()
+                .satisfies(d -> assertThat(d.link()).isEqualTo("https://example.test/data.csv"));
+    }
+
+    @Test
+    void lastPathSegmentOfSegmentlessValues() {
+        assertThat(NkodSparqlClient.lastPathSegment("151")).isEqualTo("151");
+        assertThat(NkodSparqlClient.lastPathSegment(" / ")).isNull();
     }
 }

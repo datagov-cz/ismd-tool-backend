@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.utility.codelist;
 
+import java.util.zip.DeflaterOutputStream;
+import java.io.ByteArrayInputStream;
 import com.dia.ismdtoolbackend.models.concept.ConceptValidationUtil;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -331,5 +333,133 @@ class CodelistDistributionReaderTest {
                 .hasToString("https://h/soubory/%C4%8D%C3%ADseln%C3%ADky/a%20b.jsonld");
         assertThat(CodelistDistributionReader.toAsciiUri("https://h/a%20b.jsonld"))
                 .hasToString("https://h/a%20b.jsonld");
+    }
+
+    // ---- format detection and decoding -------------------------------------------------------------
+
+    @Test
+    void jsonSuffix_isJsonLdWhateverTheContentType() {
+        serve("/ciselnik.json", "text/plain", MFF);
+
+        assertThat(read(base + "/ciselnik.json")).contains("https://data.mff.cuni.cz/zdroj/číselníky/klasifikace-výzkumných-oborů");
+    }
+
+    @Test
+    void unknownSuffix_withCsvContentType_isCsv() {
+        serve("/download", "text/csv; charset=utf-8", RPP_CSV);
+
+        assertThat(read(base + "/download")).contains("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/číselníky/151/2025-01-01");
+    }
+
+    @Test
+    void deflateEncodedBody_isInflated() throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (DeflaterOutputStream deflate = new DeflaterOutputStream(bytes)) {
+            deflate.write(MFF.getBytes(StandardCharsets.UTF_8));
+        }
+        server.createContext("/deflate.jsonld", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "application/ld+json");
+            exchange.getResponseHeaders().add("Content-Encoding", "Deflate");
+            respond(exchange, 200, bytes.toByteArray());
+        });
+
+        assertThat(read(base + "/deflate.jsonld")).contains("https://data.mff.cuni.cz/zdroj/číselníky/klasifikace-výzkumných-oborů");
+    }
+
+    // ---- JSON-LD shapes ------------------------------------------------------------------------------
+
+    @Test
+    void topLevelArray_isEmpty() {
+        serve("/array.jsonld", "application/ld+json", "[" + MFF + "]");
+
+        assertThat(read(base + "/array.jsonld")).isEmpty();
+    }
+
+    @Test
+    void nonStringIri_isEmpty() {
+        serve("/number.jsonld", "application/ld+json", "{\"iri\": 151, \"typ\": \"Číselník\"}");
+
+        assertThat(read(base + "/number.jsonld")).isEmpty();
+    }
+
+    @Test
+    void blankIri_isEmpty() {
+        serve("/blank.jsonld", "application/ld+json", "{\"iri\": \"   \"}");
+
+        assertThat(read(base + "/blank.jsonld")).isEmpty();
+    }
+
+    @Test
+    void iriIsStripped() {
+        serve("/padded.jsonld", "application/ld+json", "{\"iri\": \"  https://x/číselník/1 \"}");
+
+        assertThat(read(base + "/padded.jsonld")).contains("https://x/číselník/1");
+    }
+
+    // ---- CSV cell A2 -----------------------------------------------------------------------------------
+
+    private static String a2(String csv) throws IOException {
+        return CodelistDistributionReader.readCsvA2(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void csvA2_unquotedEndsAtCommaCrLfOrEndOfFile() throws IOException {
+        assertThat(a2("h1,h2\nhttps://x/1,b\n")).isEqualTo("https://x/1");
+        assertThat(a2("h1\r\nhttps://x/1\r\n")).isEqualTo("https://x/1");
+        assertThat(a2("h1\nhttps://x/1\nnext\n")).isEqualTo("https://x/1");
+        assertThat(a2("h1\nhttps://x/1")).isEqualTo("https://x/1");
+    }
+
+    @Test
+    void csvA2_quotedKeepsEscapedQuotesAndCommas() throws IOException {
+        assertThat(a2("h\n\"a \"\"b\"\", c\",d\n")).isEqualTo("a \"b\", c");
+    }
+
+    @Test
+    void csvA2_missingOrUnterminated_isNull() throws IOException {
+        assertThat(a2("h1,h2")).isNull();
+        assertThat(a2("h1\n,b\n")).isNull();
+        assertThat(a2("h1\n")).isNull();
+        assertThat(a2("h1\n\"https://x/1")).isNull();
+    }
+
+    // ---- URLs -------------------------------------------------------------------------------------------
+
+    @Test
+    void toAsciiUri_rejectsNonHttpAndHostlessUrls() {
+        assertThat(CodelistDistributionReader.toAsciiUri("mailto:data@mff.cuni.cz")).isNull();
+        assertThat(CodelistDistributionReader.toAsciiUri("file:///tmp/a.jsonld")).isNull();
+        assertThat(CodelistDistributionReader.toAsciiUri("http:/a.jsonld")).isNull();
+        assertThat(CodelistDistributionReader.toAsciiUri("HTTPS://h/a.jsonld")).hasToString("HTTPS://h/a.jsonld");
+    }
+
+    // ---- read deadline -------------------------------------------------------------------------------
+
+    /**
+     * Headers arrive at once, so the HTTP client's own timeout does not fire; the body stalls past
+     * the deadline and the next read gives up.
+     */
+    @Test
+    void bodyStallingPastTheDeadline_isEmpty() {
+        CountDownLatch neverReleased = new CountDownLatch(1);
+        String body = "{\"@context\": {\"pad\": \"" + "x".repeat(64 * 1024) + "\"}, \"iri\": \"https://x/číselník/1\"}";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        server.createContext("/stall.jsonld", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "application/ld+json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes, 0, 16);
+                out.flush();
+                // Longer than the reader's 200 ms deadline; elapsed time only ever exceeds it.
+                neverReleased.await(500, TimeUnit.MILLISECONDS);
+                out.write(bytes, 16, bytes.length - 16);
+            } catch (IOException | InterruptedException ignored) {
+                // the reader gives up and closes the connection
+            }
+        });
+
+        Optional<String> iri = reader(1024 * 1024, Duration.ofMillis(200)).readCodeListIri(base + "/stall.jsonld");
+
+        assertThat(iri).isEmpty();
     }
 }

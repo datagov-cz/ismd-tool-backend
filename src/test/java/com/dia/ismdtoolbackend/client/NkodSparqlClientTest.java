@@ -3,9 +3,14 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.config.NkodConfig;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDistribution;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.ResultSetFactory;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayInputStream;
@@ -34,6 +39,26 @@ class NkodSparqlClientTest {
     void reportsConfiguredWhenEndpointIsSet() {
         assertThat(clientWithEndpoint("https://data.gov.cz/sparql").isEndpointConfigured())
                 .isTrue();
+    }
+
+    @Test
+    void warnsAtStartupOnlyWhenTheEndpointIsMissing() {
+        Logger logger = (Logger) LoggerFactory.getLogger(NkodSparqlClient.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        try {
+            clientWithEndpoint("https://data.gov.cz/sparql").warnIfEndpointMissing();
+            assertThat(logs.list).isEmpty();
+
+            clientWithEndpoint("").warnIfEndpointMissing();
+            assertThat(logs.list).singleElement().satisfies(e -> {
+                assertThat(e.getLevel()).isEqualTo(Level.WARN);
+                assertThat(e.getFormattedMessage()).contains("nkod.sparql.endpoint is not configured");
+            });
+        } finally {
+            logger.detachAppender(logs);
+        }
     }
 
     @Test

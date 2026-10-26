@@ -81,6 +81,11 @@ class DiagramContentResolverTest {
             return this;
         }
 
+        Fixture overlays(Map<String, DiagramPendingEdit> overlays) {
+            this.overlays = overlays;
+            return this;
+        }
+
         Fixture placed(Set<String> placed) {
             this.placed = placed;
             return this;
@@ -806,5 +811,330 @@ class DiagramContentResolverTest {
         assertThat(rows).doesNotContainKey(A);
         assertThat(rows.get(B)).singleElement()
                 .satisfies(r -> assertThat(r.hasPendingEdits()).isTrue());
+    }
+
+    // ---- defaults and malformed rows ------------------------------------------------------------
+
+    private static String placedEdge(DiagramEdgeKind kind, String source, String target) {
+        return DiagramContentResolver.projectedEdgeId(kind, source, target);
+    }
+
+    /** Every optional input may be absent: nothing placed, nothing staged, every concept stale. */
+    @Test
+    void nullInputs_defaultToAnEmptyCanvasWithEveryConceptStale() {
+        DiagramContentResolver resolver =
+                new DiagramContentResolver(new DiagramMapper(), null, null, null, null, null, null);
+
+        assertThat(resolver.project(List.of(node(A)), types(Map.of()), Map.of())).isEmpty();
+        assertThat(resolver.propertyRows(List.of(nodeWith(A, PROP)), types(Map.of()), Map.of()).get(A))
+                .singleElement()
+                .satisfies(r -> {
+                    assertThat(r.stale()).isTrue();
+                    assertThat(r.hasPendingEdits()).isFalse();
+                });
+    }
+
+    @Test
+    void malformedOrUnknownKindEdgeKeys_areIgnored() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(B)).build());
+        live.put(B, concept(B));
+        String good = placedSubclass(A, B).iterator().next();
+
+        List<DiagramDto.Edge> edges = builder(live)
+                .placed(Set.of(good, "edge|SUBCLASS_OF|" + A, "edge|PART_OF|" + A + "|" + B)).build()
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of());
+
+        assertThat(edges).extracting(DiagramDto.Edge::id).containsExactly(good);
+    }
+
+    // ---- triple edges: exact match, deleted source, combined staging -----------------------------
+
+    @Test
+    void exactMatchEdge_isAssertedFromTheSourcesExactMatches() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).exactMatches(List.of(B)).broaderClasses(List.of(C)).build());
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+        String exactAB = placedEdge(DiagramEdgeKind.EXACT_MATCH, A, B);
+        String exactAC = placedEdge(DiagramEdgeKind.EXACT_MATCH, A, C);
+
+        List<DiagramDto.Edge> edges = builder(live).placed(Set.of(exactAB, exactAC)).build()
+                .project(List.of(node(A), node(B), node(C)), types(Map.of()), Map.of());
+
+        assertThat(edges).filteredOn(e -> e.id().equals(exactAB)).singleElement().satisfies(e -> {
+            assertThat(e.data().edgeKind()).isEqualTo(DiagramEdgeKind.EXACT_MATCH);
+            assertThat(e.data().asserted()).isTrue();
+        });
+        assertThat(edges).filteredOn(e -> e.id().equals(exactAC)).singleElement()
+                .satisfies(e -> assertThat(e.data().asserted())
+                        .as("a broader link is not an exact match").isFalse());
+    }
+
+    @Test
+    void exactMatchStagedOnTheSource_isPending_whileBroaderStagingIsIgnored() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setExactMatch(List.of(B));
+        overlay.setBroaderConcept(List.of(C));
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+        live.put(C, concept(C));
+        String exactAB = placedEdge(DiagramEdgeKind.EXACT_MATCH, A, B);
+        String exactAC = placedEdge(DiagramEdgeKind.EXACT_MATCH, A, C);
+
+        List<DiagramDto.Edge> edges = builder(live).overlay(A, overlay).placed(Set.of(exactAB, exactAC)).build()
+                .project(List.of(node(A), node(B), node(C)), types(Map.of()), Map.of());
+
+        assertThat(edges).filteredOn(e -> e.id().equals(exactAB)).singleElement()
+                .satisfies(e -> assertThat(e.data().pending()).isTrue());
+        assertThat(edges).filteredOn(e -> e.id().equals(exactAC)).singleElement()
+                .satisfies(e -> assertThat(e.data().pending()).isFalse());
+    }
+
+    /** A source deleted underneath the canvas asserts nothing, yet its placed edge still renders. */
+    @Test
+    void placedHierarchyEdge_whoseSourceWasDeleted_isDrawnUnasserted() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(B, concept(B));
+
+        List<DiagramDto.Edge> edges = builder(live).placed(placedSubclass(A, B)).build()
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.data().asserted()).isFalse();
+            assertThat(e.data().stale()).as("staleness reports the target").isFalse();
+        });
+    }
+
+    @Test
+    void sourceWithNullBroaderList_assertsNothing() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(null).build());
+        live.put(B, concept(B));
+
+        assertThat(builder(live).placed(placedSubclass(A, B)).build()
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of()))
+                .singleElement()
+                .satisfies(e -> assertThat(e.data().asserted()).isFalse());
+    }
+
+    /** The source's own staged parents and an op-6 conversion onto it are both pending. */
+    @Test
+    void ownStagedParentAndAConversion_areBothPending() {
+        DiagramPendingEdit own = new DiagramPendingEdit();
+        own.setBroaderConcept(List.of(C));
+        DiagramPendingEdit.ConvertToHierarchy marker = new DiagramPendingEdit.ConvertToHierarchy();
+        marker.setAddBroaderOn(B);
+        marker.setBroader(A);
+        DiagramPendingEdit convert = new DiagramPendingEdit();
+        convert.setConvertToHierarchy(marker);
+        String ba = placedEdge(DiagramEdgeKind.SUBCLASS_OF, B, A);
+        String bc = placedEdge(DiagramEdgeKind.SUBCLASS_OF, B, C);
+
+        List<DiagramDto.Edge> edges = builder(live(A, B)).overlays(Map.of(B, own, REL, convert))
+                .placed(Set.of(ba, bc)).build()
+                .project(List.of(node(A), node(B), node(C)), types(Map.of(REL, ConceptType.VZTAH)), Map.of());
+
+        assertThat(edges).hasSize(2).allSatisfy(e -> assertThat(e.data().pending()).isTrue());
+    }
+
+    /** A conversion marker missing either end stages nothing. */
+    @Test
+    void incompleteConversionMarkers_stageNoParent() {
+        DiagramPendingEdit.ConvertToHierarchy noTarget = new DiagramPendingEdit.ConvertToHierarchy();
+        noTarget.setBroader(A);
+        DiagramPendingEdit.ConvertToHierarchy noBroader = new DiagramPendingEdit.ConvertToHierarchy();
+        noBroader.setAddBroaderOn(B);
+        DiagramPendingEdit first = new DiagramPendingEdit();
+        first.setConvertToHierarchy(noTarget);
+        DiagramPendingEdit second = new DiagramPendingEdit();
+        second.setConvertToHierarchy(noBroader);
+
+        List<DiagramDto.Edge> edges = builder(live(A, B)).overlays(Map.of(REL, first, C, second))
+                .placed(placedSubclass(B, A)).build()
+                .project(List.of(node(A), node(B)), types(Map.of(REL, ConceptType.VZTAH)), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> assertThat(e.data().pending()).isFalse());
+    }
+
+    @Test
+    void edgeToANonClassNode_isNotDrawn() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, ConceptDetailModel.builder().iri(A).broaderClasses(List.of(PROP)).build());
+        live.put(PROP, concept(PROP));
+
+        assertThat(builder(live).placed(placedSubclass(A, PROP)).build()
+                .project(List.of(node(A), node(PROP)), types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of()))
+                .as("a VLASTNOST node is not a canvas member, so nothing can attach to it")
+                .isEmpty();
+    }
+
+    // ---- VZTAH typing and endpoints -------------------------------------------------------------
+
+    /** With no PG type, a concept carrying both a domain and a range is still a relationship. */
+    @Test
+    void untypedConceptWithDomainAndRange_isDrawnAsAVztah() {
+        List<DiagramDto.Edge> edges = resolving(live(A, B))
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.id()).isEqualTo(REL);
+            assertThat(e.data().edgeKind()).isEqualTo(DiagramEdgeKind.VZTAH);
+        });
+    }
+
+    @Test
+    void untypedConceptMissingAnEndpoint_isNotARelationship() {
+        Map<String, ConceptDetailModel> live = live(A, B);
+        live.put(REL, ConceptDetailModel.builder().iri(REL).range(B).build());
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setDomain(A);
+
+        assertThat(resolverStaging(REL, overlay, live)
+                .project(List.of(node(A), node(B)), types(Map.of()), Map.of()))
+                .as("no domain in RDF: the overlay cannot make it a relationship").isEmpty();
+        live.put(REL, ConceptDetailModel.builder().iri(REL).domain(A).build());
+        assertThat(resolving(live).project(List.of(node(A), node(B)), types(Map.of()), Map.of())).isEmpty();
+    }
+
+    @Test
+    void conceptTypedAsAnotherRole_isNeverAVztahEdge() {
+        assertThat(resolving(live(A, B))
+                .project(List.of(node(A), node(B)), types(Map.of(REL, ConceptType.VLASTNOST)), Map.of()))
+                .isEmpty();
+    }
+
+    @Test
+    void overlayDomainOnly_repointsTheSourceAndIsPending() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setDomain(C);
+
+        List<DiagramDto.Edge> edges = resolverStaging(REL, overlay, live(A, B))
+                .project(List.of(node(A), node(B), node(C)), types(Map.of(REL, ConceptType.VZTAH)), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.source()).isEqualTo("iri:" + C);
+            assertThat(e.target()).isEqualTo("iri:" + B);
+            assertThat(e.data().pending()).isTrue();
+        });
+    }
+
+    /** An overlay that stages no endpoint leaves the live ones in place and the edge settled. */
+    @Test
+    void overlayWithoutEndpoints_keepsLiveEndpoints_notPending() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setExactMatch(List.of(C));
+
+        List<DiagramDto.Edge> edges = resolverStaging(REL, overlay, live(A, B))
+                .project(List.of(node(A), node(B)), types(Map.of(REL, ConceptType.VZTAH)), Map.of());
+
+        assertThat(edges).singleElement().satisfies(e -> {
+            assertThat(e.source()).isEqualTo("iri:" + A);
+            assertThat(e.target()).isEqualTo("iri:" + B);
+            assertThat(e.data().pending()).isFalse();
+            assertThat(e.data().hasPendingEdits()).isTrue();
+        });
+    }
+
+    @Test
+    void deletedVztahWithoutATombstone_isNotDrawn() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+
+        assertThat(resolving(live).project(List.of(node(A), node(B)),
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of())).isEmpty();
+    }
+
+    @Test
+    void vztahWithABlankEndpoint_isNotDrawn() {
+        assertThat(resolving(live(" ", B)).project(List.of(node(A), node(B)),
+                types(Map.of(REL, ConceptType.VZTAH)), Map.of())).isEmpty();
+    }
+
+    // ---- property rows --------------------------------------------------------------------------
+
+    @Test
+    void curatedIriThatIsNotAProperty_rendersNoRow() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(B, ConceptDetailModel.builder().iri(B).domain(A).build());
+
+        assertThat(resolving(live).propertyRows(List.of(nodeWith(A, B)), types(Map.of()), Map.of())).isEmpty();
+    }
+
+    @Test
+    void overlayWithoutDomain_keepsThePropertyInItsLiveClass() {
+        DiagramPendingEdit overlay = new DiagramPendingEdit();
+        overlay.setExactMatch(List.of(C));
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A).build());
+
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolverStaging(PROP, overlay, live)
+                .propertyRows(List.of(nodeWith(A, PROP)), types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of());
+
+        assertThat(rows.get(A)).singleElement().satisfies(r -> assertThat(r.hasPendingEdits()).isTrue());
+    }
+
+    /** Two classes curating the same property render it once, inside its domain. */
+    @Test
+    void propertyCuratedOnTwoNodes_rendersOnceInItsDomain() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(B, concept(B));
+        live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(A).build());
+
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolving(live).propertyRows(
+                List.of(nodeWith(A, PROP), nodeWith(B, PROP)),
+                types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of());
+
+        assertThat(rows).containsOnlyKeys(A);
+        assertThat(rows.get(A)).hasSize(1);
+    }
+
+    @Test
+    void propertyWhoseDomainIsOffCanvas_rendersNoRow() {
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(PROP, ConceptDetailModel.builder().iri(PROP).domain(D).build());
+
+        assertThat(resolving(live).propertyRows(List.of(nodeWith(A, PROP)),
+                types(Map.of(PROP, ConceptType.VLASTNOST)), Map.of())).isEmpty();
+    }
+
+    /**
+     * Sort key fallbacks: the Czech label first, else any label, else the IRI — a blank or missing label
+     * sorts by IRI rather than first.
+     */
+    @Test
+    void propertyRowOrdering_fallsBackFromCzechToAnyLabelToIri() {
+        String p1 = "https://x/pojem/p1-bez-nazvu";
+        String p2 = "https://x/pojem/p2-prazdny";
+        String p3 = "https://x/pojem/p3-anglicky";
+        String p4 = "https://x/pojem/p4-cesky";
+        String p5 = "https://x/pojem/p5-mezera";
+        Map<String, ConceptDetailModel> live = new HashMap<>();
+        live.put(A, concept(A));
+        live.put(p1, ConceptDetailModel.builder().iri(p1).domain(A).build());
+        live.put(p2, ConceptDetailModel.builder().iri(p2).domain(A).name(Map.of()).build());
+        live.put(p3, ConceptDetailModel.builder().iri(p3).domain(A).name(Map.of("en", "Zeta")).build());
+        live.put(p4, ConceptDetailModel.builder().iri(p4).domain(A).name(Map.of("cs", "Alfa", "en", "Zzz")).build());
+        live.put(p5, ConceptDetailModel.builder().iri(p5).domain(A).name(Map.of("cs", " ")).build());
+        String p6 = "https://x/pojem/p6-null";
+        Map<String, String> nullValued = new HashMap<>();
+        nullValued.put("cs", null);
+        live.put(p6, ConceptDetailModel.builder().iri(p6).domain(A).name(nullValued).build());
+        Map<String, ConceptType> types = types(Map.of(p1, ConceptType.VLASTNOST, p2, ConceptType.VLASTNOST,
+                p3, ConceptType.VLASTNOST, p4, ConceptType.VLASTNOST, p5, ConceptType.VLASTNOST,
+                p6, ConceptType.VLASTNOST));
+
+        Map<String, List<DiagramDto.PropertyRow>> rows = resolving(live)
+                .propertyRows(List.of(nodeWith(A, p6, p5, p3, p2, p4, p1)), types, Map.of());
+
+        // "alfa" < "https://…p1" < "…p2" < "…p5" < "…p6" < "zeta"
+        assertThat(rows.get(A)).extracting(DiagramDto.PropertyRow::iri)
+                .containsExactly(p4, p1, p2, p5, p6, p3);
     }
 }

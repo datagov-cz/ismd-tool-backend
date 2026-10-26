@@ -15,4 +15,9 @@ public class ConflictingConceptTypeException extends ModelProcessingException {
         super("Concept is typed with more than one role: " + roles.stream().map(ConceptType::name).sorted()
                 .collect(Collectors.joining(" + ")));
     }
+
+    /** Adds the concept IRI to a conflict raised where only the types were known. */
+    public ConflictingConceptTypeException(String conceptIri, ConflictingConceptTypeException cause) {
+        super(cause.getMessage() + ": " + conceptIri, cause);
+    }
 }

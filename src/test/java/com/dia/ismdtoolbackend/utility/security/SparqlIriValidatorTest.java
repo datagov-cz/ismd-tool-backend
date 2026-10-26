@@ -1,7 +1,12 @@
 package com.dia.ismdtoolbackend.utility.security;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -125,5 +130,59 @@ class SparqlIriValidatorTest {
         assertFalse(SparqlIriValidator.isEsbirkaEliIri(null));
         assertFalse(SparqlIriValidator.isEsbirkaEliIri(""));
         assertFalse(SparqlIriValidator.isEsbirkaEliIri("   "));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"<", ">", "\"", "{", "}", "|", "^", "`", "\\", " ", "\t", "\u0001"})
+    void rejectsEveryCharacterThatCanCloseAnIriRef(String c) {
+        assertThat(SparqlIriValidator.isSafeHttpIri("https://example.org/a" + c + "b")).isFalse();
+    }
+
+    @Test
+    void acceptsRawUtf8Iri() {
+        assertThat(SparqlIriValidator.isSafeHttpIri("https://slovník.gov.cz/datový/řidič")).isTrue();
+    }
+
+    @Test
+    void rejectsRelativeIri() {
+        assertThat(SparqlIriValidator.isSafeHttpIri("/pojem/osoba")).isFalse();
+    }
+
+    // --- registry facade ----------------------------------------------------
+
+    @Test
+    void esbirkaChecksFollowThePublishedRegistry() {
+        KnownSparqlEndpoint moved = new KnownSparqlEndpoint(SparqlEndpointRegistry.ESBIRKA,
+                "https://esbirka.example.org", "https://esbirka.example.org/esb",
+                "https://esbirka.example.org/esb/eli/");
+        SparqlIriValidator.setRegistry(new SparqlEndpointRegistry() {
+            @Override
+            public Optional<KnownSparqlEndpoint> findByName(String name) {
+                return Optional.of(moved);
+            }
+        });
+        try {
+            assertThat(SparqlIriValidator.isEsbirkaEliIri("https://esbirka.example.org/esb/eli/cz/sb/2006/187")).isTrue();
+            assertThat(SparqlIriValidator.esbirkaDomain()).isEqualTo("https://esbirka.example.org");
+        } finally {
+            SparqlIriValidator.setRegistry(null);
+        }
+    }
+
+    @Test
+    void registryWithoutEsbirkaFallsBackToCanonicalHost() {
+        SparqlIriValidator.setRegistry(new SparqlEndpointRegistry() {
+            @Override
+            public Optional<KnownSparqlEndpoint> findByName(String name) {
+                return Optional.empty();
+            }
+        });
+        try {
+            assertThat(SparqlIriValidator.esbirkaDomain()).isEqualTo("https://opendata.eselpoint.gov.cz");
+            assertThat(SparqlIriValidator.extractEsbirkaEliPath(
+                    "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187")).isEqualTo("/eli/cz/sb/2006/187");
+        } finally {
+            SparqlIriValidator.setRegistry(null);
+        }
     }
 }
