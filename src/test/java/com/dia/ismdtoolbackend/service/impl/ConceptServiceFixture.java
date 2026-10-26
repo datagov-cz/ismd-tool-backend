@@ -29,7 +29,7 @@ import static org.mockito.Mockito.mock;
 /**
  * Builds a {@link ConceptServiceImpl} and its operation classes for tests. Collaborators doing I/O are mocks and pure
  * ones are real, unless a test replaces them; a test reads its mocks from here, so it can only stub what the service
- * really uses.
+ * really uses. A delegate's own test builds only that delegate with the matching {@code build*} method.
  * Create the fixture in {@code @BeforeEach}: mocks made there are covered by the Mockito extension's strict stubs.
  */
 @Getter
@@ -65,24 +65,49 @@ public final class ConceptServiceFixture {
     private NkdConfig nkdConfig = new NkdConfig();
 
     public ConceptServiceImpl build() {
-        ConceptAccessGuard accessGuard = new ConceptAccessGuard(conceptMetadataRepository);
-        InitialGraphGuard initialGraphGuard = new InitialGraphGuard(outboxRepository);
-        ConceptEditOperation editOperation = new ConceptEditOperation(conceptMetadataRepository, jenaTDB2Repository,
+        ConceptEditOperation editOperation = buildEditOperation();
+        ConceptDetailReader detailReader = buildDetailReader();
+        return new ConceptServiceImpl(
+                buildCreateOperation(),
+                editOperation,
+                buildDeleteOperation(),
+                new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
+                        deviationComparator, syncFields, accessGuard(), editOperation, detailReader),
+                detailReader);
+    }
+
+    ConceptCreateOperation buildCreateOperation() {
+        return new ConceptCreateOperation(conceptMetadataRepository, ontologyMetadataRepository, metadataTouchService,
+                conceptMetadataMapper, conceptCreator, outboxWriter, outboxRelayTrigger, initialGraphGuard());
+    }
+
+    ConceptEditOperation buildEditOperation() {
+        return new ConceptEditOperation(conceptMetadataRepository, jenaTDB2Repository,
                 metadataTouchService, conceptMetadataMapper, conceptEditor, outboxWriter, outboxRelayTrigger,
-                accessGuard, initialGraphGuard,
-                new NkdLinkReconciler(conceptMetadataRepository, nkdSparqlClient, nkdSnapshotService, nkdLinkDetector));
-        ConceptDetailReader detailReader = new ConceptDetailReader(conceptMetadataRepository, jenaTDB2Repository,
+                accessGuard(), initialGraphGuard(), buildNkdLinkReconciler());
+    }
+
+    ConceptDeleteOperation buildDeleteOperation() {
+        return new ConceptDeleteOperation(conceptMetadataRepository, jenaTDB2Repository, metadataTouchService,
+                nkdSnapshotService, outboxWriter, outboxRelayTrigger, accessGuard(), initialGraphGuard());
+    }
+
+    ConceptDetailReader buildDetailReader() {
+        return new ConceptDetailReader(conceptMetadataRepository, jenaTDB2Repository,
                 conceptMetadataMapper, commentRepository, detailExtractor, referencedConceptsEnricher,
                 rppSnapshotHolder, nkodCodelistService, nkdSnapshotService, nkdSnapshotWarmer, nkdConfig,
                 workingCopyDeviationService);
-        return new ConceptServiceImpl(
-                new ConceptCreateOperation(conceptMetadataRepository, ontologyMetadataRepository, metadataTouchService,
-                        conceptMetadataMapper, conceptCreator, outboxWriter, outboxRelayTrigger, initialGraphGuard),
-                editOperation,
-                new ConceptDeleteOperation(conceptMetadataRepository, jenaTDB2Repository, metadataTouchService,
-                        nkdSnapshotService, outboxWriter, outboxRelayTrigger, accessGuard, initialGraphGuard),
-                new WorkingCopySyncOperation(conceptMetadataRepository, jenaTDB2Repository, nkdSparqlClient,
-                        deviationComparator, syncFields, accessGuard, editOperation, detailReader),
-                detailReader);
+    }
+
+    NkdLinkReconciler buildNkdLinkReconciler() {
+        return new NkdLinkReconciler(conceptMetadataRepository, nkdSparqlClient, nkdSnapshotService, nkdLinkDetector);
+    }
+
+    private ConceptAccessGuard accessGuard() {
+        return new ConceptAccessGuard(conceptMetadataRepository);
+    }
+
+    private InitialGraphGuard initialGraphGuard() {
+        return new InitialGraphGuard(outboxRepository);
     }
 }

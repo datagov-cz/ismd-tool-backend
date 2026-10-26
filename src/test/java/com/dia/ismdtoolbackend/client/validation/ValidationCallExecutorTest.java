@@ -12,7 +12,9 @@ import org.springframework.web.client.ResourceAccessException;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class ValidationCallExecutorTest {
 
@@ -26,35 +28,36 @@ class ValidationCallExecutorTest {
     @Test
     void strict_success_returnsValue() {
         ValidationCallExecutor exec = executor(5, Duration.ofSeconds(30));
-        assertEquals("ok", exec.strict("t", () -> "ok"));
+        assertThat(exec.strict("t", () -> "ok")).isEqualTo("ok");
     }
 
     @Test
     void strict_resourceAccess_mapsToUnavailable() {
         ValidationCallExecutor exec = executor(1000, Duration.ofSeconds(30));
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> exec.strict("t", () -> { throw new ResourceAccessException("timeout"); }));
+        assertThatThrownBy(() -> exec.strict("t", () -> { throw new ResourceAccessException("timeout"); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
     }
 
     @Test
     void strict_5xx_mapsToUnavailable() {
         ValidationCallExecutor exec = executor(1000, Duration.ofSeconds(30));
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> exec.strict("t", () -> {
+        assertThatThrownBy(() -> exec.strict("t", () -> {
                     throw HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "x", null, null, null);
-                }));
+                }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
     }
 
     @Test
     void strict_4xx_mapsToRejection_withValidatorMessage() {
         ValidationCallExecutor exec = executor(1000, Duration.ofSeconds(30));
         String body = "{\"message\":\"Invalid TTL syntax: foo\"}";
-        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
-                () -> exec.strict("t", () -> {
+        OntologyValidationException ex = assertThatExceptionOfType(OntologyValidationException.class)
+                .isThrownBy(() -> exec.strict("t", () -> {
                     throw HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "Bad Request",
                             null, body.getBytes(), null);
-                }));
-        assertTrue(ex.getMessage().contains("Invalid TTL syntax: foo"));
+                }))
+                .actual();
+        assertThat(ex).hasMessageContaining("Invalid TTL syntax: foo");
     }
 
     @Test
@@ -64,21 +67,21 @@ class ValidationCallExecutorTest {
 
         // Two unavailable failures trip the breaker.
         for (int i = 0; i < 2; i++) {
-            assertThrows(ValidationServiceUnavailableException.class,
-                    () -> exec.strict("t", () -> {
+            assertThatThrownBy(() -> exec.strict("t", () -> {
                         calls.incrementAndGet();
                         throw new ResourceAccessException("down");
-                    }));
+                    }))
+                    .isInstanceOf(ValidationServiceUnavailableException.class);
         }
-        assertEquals(2, calls.get());
+        assertThat(calls.get()).isEqualTo(2);
 
         // Breaker now open — the action must NOT be invoked.
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> exec.strict("t", () -> {
+        assertThatThrownBy(() -> exec.strict("t", () -> {
                     calls.incrementAndGet();
                     return "should not run";
-                }));
-        assertEquals(2, calls.get(), "open breaker must fast-fail without calling the action");
+                }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(calls.get()).as("open breaker must fast-fail without calling the action").isEqualTo(2);
     }
 
     @Test
@@ -88,14 +91,14 @@ class ValidationCallExecutorTest {
 
         // Many 4xx rejections — the validator is UP, so the breaker must never open.
         for (int i = 0; i < 5; i++) {
-            assertThrows(OntologyValidationException.class,
-                    () -> exec.strict("t", () -> {
+            assertThatThrownBy(() -> exec.strict("t", () -> {
                         calls.incrementAndGet();
                         throw HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "x",
                                 null, "{\"message\":\"bad\"}".getBytes(), null);
-                    }));
+                    }))
+                    .isInstanceOf(OntologyValidationException.class);
         }
-        assertEquals(5, calls.get(), "every rejection call should reach the action (breaker stays closed)");
+        assertThat(calls.get()).as("every rejection call should reach the action (breaker stays closed)").isEqualTo(5);
     }
 
     @Test
@@ -103,7 +106,7 @@ class ValidationCallExecutorTest {
         ValidationCallExecutor exec = executor(1000, Duration.ofSeconds(30));
         String result = exec.lenient("t",
                 () -> { throw new ResourceAccessException("down"); }, "fallback");
-        assertEquals("fallback", result);
+        assertThat(result).isEqualTo("fallback");
     }
 
     @Test
@@ -112,6 +115,6 @@ class ValidationCallExecutorTest {
         String result = exec.lenient("t",
                 () -> { throw HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "x",
                         null, "{\"message\":\"bad\"}".getBytes(), null); }, "fallback");
-        assertEquals("fallback", result);
+        assertThat(result).isEqualTo("fallback");
     }
 }

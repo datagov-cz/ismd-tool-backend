@@ -20,10 +20,9 @@ import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.sparqlJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class RppSparqlClientTest {
 
@@ -47,7 +46,7 @@ class RppSparqlClientTest {
     void emptyResultSetReturnsEmptyList() {
         stubSparql(emptyResults());
         List<RppAgenda> out = client.fetchAllAgendas();
-        assertEquals(0, out.size());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -55,9 +54,9 @@ class RppSparqlClientTest {
         stubSparql(SparqlJson.select("isvs", "code", "nazev", "agenda")
                 .row(uri("isvs", "http://example.org/i/1"), literal("code", "100"), literal("nazev", "Alfa")));
         List<RppIsvs> out = client.fetchAllIsvs();
-        assertEquals(1, out.size());
-        assertEquals("http://example.org/i/1", out.get(0).getIri());
-        assertEquals(0, out.get(0).getAgendaIris().size());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getIri()).isEqualTo("http://example.org/i/1");
+        assertThat(out.get(0).getAgendaIris()).isEmpty();
     }
 
     @Test
@@ -65,8 +64,8 @@ class RppSparqlClientTest {
         stubSparql(SparqlJson.select("isvs", "code", "nazev", "agenda")
                 .row(isvsAlfa("http://example.org/a/A1")));
         List<RppIsvs> out = client.fetchAllIsvs();
-        assertEquals(1, out.size());
-        assertEquals(List.of("http://example.org/a/A1"), out.get(0).getAgendaIris());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getAgendaIris()).isEqualTo(List.of("http://example.org/a/A1"));
     }
 
     @Test
@@ -76,8 +75,8 @@ class RppSparqlClientTest {
                 .row(isvsAlfa("http://example.org/a/A2"))
                 .row(isvsAlfa("http://example.org/a/A1")));
         List<RppIsvs> out = client.fetchAllIsvs();
-        assertEquals(1, out.size());
-        assertEquals(List.of("http://example.org/a/A1", "http://example.org/a/A2"), out.get(0).getAgendaIris());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getAgendaIris()).isEqualTo(List.of("http://example.org/a/A1", "http://example.org/a/A2"));
     }
 
     @Test
@@ -86,29 +85,33 @@ class RppSparqlClientTest {
                 .row(uri("agenda", "http://example.org/a/A1"), literal("nazev", "Missing code"))
                 .row(uri("agenda", "http://example.org/a/A2"), literal("code", "2"), literal("nazev", "Valid")));
         List<RppAgenda> out = client.fetchAllAgendas();
-        assertEquals(1, out.size());
-        assertEquals("2", out.get(0).getCode());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getCode()).isEqualTo("2");
     }
 
     @Test
     void upstream500ThrowsRppUnavailable() {
         WM.stubFor(any(anyUrl()).willReturn(serverError()));
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
+        assertThatThrownBy(() -> client.fetchAllAgendas()).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
     void upstreamTimeoutThrowsRppUnavailable() {
         ReflectionTestUtils.setField(client, "rppSparqlTimeout", 250);
         WM.stubFor(any(anyUrl()).willReturn(sparqlJson(emptyResults()).withFixedDelay(1_500)));
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
-        assertNotNull(ex.getMessage());
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> client.fetchAllAgendas())
+                .actual();
+        assertThat(ex.getMessage()).isNotNull();
     }
 
     @Test
     void unconfiguredEndpointThrowsRppUnavailable() {
         ReflectionTestUtils.setField(client, "rppEndpoint", "");
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchAllAgendas());
-        assertTrue(ex.getMessage().contains("not configured"));
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> client.fetchAllAgendas())
+                .actual();
+        assertThat(ex).hasMessageContaining("not configured");
     }
 
     private static SparqlJson.Binding[] isvsAlfa(String agendaIri) {

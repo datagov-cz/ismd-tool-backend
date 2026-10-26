@@ -27,7 +27,7 @@ import lombok.experimental.Accessors;
 import static org.mockito.Mockito.mock;
 
 /**
- * Builds an {@link OntologyServiceImpl} and its operation classes for tests. Every collaborator is a mock unless a
+ * Builds an {@link OntologyServiceImpl}, or one of its operation classes, for tests. Every collaborator is a mock unless a
  * test replaces it, and a test reads its mocks from here, so it can only stub what the service really uses.
  * Create the fixture in {@code @BeforeEach}: mocks made there are covered by the Mockito extension's strict stubs.
  */
@@ -58,22 +58,39 @@ public final class OntologyServiceFixture {
     private NkdConfig nkdConfig = new NkdConfig();
 
     public OntologyServiceImpl build() {
-        OntologyMetadataEnricher enricher = new OntologyMetadataEnricher(
-                jenaTDB2Repository, ontologyMetadataMapper, commentRepository);
-        InitialGraphGuard initialGraphGuard = new InitialGraphGuard(outboxRepository);
-        return new OntologyServiceImpl(
-                new OntologyCreateOperation(ontologyMetadataRepository, conceptMetadataRepository,
-                        ontologyMetadataMapper, outboxWriter, outboxRepository, outboxRelayTrigger, enricher),
-                new OntologyEditOperation(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
-                        ontologyEditor, metadataTouchService, ontologyMetadataMapper, enricher, initialGraphGuard),
-                new OntologyDeleteOperation(ontologyMetadataRepository, conceptMetadataRepository,
-                        validationReportRepository, nkdSnapshotService, outboxWriter,
-                        outboxRelayTrigger, initialGraphGuard),
-                new OntologyDetailReader(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
-                        commentRepository, ontologyMetadataMapper, conceptMetadataMapper, detailExtractor,
-                        deviationChecker, nkdSnapshotRepository, nkdSnapshotWarmer, nkdConfig, nkdDetailService,
-                        enricher),
-                new OntologyMetadataReader(ontologyMetadataRepository, ontologyMetadataMapper, enricher),
-                new OntologyTurtleExport(jenaTDB2Repository));
+        return new OntologyServiceImpl(createOperation(), editOperation(), deleteOperation(), detailReader(),
+                metadataReader(), new OntologyTurtleExport(jenaTDB2Repository));
+    }
+
+    OntologyMetadataEnricher metadataEnricher() {
+        return new OntologyMetadataEnricher(jenaTDB2Repository, ontologyMetadataMapper, commentRepository);
+    }
+
+    OntologyCreateOperation createOperation() {
+        return new OntologyCreateOperation(ontologyMetadataRepository, conceptMetadataRepository,
+                ontologyMetadataMapper, outboxWriter, outboxRepository, outboxRelayTrigger, metadataEnricher());
+    }
+
+    OntologyEditOperation editOperation() {
+        return new OntologyEditOperation(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
+                ontologyEditor, metadataTouchService, ontologyMetadataMapper, metadataEnricher(),
+                new InitialGraphGuard(outboxRepository));
+    }
+
+    OntologyDeleteOperation deleteOperation() {
+        return new OntologyDeleteOperation(ontologyMetadataRepository, conceptMetadataRepository,
+                validationReportRepository, nkdSnapshotService, outboxWriter, outboxRelayTrigger,
+                new InitialGraphGuard(outboxRepository));
+    }
+
+    OntologyDetailReader detailReader() {
+        return new OntologyDetailReader(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
+                commentRepository, ontologyMetadataMapper, conceptMetadataMapper, detailExtractor,
+                deviationChecker, nkdSnapshotRepository, nkdSnapshotWarmer, nkdConfig, nkdDetailService,
+                metadataEnricher());
+    }
+
+    OntologyMetadataReader metadataReader() {
+        return new OntologyMetadataReader(ontologyMetadataRepository, ontologyMetadataMapper, metadataEnricher());
     }
 }

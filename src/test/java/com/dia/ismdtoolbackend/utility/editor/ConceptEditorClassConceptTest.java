@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
@@ -15,9 +15,9 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.iris;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.literals;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.types;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.literals;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.types;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -32,23 +32,23 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
     private static final String ACQUISITION_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/způsoby-získání-údajů/položky/";
     private static final String CONTENT_TYPE_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
 
-    private static final Property DESCRIPTION = Rdf.property(DCT_NS + "description");
-    private static final Property HIERARCHY = Rdf.property(DEFAULT_NS + "nadřazená-třída");
-    private static final Property DEFINING_LEGAL = Rdf.property(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
-    private static final Property RELATED_LEGAL = Rdf.property(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
-    private static final Property DEFINING_NON_LEGAL = Rdf.property(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-    private static final Property RELATED_NON_LEGAL = Rdf.property(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
-    private static final Property PROVISION = Rdf.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-    private static final Property SHARING = Rdf.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
-    private static final Property ACQUISITION = Rdf.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
-    private static final Property CONTENT_TYPE = Rdf.property(OFN_NAMESPACE + TYP_OBSAHU);
-    private static final Property AGENDA = Rdf.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
+    private static final Property DESCRIPTION = Ttl.property(DCT_NS + "description");
+    private static final Property HIERARCHY = Ttl.property(DEFAULT_NS + "nadřazená-třída");
+    private static final Property DEFINING_LEGAL = Ttl.property(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+    private static final Property RELATED_LEGAL = Ttl.property(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
+    private static final Property DEFINING_NON_LEGAL = Ttl.property(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+    private static final Property RELATED_NON_LEGAL = Ttl.property(DEFAULT_NS + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
+    private static final Property PROVISION = Ttl.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+    private static final Property SHARING = Ttl.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
+    private static final Property ACQUISITION = Ttl.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
+    private static final Property CONTENT_TYPE = Ttl.property(OFN_NAMESPACE + TYP_OBSAHU);
+    private static final Property AGENDA = Ttl.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
     private static final Property EXACT_MATCH = SKOS.exactMatch;
-    private static final Property IN_TEZAURUS = Rdf.property(DEFAULT_NS + "inTezaurus");
+    private static final Property IN_TEZAURUS = Ttl.property(DEFAULT_NS + "inTezaurus");
 
     /** Seeds {@link #CONCEPT} as a class labelled "Třída" plus the given Turtle predicate-object list. */
     private void seedClass(String extraPredicates) {
-        Rdf.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
     }
 
     private ConceptEditor.EditResult edit() {
@@ -65,7 +65,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         @Test
         void newNameMovesEveryTripleToTheIriDerivedFromTheIdentifier() {
             String oldIri = "https://slovnik.gov.cz/pojem/old-class";
-            Rdf.add(model, "<" + oldIri + "> a skos:Concept ; skos:prefLabel \"Old name\"@cs .");
+            Ttl.add(model, "<" + oldIri + "> a skos:Concept ; skos:prefLabel \"Old name\"@cs .");
             classConceptEditModel.setNameModel(Texts.name("cs", "New name"));
             classConceptEditModel.setIdentifier("ID-1");
 
@@ -74,17 +74,17 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
             String newIri = DEFAULT_NS + "pojem/id-1";
             assertThat(result.iriChanged).isTrue();
             assertThat(result.newConceptIRI).isEqualTo(newIri);
-            assertThat(model.isIsomorphicWith(Rdf.model(
+            assertThat(model.isIsomorphicWith(Ttl.parse(
                     "<" + newIri + "> a skos:Concept ; skos:prefLabel \"New name\"@cs ."))).isTrue();
         }
 
         @Test
         void incomingReferencesFollowTheRename() {
             String oldIri = DEFAULT_NS + "pojem/stará-třída";
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> a ofn:třída ; skos:prefLabel "Stará třída"@cs .
-                    pojem:vlastnost rdfs:domain <%s> .
-                    """.formatted(oldIri, oldIri));
+                    <%s> rdfs:domain <%s> .
+                    """.formatted(oldIri, DEFAULT_NS + "pojem/vlastnost", oldIri));
             classConceptEditModel.setNameModel(Texts.name("cs", "Nová třída"));
 
             ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
@@ -98,7 +98,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         @Test
         void fieldsEditedInTheSameRequestReplaceTheCopiedValues() {
             String oldIri = DEFAULT_NS + "pojem/stará-třída";
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> a ofn:třída, ofn:typ-objektu-práva, l111:veřejný-údaj ;
                         skos:prefLabel "Stará třída"@cs ;
                         rdfs:subClassOf <https://example.com/old-broader> .
@@ -226,7 +226,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
             edit();
 
-            Model expected = Rdf.model("""
+            Model expected = Ttl.parse("""
                     <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
                         sl:%s [ a <%s> ; <%s> <https://example.com/doc1> ;
                                 dct:title "Doc 1"@cs ; dct:description "Popis 1"@cs ] ;
@@ -268,7 +268,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
             edit();
 
-            Model expected = Rdf.model("""
+            Model expected = Ttl.parse("""
                     <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
                         sl:%s [ a <%s> ; <%s> <https://example.com/doc2> ; dct:title "Doc 2"@cs ] .
                     """.formatted(CONCEPT, DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
@@ -312,7 +312,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
 
             ConceptEditor.EditResult result = edit();
 
-            assertThat(model.isIsomorphicWith(Rdf.model("""
+            assertThat(model.isIsomorphicWith(Ttl.parse("""
                     <%s> a ofn:třída ; skos:prefLabel "Nová třída"@cs ;
                         dct:description "New description"@cs ;
                         skos:definition "New definition"@cs ;
@@ -437,7 +437,7 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         @Test
         void renameWithTypeChangeAndNonPublicDropsTheOldClassification() {
             String oldIri = DEFAULT_NS + "pojem/stará";
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> a ofn:třída, ofn:typ-objektu-práva, l111:veřejný-údaj ; skos:prefLabel "Stará"@cs .
                     """.formatted(oldIri));
             classConceptEditModel.setNameModel(Texts.name("cs", "Nová"));

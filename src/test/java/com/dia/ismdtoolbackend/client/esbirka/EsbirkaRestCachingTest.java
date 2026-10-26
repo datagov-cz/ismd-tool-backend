@@ -30,8 +30,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Through Spring's caching proxy: one fetch per version, shared by content loads and resolves. */
 @SpringJUnitConfig(EsbirkaRestCachingTest.Beans.class)
@@ -101,13 +100,13 @@ class EsbirkaRestCachingTest {
                     CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size(), callers),
                     CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size(), callers),
                     CompletableFuture.supplyAsync(() -> client.fetchVersionContent(V_49).size(), callers));
-            loads.forEach(load -> assertEquals(2508, load.join()));
+            loads.forEach(load -> assertThat(load.join()).isEqualTo(2508));
         } finally {
             callers.shutdownNow();
         }
 
-        assertTrue(client.resolveFragment(V_49 + "/dokument/norma/cast_1/par_1", V_49, B + "/sb/1997/49").isPresent());
-        assertTrue(client.resolveFragment(V_49 + "/dokument/norma/cast_1", V_49, B + "/sb/1997/49").isPresent());
+        assertThat(client.resolveFragment(V_49 + "/dokument/norma/cast_1/par_1", V_49, B + "/sb/1997/49")).isPresent();
+        assertThat(client.resolveFragment(V_49 + "/dokument/norma/cast_1", V_49, B + "/sb/1997/49")).isPresent();
         client.fetchVersions(B + "/sb/1997/49");
 
         for (int n = 0; n < 3; n++) {

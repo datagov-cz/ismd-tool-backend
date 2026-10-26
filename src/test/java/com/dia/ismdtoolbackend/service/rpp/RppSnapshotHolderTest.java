@@ -17,10 +17,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,9 +49,9 @@ class RppSnapshotHolderTest {
 
         RppSnapshot snap = holder.get();
 
-        assertEquals(T0, snap.getLoadedAt());
-        assertEquals(1, snap.getAgendas().size());
-        assertEquals(1, snap.getIsvs().size());
+        assertThat(snap.getLoadedAt()).isEqualTo(T0);
+        assertThat(snap.getAgendas()).hasSize(1);
+        assertThat(snap.getIsvs()).hasSize(1);
         verify(client, times(1)).fetchAllAgendas();
         verify(client, times(1)).fetchAllIsvs();
     }
@@ -67,7 +65,7 @@ class RppSnapshotHolderTest {
         clock.set(T0.plusSeconds(3600));
         RppSnapshot second = holder.get();
 
-        assertSame(first, second);
+        assertThat(second).isSameAs(first);
         verify(client, times(1)).fetchAllAgendas();
         verify(client, times(1)).fetchAllIsvs();
     }
@@ -96,14 +94,14 @@ class RppSnapshotHolderTest {
         clock.set(T0.plusSeconds(25 * 3600));
         RppSnapshot served = holder.get();
 
-        assertSame(stale, served);
+        assertThat(served).isSameAs(stale);
     }
 
     @Test
     void refetchFailureWithEmptyCacheThrows() {
         when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
 
-        assertThrows(SparqlEndpointUnavailableException.class, () -> holder.get());
+        assertThatThrownBy(() -> holder.get()).isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
@@ -115,8 +113,8 @@ class RppSnapshotHolderTest {
 
         Optional<RppAgenda> found = holder.findAgendaByIri("a2-iri");
 
-        assertTrue(found.isPresent());
-        assertEquals("2", found.get().getCode());
+        assertThat(found).isPresent();
+        assertThat(found.get().getCode()).isEqualTo("2");
     }
 
     @Test
@@ -124,13 +122,13 @@ class RppSnapshotHolderTest {
         when(client.fetchAllAgendas()).thenReturn(List.of(new RppAgenda("a1-iri", "1", "Ag")));
         when(client.fetchAllIsvs()).thenReturn(List.of());
 
-        assertTrue(holder.findAgendaByIri("unknown-iri").isEmpty());
+        assertThat(holder.findAgendaByIri("unknown-iri")).isEmpty();
     }
 
     @Test
     void findAgendaByIriReturnsEmptyForNullOrBlank() {
-        assertTrue(holder.findAgendaByIri(null).isEmpty());
-        assertTrue(holder.findAgendaByIri("  ").isEmpty());
+        assertThat(holder.findAgendaByIri(null)).isEmpty();
+        assertThat(holder.findAgendaByIri("  ")).isEmpty();
         verify(client, times(0)).fetchAllAgendas();
     }
 
@@ -142,22 +140,22 @@ class RppSnapshotHolderTest {
 
         Optional<RppIsvs> found = holder.findIsvsByIri("i1-iri");
 
-        assertTrue(found.isPresent());
-        assertEquals("Isvs One", found.get().getNazev());
+        assertThat(found).isPresent();
+        assertThat(found.get().getNazev()).isEqualTo("Isvs One");
     }
 
     @Test
     void findAgendaByIriReturnsEmptyWhenSnapshotUnavailable() {
         when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
 
-        assertTrue(holder.findAgendaByIri("a-iri").isEmpty());
+        assertThat(holder.findAgendaByIri("a-iri")).isEmpty();
     }
 
     @Test
     void findIsvsByIriReturnsEmptyWhenSnapshotUnavailable() {
         when(client.fetchAllAgendas()).thenThrow(new SparqlEndpointUnavailableException("RPP", "upstream down"));
 
-        assertTrue(holder.findIsvsByIri("i-iri").isEmpty());
+        assertThat(holder.findIsvsByIri("i-iri")).isEmpty();
     }
 
     @Test
@@ -169,7 +167,7 @@ class RppSnapshotHolderTest {
         RppSnapshot afterWarm = holder.get();
 
         // one build during warm-up; get() hits the warm cache and does not refetch
-        assertEquals(1, afterWarm.getAgendas().size());
+        assertThat(afterWarm.getAgendas()).hasSize(1);
         verify(client, times(1)).fetchAllAgendas();
         verify(client, times(1)).fetchAllIsvs();
     }
@@ -181,7 +179,7 @@ class RppSnapshotHolderTest {
         // must not propagate — startup event listener stays quiet and get() falls back to lazy build
         holder.warmOnStartup();
 
-        assertTrue(holder.peek().isEmpty());
+        assertThat(holder.peek().isEmpty()).isTrue();
     }
 
     @Test
@@ -195,7 +193,7 @@ class RppSnapshotHolderTest {
         holder.scheduledRefresh();            // still within TTL, but must rebuild anyway
         RppSnapshot refreshed = holder.get();
 
-        assertEquals(2, refreshed.getAgendas().size());
+        assertThat(refreshed.getAgendas()).hasSize(2);
         verify(client, times(2)).fetchAllAgendas();
     }
 
@@ -210,6 +208,6 @@ class RppSnapshotHolderTest {
         holder.scheduledRefresh();            // upstream now down — must not evict the good snapshot
         RppSnapshot served = holder.get();
 
-        assertSame(good, served);
+        assertThat(served).isSameAs(good);
     }
 }

@@ -1,14 +1,14 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.iris;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Edits of relationship concepts (VZTAH) through {@link ConceptEditor}. */
@@ -18,7 +18,7 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
     private static final String ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/";
 
     private void seedRelationship(String extraPredicates) {
-        Rdf.add(model, "<" + CONCEPT + "> a ofn:vztah ; skos:prefLabel \"Vztah\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a ofn:vztah ; skos:prefLabel \"Vztah\"@cs " + extraPredicates + " .");
     }
 
     @Test
@@ -44,7 +44,7 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
                 conceptEditor.editConcept(CONCEPT, relationshipConceptEditModel, model, null);
 
         assertThat(result.iriChanged).isFalse();
-        assertThat(model.isIsomorphicWith(Rdf.model("""
+        assertThat(model.isIsomorphicWith(Ttl.parse("""
                 <%s> a ofn:vztah ; skos:prefLabel "Vztah"@cs ;
                     rdfs:domain <https://example.com/new-domain> ;
                     rdfs:range <https://example.com/new-range> ;

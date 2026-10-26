@@ -1,7 +1,7 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.vocabulary.RDFS;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -10,7 +10,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import java.util.List;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.iris;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Edits of property concepts (VLASTNOST) through {@link ConceptEditor}. */
@@ -20,7 +20,7 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
     private static final String CONTENT_TYPE_ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/";
 
     private void seedProperty(String extraPredicates) {
-        Rdf.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs " + extraPredicates + " .");
     }
 
     @Test
@@ -41,7 +41,7 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
         ConceptEditor.EditResult result = conceptEditor.editConcept(CONCEPT, propertyConceptEditModel, model, null);
 
         assertThat(result.iriChanged).isFalse();
-        assertThat(model.isIsomorphicWith(Rdf.model("""
+        assertThat(model.isIsomorphicWith(Ttl.parse("""
                 <%s> a ofn:vlastnost ; skos:prefLabel "Vlastnost"@cs ;
                     rdfs:domain <https://example.com/new-domain> ;
                     rdfs:range xsd:string ;

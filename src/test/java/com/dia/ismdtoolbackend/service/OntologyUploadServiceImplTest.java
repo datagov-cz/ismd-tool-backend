@@ -42,7 +42,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -92,8 +94,8 @@ class OntologyUploadServiceImplTest {
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
-        assertEquals(OntologyValidationStatus.VALIDATED, captor.getValue().getLastValidationStatus());
-        assertNotNull(captor.getValue().getLastValidationAt());
+        assertThat(captor.getValue().getLastValidationStatus()).isEqualTo(OntologyValidationStatus.VALIDATED);
+        assertThat(captor.getValue().getLastValidationAt()).isNotNull();
     }
 
     @Test
@@ -110,8 +112,8 @@ class OntologyUploadServiceImplTest {
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
-        assertEquals(OntologyValidationStatus.SKIPPED_UNAVAILABLE, captor.getValue().getLastValidationStatus());
-        assertNotNull(captor.getValue().getLastValidationAt());
+        assertThat(captor.getValue().getLastValidationStatus()).isEqualTo(OntologyValidationStatus.SKIPPED_UNAVAILABLE);
+        assertThat(captor.getValue().getLastValidationAt()).isNotNull();
         verify(validationReportRepository, never()).save(any());
     }
 
@@ -121,7 +123,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -130,7 +132,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -139,7 +141,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.JSONLD, result);
+        assertThat(result).isEqualTo(Lang.JSONLD);
     }
 
     @Test
@@ -148,7 +150,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.JSONLD, result);
+        assertThat(result).isEqualTo(Lang.JSONLD);
     }
 
     @Test
@@ -158,7 +160,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -168,7 +170,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.JSONLD, result);
+        assertThat(result).isEqualTo(Lang.JSONLD);
     }
 
     @Test
@@ -178,7 +180,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertNull(result);
+        assertThat(result).isNull();
     }
 
     @Test
@@ -188,7 +190,7 @@ class OntologyUploadServiceImplTest {
         
         Lang result = ontologyUploadService.determineRDFFormat(multipartFile);
         
-        assertEquals(Lang.TURTLE, result);
+        assertThat(result).isEqualTo(Lang.TURTLE);
     }
 
     @Test
@@ -222,9 +224,9 @@ class OntologyUploadServiceImplTest {
 
         OntologyMetadataModel result = ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
-        assertNotNull(result);
-        assertEquals(ontologyIRI, result.getGraphName());
-        assertEquals(userId, result.getUser().getUserId());
+        assertThat(result).isNotNull();
+        assertThat(result.getGraphName()).isEqualTo(ontologyIRI);
+        assertThat(result.getUser().getUserId()).isEqualTo(userId);
 
         verify(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
     }
@@ -258,8 +260,8 @@ class OntologyUploadServiceImplTest {
         ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
 
         // The wiring passes a direct executor, so the validation runs on this thread.
-        assertTrue(validated.await(5, TimeUnit.SECONDS), "validation was never started");
-        assertEquals(Thread.currentThread().getName(), validationThread.get());
+        assertThat(validated.await(5, TimeUnit.SECONDS)).as("validation was never started").isTrue();
+        assertThat(validationThread.get()).isEqualTo(Thread.currentThread().getName());
     }
 
     @Test
@@ -275,8 +277,9 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.isEmpty()).thenReturn(false);
 
 
-        assertThrows(OntologyUploadException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadException.class);
 
         // Nothing persisted — fail-fast before any TDB2/metadata write.
         // (verifyNoInteractions rather than never().putOntologyModel(..) — the latter
@@ -298,8 +301,9 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getContentType()).thenReturn("text/turtle");
 
 
-        assertThrows(OntologyUploadException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadException.class);
 
         verifyNoInteractions(jenaTDB2Repository);
         verify(ontologyMetadataRepository, never()).save(any());
@@ -355,10 +359,10 @@ class OntologyUploadServiceImplTest {
                 .map(ConceptMetadataEntity::getConceptIri)
                 .toList();
 
-        assertTrue(savedIris.contains(ownedConcept),
-                "Owned concept under graphName must be saved as owned");
-        assertFalse(savedIris.contains(alienConcept),
-                "Alien concept outside graphName's namespace must NOT be claimed as owned");
+        assertThat(savedIris).as("Owned concept under graphName must be saved as owned").contains(ownedConcept);
+        assertThat(savedIris)
+                .as("Alien concept outside graphName's namespace must NOT be claimed as owned")
+                .doesNotContain(alienConcept);
     }
 
     // --- Missing-inScheme decision flow ---
@@ -419,17 +423,21 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.isEmpty()).thenReturn(false);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
 
-        InSchemeDecisionRequiredException ex = assertThrows(InSchemeDecisionRequiredException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, null, null));
+        InSchemeDecisionRequiredException ex = assertThatExceptionOfType(InSchemeDecisionRequiredException.class)
+                .isThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, null, null))
+                .actual();
 
-        assertEquals(DECISION_ONTOLOGY, ex.getGraphName());
+        assertThat(ex.getGraphName()).isEqualTo(DECISION_ONTOLOGY);
         List<String> missingIris = ex.getConceptsMissingInScheme().stream()
                 .map(c -> c.conceptIri()).toList();
-        assertTrue(missingIris.contains(DECISION_C1) && missingIris.contains(DECISION_C2),
-                "Both missing concepts must be reported");
+        assertThat(missingIris.contains(DECISION_C1) && missingIris.contains(DECISION_C2))
+                .as("Both missing concepts must be reported")
+                .isTrue();
         ex.getConceptsMissingInScheme().forEach(c ->
-                assertEquals(DECISION_ONTOLOGY, c.proposedInScheme(),
-                        "Proposed inScheme must be the graphName"));
+                assertThat(c.proposedInScheme())
+                        .as("Proposed inScheme must be the graphName")
+                        .isEqualTo(DECISION_ONTOLOGY));
 
         // Nothing persisted.
         verifyNoInteractions(jenaTDB2Repository);
@@ -465,8 +473,8 @@ class OntologyUploadServiceImplTest {
                 multipartFile, userId, NormalizeMode.PER_CONCEPT, List.of(DECISION_C1));
 
         List<String> saved = capturedSavedConceptIris();
-        assertTrue(saved.contains(DECISION_C1), "Chosen concept must be normalized and owned");
-        assertFalse(saved.contains(DECISION_C2), "Unchosen concept must be excluded (no ownership row)");
+        assertThat(saved).as("Chosen concept must be normalized and owned").contains(DECISION_C1);
+        assertThat(saved).as("Unchosen concept must be excluded (no ownership row)").doesNotContain(DECISION_C2);
     }
 
     @Test
@@ -480,8 +488,9 @@ class OntologyUploadServiceImplTest {
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         List<String> saved = capturedSavedConceptIris();
-        assertTrue(saved.contains(DECISION_C1) && saved.contains(DECISION_C2),
-                "NORMALIZE_ALL must own both previously-missing concepts");
+        assertThat(saved.contains(DECISION_C1) && saved.contains(DECISION_C2))
+                .as("NORMALIZE_ALL must own both previously-missing concepts")
+                .isTrue();
     }
 
     @Test
@@ -524,12 +533,15 @@ class OntologyUploadServiceImplTest {
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.EXCLUDE_ALL, null);
 
-        assertFalse(c1Present[0],
-                "Unreferenced excluded concept C1 must be pruned from the model written to TDB2");
-        assertTrue(c2Present[0],
-                "Excluded concept C2 is referenced by C1 and must be KEPT as inert context");
-        assertFalse(edgeFromC1ToC2[0],
-                "C1's body (incl. its edge to C2) is gone because C1 itself was pruned");
+        assertThat(c1Present[0])
+                .as("Unreferenced excluded concept C1 must be pruned from the model written to TDB2")
+                .isFalse();
+        assertThat(c2Present[0])
+                .as("Excluded concept C2 is referenced by C1 and must be KEPT as inert context")
+                .isTrue();
+        assertThat(edgeFromC1ToC2[0])
+                .as("C1's body (incl. its edge to C2) is gone because C1 itself was pruned")
+                .isFalse();
     }
 
     // --- Concept-type guard -------------------------------------------------
@@ -569,9 +581,10 @@ class OntologyUploadServiceImplTest {
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         List<ConceptMetadataEntity> saved = capturedSavedConcepts();
-        assertEquals(1, saved.size(), "The role-tagged concept must be owned");
-        assertEquals(ConceptType.VZTAH, saved.get(0).getConceptType(),
-                "An OFN vztah role tag must resolve even with no owl:ObjectProperty");
+        assertThat(saved).as("The role-tagged concept must be owned").hasSize(1);
+        assertThat(saved.get(0).getConceptType())
+                .as("An OFN vztah role tag must resolve even with no owl:ObjectProperty")
+                .isEqualTo(ConceptType.VZTAH);
     }
 
     @Test
@@ -586,9 +599,10 @@ class OntologyUploadServiceImplTest {
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         List<ConceptMetadataEntity> saved = capturedSavedConcepts();
-        assertEquals(1, saved.size(), "The role-tagged concept must be owned");
-        assertEquals(ConceptType.VLASTNOST, saved.get(0).getConceptType(),
-                "An OFN vlastnost role tag must resolve even with no owl:DatatypeProperty");
+        assertThat(saved).as("The role-tagged concept must be owned").hasSize(1);
+        assertThat(saved.get(0).getConceptType())
+                .as("An OFN vlastnost role tag must resolve even with no owl:DatatypeProperty")
+                .isEqualTo(ConceptType.VLASTNOST);
     }
 
     @Test
@@ -610,10 +624,11 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
-        OntologyUploadConflictingTypesException ex = assertThrows(OntologyUploadConflictingTypesException.class,
-                () -> ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadConflictingTypesException ex = assertThatExceptionOfType(OntologyUploadConflictingTypesException.class)
+                .isThrownBy(() -> ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertEquals(List.of(DECISION_C1), ex.getConceptIris());
+        assertThat(ex.getConceptIris()).isEqualTo(List.of(DECISION_C1));
         verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any(OntModel.class));
         verify(ontologyMetadataRepository, never()).save(any());
         verify(conceptMetadataRepository, never()).saveAll(any());
@@ -625,16 +640,17 @@ class OntologyUploadServiceImplTest {
 
         org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
         bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        assertEquals("no recognized type", OntologyUploadServiceFixture.roleRejectionReason(bare),
-                "A concept declaring no role must say so plainly");
+        assertThat(OntologyUploadServiceFixture.roleRejectionReason(bare))
+                .as("A concept declaring no role must say so plainly")
+                .isEqualTo("no recognized type");
 
         org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C2);
         both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
         both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
         both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.DatatypeProperty);
-        assertEquals("conflicting types: VLASTNOST + VZTAH",
-                OntologyUploadServiceFixture.roleRejectionReason(both),
-                "A contradiction must name both roles it declared, so the file's author can fix it");
+        assertThat(OntologyUploadServiceFixture.roleRejectionReason(both))
+                .as("A contradiction must name both roles it declared, so the file's author can fix it")
+                .isEqualTo("conflicting types: VLASTNOST + VZTAH");
     }
 
     /**
@@ -653,8 +669,10 @@ class OntologyUploadServiceImplTest {
 
         ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(both);
 
-        assertNull(resolved, "A concept carrying both the vlastnost and vztah OFN role tags "
-                + "declares two roles and must be dropped");
+        assertThat(resolved)
+                .as("A concept carrying both the vlastnost and vztah OFN role tags "
+                + "declares two roles and must be dropped")
+                .isNull();
     }
 
     /**
@@ -672,9 +690,10 @@ class OntologyUploadServiceImplTest {
 
         ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(rel);
 
-        assertEquals(ConceptType.VZTAH, resolved,
-                "slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
-                        + "after OFNTypeNormalizer runs, and it must resolve normally");
+        assertThat(resolved)
+                .as("slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
+                        + "after OFNTypeNormalizer runs, and it must resolve normally")
+                .isEqualTo(ConceptType.VZTAH);
     }
 
     @Test
@@ -701,11 +720,13 @@ class OntologyUploadServiceImplTest {
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
         List<ConceptMetadataEntity> saved = capturedSavedConcepts();
-        assertTrue(saved.stream().noneMatch(c -> c.getConceptType() == null),
-                "No concept may be persisted with a null concept_type");
-        assertTrue(saved.stream().anyMatch(c -> DECISION_C2.equals(c.getConceptIri())),
-                "The well-typed concept in the same upload must still be imported (warn-and-drop, "
-                        + "not reject-the-whole-upload)");
+        assertThat(saved.stream().noneMatch(c -> c.getConceptType() == null))
+                .as("No concept may be persisted with a null concept_type")
+                .isTrue();
+        assertThat(saved.stream().anyMatch(c -> DECISION_C2.equals(c.getConceptIri())))
+                .as("The well-typed concept in the same upload must still be imported (warn-and-drop, "
+                        + "not reject-the-whole-upload)")
+                .isTrue();
     }
 
     /**
@@ -722,8 +743,10 @@ class OntologyUploadServiceImplTest {
 
         ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(bare);
 
-        assertNull(resolved, "A concept with no class/property/relationship signal must resolve to "
-                + "null so extractAndSaveConceptMetadata drops it instead of saving a null type");
+        assertThat(resolved)
+                .as("A concept with no class/property/relationship signal must resolve to "
+                + "null so extractAndSaveConceptMetadata drops it instead of saving a null type")
+                .isNull();
     }
 
     /**
@@ -740,8 +763,10 @@ class OntologyUploadServiceImplTest {
 
         ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(base);
 
-        assertNull(resolved, "skos:Concept is the base type every concept carries — it must not "
-                + "claim the TRIDA role on its own");
+        assertThat(resolved)
+                .as("skos:Concept is the base type every concept carries — it must not "
+                + "claim the TRIDA role on its own")
+                .isNull();
     }
 
     @Test
@@ -754,8 +779,9 @@ class OntologyUploadServiceImplTest {
 
         ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(cls);
 
-        assertEquals(ConceptType.TRIDA, resolved,
-                "owl:Class is the real class signal and must still resolve to TRIDA");
+        assertThat(resolved)
+                .as("owl:Class is the real class signal and must still resolve to TRIDA")
+                .isEqualTo(ConceptType.TRIDA);
     }
 
     @Test
@@ -767,8 +793,9 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenThrow(new RuntimeException("File read error"));
 
         // The implementation catches IOException and wraps it, but RuntimeException propagates directly
-        assertThrows(RuntimeException.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(RuntimeException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -779,8 +806,9 @@ class OntologyUploadServiceImplTest {
 
         when(multipartFile.isEmpty()).thenReturn(true);
 
-        assertThrows(EmptyFileException.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(EmptyFileException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -793,8 +821,9 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test.unknown");
         when(multipartFile.getContentType()).thenReturn("application/unknown");
 
-        assertThrows(UnsupportedRdfFormatException.class, () ->
-                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() ->
+                ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(UnsupportedRdfFormatException.class);
 
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -833,7 +862,7 @@ class OntologyUploadServiceImplTest {
         verify(conceptMetadataRepository).saveAll(saved.capture());
         Map<String, Boolean> publishedByIri = new HashMap<>();
         saved.getValue().forEach(c -> publishedByIri.put(c.getConceptIri(), c.getIsPublished()));
-        assertEquals(Map.of(published, true, draft, false), publishedByIri);
+        assertThat(publishedByIri).isEqualTo(Map.of(published, true, draft, false));
     }
 
     @Test
@@ -853,9 +882,9 @@ class OntologyUploadServiceImplTest {
             .when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
         // Expect exception to be thrown
-        assertThrows(OntologyUploadException.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null)
-        );
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadException.class);
 
         // TDB2 save fails before any metadata is created — no cleanup needed
         verify(ontologyMetadataRepository, never()).save(any());
@@ -892,9 +921,9 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.empty());
 
         // Expect exception to be thrown
-        assertThrows(Exception.class, () ->
-            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null)
-        );
+        assertThatThrownBy(() ->
+            ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(Exception.class);
 
         // PostgreSQL rollback is handled by @Transactional — no manual deleteById
         verify(ontologyMetadataRepository, never()).deleteById(anyLong());

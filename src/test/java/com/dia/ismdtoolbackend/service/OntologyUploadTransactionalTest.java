@@ -37,7 +37,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -90,10 +92,11 @@ class OntologyUploadTransactionalTest {
         doThrow(new RuntimeException("TDB2 connection failed"))
                 .when(jenaTDB2Repository).putOntologyModel(anyString(), any());
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadRdfStoreException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadRdfStoreException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("TDB2 connection failed"));
+        assertThat(thrown).hasMessageContaining("TDB2 connection failed");
         // Metadata repository should not have been called
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -110,12 +113,13 @@ class OntologyUploadTransactionalTest {
         // Metadata save fails
         when(ontologyMetadataRepository.save(any())).thenThrow(new RuntimeException("DB constraint violation"));
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadMetadataException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadMetadataException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
         // TDB2 should be cleaned up
         verify(jenaTDB2Repository).deleteGraph(anyString());
-        assertTrue(thrown.getMessage().contains("DB constraint violation"));
+        assertThat(thrown).hasMessageContaining("DB constraint violation");
     }
 
     @Test
@@ -131,11 +135,12 @@ class OntologyUploadTransactionalTest {
         doThrow(new RuntimeException("TDB2 cleanup failed"))
                 .when(jenaTDB2Repository).deleteGraph(anyString());
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadMetadataException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadMetadataException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
         // Original exception should still propagate
-        assertTrue(thrown.getMessage().contains("DB failure"));
+        assertThat(thrown).hasMessageContaining("DB failure");
         verify(jenaTDB2Repository).deleteGraph(anyString());
     }
 
@@ -171,10 +176,11 @@ class OntologyUploadTransactionalTest {
         doThrow(new RuntimeException("Concept extraction error"))
                 .when(conceptMetadataRepository).saveAll(any());
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadMetadataException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadMetadataException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("Concept extraction error"), thrown.getMessage());
+        assertThat(thrown).as(thrown.getMessage()).hasMessageContaining("Concept extraction error");
         verify(jenaTDB2Repository).deleteGraph("https://example.com/ontology");
     }
 
@@ -182,10 +188,11 @@ class OntologyUploadTransactionalTest {
     void uploadFromFile_malformedTurtle_shouldThrowParseExceptionWithParserMessage() throws IOException {
         MultipartFile file = createTurtleFile("<https://example.com/ontology> a undeclared:Ontology .");
 
-        OntologyUploadParseException thrown = assertThrows(OntologyUploadParseException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadParseException thrown = assertThatExceptionOfType(OntologyUploadParseException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("undeclared"), thrown.getMessage());
+        assertThat(thrown).as(thrown.getMessage()).hasMessageContaining("undeclared");
         verifyNoInteractions(jenaTDB2Repository);
     }
 
@@ -193,8 +200,8 @@ class OntologyUploadTransactionalTest {
     void uploadFromFile_noOntologyIri_shouldThrowMissingIriException() throws IOException {
         MultipartFile file = createTurtleFile("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
 
-        assertThrows(OntologyUploadMissingIriException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadMissingIriException.class);
 
         verifyNoInteractions(jenaTDB2Repository);
     }
@@ -206,8 +213,8 @@ class OntologyUploadTransactionalTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn(11L * 1024 * 1024);
 
-        assertThrows(OntologyUploadFileTooLargeException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadFileTooLargeException.class);
 
         verifyNoInteractions(jenaTDB2Repository);
     }
@@ -219,10 +226,11 @@ class OntologyUploadTransactionalTest {
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.of(new OntologyMetadataEntity()));
 
-        OntologyAlreadyExistsException thrown = assertThrows(OntologyAlreadyExistsException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyAlreadyExistsException thrown = assertThatExceptionOfType(OntologyAlreadyExistsException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("https://example.com/ontology"));
+        assertThat(thrown).hasMessageContaining("https://example.com/ontology");
         verifyNoInteractions(jenaTDB2Repository);
         verify(ontologyMetadataRepository, never()).save(any());
     }

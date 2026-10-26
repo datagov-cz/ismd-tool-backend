@@ -3,7 +3,6 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.models.eli.FragmentModel;
-import com.dia.ismdtoolbackend.models.eli.LawModel;
 import com.dia.ismdtoolbackend.models.eli.LawNumberSearchModel;
 import com.dia.ismdtoolbackend.models.eli.LawVersionModel;
 import com.dia.ismdtoolbackend.service.EsbirkaService;
@@ -29,10 +28,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.LAW_49_1997;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.fragment;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.law;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.legacyLawIri;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,13 +45,12 @@ import static org.mockito.Mockito.when;
 @CacheSliceTest(EsbirkaCacheSliceBeans.class)
 class EsbirkaLawContentCacheTest {
 
-    private static final String LAW_IRI = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997/49";
+    private static final String LAW_IRI = LAW_49_1997;
     private static final String LATEST_IRI = LAW_IRI + "/2025-11-01";
     private static final String OLDER_IRI = LAW_IRI + "/2020-01-01";
 
     /** The pre-.gov.cz host, still present in stored concept sources. */
-    private static final String LEGACY_LAW_IRI =
-            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/1997/49";
+    private static final String LEGACY_LAW_IRI = legacyLawIri("49", 1997);
     private static final String LEGACY_OLDER_IRI = LEGACY_LAW_IRI + "/2020-01-01";
 
     @MockitoBean
@@ -69,7 +68,7 @@ class EsbirkaLawContentCacheTest {
     void setUp() {
         CacheTestSupport.clearAll(cacheManager);
         when(client.findLaw("sb", "49", 1997)).thenReturn(Optional.of(
-                new LawModel(LAW_IRI, "49/1997 Sb.", "49", 1997, "sb")));
+                law("49", 1997)));
         when(client.fetchVersions(LAW_IRI)).thenReturn(List.of(
                 new LawVersionModel(LATEST_IRI, LocalDate.of(2025, 11, 1), null, "KONSOL", true),
                 new LawVersionModel(OLDER_IRI, LocalDate.of(2020, 1, 1), null, "KONSOL", false)));
@@ -77,11 +76,6 @@ class EsbirkaLawContentCacheTest {
                 fragment(LATEST_IRI, "<p>nové znění</p>")));
         when(client.fetchVersionContent(OLDER_IRI)).thenReturn(List.of(
                 fragment(OLDER_IRI, "<p>staré znění</p>")));
-    }
-
-    private static FragmentModel fragment(String versionIri, String body) {
-        return new FragmentModel(versionIri + "/dokument/norma/par_1",
-                versionIri + "/dokument/norma", "§ 1", "par", "0001", body);
     }
 
     @Test
@@ -106,18 +100,19 @@ class EsbirkaLawContentCacheTest {
         LawContentDto out = service.getLawContent("49/1997", LATEST_IRI);
 
         var root = out.getFragments().get(0);
-        assertEquals("Zákon č. 49/1997 Sb.", root.getCitation());
-        assertEquals("Text předpisu", root.getChildren().get(0).getCitation());
-        assertEquals("Úvodní ustanovení", root.getChildren().get(1).getCitation());
+        assertThat(root.getCitation()).isEqualTo("Zákon č. 49/1997 Sb.");
+        assertThat(root.getChildren().get(0).getCitation()).isEqualTo("Text předpisu");
+        assertThat(root.getChildren().get(1).getCitation()).isEqualTo("Úvodní ustanovení");
 
         // The unnumbered text block stays in the body but is flagged out of the navigation,
         // rather than surfacing its internal id as "§ 1 frag 3304837".
         var leaf = root.getChildren().get(0).getChildren().get(0).getChildren().get(0)
                 .getChildren().get(0);
-        assertNull(leaf.getCitation());
-        assertFalse(leaf.isNavigable());
-        assertTrue(out.getBodyHtml().contains("<p>text</p>"),
-                "a non-navigable node must still contribute its text to the rendered body");
+        assertThat(leaf.getCitation()).isNull();
+        assertThat(leaf.isNavigable()).isFalse();
+        assertThat(out.getBodyHtml())
+                .as("a non-navigable node must still contribute its text to the rendered body")
+                .contains("<p>text</p>");
     }
 
     @Test
@@ -144,11 +139,12 @@ class EsbirkaLawContentCacheTest {
             }
             // Hold the load until every caller is inside it or parked on the cache entry, so all
             // five are concurrent misses; without single-flight each would run its own load.
-            assertTrue(awaitAllInLoadOrParkedOnCache(callerThreads, callers, inLoad),
-                    "every caller reaches the cache before the first load completes");
+            assertThat(awaitAllInLoadOrParkedOnCache(callerThreads, callers, inLoad))
+                    .as("every caller reaches the cache before the first load completes")
+                    .isTrue();
             release.countDown();
             for (Future<LawContentDto> r : results) {
-                assertEquals(LATEST_IRI, r.get(10, TimeUnit.SECONDS).getVersionIri());
+                assertThat(r.get(10, TimeUnit.SECONDS).getVersionIri()).isEqualTo(LATEST_IRI);
             }
         } finally {
             pool.shutdownNow();
@@ -166,11 +162,12 @@ class EsbirkaLawContentCacheTest {
 
         // Each znění must render its OWN text — a version-blind key would return the
         // first-cached body for both.
-        assertEquals(LATEST_IRI, latest.getVersionIri());
-        assertTrue(latest.getBodyHtml().contains("<p>nové znění</p>"));
-        assertEquals(OLDER_IRI, older.getVersionIri());
-        assertTrue(older.getBodyHtml().contains("<p>staré znění</p>"),
-                "older znění must not serve the latest znění's cached body");
+        assertThat(latest.getVersionIri()).isEqualTo(LATEST_IRI);
+        assertThat(latest.getBodyHtml()).contains("<p>nové znění</p>");
+        assertThat(older.getVersionIri()).isEqualTo(OLDER_IRI);
+        assertThat(older.getBodyHtml())
+                .as("older znění must not serve the latest znění's cached body")
+                .contains("<p>staré znění</p>");
 
         verify(client, times(1)).fetchVersionContent(LATEST_IRI);
         verify(client, times(1)).fetchVersionContent(OLDER_IRI);
@@ -181,7 +178,7 @@ class EsbirkaLawContentCacheTest {
         LawContentDto first = service.getLawContent("49/1997", OLDER_IRI);
         LawContentDto second = service.getLawContent("49/1997", OLDER_IRI);
 
-        assertEquals(first.getVersionIri(), second.getVersionIri());
+        assertThat(second.getVersionIri()).isEqualTo(first.getVersionIri());
         verify(client, times(1)).fetchVersionContent(OLDER_IRI);
     }
 
@@ -192,11 +189,11 @@ class EsbirkaLawContentCacheTest {
         LawContentDto implicit = service.getLawContent("49/1997", null);
         LawContentDto explicit = service.getLawContent("49/1997", LATEST_IRI);
 
-        assertEquals(LATEST_IRI, implicit.getVersionIri());
-        assertEquals(LATEST_IRI, explicit.getVersionIri());
-        assertTrue(implicit.isVersionLatest());
-        assertTrue(explicit.isVersionLatest());
-        assertEquals(implicit.getBodyHtml(), explicit.getBodyHtml());
+        assertThat(implicit.getVersionIri()).isEqualTo(LATEST_IRI);
+        assertThat(explicit.getVersionIri()).isEqualTo(LATEST_IRI);
+        assertThat(implicit.isVersionLatest()).isTrue();
+        assertThat(explicit.isVersionLatest()).isTrue();
+        assertThat(explicit.getBodyHtml()).isEqualTo(implicit.getBodyHtml());
     }
 
     @Test
@@ -217,8 +214,8 @@ class EsbirkaLawContentCacheTest {
         // e-Sbírka's own canonical IRIs, so it must be canonicalized before that scan.
         LawContentDto legacy = service.getLawContent("49/1997", LEGACY_OLDER_IRI);
 
-        assertEquals(OLDER_IRI, legacy.getVersionIri(), "echoed back canonical");
-        assertTrue(legacy.getBodyHtml().contains("<p>staré znění</p>"));
+        assertThat(legacy.getVersionIri()).as("echoed back canonical").isEqualTo(OLDER_IRI);
+        assertThat(legacy.getBodyHtml()).contains("<p>staré znění</p>");
     }
 
     @Test
@@ -248,8 +245,8 @@ class EsbirkaLawContentCacheTest {
         LawContentDto first = service.getLawContent("49/1997");
         LawContentDto second = service.getLawContent("49/1997");
 
-        assertEquals(LATEST_IRI, first.getVersionIri());
-        assertEquals(first.getVersionIri(), second.getVersionIri());
+        assertThat(first.getVersionIri()).isEqualTo(LATEST_IRI);
+        assertThat(second.getVersionIri()).isEqualTo(first.getVersionIri());
         verify(client, times(1)).fetchVersionContent(LATEST_IRI);
     }
 

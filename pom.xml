@@ -37,7 +37,7 @@
         <jacoco.instruction.minimum>0.96</jacoco.instruction.minimum>
         <jacoco.branch.minimum>0.87</jacoco.branch.minimum>
         <jacoco.complexity.minimum>0.85</jacoco.complexity.minimum>
-        <jacoco.method.minimum>0.96</jacoco.method.minimum>
+        <jacoco.method.minimum>0.97</jacoco.method.minimum>
     </properties>
     <dependencyManagement>
         <dependencies>

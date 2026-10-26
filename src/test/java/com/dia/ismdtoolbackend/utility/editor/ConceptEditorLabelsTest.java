@@ -4,8 +4,8 @@ import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.AltNameModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Model;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +24,7 @@ class ConceptEditorLabelsTest extends ConceptEditorTestBase {
     private static final String CONCEPT = DEFAULT_NS + "pojem/třída";
 
     private void seed(String extraPredicates) {
-        Rdf.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
+        Ttl.add(model, "<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + extraPredicates + " .");
     }
 
     private ConceptEditor.EditResult edit() {
@@ -32,7 +32,7 @@ class ConceptEditorLabelsTest extends ConceptEditorTestBase {
     }
 
     private void assertModelIs(String predicates) {
-        Model expected = Rdf.model("<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + predicates + " .");
+        Model expected = Ttl.parse("<" + CONCEPT + "> a ofn:třída ; skos:prefLabel \"Třída\"@cs " + predicates + " .");
         assertThat(model.isIsomorphicWith(expected))
                 .as("missing: %s%nextra: %s", expected.difference(model), model.difference(expected))
                 .isTrue();

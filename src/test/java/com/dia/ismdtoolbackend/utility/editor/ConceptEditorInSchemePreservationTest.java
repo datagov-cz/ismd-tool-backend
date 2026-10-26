@@ -7,7 +7,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Editing a concept must never silently drop {@code skos:inScheme} — without
@@ -38,14 +38,16 @@ class ConceptEditorInSchemePreservationTest extends ConceptEditorTestBase {
 
         ConceptEditor.EditResult result = conceptEditor.editConcept(oldIri, classConceptEditModel, model, ONTOLOGY);
 
-        assertEquals(ONTOLOGY + "/pojem/new-name", result.newConceptIRI);
+        assertThat(result.newConceptIRI).isEqualTo(ONTOLOGY + "/pojem/new-name");
 
         Resource renamed = model.getResource(result.newConceptIRI);
-        assertTrue(renamed.hasProperty(inScheme, scheme),
-                "skos:inScheme must survive a concept rename — the resolver depends on it");
+        assertThat(renamed.hasProperty(inScheme, scheme))
+                .as("skos:inScheme must survive a concept rename — the resolver depends on it")
+                .isTrue();
 
         Resource oldResource = model.getResource(oldIri);
-        assertFalse(oldResource.hasProperty(inScheme),
-                "Old IRI must no longer carry skos:inScheme after rename");
+        assertThat(oldResource.hasProperty(inScheme))
+                .as("Old IRI must no longer carry skos:inScheme after rename")
+                .isFalse();
     }
 }

@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Property;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -12,7 +12,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import java.util.List;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.iris;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Governance fields (agenda, AIS, PPDF, code-list items) and non-legal sources, edited through {@link ConceptEditor}. */
@@ -24,16 +24,16 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
     private static final String AIS_ITEMS = "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/";
     private static final String ITEMS = "https://data.dia.gov.cz/zdroj/číselníky/";
 
-    private static final Property AGENDA = Rdf.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
-    private static final Property AIS = Rdf.property(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
-    private static final Property PPDF = Rdf.property(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
-    private static final Property SHARING = Rdf.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
-    private static final Property ACQUISITION = Rdf.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
-    private static final Property CONTENT_TYPE = Rdf.property(OFN_NAMESPACE + TYP_OBSAHU);
-    private static final Property DEFINING_NON_LEGAL = Rdf.property(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+    private static final Property AGENDA = Ttl.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
+    private static final Property AIS = Ttl.property(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
+    private static final Property PPDF = Ttl.property(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
+    private static final Property SHARING = Ttl.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
+    private static final Property ACQUISITION = Ttl.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
+    private static final Property CONTENT_TYPE = Ttl.property(OFN_NAMESPACE + TYP_OBSAHU);
+    private static final Property DEFINING_NON_LEGAL = Ttl.property(DEFAULT_NS + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
 
     private void seedProperty(String extraPredicates) {
-        Rdf.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs "
+        Ttl.add(model, "<" + CONCEPT + "> a ofn:vlastnost ; skos:prefLabel \"Vlastnost\"@cs "
                 + extraPredicates + " .");
     }
 
@@ -183,7 +183,7 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
 
             edit();
 
-            assertThat(model.isIsomorphicWith(Rdf.model("""
+            assertThat(model.isIsomorphicWith(Ttl.parse("""
                     <%s> a ofn:vlastnost ; skos:prefLabel "Vlastnost"@cs ;
                         sl:%s [ a <%s> ; <%s> <https://example.com/doc> ] .
                     """.formatted(CONCEPT, DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL))))

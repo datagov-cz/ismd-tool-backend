@@ -25,7 +25,9 @@ import org.springframework.web.client.RestClient;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -82,8 +84,8 @@ class ValidationClientTest {
 
         Optional<ValidationReport> result = validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology");
 
-        assertTrue(result.isPresent());
-        assertEquals(mockReport, result.get());
+        assertThat(result).isPresent();
+        assertThat(result.get()).isEqualTo(mockReport);
         verify(requestBodyUriSpec).uri(validationServiceUrl + "/api/validator/validate");
         verify(requestBodySpec).header("Content-Type", "application/json");
     }
@@ -102,8 +104,8 @@ class ValidationClientTest {
         validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology");
 
         ValidationRequestDto sent = captor.getValue();
-        assertEquals("@prefix x: <x> .", sent.getOntologyContent());
-        assertEquals("http://example.org/ontology", sent.getIri());
+        assertThat(sent.getOntologyContent()).isEqualTo("@prefix x: <x> .");
+        assertThat(sent.getIri()).isEqualTo("http://example.org/ontology");
     }
 
     @Test
@@ -113,7 +115,7 @@ class ValidationClientTest {
 
         Optional<ValidationReport> result = validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology");
 
-        assertFalse(result.isPresent());
+        assertThat(result).isNotPresent();
     }
 
     // ========== Strict path: distinct failure types ==========
@@ -124,8 +126,8 @@ class ValidationClientTest {
         when(responseSpec.body(ValidationReportDto.class))
                 .thenThrow(new ResourceAccessException("Connection refused"));
 
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology"));
+        assertThatThrownBy(() -> validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology"))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
     }
 
     @Test
@@ -134,8 +136,8 @@ class ValidationClientTest {
         when(responseSpec.body(ValidationReportDto.class))
                 .thenThrow(HttpServerErrorException.create(HttpStatus.INTERNAL_SERVER_ERROR, "err", null, null, null));
 
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology"));
+        assertThatThrownBy(() -> validationClient.requestValidation("@prefix x: <x> .", "http://example.org/ontology"))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
     }
 
     @Test
@@ -146,10 +148,12 @@ class ValidationClientTest {
                 .thenThrow(HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "Bad Request",
                         null, body.getBytes(), null));
 
-        OntologyValidationException ex = assertThrows(OntologyValidationException.class,
-                () -> validationClient.requestValidation("bad ttl", "http://example.org/ontology"));
-        assertTrue(ex.getMessage().contains("Invalid TTL syntax"),
-                "should surface the validator's own message, was: " + ex.getMessage());
+        OntologyValidationException ex = assertThatExceptionOfType(OntologyValidationException.class)
+                .isThrownBy(() -> validationClient.requestValidation("bad ttl", "http://example.org/ontology"))
+                .actual();
+        assertThat(ex)
+                .as("should surface the validator's own message, was: " + ex.getMessage())
+                .hasMessageContaining("Invalid TTL syntax");
     }
 
     // ========== Lenient (upload) path: swallows everything ==========
@@ -163,7 +167,7 @@ class ValidationClientTest {
         Optional<ValidationReport> result =
                 validationClient.requestValidationLenient("@prefix x: <x> .", "http://example.org/ontology");
 
-        assertFalse(result.isPresent());
+        assertThat(result).isNotPresent();
     }
 
     @Test
@@ -176,7 +180,7 @@ class ValidationClientTest {
         Optional<ValidationReport> result =
                 validationClient.requestValidationLenient("bad", "http://example.org/ontology");
 
-        assertFalse(result.isPresent());
+        assertThat(result).isNotPresent();
     }
 
     @Test
@@ -188,7 +192,7 @@ class ValidationClientTest {
         Optional<ValidationReport> result =
                 validationClient.requestValidationLenient("@prefix x: <x> .", "http://example.org/ontology");
 
-        assertTrue(result.isPresent());
+        assertThat(result).isPresent();
     }
 
     // ========== Input validation (pre-network, throws) ==========
@@ -206,7 +210,7 @@ class ValidationClientTest {
     @ParameterizedTest
     @MethodSource("invalidInputProvider")
     void requestValidation_invalidInputs_throwIllegalArgument(String ttlContent, String iri) {
-        assertThrows(IllegalArgumentException.class,
-                () -> validationClient.requestValidation(ttlContent, iri));
+        assertThatThrownBy(() -> validationClient.requestValidation(ttlContent, iri))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

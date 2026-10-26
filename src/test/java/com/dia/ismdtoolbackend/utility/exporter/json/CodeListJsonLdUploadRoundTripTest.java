@@ -15,7 +15,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Upload parses JSON-LD generically through Jena — there is no key-level deserializer — so the
@@ -80,17 +80,18 @@ class CodeListJsonLdUploadRoundTripTest {
     @DisplayName("Bundled context fixture still declares the code-list terms")
     void bundledContextDeclaresCodeListTerms() {
         String context = readBundledContext();
-        assertTrue(context.contains("\"instance-definovány-číselníkem\""),
-                "context fixture must declare the code-list term");
-        assertTrue(context.contains("111-2009:má-v-nkod-zastřešující-datovou-sadu"),
-                "context fixture must map the NKOD dataset predicate");
-        assertTrue(context.contains("111-2009:číselník"),
-                "context fixture must map the číselník type");
+        assertThat(context)
+                .as("context fixture must declare the code-list term")
+                .contains("\"instance-definovány-číselníkem\"");
+        assertThat(context)
+                .as("context fixture must map the NKOD dataset predicate")
+                .contains("111-2009:má-v-nkod-zastřešující-datovou-sadu");
+        assertThat(context).as("context fixture must map the číselník type").contains("111-2009:číselník");
     }
 
     private String readBundledContext() {
         try (InputStream in = getClass().getResourceAsStream("/com/dia/context/json_ld_context.jsonld")) {
-            assertNotNull(in, "bundled JSON-LD context fixture must be present");
+            assertThat(in).as("bundled JSON-LD context fixture must be present").isNotNull();
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw new AssertionError("could not read bundled context", e);
@@ -109,22 +110,24 @@ class CodeListJsonLdUploadRoundTripTest {
         Property instanceDefinedBy = parsed.createProperty(
                 OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
 
-        assertTrue(concept.hasProperty(instanceDefinedBy),
-                "concept must link to the číselník after upload");
+        assertThat(concept.hasProperty(instanceDefinedBy))
+                .as("concept must link to the číselník after upload")
+                .isTrue();
 
         Resource codeList = concept.getProperty(instanceDefinedBy).getObject().asResource();
-        assertFalse(codeList.isAnon(), "číselník must expand to a named subject, not a blank node");
-        assertEquals(CODE_LIST_IRI, codeList.getURI());
+        assertThat(codeList.isAnon()).as("číselník must expand to a named subject, not a blank node").isFalse();
+        assertThat(codeList.getURI()).isEqualTo(CODE_LIST_IRI);
 
-        assertTrue(codeList.hasProperty(RDF.type,
-                        parsed.getResource(OFN_NAMESPACE_LEGAL + CISELNIK)),
-                "číselník must carry rdf:type l111-2009:číselník");
+        assertThat(codeList.hasProperty(RDF.type,
+                        parsed.getResource(OFN_NAMESPACE_LEGAL + CISELNIK)))
+                .as("číselník must carry rdf:type l111-2009:číselník")
+                .isTrue();
 
         Property datasetProp = parsed.createProperty(
                 OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU);
-        assertEquals(NKOD_DATASET,
-                codeList.getProperty(datasetProp).getObject().asResource().getURI(),
-                "číselník must carry its NKOD dataset");
+        assertThat(codeList.getProperty(datasetProp).getObject().asResource().getURI())
+                .as("číselník must carry its NKOD dataset")
+                .isEqualTo(NKOD_DATASET);
     }
 
     @Test
@@ -139,13 +142,16 @@ class CodeListJsonLdUploadRoundTripTest {
         // 111/2009 namespace. Asserting the literal here catches that copy drifting away from
         // OFN_NAMESPACE_LEGAL, which would silently break the read path.
         String readerNamespace = "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/";
-        assertEquals(readerNamespace, OFN_NAMESPACE_LEGAL,
-                "reader namespace and OFN_NAMESPACE_LEGAL must stay identical");
+        assertThat(OFN_NAMESPACE_LEGAL)
+                .as("reader namespace and OFN_NAMESPACE_LEGAL must stay identical")
+                .isEqualTo(readerNamespace);
 
         Resource codeList = parsed.getResource(CODE_LIST_IRI);
-        assertTrue(codeList.hasProperty(RDF.type,
-                parsed.getResource(readerNamespace + CISELNIK)));
-        assertTrue(codeList.hasProperty(parsed.createProperty(
-                readerNamespace + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU)));
+        assertThat(codeList.hasProperty(RDF.type,
+                parsed.getResource(readerNamespace + CISELNIK)))
+                .isTrue();
+        assertThat(codeList.hasProperty(parsed.createProperty(
+                readerNamespace + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU)))
+                .isTrue();
     }
 }

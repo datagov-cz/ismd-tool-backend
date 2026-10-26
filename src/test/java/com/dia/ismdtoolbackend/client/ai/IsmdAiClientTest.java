@@ -47,8 +47,9 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IsmdAiClientTest {
@@ -122,9 +123,11 @@ class IsmdAiClientTest {
                 "class-draft", Map.of("cs", "Motocykl"), null, null, AiTermType.CLASS, List.of(), null)), List.of(), List.of());
         var expand = new AiVocabularyExpansionRequestDto(AiVocabularyExpansionRequestDto.Kind.PROPERTIES, 2,
                 "class-draft", List.of("/eli/cz/sb/2024/1/2024-01-01/par_1"), "Doplnit", model);
-        assertEquals(FIRST_JOB_ID, client.expandVocabulary(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 1), expand).jobId());
+        assertThat(client.expandVocabulary(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 1), expand).jobId())
+                .isEqualTo(FIRST_JOB_ID);
         var regenerate = new AiVocabularyRegenerationRequestDto("class-draft", null, "Přepsat", model);
-        assertEquals(FIRST_JOB_ID, client.regenerateVocabularyConcept(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 1), regenerate).jobId());
+        assertThat(client.regenerateVocabularyConcept(BEARER_TOKEN, 2024, 1, LocalDate.of(2024, 1, 1), regenerate).jobId())
+                .isEqualTo(FIRST_JOB_ID);
         WM.verify(1, postRequestedFor(urlEqualTo(base + "/expand"))
                 .withHeader("Authorization", equalTo("Bearer " + BEARER_TOKEN))
                 .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath("$.kind", equalTo("properties")))
@@ -165,8 +168,8 @@ class IsmdAiClientTest {
                 request
         );
 
-        assertEquals(FIRST_JOB_ID, response.jobId());
-        assertEquals(AiJobStatus.IN_PROGRESS, response.status());
+        assertThat(response.jobId()).isEqualTo(FIRST_JOB_ID);
+        assertThat(response.status()).isEqualTo(AiJobStatus.IN_PROGRESS);
         WM.verify(postRequestedFor(urlEqualTo(path))
                 .withHeader(HttpHeaders.AUTHORIZATION, equalTo("Bearer " + BEARER_TOKEN))
                 .withRequestBody(equalToJson("""
@@ -247,16 +250,16 @@ class IsmdAiClientTest {
                 List.of(FIRST_JOB_ID, SECOND_JOB_ID)
         );
 
-        assertEquals(1, responses.size());
+        assertThat(responses).hasSize(1);
         AiClassSuggestionsJobResponseDto response = responses.get(0);
-        assertEquals(FIRST_JOB_ID, response.jobId());
-        assertEquals(AiJobStatus.COMPLETED, response.status());
+        assertThat(response.jobId()).isEqualTo(FIRST_JOB_ID);
+        assertThat(response.status()).isEqualTo(AiJobStatus.COMPLETED);
         AiClassSuggestionsJobResponseDto.AiClassSuggestionDto suggestion = response.newSuggestions().get(0);
-        assertEquals("class-1", suggestion.suggestionId());
-        assertEquals(Map.of("cs", "Příslušný orgán"), suggestion.name());
-        assertEquals(AiTermType.OBJECT, suggestion.type());
-        assertEquals("https://example.test/terms/authority", suggestion.specializes().get(0).id());
-        assertEquals("/eli/cz/sb/2025/7", suggestion.legalAct());
+        assertThat(suggestion.suggestionId()).isEqualTo("class-1");
+        assertThat(suggestion.name()).isEqualTo(Map.of("cs", "Příslušný orgán"));
+        assertThat(suggestion.type()).isEqualTo(AiTermType.OBJECT);
+        assertThat(suggestion.specializes().get(0).id()).isEqualTo("https://example.test/terms/authority");
+        assertThat(suggestion.legalAct()).isEqualTo("/eli/cz/sb/2025/7");
         WM.verify(getRequestedFor(urlEqualTo(path))
                 .withHeader(HttpHeaders.AUTHORIZATION, equalTo("Bearer " + BEARER_TOKEN)));
     }
@@ -306,18 +309,14 @@ class IsmdAiClientTest {
                 .getRelationshipSuggestions(BEARER_TOKEN, List.of(SECOND_JOB_ID))
                 .get(0);
 
-        assertEquals("https://example.test/terms/applicant", property.selectedClassId());
-        assertEquals("attribute-1", property.newAttributeSuggestions().get(0).suggestionId());
-        assertEquals(
-                "https://example.test/terms/applicant",
-                property.newAttributeSuggestions().get(0).associatedClass().id()
-        );
-        assertEquals("https://example.test/terms/applicant", relationship.selectedClassId());
-        assertEquals("relationship-1", relationship.newRelationshipSuggestions().get(0).suggestionId());
-        assertEquals(
-                "https://example.test/terms/application",
-                relationship.newRelationshipSuggestions().get(0).targetClass().id()
-        );
+        assertThat(property.selectedClassId()).isEqualTo("https://example.test/terms/applicant");
+        assertThat(property.newAttributeSuggestions().get(0).suggestionId()).isEqualTo("attribute-1");
+        assertThat(property.newAttributeSuggestions().get(0).associatedClass().id())
+                .isEqualTo("https://example.test/terms/applicant");
+        assertThat(relationship.selectedClassId()).isEqualTo("https://example.test/terms/applicant");
+        assertThat(relationship.newRelationshipSuggestions().get(0).suggestionId()).isEqualTo("relationship-1");
+        assertThat(relationship.newRelationshipSuggestions().get(0).targetClass().id())
+                .isEqualTo("https://example.test/terms/application");
     }
 
     @Test
@@ -353,12 +352,11 @@ class IsmdAiClientTest {
         WM.stubFor(get(urlEqualTo("/legal-acts/class-suggestions-jobs?jobIds=" + FIRST_JOB_ID))
                 .willReturn(jsonResponse(HttpStatus.NOT_FOUND, "{\"detail\":\"Úloha nebyla nalezena.\"}")));
 
-        RestClientResponseException exception = assertThrows(
-                RestClientResponseException.class,
-                () -> client.getClassSuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID))
-        );
+        RestClientResponseException exception = assertThatExceptionOfType(RestClientResponseException.class)
+                .isThrownBy(() -> client.getClassSuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID)))
+                .actual();
 
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
@@ -369,12 +367,11 @@ class IsmdAiClientTest {
                         "{\"detail\":\"Interní chyba AI služby.\"}"
                 )));
 
-        RestClientResponseException exception = assertThrows(
-                RestClientResponseException.class,
-                () -> client.getClassSuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID))
-        );
+        RestClientResponseException exception = assertThatExceptionOfType(RestClientResponseException.class)
+                .isThrownBy(() -> client.getClassSuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID)))
+                .actual();
 
-        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, exception.getStatusCode());
+        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @Test
@@ -384,8 +381,9 @@ class IsmdAiClientTest {
                 "{\"job_id\":\"" + FIRST_JOB_ID + "\",\"status\":\"in_progress\"}")));
         var request = new AiVocabularySuggestionRequestDto(2, 0, 3,
                 List.of("/eli/cz/sb/2025/7/2025-02-03/par_1"), "Vozidla", fullKnownConceptualModel());
-        assertEquals(FIRST_JOB_ID, client.startVocabularySuggestions(
-                BEARER_TOKEN, 2025, 7, LocalDate.of(2025, 2, 3), request).jobId());
+        assertThat(client.startVocabularySuggestions(
+                BEARER_TOKEN, 2025, 7, LocalDate.of(2025, 2, 3), request).jobId())
+                .isEqualTo(FIRST_JOB_ID);
         WM.verify(1, postRequestedFor(urlEqualTo(path))
                 .withHeader(HttpHeaders.AUTHORIZATION, equalTo("Bearer " + BEARER_TOKEN))
                 .withRequestBody(equalToJson("""
@@ -399,9 +397,9 @@ class IsmdAiClientTest {
     void vocabularyStart_leavesDefaultsToAiAndRejectsEmptyUpstreamResponse() {
         String path = "/legal-acts/2025/7/2025-02-03/vocabulary-suggestions-jobs";
         WM.stubFor(post(urlEqualTo(path)).willReturn(aResponse().withStatus(202)));
-        assertThrows(org.springframework.web.client.RestClientException.class,
-                () -> client.startVocabularySuggestions(BEARER_TOKEN, 2025, 7, LocalDate.of(2025, 2, 3),
-                        new AiVocabularySuggestionRequestDto(null, null, null, null, null, null)));
+        assertThatThrownBy(() -> client.startVocabularySuggestions(BEARER_TOKEN, 2025, 7, LocalDate.of(2025, 2, 3),
+                        new AiVocabularySuggestionRequestDto(null, null, null, null, null, null)))
+                .isInstanceOf(org.springframework.web.client.RestClientException.class);
         WM.verify(postRequestedFor(urlEqualTo(path)).withRequestBody(equalToJson("""
                 {"class_count":null,"properties_per_class":null,"relationships_per_class":null,
                  "structural_element_ids":null,"context_text":null,"known_conceptual_model":null}
@@ -425,12 +423,13 @@ class IsmdAiClientTest {
                 ]
                 """)));
         var result = client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID, SECOND_JOB_ID)).get(0);
-        assertEquals(AiJobStatus.FAILED, result.status());
-        assertEquals(AiVocabularySuggestionsJobResponseDto.Phase.RELATIONSHIPS, result.draft().phase());
-        assertEquals("https://example.test/vehicle", result.draft().classes().get(0).specializes().get(0).iri());
-        assertEquals("class-1", result.draft().attributes().get(0).associatedClass().ref());
-        assertEquals("class-1", result.draft().relationships().get(0).sourceClass().ref());
-        assertEquals("https://example.test/person", result.draft().relationships().get(0).targetClass().iri());
+        assertThat(result.status()).isEqualTo(AiJobStatus.FAILED);
+        assertThat(result.draft().phase()).isEqualTo(AiVocabularySuggestionsJobResponseDto.Phase.RELATIONSHIPS);
+        assertThat(result.draft().classes().get(0).specializes().get(0).iri())
+                .isEqualTo("https://example.test/vehicle");
+        assertThat(result.draft().attributes().get(0).associatedClass().ref()).isEqualTo("class-1");
+        assertThat(result.draft().relationships().get(0).sourceClass().ref()).isEqualTo("class-1");
+        assertThat(result.draft().relationships().get(0).targetClass().iri()).isEqualTo("https://example.test/person");
         WM.verify(1, getRequestedFor(urlEqualTo(path))
                 .withHeader(HttpHeaders.AUTHORIZATION, equalTo("Bearer " + BEARER_TOKEN)));
     }
@@ -439,12 +438,14 @@ class IsmdAiClientTest {
     void vocabularyPolling_propagatesUpstreamErrorsAndRejectsMissingDraft() {
         String path = "/legal-acts/vocabulary-suggestions-jobs?jobIds=" + FIRST_JOB_ID;
         WM.stubFor(get(urlEqualTo(path)).willReturn(jsonResponse(HttpStatus.NOT_FOUND, "{}")));
-        assertEquals(HttpStatus.NOT_FOUND, assertThrows(RestClientResponseException.class,
-                () -> client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID))).getStatusCode());
+        assertThatExceptionOfType(RestClientResponseException.class)
+                .isThrownBy(() -> client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID)))
+                .extracting(RestClientResponseException::getStatusCode)
+                .isEqualTo(HttpStatus.NOT_FOUND);
         WM.stubFor(get(urlEqualTo(path)).willReturn(jsonResponse(HttpStatus.OK,
                 "[{\"job_id\":\"" + FIRST_JOB_ID + "\",\"status\":\"in_progress\"}]")));
-        assertThrows(org.springframework.web.client.RestClientException.class,
-                () -> client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID)));
+        assertThatThrownBy(() -> client.getVocabularySuggestions(BEARER_TOKEN, List.of(FIRST_JOB_ID)))
+                .isInstanceOf(org.springframework.web.client.RestClientException.class);
     }
 
     private static AiKnownConceptualModelDto fullKnownConceptualModel() {

@@ -26,12 +26,9 @@ import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.sparqlJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class EsbirkaSparqlClientTest {
 
@@ -81,8 +78,8 @@ class EsbirkaSparqlClientTest {
                 .row(lawRow(LAW_IRI, null, "187", typed("rok", "2006", "xsd:gYear")))
                 .row(lawRow(LAW_IRI + "/2025", "99/2025 Sb.", "99", typed("rok", "2025", "xsd:gYear"))));
         Optional<LawModel> out = client.findLawByNumberYear("99", 2025);
-        assertTrue(out.isPresent());
-        assertEquals("99/2025 Sb.", out.get().getCitace());
+        assertThat(out).isPresent();
+        assertThat(out.get().getCitace()).isEqualTo("99/2025 Sb.");
     }
 
     @Test
@@ -90,8 +87,8 @@ class EsbirkaSparqlClientTest {
         stubSparql(SparqlJson.select(LAW_VARS)
                 .row(lawRow(LAW_IRI, "99/9999 Sb.", "99", literal("rok", "not-a-number"))));
         Optional<LawModel> out = client.findLawByNumberYear("99", 9999);
-        assertTrue(out.isPresent());
-        assertNull(out.get().getRok());
+        assertThat(out).isPresent();
+        assertThat(out.get().getRok()).isNull();
     }
 
     // --- fetchVersions ------------------------------------------------------
@@ -108,20 +105,20 @@ class EsbirkaSparqlClientTest {
                         typed("ucinnostOd", "2025-01-01", "xsd:date"),
                         xsdBoolean("isLatest", false)));
         List<LawVersionModel> out = client.fetchVersions(LAW_IRI);
-        assertEquals(2, out.size());
+        assertThat(out).hasSize(2);
 
         LawVersionModel latest = out.get(0);
-        assertEquals(VERSION_IRI, latest.getIri());
-        assertEquals(LocalDate.of(2026, 4, 1), latest.getUcinnostOd());
-        assertEquals(LocalDate.of(2026, 6, 30), latest.getUcinnostDo());
-        assertEquals("https://example.org/typ/KONSOL", latest.getVersionType());
-        assertTrue(latest.isLatest());
+        assertThat(latest.getIri()).isEqualTo(VERSION_IRI);
+        assertThat(latest.getUcinnostOd()).isEqualTo(LocalDate.of(2026, 4, 1));
+        assertThat(latest.getUcinnostDo()).isEqualTo(LocalDate.of(2026, 6, 30));
+        assertThat(latest.getVersionType()).isEqualTo("https://example.org/typ/KONSOL");
+        assertThat(latest.isLatest()).isTrue();
 
         LawVersionModel old = out.get(1);
-        assertEquals(LocalDate.of(2025, 1, 1), old.getUcinnostOd());
-        assertNull(old.getUcinnostDo());
-        assertNull(old.getVersionType());
-        assertFalse(old.isLatest());
+        assertThat(old.getUcinnostOd()).isEqualTo(LocalDate.of(2025, 1, 1));
+        assertThat(old.getUcinnostDo()).isNull();
+        assertThat(old.getVersionType()).isNull();
+        assertThat(old.isLatest()).isFalse();
     }
 
     @Test
@@ -129,8 +126,8 @@ class EsbirkaSparqlClientTest {
         stubSparql(SparqlJson.select("zneni", "ucinnostOd", "isLatest")
                 .row(uri("zneni", VERSION_IRI), literal("ucinnostOd", "not-a-date"), xsdBoolean("isLatest", true)));
         List<LawVersionModel> out = client.fetchVersions(LAW_IRI);
-        assertEquals(1, out.size());
-        assertNull(out.get(0).getUcinnostOd());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getUcinnostOd()).isNull();
     }
 
     // --- fragment kind from IRI -----------------------------------------------
@@ -150,26 +147,26 @@ class EsbirkaSparqlClientTest {
                 .row(fragmentRow(basePath + "/ppc_1",                       basePath,                "PPC 1",           "6AEE"))
                 .row(fragmentRow(basePath + "/frag_1",                      basePath,                "Frag 1",          "6AEF")));
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
-        assertEquals(10, out.size());
+        assertThat(out).hasSize(10);
 
         // Order preserved (server-side ORDER BY ?order); kind parsed from last segment.
-        assertEquals("cast", out.get(0).getKind());
-        assertEquals("hlava", out.get(1).getKind());
-        assertEquals("dil", out.get(2).getKind());
-        assertEquals("oddil", out.get(3).getKind());
-        assertEquals("par", out.get(4).getKind());
-        assertEquals("odst", out.get(5).getKind());
-        assertEquals("pism", out.get(6).getKind());
-        assertEquals("bod", out.get(7).getKind());
-        assertEquals("ppc", out.get(8).getKind());
-        assertEquals("frag", out.get(9).getKind());
+        assertThat(out.get(0).getKind()).isEqualTo("cast");
+        assertThat(out.get(1).getKind()).isEqualTo("hlava");
+        assertThat(out.get(2).getKind()).isEqualTo("dil");
+        assertThat(out.get(3).getKind()).isEqualTo("oddil");
+        assertThat(out.get(4).getKind()).isEqualTo("par");
+        assertThat(out.get(5).getKind()).isEqualTo("odst");
+        assertThat(out.get(6).getKind()).isEqualTo("pism");
+        assertThat(out.get(7).getKind()).isEqualTo("bod");
+        assertThat(out.get(8).getKind()).isEqualTo("ppc");
+        assertThat(out.get(9).getKind()).isEqualTo("frag");
 
         // Citation preserved verbatim
-        assertEquals("§ 122 odst. 4 písm. g)", out.get(6).getCitation());
+        assertThat(out.get(6).getCitation()).isEqualTo("§ 122 odst. 4 písm. g)");
         // Order key preserved (string, lex-sortable)
-        assertEquals("6ADED580", out.get(6).getOrder());
+        assertThat(out.get(6).getOrder()).isEqualTo("6ADED580");
         // Parent edge preserved
-        assertEquals(basePath + "/par_122/odst_4", out.get(6).getParentIri());
+        assertThat(out.get(6).getParentIri()).isEqualTo(basePath + "/par_122/odst_4");
     }
 
     @Test
@@ -181,9 +178,9 @@ class EsbirkaSparqlClientTest {
                 .row(fragmentRow(basePath + "/poznamkypodcarou", basePath, "Poznámky", "FFFF"))
                 .row(fragmentRow(basePath + "/frag",             basePath, "Frag",     "FFFE")));
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
-        assertEquals(2, out.size());
-        assertEquals("poznamkypodcarou", out.get(0).getKind());
-        assertEquals("frag", out.get(1).getKind());
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0).getKind()).isEqualTo("poznamkypodcarou");
+        assertThat(out.get(1).getKind()).isEqualTo("frag");
     }
 
     @Test
@@ -193,8 +190,8 @@ class EsbirkaSparqlClientTest {
         stubSparql(SparqlJson.select(FRAGMENT_VARS)
                 .row(fragmentRow(basePath + "/trailing/", basePath, "Trailing", "FFFD")));
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
-        assertEquals(1, out.size());
-        assertEquals("unknown", out.get(0).getKind());
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).getKind()).isEqualTo("unknown");
     }
 
     // --- fetchVersionContent (obsah body mapping) ---------------------------
@@ -211,17 +208,17 @@ class EsbirkaSparqlClientTest {
                         "<var>§ 1</var> Tělo paragrafu.")));
 
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
-        assertEquals(2, out.size());
+        assertThat(out).hasSize(2);
 
         FragmentModel structural = out.get(0);
-        assertEquals("cast", structural.getKind());
-        assertNull(structural.getBodyHtml(), "structural fragment must have null bodyHtml");
+        assertThat(structural.getKind()).isEqualTo("cast");
+        assertThat(structural.getBodyHtml()).as("structural fragment must have null bodyHtml").isNull();
 
         FragmentModel textual = out.get(1);
-        assertEquals("par", textual.getKind());
-        assertEquals("<var>§ 1</var> Tělo paragrafu.", textual.getBodyHtml());
-        assertEquals(basePath + "/cast_1", textual.getParentIri());
-        assertEquals("6AC1", textual.getOrder());
+        assertThat(textual.getKind()).isEqualTo("par");
+        assertThat(textual.getBodyHtml()).isEqualTo("<var>§ 1</var> Tělo paragrafu.");
+        assertThat(textual.getParentIri()).isEqualTo(basePath + "/cast_1");
+        assertThat(textual.getOrder()).isEqualTo("6AC1");
     }
 
     @Test
@@ -234,17 +231,17 @@ class EsbirkaSparqlClientTest {
 
         List<FragmentModel> out = client.fetchVersionContent(VERSION_IRI);
         // A missing parent must NOT drop the row — its obsah body would be lost with it.
-        assertEquals(2, out.size());
-        assertNull(out.get(0).getParentIri());
-        assertEquals("<var>orphan</var>", out.get(0).getBodyHtml());
-        assertEquals("§ 2", out.get(1).getCitation());
-        assertEquals("<var>§ 2</var>", out.get(1).getBodyHtml());
+        assertThat(out).hasSize(2);
+        assertThat(out.get(0).getParentIri()).isNull();
+        assertThat(out.get(0).getBodyHtml()).isEqualTo("<var>orphan</var>");
+        assertThat(out.get(1).getCitation()).isEqualTo("§ 2");
+        assertThat(out.get(1).getBodyHtml()).isEqualTo("<var>§ 2</var>");
     }
 
     @Test
     void fetchVersionContent_emptyResultSet() {
         stubSparql(SparqlJson.select(CONTENT_VARS));
-        assertEquals(0, client.fetchVersionContent(VERSION_IRI).size());
+        assertThat(client.fetchVersionContent(VERSION_IRI)).isEmpty();
     }
 
     // --- findLawByNumberYear ------------------------------------------------
@@ -255,17 +252,17 @@ class EsbirkaSparqlClientTest {
                 .row(lawRow(LAW_IRI, "49/1997 Sb.", "49", typed("rok", "1997", "xsd:gYear"))));
 
         Optional<LawModel> out = client.findLawByNumberYear("49", 1997);
-        assertTrue(out.isPresent());
-        assertEquals(LAW_IRI, out.get().getIri());
-        assertEquals("49/1997 Sb.", out.get().getCitace());
-        assertEquals("49", out.get().getCislo());
-        assertEquals(Integer.valueOf(1997), out.get().getRok());
+        assertThat(out).isPresent();
+        assertThat(out.get().getIri()).isEqualTo(LAW_IRI);
+        assertThat(out.get().getCitace()).isEqualTo("49/1997 Sb.");
+        assertThat(out.get().getCislo()).isEqualTo("49");
+        assertThat(out.get().getRok()).isEqualTo(Integer.valueOf(1997));
     }
 
     @Test
     void findLawByNumberYear_noMatch_returnsEmptyOptional() {
         stubSparql(SparqlJson.select(LAW_VARS));
-        assertTrue(client.findLawByNumberYear("999", 1997).isEmpty());
+        assertThat(client.findLawByNumberYear("999", 1997)).isEmpty();
     }
 
     // --- resolveFragment ----------------------------------------------------
@@ -280,10 +277,10 @@ class EsbirkaSparqlClientTest {
 
         Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
 
-        assertTrue(out.isPresent());
-        assertEquals("§ 2 písm. d)", out.get().citation());
-        assertEquals(LocalDate.of(2024, 12, 31), out.get().versionValidUntil());
-        assertTrue(out.get().isLatest());
+        assertThat(out).isPresent();
+        assertThat(out.get().citation()).isEqualTo("§ 2 písm. d)");
+        assertThat(out.get().versionValidUntil()).isEqualTo(LocalDate.of(2024, 12, 31));
+        assertThat(out.get().isLatest()).isTrue();
     }
 
     @Test
@@ -293,7 +290,7 @@ class EsbirkaSparqlClientTest {
 
         Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
 
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -304,10 +301,10 @@ class EsbirkaSparqlClientTest {
 
         Optional<FragmentResolutionModel> out = client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI);
 
-        assertTrue(out.isPresent());
-        assertEquals("§ 2 písm. d)", out.get().citation());
-        assertNull(out.get().versionValidUntil());
-        assertFalse(out.get().isLatest());
+        assertThat(out).isPresent();
+        assertThat(out.get().citation()).isEqualTo("§ 2 písm. d)");
+        assertThat(out.get().versionValidUntil()).isNull();
+        assertThat(out.get().isLatest()).isFalse();
     }
 
     @Test
@@ -315,8 +312,8 @@ class EsbirkaSparqlClientTest {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
         WM.stubFor(any(anyUrl()).willReturn(serverError()));
 
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI));
+        assertThatThrownBy(() -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
@@ -324,8 +321,8 @@ class EsbirkaSparqlClientTest {
         String fragmentIri = VERSION_IRI + "/dokument/norma/par_2/pism_d";
         stubSparql("{ malformed");
 
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI));
+        assertThatThrownBy(() -> client.resolveFragment(fragmentIri, VERSION_IRI, LAW_IRI))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     // --- G12: failure modes -------------------------------------------------
@@ -333,54 +330,60 @@ class EsbirkaSparqlClientTest {
     @Test
     void upstream500ThrowsEsbirkaUnavailable() {
         WM.stubFor(any(anyUrl()).willReturn(serverError()));
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
+        assertThatThrownBy(() -> client.findLawByNumberYear("49", 1997))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
     void upstreamTimeoutThrowsEsbirkaUnavailable() {
         EsbirkaSparqlClient impatient = clientFor(WM.baseUrl() + "/sparql", 250);
         WM.stubFor(any(anyUrl()).willReturn(sparqlJson(SparqlJson.select(LAW_VARS)).withFixedDelay(1_500)));
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> impatient.findLawByNumberYear("49", 1997));
-        assertNotNull(ex.getMessage());
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> impatient.findLawByNumberYear("49", 1997))
+                .actual();
+        assertThat(ex.getMessage()).isNotNull();
     }
 
     @Test
     void malformedBodyThrowsEsbirkaUnavailable() {
         stubSparql("{ this is not valid sparql json");
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
+        assertThatThrownBy(() -> client.findLawByNumberYear("49", 1997))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
     void connectionRefusedThrowsEsbirkaUnavailable() {
         // Point at a port that's not listening — a stopped wiremock instance equivalent.
         EsbirkaSparqlClient down = clientFor("http://127.0.0.1:1/sparql");
-        assertThrows(SparqlEndpointUnavailableException.class, () -> down.findLawByNumberYear("49", 1997));
+        assertThatThrownBy(() -> down.findLawByNumberYear("49", 1997))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
     }
 
     @Test
     void unconfiguredEndpointThrowsEsbirkaUnavailable() {
         EsbirkaSparqlClient unconfigured = clientFor("");
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> unconfigured.findLawByNumberYear("49", 1997));
-        assertTrue(ex.getMessage().contains("not configured"));
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> unconfigured.findLawByNumberYear("49", 1997))
+                .actual();
+        assertThat(ex).hasMessageContaining("not configured");
     }
 
     @Test
     void breakerOpensAfterConsecutiveFailuresAndStopsCallingUpstream() {
         WM.stubFor(any(anyUrl()).willReturn(serverError()));
         for (int i = 0; i < BREAKER_THRESHOLD; i++) {
-            assertThrows(SparqlEndpointUnavailableException.class, () -> client.findLawByNumberYear("49", 1997));
+            assertThatThrownBy(() -> client.findLawByNumberYear("49", 1997))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class);
         }
         int upstreamCalls = WM.getAllServeEvents().size();
 
         // Every operation shares the breaker, not just the one that failed.
-        SparqlEndpointUnavailableException ex = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> client.fetchVersions(LAW_IRI));
+        SparqlEndpointUnavailableException ex = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> client.fetchVersions(LAW_IRI))
+                .actual();
 
-        assertTrue(ex.getMessage().contains("circuit breaker open"));
-        assertEquals(upstreamCalls, WM.getAllServeEvents().size(),
-                "an open breaker must not reach the endpoint");
+        assertThat(ex).hasMessageContaining("circuit breaker open");
+        assertThat(WM.getAllServeEvents()).as("an open breaker must not reach the endpoint").hasSize(upstreamCalls);
     }
 
     // --- helpers ------------------------------------------------------------

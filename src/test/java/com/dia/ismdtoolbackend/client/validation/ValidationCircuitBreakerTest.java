@@ -13,7 +13,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class
 ValidationCircuitBreakerTest {
@@ -33,86 +35,92 @@ ValidationCircuitBreakerTest {
     @Test
     void startsClosed() {
         ValidationCircuitBreaker breaker = breaker(2);
-        assertFalse(breaker.isOpen());
-        assertEquals("ok", breaker.call(() -> "ok"));
-        assertFalse(breaker.isOpen());
+        assertThat(breaker.isOpen()).isFalse();
+        assertThat(breaker.call(() -> "ok")).isEqualTo("ok");
+        assertThat(breaker.isOpen()).isFalse();
     }
 
     @Test
     void opensAfterThreshold() {
         ValidationCircuitBreaker breaker = breaker(2);
 
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertFalse(breaker.isOpen(), "one failure below threshold — still closed");
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).as("one failure below threshold — still closed").isFalse();
 
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertTrue(breaker.isOpen(), "second failure hits threshold — now open");
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).as("second failure hits threshold — now open").isTrue();
     }
 
     @Test
     void openBreakerFastFailsWithoutCallingAction() {
         ValidationCircuitBreaker breaker = breaker(1);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertTrue(breaker.isOpen());
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).isTrue();
 
         boolean[] ran = {false};
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> breaker.call(() -> { ran[0] = true; return "x"; }));
-        assertFalse(ran[0], "open breaker must not invoke the action");
+        assertThatThrownBy(() -> breaker.call(() -> { ran[0] = true; return "x"; }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(ran[0]).as("open breaker must not invoke the action").isFalse();
     }
 
     @Test
     void staysOpenUntilTheLastMillisecondOfTheCooldown() {
         ValidationCircuitBreaker breaker = breaker(1);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
 
         clock.advanceMillis(COOLDOWN_MS - 1);
 
-        assertTrue(breaker.isOpen());
+        assertThat(breaker.isOpen()).isTrue();
         boolean[] ran = {false};
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> breaker.call(() -> { ran[0] = true; return "x"; }));
-        assertFalse(ran[0], "one millisecond before the cooldown ends the breaker still fast-fails");
+        assertThatThrownBy(() -> breaker.call(() -> { ran[0] = true; return "x"; }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(ran[0]).as("one millisecond before the cooldown ends the breaker still fast-fails").isFalse();
 
         clock.advanceMillis(1);
 
-        assertFalse(breaker.isOpen(), "the cooldown has elapsed exactly");
-        assertEquals("ok", breaker.call(() -> "ok"), "the call at the cooldown boundary is the trial");
+        assertThat(breaker.isOpen()).as("the cooldown has elapsed exactly").isFalse();
+        assertThat(breaker.call(() -> "ok")).as("the call at the cooldown boundary is the trial").isEqualTo("ok");
     }
 
     @Test
     void halfOpenTrialClosesOnSuccess() {
         ValidationCircuitBreaker breaker = breaker(1);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertTrue(breaker.isOpen(), "breaker is open during cooldown");
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).as("breaker is open during cooldown").isTrue();
 
         // While open, a call fast-fails without running the action.
         boolean[] ran = {false};
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> breaker.call(() -> { ran[0] = true; return "x"; }));
-        assertFalse(ran[0], "open breaker fast-fails");
+        assertThatThrownBy(() -> breaker.call(() -> { ran[0] = true; return "x"; }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(ran[0]).as("open breaker fast-fails").isFalse();
 
         clock.advanceMillis(COOLDOWN_MS + 1);
-        assertEquals("ok", breaker.call(() -> "ok"), "trial call runs and succeeds");
-        assertFalse(breaker.isOpen(), "successful trial closes the breaker");
+        assertThat(breaker.call(() -> "ok")).as("trial call runs and succeeds").isEqualTo("ok");
+        assertThat(breaker.isOpen()).as("successful trial closes the breaker").isFalse();
     }
 
     @Test
     void halfOpenTrialFailureReopens() {
         ValidationCircuitBreaker breaker = breaker(1);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertTrue(breaker.isOpen());
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).isTrue();
 
         clock.advanceMillis(COOLDOWN_MS + 1);
         // Trial fails → breaker re-opens for another cooldown window.
         boolean[] ran = {false};
-        assertThrows(ValidationServiceUnavailableException.class,
-                () -> breaker.call(() -> { ran[0] = true; throw down(); }));
-        assertTrue(ran[0], "the trial call actually ran");
-        assertTrue(breaker.isOpen(), "failed trial re-opens the breaker");
+        assertThatThrownBy(() -> breaker.call(() -> { ran[0] = true; throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(ran[0]).as("the trial call actually ran").isTrue();
+        assertThat(breaker.isOpen()).as("failed trial re-opens the breaker").isTrue();
 
         clock.advanceMillis(COOLDOWN_MS - 1);
-        assertTrue(breaker.isOpen(), "the new cooldown window counts from the failed trial");
+        assertThat(breaker.isOpen()).as("the new cooldown window counts from the failed trial").isTrue();
     }
 
     @Test
@@ -121,8 +129,9 @@ ValidationCircuitBreakerTest {
         // action and the rest fast-fail. The clock stands still, so the trial window cannot
         // expire while the threads race; the trial holds until every other caller has failed.
         ValidationCircuitBreaker breaker = breaker(1);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertTrue(breaker.isOpen());
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).isTrue();
 
         clock.advanceMillis(COOLDOWN_MS + 1);
 
@@ -161,16 +170,18 @@ ValidationCircuitBreakerTest {
                 });
             }
 
-            assertTrue(ready.await(5, TimeUnit.SECONDS), "all threads started");
+            assertThat(ready.await(5, TimeUnit.SECONDS)).as("all threads started").isTrue();
             go.countDown();
-            assertTrue(done.await(10, TimeUnit.SECONDS), "all threads finished");
+            assertThat(done.await(10, TimeUnit.SECONDS)).as("all threads finished").isTrue();
         } finally {
             pool.shutdownNow();
         }
 
-        assertEquals(1, actionRuns.get(), "exactly one thread runs the half-open trial");
-        assertEquals(threads, fastFails.get(), "trial failed → every caller (trial + losers) sees unavailable");
-        assertTrue(breaker.isOpen(), "failed trial keeps the breaker open");
+        assertThat(actionRuns.get()).as("exactly one thread runs the half-open trial").isEqualTo(1);
+        assertThat(fastFails.get())
+                .as("trial failed → every caller (trial + losers) sees unavailable")
+                .isEqualTo(threads);
+        assertThat(breaker.isOpen()).as("failed trial keeps the breaker open").isTrue();
     }
 
     @Test
@@ -191,34 +202,38 @@ ValidationCircuitBreakerTest {
             }
         };
         ValidationCircuitBreaker breaker = new ValidationCircuitBreaker("v", 1, COOLDOWN_MS, hooked);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
         clock.advanceMillis(COOLDOWN_MS + 1);
 
         boolean[] winnerRan = {false};
-        onNextRead[0] = () -> assertThrows(ValidationServiceUnavailableException.class,
-                () -> breaker.call(() -> { winnerRan[0] = true; throw down(); }));
+        onNextRead[0] = () -> assertThatThrownBy(() -> breaker.call(() -> { winnerRan[0] = true; throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
         boolean[] loserRan = {false};
-        ValidationServiceUnavailableException lost = assertThrows(ValidationServiceUnavailableException.class,
-                () -> breaker.call(() -> { loserRan[0] = true; return "x"; }));
+        ValidationServiceUnavailableException lost = assertThatExceptionOfType(ValidationServiceUnavailableException.class)
+                .isThrownBy(() -> breaker.call(() -> { loserRan[0] = true; return "x"; }))
+                .actual();
 
-        assertTrue(winnerRan[0], "the winning caller ran the trial");
-        assertFalse(loserRan[0], "the losing caller must not run a second trial");
-        assertTrue(lost.getMessage().contains("trial in progress"), lost.getMessage());
+        assertThat(winnerRan[0]).as("the winning caller ran the trial").isTrue();
+        assertThat(loserRan[0]).as("the losing caller must not run a second trial").isFalse();
+        assertThat(lost).as(lost.getMessage()).hasMessageContaining("trial in progress");
     }
 
     @Test
     void rejectionStyleExceptionsDoNotTrip() {
         ValidationCircuitBreaker breaker = breaker(1);
         // A non-unavailable exception propagates and does NOT count toward opening.
-        assertThrows(IllegalStateException.class, () -> breaker.call(() -> { throw new IllegalStateException("4xx"); }));
-        assertFalse(breaker.isOpen());
+        assertThatThrownBy(() -> breaker.call(() -> { throw new IllegalStateException("4xx"); }))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(breaker.isOpen()).isFalse();
     }
 
     @Test
     void publicConstructorUsesTheSystemClock() {
         ValidationCircuitBreaker breaker = new ValidationCircuitBreaker("v", 1, COOLDOWN_MS);
-        assertThrows(ValidationServiceUnavailableException.class, () -> breaker.call(() -> { throw down(); }));
-        assertTrue(breaker.isOpen(), "a 30 s cooldown has not elapsed on the real clock");
+        assertThatThrownBy(() -> breaker.call(() -> { throw down(); }))
+                .isInstanceOf(ValidationServiceUnavailableException.class);
+        assertThat(breaker.isOpen()).as("a 30 s cooldown has not elapsed on the real clock").isTrue();
     }
 
     /** Bounded so a second (wrongly admitted) trial fails the test instead of hanging it. */

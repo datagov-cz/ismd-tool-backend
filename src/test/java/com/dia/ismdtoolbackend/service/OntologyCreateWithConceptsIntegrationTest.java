@@ -44,7 +44,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 @OutboxFlowIT
@@ -69,22 +70,26 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
     @Test
     void createsCompleteLinkedGraphAndMetadata() {
         var result = service.createWithConcepts(sample(), "creator");
-        assertEquals(GRAPH, result.ontology().getGraphName());
-        assertEquals(4, result.ontology().getConceptCount());
-        assertEquals(1, ontologies.count());
-        assertEquals(4, concepts.count());
-        assertEquals(OutboxOperation.CREATE_GRAPH, outbox.findAll().get(0).getOperation());
-        assertEquals(OutboxStatus.DONE, outbox.findAll().get(0).getStatus());
+        assertThat(result.ontology().getGraphName()).isEqualTo(GRAPH);
+        assertThat(result.ontology().getConceptCount()).isEqualTo(4);
+        assertThat(ontologies.count()).isEqualTo(1);
+        assertThat(concepts.count()).isEqualTo(4);
+        assertThat(outbox.findAll().get(0).getOperation()).isEqualTo(OutboxOperation.CREATE_GRAPH);
+        assertThat(outbox.findAll().get(0).getStatus()).isEqualTo(OutboxStatus.DONE);
         var iris = result.conceptIris();
         Model graph = rdf.fetchGraph(GRAPH);
-        assertTrue(graph.contains(graph.getResource(GRAPH), RDF.type, SKOS.ConceptScheme));
-        assertTrue(graph.contains(graph.getResource(iris.get("weight")), RDFS.domain, graph.getResource(iris.get("vehicle"))));
-        assertTrue(graph.contains(graph.getResource(iris.get("weight")), RDFS.range, graph.getResource("http://www.w3.org/2001/XMLSchema#decimal")));
-        assertTrue(graph.contains(graph.getResource(iris.get("drives")), RDFS.domain, graph.getResource(iris.get("driver"))));
-        assertTrue(graph.contains(graph.getResource(iris.get("drives")), RDFS.range, graph.getResource(iris.get("vehicle"))));
+        assertThat(graph.contains(graph.getResource(GRAPH), RDF.type, SKOS.ConceptScheme)).isTrue();
+        assertThat(graph.contains(graph.getResource(iris.get("weight")), RDFS.domain, graph.getResource(iris.get("vehicle"))))
+                .isTrue();
+        assertThat(graph.contains(graph.getResource(iris.get("weight")), RDFS.range, graph.getResource("http://www.w3.org/2001/XMLSchema#decimal")))
+                .isTrue();
+        assertThat(graph.contains(graph.getResource(iris.get("drives")), RDFS.domain, graph.getResource(iris.get("driver"))))
+                .isTrue();
+        assertThat(graph.contains(graph.getResource(iris.get("drives")), RDFS.range, graph.getResource(iris.get("vehicle"))))
+                .isTrue();
         for (String iri : iris.values()) {
-            assertTrue(graph.contains(graph.getResource(iri), SKOS.inScheme, graph.getResource(GRAPH)));
-            assertEquals("creator", concepts.findByConceptIri(iri).orElseThrow().getUserId());
+            assertThat(graph.contains(graph.getResource(iri), SKOS.inScheme, graph.getResource(GRAPH))).isTrue();
+            assertThat(concepts.findByConceptIri(iri).orElseThrow().getUserId()).isEqualTo("creator");
         }
     }
 
@@ -93,24 +98,25 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         service.createWithConcepts(sample(), "creator");
         Long id = ontologies.findByGraphName(GRAPH).orElseThrow().getId();
         rdf.reset();
-        assertFalse(rdf.graphHasData(GRAPH));
+        assertThat(rdf.graphHasData(GRAPH)).isFalse();
 
         service.deleteOntology(id);
 
-        assertEquals(0, ontologies.count());
-        assertEquals(0, concepts.count());
-        assertTrue(outbox.findAll().stream().allMatch(row -> row.getStatus() == OutboxStatus.DONE));
-        assertFalse(rdf.graphHasData(GRAPH));
+        assertThat(ontologies.count()).isEqualTo(0);
+        assertThat(concepts.count()).isEqualTo(0);
+        assertThat(outbox.findAll().stream().allMatch(row -> row.getStatus() == OutboxStatus.DONE)).isTrue();
+        assertThat(rdf.graphHasData(GRAPH)).isFalse();
     }
 
     @Test
     void repeatRequestConflictsWithoutChangingStoredGraph() {
         service.createWithConcepts(sample(), "creator");
         Model before = rdf.fetchGraph(GRAPH);
-        assertThrows(OntologyCreationConflictException.class, () -> service.createWithConcepts(sample(), "other"));
-        assertEquals(1, ontologies.count());
-        assertEquals(4, concepts.count());
-        assertTrue(before.isIsomorphicWith(rdf.fetchGraph(GRAPH)));
+        assertThatThrownBy(() -> service.createWithConcepts(sample(), "other"))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThat(ontologies.count()).isEqualTo(1);
+        assertThat(concepts.count()).isEqualTo(4);
+        assertThat(before.isIsomorphicWith(rdf.fetchGraph(GRAPH))).isTrue();
     }
 
     @ParameterizedTest
@@ -119,16 +125,16 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         rdf.failBeforeWrite(true);
         if (ordinary) service.createOntology(sample().ontology(), "creator");
         else service.createWithConcepts(sample(), "creator");
-        assertEquals(1, ontologies.count());
-        assertEquals(ordinary ? 0 : 4, concepts.count());
-        assertEquals(OutboxStatus.PENDING, outbox.findAll().get(0).getStatus());
-        assertEquals(1, outbox.findAll().get(0).getAttempts());
-        assertFalse(rdf.graphHasData(GRAPH));
+        assertThat(ontologies.count()).isEqualTo(1);
+        assertThat(concepts.count()).isEqualTo(ordinary ? 0 : 4);
+        assertThat(outbox.findAll().get(0).getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outbox.findAll().get(0).getAttempts()).isEqualTo(1);
+        assertThat(rdf.graphHasData(GRAPH)).isFalse();
         rdf.failBeforeWrite(false);
-        assertEquals(1, relay.drainOnce());
-        assertTrue(rdf.graphHasData(GRAPH));
-        assertEquals(OutboxStatus.DONE, outbox.findAll().get(0).getStatus());
-        assertEquals(0, rdf.deleteCount());
+        assertThat(relay.drainOnce()).isEqualTo(1);
+        assertThat(rdf.graphHasData(GRAPH)).isTrue();
+        assertThat(outbox.findAll().get(0).getStatus()).isEqualTo(OutboxStatus.DONE);
+        assertThat(rdf.deleteCount()).isEqualTo(0);
     }
 
     @ParameterizedTest
@@ -137,7 +143,7 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         tx.executeWithoutResult(status -> {
             if (ordinary) service.createOntology(sample().ontology(), "creator");
             else service.createWithConcepts(sample(), "creator");
-            assertEquals(1, outbox.count());
+            assertThat(outbox.count()).isEqualTo(1);
             status.setRollbackOnly();
         });
         assertRolledBackWithoutRdf();
@@ -148,22 +154,23 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
     void databaseCommitFailureRollsBackMetadataAndOutbox(boolean ordinary) {
         // The FK is checked by PostgreSQL at COMMIT, after the service returned and JPA flushed.
         withDeferredCommitFailure(() -> {
-            assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(status -> {
+            assertThatThrownBy(() -> tx.executeWithoutResult(status -> {
                 if (ordinary) service.createOntology(sample().ontology(), "creator");
                 else service.createWithConcepts(sample(), "creator");
                 injectCommitFailure();
-            }));
+            }))
+                    .isInstanceOf(RuntimeException.class);
             assertRolledBackWithoutRdf();
         });
     }
 
     private void assertRolledBackWithoutRdf() {
-        assertEquals(0, ontologies.count());
-        assertEquals(0, concepts.count());
-        assertEquals(0, outbox.count());
-        assertEquals(0, rdf.writeCount());
-        assertEquals(0, rdf.deleteCount());
-        assertFalse(rdf.graphHasData(GRAPH));
+        assertThat(ontologies.count()).isEqualTo(0);
+        assertThat(concepts.count()).isEqualTo(0);
+        assertThat(outbox.count()).isEqualTo(0);
+        assertThat(rdf.writeCount()).isEqualTo(0);
+        assertThat(rdf.deleteCount()).isEqualTo(0);
+        assertThat(rdf.graphHasData(GRAPH)).isFalse();
     }
 
     private void withDeferredCommitFailure(Runnable test) {
@@ -192,15 +199,15 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         withDeferredCommitFailure(() -> {
             outboxConfig.setBatchSize(100);
             rdf.afterWrite(this::injectCommitFailure);
-            assertThrows(RuntimeException.class, () -> relay.drainOnce());
-            assertEquals(OutboxStatus.PENDING, outbox.findAll().get(0).getStatus());
+            assertThatThrownBy(() -> relay.drainOnce()).isInstanceOf(RuntimeException.class);
+            assertThat(outbox.findAll().get(0).getStatus()).isEqualTo(OutboxStatus.PENDING);
             Model first = rdf.fetchGraph(GRAPH);
-            assertTrue(first.listSubjects().toList().stream().anyMatch(r -> r.isAnon()));
+            assertThat(first.listSubjects().toList().stream().anyMatch(r -> r.isAnon())).isTrue();
             rdf.afterWrite(() -> {});
-            assertEquals(1, relay.drainOnce());
-            assertTrue(first.isIsomorphicWith(rdf.fetchGraph(GRAPH)));
-            assertEquals(first.size(), rdf.fetchGraph(GRAPH).size());
-            assertEquals(0, rdf.deleteCount());
+            assertThat(relay.drainOnce()).isEqualTo(1);
+            assertThat(first.isIsomorphicWith(rdf.fetchGraph(GRAPH))).isTrue();
+            assertThat(rdf.fetchGraph(GRAPH).size()).isEqualTo(first.size());
+            assertThat(rdf.deleteCount()).isEqualTo(0);
         });
     }
 
@@ -214,21 +221,24 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var description = new DescriptionModel();
         description.setDescription(java.util.Map.of("cs", "Nový popis"));
         edit.setDescriptionModel(description);
-        assertThrows(OntologyCreationConflictException.class, () -> service.editOntology(created.ontology().getId(), edit));
-        assertThrows(OntologyCreationConflictException.class, () -> service.deleteOntology(created.ontology().getId()));
+        assertThatThrownBy(() -> service.editOntology(created.ontology().getId(), edit))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThatThrownBy(() -> service.deleteOntology(created.ontology().getId()))
+                .isInstanceOf(OntologyCreationConflictException.class);
 
         Model delta = ModelFactory.createDefaultModel();
         delta.add(delta.createResource(GRAPH + "/later"), SKOS.prefLabel, "Later");
         tx.executeWithoutResult(txStatus -> writer.enqueueUpsert(GRAPH, GRAPH + "/later", Set.of(), delta.listStatements().toSet()));
-        assertEquals(0, relay.drainOnce());
-        assertFalse(rdf.fetchGraph(GRAPH).containsResource(delta.createResource(GRAPH + "/later")));
+        assertThat(relay.drainOnce()).isEqualTo(0);
+        assertThat(rdf.fetchGraph(GRAPH).containsResource(delta.createResource(GRAPH + "/later"))).isFalse();
         rdf.failAfterWrite(false);
         setInitialStatus(OutboxStatus.PENDING);
-        assertEquals(2, relay.drainOnce());
-        assertTrue(rdf.fetchGraph(GRAPH).containsAll(delta));
+        assertThat(relay.drainOnce()).isEqualTo(2);
+        assertThat(rdf.fetchGraph(GRAPH).containsAll(delta)).isTrue();
         service.editOntology(created.ontology().getId(), edit);
-        assertEquals(0, relay.drainOnce());
-        assertTrue(rdf.fetchGraph(GRAPH).contains(rdf.fetchGraph(GRAPH).getResource(GRAPH), DCTerms.description, "Nový popis", "cs"));
+        assertThat(relay.drainOnce()).isEqualTo(0);
+        assertThat(rdf.fetchGraph(GRAPH).contains(rdf.fetchGraph(GRAPH).getResource(GRAPH), DCTerms.description, "Nový popis", "cs"))
+                .isTrue();
     }
 
     private void setInitialStatus(OutboxStatus status) {
@@ -251,19 +261,19 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var release = new CountDownLatch(1);
         rdf.afterWrite(() -> {
             reached.countDown();
-            try { assertTrue(release.await(15, TimeUnit.SECONDS)); }
+            try { assertThat(release.await(15, TimeUnit.SECONDS)).isTrue(); }
             catch (InterruptedException e) { throw new IllegalStateException(e); }
         });
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             var first = executor.submit(() -> relay.drainOnce());
-            assertTrue(reached.await(15, TimeUnit.SECONDS));
-            assertEquals(0, relay.drainOnce()); // skips claimed row; later aggregate still gated
-            assertFalse(rdf.fetchGraph(GRAPH).containsAll(delta));
+            assertThat(reached.await(15, TimeUnit.SECONDS)).isTrue();
+            assertThat(relay.drainOnce()).isEqualTo(0); // skips claimed row; later aggregate still gated
+            assertThat(rdf.fetchGraph(GRAPH).containsAll(delta)).isFalse();
             release.countDown();
-            assertEquals(1, first.get(20, TimeUnit.SECONDS));
-            assertEquals(1, relay.drainOnce());
-            assertTrue(rdf.fetchGraph(GRAPH).containsAll(delta));
+            assertThat(first.get(20, TimeUnit.SECONDS)).isEqualTo(1);
+            assertThat(relay.drainOnce()).isEqualTo(1);
+            assertThat(rdf.fetchGraph(GRAPH).containsAll(delta)).isTrue();
         } finally { release.countDown(); executor.shutdownNow(); }
     }
 
@@ -274,12 +284,13 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var request = sample().ontology();
         request.getDescriptionModel().setDescription(java.util.Map.of("cs", "Must not replace original"));
         var duplicate = service.createOntology(request, "other");
-        assertEquals(original.ontology().getId(), duplicate.getId());
-        assertEquals(original.ontology().getName(), duplicate.getName());
-        assertEquals(original.ontology().getPopis(), duplicate.getPopis());
-        assertEquals(1, outbox.count());
-        assertEquals(0, rdf.writeCount());
-        assertThrows(OntologyCreationConflictException.class, () -> service.createWithConcepts(sample(), "other"));
+        assertThat(duplicate.getId()).isEqualTo(original.ontology().getId());
+        assertThat(duplicate.getName()).isEqualTo(original.ontology().getName());
+        assertThat(duplicate.getPopis()).isEqualTo(original.ontology().getPopis());
+        assertThat(outbox.count()).isEqualTo(1);
+        assertThat(rdf.writeCount()).isEqualTo(0);
+        assertThatThrownBy(() -> service.createWithConcepts(sample(), "other"))
+                .isInstanceOf(OntologyCreationConflictException.class);
     }
 
     @Test
@@ -299,7 +310,7 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var concept = prepared.concepts().get(0);
         conceptService.createConcept(concept, "creator");
         var ordinary = concepts.findByConceptIri(concept.getIdentifier()).orElseThrow();
-        assertEquals("doprava-řidič-1", ordinary.getSlug());
+        assertThat(ordinary.getSlug()).isEqualTo("doprava-řidič-1");
 
         // Start over from an empty database and rebuild the same input via the batch endpoint.
         wipeDatabase();
@@ -316,10 +327,11 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         concepts.save(collision);
         service.createWithConcepts(sample(), "creator");
         var batch = concepts.findByConceptIri(concept.getIdentifier()).orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(batch).usingRecursiveComparison()
+        assertThat(batch).usingRecursiveComparison()
                 .ignoringFields("id", "createdAt", "updatedAt", "ontologyMetadata")
                 .isEqualTo(ordinary);
-        assertEquals(GRAPH, tx.execute(status -> concepts.findById(batch.getId()).orElseThrow().getOntologyMetadata().getGraphName()));
+        assertThat(tx.<String>execute(status -> concepts.findById(batch.getId()).orElseThrow().getOntologyMetadata().getGraphName()))
+                .isEqualTo(GRAPH);
     }
 
     @Test
@@ -329,8 +341,10 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var id = concepts.findByConceptIri(created.conceptIris().get("driver")).orElseThrow().getId();
         var edit = new com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel();
         edit.setConceptType("třída");
-        assertThrows(OntologyCreationConflictException.class, () -> conceptService.editConcept(id, edit));
-        assertThrows(OntologyCreationConflictException.class, () -> conceptService.deleteConcept(id));
+        assertThatThrownBy(() -> conceptService.editConcept(id, edit))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThatThrownBy(() -> conceptService.deleteConcept(id))
+                .isInstanceOf(OntologyCreationConflictException.class);
         var concept = new com.dia.ismdtoolbackend.models.concept.ClassConceptModel();
         concept.setConceptType("třída");
         concept.setType("objekt");
@@ -339,10 +353,11 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var name = new com.dia.ismdtoolbackend.models.NameModel();
         name.setName(java.util.Map.of("cs", "Další"));
         concept.setNameModel(name);
-        assertThrows(OntologyCreationConflictException.class, () -> conceptService.createConcept(concept, "creator"));
-        assertEquals(1, outbox.count());
-        assertEquals(1, rdf.writeCount());
-        assertEquals(4, concepts.count());
+        assertThatThrownBy(() -> conceptService.createConcept(concept, "creator"))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThat(outbox.count()).isEqualTo(1);
+        assertThat(rdf.writeCount()).isEqualTo(1);
+        assertThat(concepts.count()).isEqualTo(4);
     }
 
     @Test
@@ -353,12 +368,14 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         request.ontology().setNamespace("https://other.example/");
         var check = service.checkIri(new com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto(
                 request.ontology().getNamespace(), request.ontology().getNameModel()));
-        assertTrue(check.valid());
-        assertFalse(check.available());
-        assertThrows(OntologyCreationConflictException.class, () -> service.createWithConcepts(request, "creator"));
-        assertThrows(OntologyCreationConflictException.class, () -> service.createOntology(request.ontology(), "creator"));
-        assertEquals(1, outbox.count());
-        assertEquals(1, ontologies.count());
+        assertThat(check.valid()).isTrue();
+        assertThat(check.available()).isFalse();
+        assertThatThrownBy(() -> service.createWithConcepts(request, "creator"))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThatThrownBy(() -> service.createOntology(request.ontology(), "creator"))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThat(outbox.count()).isEqualTo(1);
+        assertThat(ontologies.count()).isEqualTo(1);
     }
 
     @Test
@@ -374,10 +391,10 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
             var first = executor.submit(create);
             var second = executor.submit(create);
             start.countDown();
-            assertNotEquals(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS));
-            assertEquals(1, ontologies.count());
-            assertEquals(4, concepts.count());
-            assertTrue(rdf.graphHasData(GRAPH));
+            assertThat(second.get(30, TimeUnit.SECONDS)).isNotEqualTo(first.get(30, TimeUnit.SECONDS));
+            assertThat(ontologies.count()).isEqualTo(1);
+            assertThat(concepts.count()).isEqualTo(4);
+            assertThat(rdf.graphHasData(GRAPH)).isTrue();
         } finally { executor.shutdownNow(); }
     }
 
@@ -387,13 +404,13 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         CountDownLatch continueWrite = new CountDownLatch(1);
         rdf.beforeWrite(() -> {
             rdfWriteReached.countDown();
-            try { assertTrue(continueWrite.await(15, TimeUnit.SECONDS)); }
+            try { assertThat(continueWrite.await(15, TimeUnit.SECONDS)).isTrue(); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
         });
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             var draft = executor.submit(() -> service.createWithConcepts(sample(), "creator"));
-            assertTrue(rdfWriteReached.await(15, TimeUnit.SECONDS));
+            assertThat(rdfWriteReached.await(15, TimeUnit.SECONDS)).isTrue();
             var competing = sample().ontology();
             competing.getDescriptionModel().setDescription(java.util.Map.of("cs", "Must not replace original"));
             var ordinary = executor.submit(() -> service.createOntology(competing, "other"));
@@ -402,18 +419,18 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
             var duplicate = ordinary.get(30, TimeUnit.SECONDS);
 
             // The competitor gets the draft back unchanged instead of creating or overwriting.
-            assertEquals(winner.getId(), duplicate.getId());
-            assertEquals(java.util.Map.of("cs", "Rozpracovaný slovník dopravy"), duplicate.getPopis());
+            assertThat(duplicate.getId()).isEqualTo(winner.getId());
+            assertThat(duplicate.getPopis()).isEqualTo(java.util.Map.of("cs", "Rozpracovaný slovník dopravy"));
             var stored = ontologies.findByGraphName(GRAPH).orElseThrow();
-            assertEquals(winner.getId(), stored.getId());
-            assertEquals("creator", stored.getUserId());
-            assertEquals(1, ontologies.count());
-            assertEquals(4, concepts.count());
-            assertEquals(1, outbox.count());
+            assertThat(stored.getId()).isEqualTo(winner.getId());
+            assertThat(stored.getUserId()).isEqualTo("creator");
+            assertThat(ontologies.count()).isEqualTo(1);
+            assertThat(concepts.count()).isEqualTo(4);
+            assertThat(outbox.count()).isEqualTo(1);
             Model graph = rdf.fetchGraph(GRAPH);
-            assertEquals(java.util.List.of("Rozpracovaný slovník dopravy"),
-                    graph.listObjectsOfProperty(graph.getResource(GRAPH), DCTerms.description).toList().stream()
-                            .map(o -> o.asLiteral().getString()).toList());
+            assertThat(graph.listObjectsOfProperty(graph.getResource(GRAPH), DCTerms.description).toList().stream()
+                            .map(o -> o.asLiteral().getString()).toList())
+                    .isEqualTo(java.util.List.of("Rozpracovaný slovník dopravy"));
         } finally { continueWrite.countDown(); executor.shutdownNow(); rdf.beforeWrite(() -> {}); }
     }
 
@@ -430,24 +447,24 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
                 await(rollback);
                 status.setRollbackOnly();
             }));
-            assertTrue(prepared.await(15, TimeUnit.SECONDS));
+            assertThat(prepared.await(15, TimeUnit.SECONDS)).isTrue();
             var winningOrdinary = executor.submit(() -> {
                 competitorStarted.countDown();
                 return service.createOntology(sample().ontology(), "winner");
             });
-            assertTrue(competitorStarted.await(15, TimeUnit.SECONDS));
+            assertThat(competitorStarted.await(15, TimeUnit.SECONDS)).isTrue();
             awaitBlockedOnOntologyInsert(winningOrdinary);
-            assertEquals(0, rdf.writeCount());
+            assertThat(rdf.writeCount()).isEqualTo(0);
             rollback.countDown();
             losingBatch.get(15, TimeUnit.SECONDS);
-            assertNotNull(winningOrdinary.get(15, TimeUnit.SECONDS));
-            assertEquals("winner", ontologies.findByGraphName(GRAPH).orElseThrow().getUserId());
-            assertEquals(1, ontologies.count());
-            assertEquals(0, concepts.count());
-            assertEquals(1, outbox.count());
-            assertEquals(1, rdf.writeCount());
-            assertEquals(0, rdf.deleteCount());
-            assertTrue(rdf.graphHasData(GRAPH));
+            assertThat(winningOrdinary.get(15, TimeUnit.SECONDS)).isNotNull();
+            assertThat(ontologies.findByGraphName(GRAPH).orElseThrow().getUserId()).isEqualTo("winner");
+            assertThat(ontologies.count()).isEqualTo(1);
+            assertThat(concepts.count()).isEqualTo(0);
+            assertThat(outbox.count()).isEqualTo(1);
+            assertThat(rdf.writeCount()).isEqualTo(1);
+            assertThat(rdf.deleteCount()).isEqualTo(0);
+            assertThat(rdf.graphHasData(GRAPH)).isTrue();
         } finally { rollback.countDown(); executor.shutdownNow(); }
     }
 
@@ -460,14 +477,18 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
                             + " AND wait_event_type = 'Lock' AND query ILIKE 'insert into %ontologies%'",
                     Integer.class);
             if (waiting != null && waiting > 0) return;
-            assertFalse(competitor.isDone(), "the competitor finished without waiting on the uncommitted slug");
-            assertTrue(System.nanoTime() < deadline, "the competitor never waited on the uncommitted slug");
+            assertThat(competitor.isDone())
+                    .as("the competitor finished without waiting on the uncommitted slug")
+                    .isFalse();
+            assertThat(System.nanoTime())
+                    .as("the competitor never waited on the uncommitted slug")
+                    .isLessThan(deadline);
             Thread.onSpinWait();
         }
     }
 
     private static void await(CountDownLatch latch) {
-        try { assertTrue(latch.await(15, TimeUnit.SECONDS)); }
+        try { assertThat(latch.await(15, TimeUnit.SECONDS)).isTrue(); }
         catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
     }
 
@@ -481,7 +502,8 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var name = new com.dia.ismdtoolbackend.models.NameModel();
         name.setName(java.util.Map.of("cs", "Other"));
         rename.setNameModel(name);
-        assertThrows(OntologyCreationConflictException.class, () -> service.editOntology(pending.ontology().getId(), rename));
+        assertThatThrownBy(() -> service.editOntology(pending.ontology().getId(), rename))
+                .isInstanceOf(OntologyCreationConflictException.class);
 
         outboxConfig.setBatchSize(0); // do not accidentally retry the first graph while creating the second
         var secondRequest = sample().ontology();
@@ -498,10 +520,11 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         });
         name.setName(java.util.Map.of("cs", "Doprava"));
         int writesBeforeRename = rdf.writeCount();
-        assertThrows(OntologyCreationConflictException.class, () -> service.editOntology(second.getId(), rename));
-        assertEquals(writesBeforeRename, rdf.writeCount());
-        assertEquals(0, rdf.deleteCount());
-        assertEquals(second.getGraphName(), ontologies.findById(second.getId()).orElseThrow().getGraphName());
+        assertThatThrownBy(() -> service.editOntology(second.getId(), rename))
+                .isInstanceOf(OntologyCreationConflictException.class);
+        assertThat(rdf.writeCount()).isEqualTo(writesBeforeRename);
+        assertThat(rdf.deleteCount()).isEqualTo(0);
+        assertThat(ontologies.findById(second.getId()).orElseThrow().getGraphName()).isEqualTo(second.getGraphName());
     }
 
     @Test
@@ -509,10 +532,10 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         var source = sample();
         var invalid = new com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsRequestDto(
                 source.ontology(), java.util.List.of(source.classes().get(0)), source.attributes(), source.relationships());
-        assertThrows(com.dia.ismdtoolbackend.exception.ConceptValidationException.class,
-                () -> service.createWithConcepts(invalid, "creator"));
-        assertEquals(0, ontologies.count());
-        assertEquals(0, concepts.count());
-        assertFalse(rdf.graphHasData(GRAPH));
+        assertThatThrownBy(() -> service.createWithConcepts(invalid, "creator"))
+                .isInstanceOf(com.dia.ismdtoolbackend.exception.ConceptValidationException.class);
+        assertThat(ontologies.count()).isEqualTo(0);
+        assertThat(concepts.count()).isEqualTo(0);
+        assertThat(rdf.graphHasData(GRAPH)).isFalse();
     }
 }

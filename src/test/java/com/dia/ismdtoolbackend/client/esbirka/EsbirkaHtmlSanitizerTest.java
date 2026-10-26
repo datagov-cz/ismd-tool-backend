@@ -8,10 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaHtmlSanitizerTest {
 
@@ -31,17 +28,19 @@ class EsbirkaHtmlSanitizerTest {
                     }
                     bodies++;
                     String clean = EsbirkaHtmlSanitizer.sanitize(f.xhtml());
-                    assertEquals(EsbirkaHtmlText.toPlainText(f.xhtml()), EsbirkaHtmlText.toPlainText(clean), f.eli());
+                    assertThat(EsbirkaHtmlText.toPlainText(clean))
+                            .as(f.eli())
+                            .isEqualTo(EsbirkaHtmlText.toPlainText(f.xhtml()));
                     Document before = Jsoup.parseBodyFragment(f.xhtml());
                     Document after = Jsoup.parseBodyFragment(clean);
                     for (String tag : ALLOWED_TAGS) {
-                        assertEquals(before.select(tag).size(), after.select(tag).size(), tag + " in " + f.eli());
+                        assertThat(after.select(tag)).as(tag + " in " + f.eli()).hasSize(before.select(tag).size());
                     }
-                    assertTrue(after.select("czechvoc-termin").isEmpty(), f.eli());
+                    assertThat(after.select("czechvoc-termin")).as(f.eli()).isEmpty();
                 }
             }
         }
-        assertTrue(bodies > 3_000, "fixture coverage: " + bodies);
+        assertThat(bodies).as("fixture coverage: " + bodies).isGreaterThan(3_000);
     }
 
     @Test
@@ -53,13 +52,13 @@ class EsbirkaHtmlSanitizerTest {
                         + "</td></tr></tbody></table>");
         Document doc = Jsoup.parseBodyFragment(clean);
 
-        assertEquals("#par_3", doc.selectFirst("a").attr("href"));
-        assertEquals("odkaz", doc.selectFirst("a").attr("class"));
-        assertFalse(doc.selectFirst("a").hasAttr("data-odkaz-id"));
-        assertEquals("/souborove-dokumenty/8292/NAHLED", doc.selectFirst("img").attr("src"));
-        assertEquals("text-align: center", doc.selectFirst("td").attr("style"));
-        assertEquals("2", doc.selectFirst("td").attr("rowspan"));
-        assertEquals("width: 100%", doc.selectFirst("table").attr("style"));
+        assertThat(doc.selectFirst("a").attr("href")).isEqualTo("#par_3");
+        assertThat(doc.selectFirst("a").attr("class")).isEqualTo("odkaz");
+        assertThat(doc.selectFirst("a").hasAttr("data-odkaz-id")).isFalse();
+        assertThat(doc.selectFirst("img").attr("src")).isEqualTo("/souborove-dokumenty/8292/NAHLED");
+        assertThat(doc.selectFirst("td").attr("style")).isEqualTo("text-align: center");
+        assertThat(doc.selectFirst("td").attr("rowspan")).isEqualTo("2");
+        assertThat(doc.selectFirst("table").attr("style")).isEqualTo("width: 100%");
     }
 
     @Test
@@ -75,14 +74,14 @@ class EsbirkaHtmlSanitizerTest {
 
         for (String bad : List.of("<script", "onclick", "onerror", "onload", "javascript:", "data:", "<svg",
                 "<iframe", "expression", "url(", "czechvoc")) {
-            assertFalse(lower.contains(bad), bad + " survived: " + clean);
+            assertThat(lower).as(bad + " survived: " + clean).doesNotContain(bad);
         }
-        assertTrue(clean.contains("tučně") && clean.contains("odkaz") && clean.contains("pojem"), clean);
+        assertThat(clean.contains("tučně") && clean.contains("odkaz") && clean.contains("pojem")).as(clean).isTrue();
     }
 
     @Test
     void nullStaysNull() {
-        assertNull(EsbirkaHtmlSanitizer.sanitize(null));
-        assertTrue(Objects.equals("", EsbirkaHtmlSanitizer.sanitize("")));
+        assertThat(EsbirkaHtmlSanitizer.sanitize(null)).isNull();
+        assertThat(Objects.equals("", EsbirkaHtmlSanitizer.sanitize(""))).isTrue();
     }
 }

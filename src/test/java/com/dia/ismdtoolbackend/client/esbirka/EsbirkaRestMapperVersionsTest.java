@@ -13,8 +13,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaRestMapperVersionsTest {
 
@@ -27,50 +26,58 @@ class EsbirkaRestMapperVersionsTest {
         Map<String, SparqlVersion> sparql = EsbirkaRestFixtures.sparqlVersions(law).stream()
                 .collect(Collectors.toMap(SparqlVersion::iri, Function.identity()));
 
-        assertEquals(sparql.keySet(), versions.stream().map(LawVersionModel::getIri).collect(Collectors.toSet()));
+        assertThat(versions.stream().map(LawVersionModel::getIri).collect(Collectors.toSet()))
+                .isEqualTo(sparql.keySet());
         for (LawVersionModel v : versions) {
             SparqlVersion s = sparql.get(v.getIri());
-            assertEquals(s.ucinnostOd(), String.valueOf(v.getUcinnostOd()), "od of " + v.getIri());
-            assertEquals(s.ucinnostDo(), v.getUcinnostDo() == null ? null : v.getUcinnostDo().toString(), "do of " + v.getIri());
-            assertEquals(s.typ(), v.getVersionType(), "type of " + v.getIri());
+            assertThat(String.valueOf(v.getUcinnostOd())).as("od of " + v.getIri()).isEqualTo(s.ucinnostOd());
+            assertThat(v.getUcinnostDo() == null ? null : v.getUcinnostDo().toString())
+                    .as("do of " + v.getIri())
+                    .isEqualTo(s.ucinnostDo());
+            assertThat(v.getVersionType()).as("type of " + v.getIri()).isEqualTo(s.typ());
         }
         for (int i = 1; i < versions.size(); i++) {
-            assertTrue(!versions.get(i).getUcinnostOd().isAfter(versions.get(i - 1).getUcinnostOd()), "newest first");
+            assertThat(versions.get(i).getUcinnostOd().isAfter(versions.get(i - 1).getUcinnostOd()))
+                    .as("newest first")
+                    .isFalse();
         }
-        assertEquals(1, versions.stream().filter(LawVersionModel::isLatest).count(), "exactly one latest");
+        assertThat(versions.stream().filter(LawVersionModel::isLatest).count()).as("exactly one latest").isEqualTo(1);
     }
 
     @Test
     void latestIsTheVersionInForceLikeSparqlWhenNoFutureVersionExists() {
-        assertEquals(sparqlLatest("sb-1997-49"), restLatest("sb-1997-49"));
-        assertEquals(B + "/sb/1997/49/2025-11-01", restLatest("sb-1997-49"));
+        assertThat(restLatest("sb-1997-49")).isEqualTo(sparqlLatest("sb-1997-49"));
+        assertThat(restLatest("sb-1997-49")).isEqualTo(B + "/sb/1997/49/2025-11-01");
     }
 
     @Test
     void latestSkipsAPublishedFutureVersion() {
-        assertEquals(B + "/sb/2012/89/2027-01-01", sparqlLatest("sb-2012-89"), "SPARQL picks the future version");
-        assertEquals(B + "/sb/2012/89/2026-01-01", restLatest("sb-2012-89"), "REST picks the one in force");
+        assertThat(sparqlLatest("sb-2012-89"))
+                .as("SPARQL picks the future version")
+                .isEqualTo(B + "/sb/2012/89/2027-01-01");
+        assertThat(restLatest("sb-2012-89")).as("REST picks the one in force").isEqualTo(B + "/sb/2012/89/2026-01-01");
     }
 
     @Test
     void latestFallsBackToNewestWhenNoneIsInForce() {
-        assertEquals(B + "/sb/2005/410/2022-10-11", restLatest("sb-2005-410"));
-        assertEquals(sparqlLatest("sb-2005-410"), restLatest("sb-2005-410"));
+        assertThat(restLatest("sb-2005-410")).isEqualTo(B + "/sb/2005/410/2022-10-11");
+        assertThat(restLatest("sb-2005-410")).isEqualTo(sparqlLatest("sb-2005-410"));
     }
 
     @Test
     void lawHeaderFromDetail() {
         LawModel law = EsbirkaRestMapper.toLaw(EsbirkaRestFixtures.detail("sb-1997-49"));
 
-        assertEquals(new LawModel(B + "/sb/1997/49", "49/1997 Sb.", "49", 1997, "sb"), law);
+        assertThat(law).isEqualTo(new LawModel(B + "/sb/1997/49", "49/1997 Sb.", "49", 1997, "sb"));
     }
 
     @Test
     void lawHeaderFromVersionDetail() {
         LawModel law = EsbirkaRestMapper.toLaw(EsbirkaRestFixtures.detail("sb-2012-89-2014"));
 
-        assertEquals(new LawModel(B + "/sb/2012/89", "89/2012 Sb.", "89", 2012, "sb"), law);
-        assertEquals(LocalDate.of(2014, 1, 1), EsbirkaRestFixtures.detail("sb-2012-89-2014").datumUcinnostiZneniOd());
+        assertThat(law).isEqualTo(new LawModel(B + "/sb/2012/89", "89/2012 Sb.", "89", 2012, "sb"));
+        assertThat(EsbirkaRestFixtures.detail("sb-2012-89-2014").datumUcinnostiZneniOd())
+                .isEqualTo(LocalDate.of(2014, 1, 1));
     }
 
     private static String restLatest(String law) {

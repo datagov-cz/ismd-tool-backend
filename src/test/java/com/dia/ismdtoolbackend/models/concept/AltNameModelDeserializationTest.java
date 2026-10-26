@@ -6,11 +6,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * The tolerant reader on {@link AltNameModel}: a language key may arrive as a bare string (the legacy
@@ -28,51 +25,51 @@ class AltNameModelDeserializationTest {
     void legacyStringPerLanguage_isWrappedIntoASingleElementList() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":\"Obec\"}}");
 
-        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec"));
     }
 
     @Test
     void listPerLanguage_keepsEveryLabel() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"Municipalita\"]}}");
 
-        assertEquals(List.of("Obec", "Municipalita"), model.getAltName().get("cs"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec", "Municipalita"));
     }
 
     @Test
     void mixedShapesAcrossLanguages_bothRead() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"Municipalita\"],\"en\":\"Municipality\"}}");
 
-        assertEquals(List.of("Obec", "Municipalita"), model.getAltName().get("cs"));
-        assertEquals(List.of("Municipality"), model.getAltName().get("en"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec", "Municipalita"));
+        assertThat(model.getAltName().get("en")).isEqualTo(List.of("Municipality"));
     }
 
     @Test
     void blankAndNullValues_areDropped() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"  \",null],\"en\":\"\"}}");
 
-        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
-        assertTrue(model.getAltName().get("en") == null, "an all-blank language is omitted entirely");
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec"));
+        assertThat(model.getAltName().get("en")).as("an all-blank language is omitted entirely").isNull();
     }
 
     @Test
     void valuesAreTrimmed() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"  Obec  \"]}}");
 
-        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec"));
     }
 
     @Test
     void nullAltName_staysNull() throws Exception {
         AltNameModel model = read("{\"altName\":null}");
 
-        assertNull(model.getAltName());
+        assertThat(model.getAltName()).isNull();
     }
 
     @Test
     void serializationAlwaysEmitsTheListForm() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":\"Obec\"}}");
 
-        assertEquals("{\"altName\":{\"cs\":[\"Obec\"]}}", mapper.writeValueAsString(model));
+        assertThat(mapper.writeValueAsString(model)).isEqualTo("{\"altName\":{\"cs\":[\"Obec\"]}}");
     }
 
     /**
@@ -84,21 +81,21 @@ class AltNameModelDeserializationTest {
     void duplicatesWithinALanguage_areCollapsed() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"Obec\"]}}");
 
-        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec"));
     }
 
     @Test
     void duplicatesDifferingOnlyByWhitespace_areCollapsed() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"  Obec  \"]}}");
 
-        assertEquals(List.of("Obec"), model.getAltName().get("cs"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec"));
     }
 
     @Test
     void firstOccurrenceOrderIsPreservedWhenCollapsing() throws Exception {
         AltNameModel model = read("{\"altName\":{\"cs\":[\"Obec\",\"Municipalita\",\"Obec\"]}}");
 
-        assertEquals(List.of("Obec", "Municipalita"), model.getAltName().get("cs"));
+        assertThat(model.getAltName().get("cs")).isEqualTo(List.of("Obec", "Municipalita"));
     }
 
     // --- strictness: malformed values are rejected, never coerced or silently dropped -------------
@@ -108,32 +105,32 @@ class AltNameModelDeserializationTest {
 
     @Test
     void numberValue_isRejected() {
-        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":42}}"));
+        assertThatThrownBy(() -> read("{\"altName\":{\"cs\":42}}")).isInstanceOf(DatabindException.class);
     }
 
     @Test
     void booleanValue_isRejected() {
-        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":true}}"));
+        assertThatThrownBy(() -> read("{\"altName\":{\"cs\":true}}")).isInstanceOf(DatabindException.class);
     }
 
     @Test
     void nestedArrayValue_isRejected() {
-        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":[[\"a\",\"b\"]]}}"));
+        assertThatThrownBy(() -> read("{\"altName\":{\"cs\":[[\"a\",\"b\"]]}}")).isInstanceOf(DatabindException.class);
     }
 
     @Test
     void nestedObjectValue_isRejected() {
-        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":{\"x\":1}}}"));
+        assertThatThrownBy(() -> read("{\"altName\":{\"cs\":{\"x\":1}}}")).isInstanceOf(DatabindException.class);
     }
 
     @Test
     void numberInsideAnArray_isRejected() {
-        assertThrows(DatabindException.class, () -> read("{\"altName\":{\"cs\":[\"Obec\",42]}}"));
+        assertThatThrownBy(() -> read("{\"altName\":{\"cs\":[\"Obec\",42]}}")).isInstanceOf(DatabindException.class);
     }
 
     @Test
     void nonObjectAltName_isRejected() {
-        assertThrows(DatabindException.class, () -> read("{\"altName\":[\"Obec\"]}"));
+        assertThatThrownBy(() -> read("{\"altName\":[\"Obec\"]}")).isInstanceOf(DatabindException.class);
     }
 
     /** An explicit empty object still means "clear the field" — that is a legitimate instruction. */
@@ -141,7 +138,7 @@ class AltNameModelDeserializationTest {
     void emptyObject_isAcceptedAsAnExplicitClear() throws Exception {
         AltNameModel model = read("{\"altName\":{}}");
 
-        assertNotNull(model.getAltName());
-        assertTrue(model.getAltName().isEmpty());
+        assertThat(model.getAltName()).isNotNull();
+        assertThat(model.getAltName()).isEmpty();
     }
 }

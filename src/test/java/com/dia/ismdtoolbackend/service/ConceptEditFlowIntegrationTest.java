@@ -31,7 +31,8 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -118,11 +119,13 @@ class ConceptEditFlowIntegrationTest {
         Model addedModel = ModelFactory.createDefaultModel().add(List.copyOf(added.getValue()));
         Resource concept = addedModel.getResource(CONCEPT_IRI);
         Property descProp = addedModel.createProperty("http://purl.org/dc/terms/description");
-        assertTrue(concept.hasProperty(descProp, addedModel.createLiteral("Nový popis", "cs")),
-                "the new description must be written");
+        assertThat(concept.hasProperty(descProp, addedModel.createLiteral("Nový popis", "cs")))
+                .as("the new description must be written")
+                .isTrue();
         Property provisionProp = addedModel.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-        assertTrue(concept.hasProperty(provisionProp, addedModel.createResource(VALID_ELI)),
-                "privacy provision must be written end-to-end");
+        assertThat(concept.hasProperty(provisionProp, addedModel.createResource(VALID_ELI)))
+                .as("privacy provision must be written end-to-end")
+                .isTrue();
         verify(conceptMetadataRepository).save(any());
     }
 
@@ -131,10 +134,11 @@ class ConceptEditFlowIntegrationTest {
         ClassConceptEditModel m = editModel();
         m.setExactMatch(List.of("not-a-valid-iri"));   // real validator rejects this
 
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class,
-                () -> conceptService.editConcept(CONCEPT_ID, m));
+        ConceptValidationException ex = assertThatExceptionOfType(ConceptValidationException.class)
+                .isThrownBy(() -> conceptService.editConcept(CONCEPT_ID, m))
+                .actual();
 
-        assertTrue(ex.getMessage().contains("exactMatch"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("exactMatch");
         // no persistence on rejection — atomic
         verifyNoInteractions(outboxWriter);
         verify(conceptMetadataRepository, never()).save(any());
@@ -156,21 +160,24 @@ class ConceptEditFlowIntegrationTest {
         verify(outboxWriter).enqueueUpsert(eq(GRAPH_NAME), eq(CONCEPT_IRI), removed.capture(), added.capture());
 
         // the old IRI no longer carries the prefLabel (it moved to the new IRI)
-        assertTrue(removed.getValue().stream().anyMatch(st ->
+        assertThat(removed.getValue().stream().anyMatch(st ->
                         st.getSubject().isURIResource() && CONCEPT_IRI.equals(st.getSubject().getURI())
-                                && SKOS.prefLabel.equals(st.getPredicate())),
-                "after rename, the old IRI's prefLabel must be removed");
-        assertTrue(added.getValue().stream().noneMatch(st ->
-                        st.getSubject().isURIResource() && CONCEPT_IRI.equals(st.getSubject().getURI())),
-                "after rename, nothing may be re-added under the old IRI");
+                                && SKOS.prefLabel.equals(st.getPredicate())))
+                .as("after rename, the old IRI's prefLabel must be removed")
+                .isTrue();
+        assertThat(added.getValue().stream().noneMatch(st ->
+                        st.getSubject().isURIResource() && CONCEPT_IRI.equals(st.getSubject().getURI())))
+                .as("after rename, nothing may be re-added under the old IRI")
+                .isTrue();
         // The metadata row and the RDF agree on the IRI derived from the new name.
         ArgumentCaptor<ConceptMetadataEntity> saved = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(saved.capture());
         String newIri = saved.getValue().getConceptIri();
-        assertTrue(newIri.endsWith("/nový-název"), newIri);
+        assertThat(newIri).as(newIri).endsWith("/nový-název");
         Model addedModel = ModelFactory.createDefaultModel().add(List.copyOf(added.getValue()));
-        assertTrue(addedModel.contains(addedModel.createResource(newIri),
-                        SKOS.prefLabel, addedModel.createLiteral("Nový název", "cs")),
-                "the new name must be added under the new IRI");
+        assertThat(addedModel.contains(addedModel.createResource(newIri),
+                        SKOS.prefLabel, addedModel.createLiteral("Nový název", "cs")))
+                .as("the new name must be added under the new IRI")
+                .isTrue();
     }
 }

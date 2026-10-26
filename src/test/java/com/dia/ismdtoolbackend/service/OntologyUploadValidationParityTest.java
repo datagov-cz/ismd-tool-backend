@@ -41,11 +41,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -156,20 +154,21 @@ class OntologyUploadValidationParityTest {
                 + "<" + GOOD + "/> a ofn:pojem, owl:Class ; skos:inScheme <" + VOCABULARY + "/> ;"
                 + " ofn:definující-ustanovení <" + ELI + "/> .");
 
-        assertEquals(VOCABULARY, storedGraphName);
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertFalse(storedTurtle.contains(GOOD + "/>"), storedTurtle);
-        assertFalse(storedTurtle.contains(ELI + "/>"), storedTurtle);
-        assertEquals(List.of(ELI + "/", VOCABULARY + "/", GOOD + "/"), uploaded.getCorrectedIris());
-        assertTrue(uploaded.getRejectedConcepts().isEmpty());
+        assertThat(storedGraphName).isEqualTo(VOCABULARY);
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(storedTurtle).as(storedTurtle).doesNotContain(GOOD + "/>");
+        assertThat(storedTurtle).as(storedTurtle).doesNotContain(ELI + "/>");
+        assertThat(uploaded.getCorrectedIris()).isEqualTo(List.of(ELI + "/", VOCABULARY + "/", GOOD + "/"));
+        assertThat(uploaded.getRejectedConcepts()).isEmpty();
         verify(ontologyMetadataRepository).findBySlug("999");
     }
 
     @Test
     void fileHoldingBothFormsOfAnIriIsRejectedWhole() {
-        assertThrows(OntologyUploadIriCollisionException.class, () -> upload(vocabulary()
+        assertThatThrownBy(() -> upload(vocabulary()
                 + concept(GOOD, "owl:Class", "")
-                + concept(GOOD + "/", "owl:Class", "")));
+                + concept(GOOD + "/", "owl:Class", "")))
+                .isInstanceOf(OntologyUploadIriCollisionException.class);
 
         verify(jenaTDB2Repository, never()).putOntologyModel(anyString(), any(OntModel.class));
         verify(conceptMetadataRepository, never()).saveAll(anyList());
@@ -183,11 +182,15 @@ class OntologyUploadValidationParityTest {
                 + concept(GOOD, "owl:Class", "; ofn:definující-ustanovení <" + ELI + ">")
                 + concept(BAD, "owl:Class", "; ofn:definující-ustanovení <http://example.org/not-eli>"));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertEquals(List.of(BAD), rejectedIris(uploaded));
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
         String reason = uploaded.getRejectedConcepts().get(0).reason();
-        assertTrue(reason.contains("definingLegalSource") && reason.contains("http://example.org/not-eli"), reason);
-        assertFalse(storedTurtle.contains("<" + BAD + ">"), "unreferenced rejected concept must not reach TDB2");
+        assertThat(reason.contains("definingLegalSource") && reason.contains("http://example.org/not-eli"))
+                .as(reason)
+                .isTrue();
+        assertThat(storedTurtle)
+                .as("unreferenced rejected concept must not reach TDB2")
+                .doesNotContain("<" + BAD + ">");
     }
 
     @Test
@@ -196,10 +199,10 @@ class OntologyUploadValidationParityTest {
                 + concept(GOOD, "owl:Class", "; rdfs:subClassOf <" + BAD + ">")
                 + concept(BAD, "owl:Class", "; skos:exactMatch \"not an iri\""));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertEquals(List.of(BAD), rejectedIris(uploaded));
-        assertTrue(storedTurtle.contains("<" + BAD + "> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"));
-        assertFalse(storedTurtle.contains("<" + BAD + "> <http://www.w3.org/2004/02/skos/core#inScheme>"));
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
+        assertThat(storedTurtle).contains("<" + BAD + "> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>");
+        assertThat(storedTurtle).doesNotContain("<" + BAD + "> <http://www.w3.org/2004/02/skos/core#inScheme>");
     }
 
     @Test
@@ -208,8 +211,8 @@ class OntologyUploadValidationParityTest {
                 + concept(BAD, "owl:Class, l111:veřejný-údaj",
                 "; <" + VOCABULARY + "/ustanovení-dokládající-neveřejnost-údaje> <" + ELI + ">"));
 
-        assertEquals(List.of(BAD), rejectedIris(uploaded));
-        assertTrue(uploaded.getRejectedConcepts().get(0).reason().contains("nemůže být současně"));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
+        assertThat(uploaded.getRejectedConcepts().get(0).reason()).contains("nemůže být současně");
     }
 
     private static final String DIGITAL_OBJECT =
@@ -222,9 +225,9 @@ class OntologyUploadValidationParityTest {
                 + concept(GOOD, "owl:Class", "; <https://slovník.gov.cz/definující-nelegislativní-zdroj>"
                 + " [ a " + DIGITAL_OBJECT + " ; <http://purl.org/dc/terms/title> \"Směrnice EU\"@cs ]"));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertTrue(uploaded.getRejectedConcepts().isEmpty(), uploaded.getRejectedConcepts().toString());
-        assertTrue(storedTurtle.contains("Směrnice EU"));
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(uploaded.getRejectedConcepts()).as(uploaded.getRejectedConcepts().toString()).isEmpty();
+        assertThat(storedTurtle).contains("Směrnice EU");
     }
 
     @Test
@@ -233,8 +236,8 @@ class OntologyUploadValidationParityTest {
                 + concept(BAD, "owl:Class", "; <https://slovník.gov.cz/definující-nelegislativní-zdroj>"
                 + " [ a " + DIGITAL_OBJECT + " ; <http://schema.org/url> \"not a url\" ]"));
 
-        assertEquals(List.of(BAD), rejectedIris(uploaded));
-        assertTrue(uploaded.getRejectedConcepts().get(0).reason().contains("definingNonLegalSource"));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
+        assertThat(uploaded.getRejectedConcepts().get(0).reason()).contains("definingNonLegalSource");
     }
 
     @Test
@@ -243,9 +246,9 @@ class OntologyUploadValidationParityTest {
                 + concept(BAD, "owl:Class", "; ofn:definující-ustanovení <http://example.org/not-eli> ;"
                 + " ofn:má-typ-obsahu-údaje <https://data.dia.gov.cz/zdroj/číselníky/typy-obsahu-údajů/položky/neznámé>"));
 
-        assertEquals(1, uploaded.getRejectedConcepts().size());
+        assertThat(uploaded.getRejectedConcepts()).hasSize(1);
         String reason = uploaded.getRejectedConcepts().get(0).reason();
-        assertTrue(reason.contains("definingLegalSource") && reason.contains("typ obsahu"), reason);
+        assertThat(reason.contains("definingLegalSource") && reason.contains("typ obsahu")).as(reason).isTrue();
     }
 
     /** A concept the create path writes must pass on upload: the two paths share one rule set. */
@@ -285,8 +288,8 @@ class OntologyUploadValidationParityTest {
 
         OntologyMetadataModel uploaded = service.uploadFromFile(file, "user", null, null);
 
-        assertTrue(uploaded.getRejectedConcepts().isEmpty(), uploaded.getRejectedConcepts().toString());
-        assertEquals(List.of(created.getURI()), savedConceptIris());
+        assertThat(uploaded.getRejectedConcepts()).as(uploaded.getRejectedConcepts().toString()).isEmpty();
+        assertThat(savedConceptIris()).isEqualTo(List.of(created.getURI()));
     }
 
     // --- Domain/range pointing at a concept published in NKD ------------------
@@ -303,9 +306,9 @@ class OntologyUploadValidationParityTest {
                 + concept(GOOD, "owl:Class", "")
                 + concept(BAD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertEquals(List.of(BAD), rejectedIris(uploaded));
-        assertTrue(uploaded.getRejectedConcepts().get(0).reason().contains(NKD_CLASS));
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
+        assertThat(uploaded.getRejectedConcepts().get(0).reason()).contains(NKD_CLASS);
     }
 
     @Test
@@ -315,7 +318,7 @@ class OntologyUploadValidationParityTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<String>> extra = ArgumentCaptor.forClass(Collection.class);
         verify(publishedResourceUtil).checkPublishedResourcesInNKD(any(), extra.capture());
-        assertTrue(extra.getValue().contains(NKD_CLASS));
+        assertThat(extra.getValue()).contains(NKD_CLASS);
         verify(publishedResourceUtil, never()).checkPublishedResourcesInNKD(any());
     }
 
@@ -324,8 +327,8 @@ class OntologyUploadValidationParityTest {
         OntologyMetadataModel uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertTrue(uploaded.getRejectedConcepts().isEmpty());
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(uploaded.getRejectedConcepts()).isEmpty();
     }
 
     @Test
@@ -335,8 +338,8 @@ class OntologyUploadValidationParityTest {
         OntologyMetadataModel uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:ObjectProperty", "; rdfs:range <" + NKD_CLASS + ">"));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertTrue(uploaded.getRejectedConcepts().isEmpty());
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(uploaded.getRejectedConcepts()).isEmpty();
     }
 
     @Test
@@ -349,21 +352,22 @@ class OntologyUploadValidationParityTest {
         OntologyMetadataModel uploaded = upload(vocabulary()
                 + concept(GOOD, "owl:DatatypeProperty", "; rdfs:domain <" + NKD_CLASS + ">"));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertTrue(uploaded.getRejectedConcepts().isEmpty());
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(uploaded.getRejectedConcepts()).isEmpty();
     }
 
     // --- Role guard -----------------------------------------------------------
 
     @Test
     void conceptTypedAsBothPropertyAndRelationshipFailsTheWholeUpload() {
-        OntologyUploadConflictingTypesException ex = assertThrows(OntologyUploadConflictingTypesException.class,
-                () -> upload(vocabulary()
+        OntologyUploadConflictingTypesException ex = assertThatExceptionOfType(OntologyUploadConflictingTypesException.class)
+                .isThrownBy(() -> upload(vocabulary()
                         + concept(GOOD, "owl:Class", "")
-                        + concept(BAD, "owl:DatatypeProperty, owl:ObjectProperty", "")));
+                        + concept(BAD, "owl:DatatypeProperty, owl:ObjectProperty", "")))
+                .actual();
 
-        assertEquals(List.of(BAD), ex.getConceptIris());
-        assertNull(storedTurtle, "nothing may reach TDB2");
+        assertThat(ex.getConceptIris()).isEqualTo(List.of(BAD));
+        assertThat(storedTurtle).as("nothing may reach TDB2").isNull();
     }
 
     @Test
@@ -372,8 +376,8 @@ class OntologyUploadValidationParityTest {
                 + concept(GOOD, "owl:Class", "")
                 + concept(BAD, "owl:Class, owl:DatatypeProperty", ""));
 
-        assertEquals(List.of(GOOD), savedConceptIris());
-        assertEquals(List.of(BAD), rejectedIris(uploaded));
-        assertFalse(storedTurtle.contains("<" + BAD + ">"), storedTurtle);
+        assertThat(savedConceptIris()).isEqualTo(List.of(GOOD));
+        assertThat(rejectedIris(uploaded)).isEqualTo(List.of(BAD));
+        assertThat(storedTurtle).as(storedTurtle).doesNotContain("<" + BAD + ">");
     }
 }

@@ -11,7 +11,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Source Properties (ustanovení, exactMatch, non-legislative)")
 class ConceptSourcePropertyTest {
@@ -33,11 +33,11 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(EKVIVALENTNI_POJEM));
+        assertThat(result).containsKey(EKVIVALENTNI_POJEM);
         @SuppressWarnings("unchecked")
         List<String> matches = (List<String>) result.get(EKVIVALENTNI_POJEM);
-        assertEquals(1, matches.size());
-        assertEquals("http://eurovoc.europa.eu/100157", matches.get(0));
+        assertThat(matches).hasSize(1);
+        assertThat(matches.get(0)).isEqualTo("http://eurovoc.europa.eu/100157");
     }
 
     @Test
@@ -53,7 +53,7 @@ class ConceptSourcePropertyTest {
 
         @SuppressWarnings("unchecked")
         List<String> matches = (List<String>) result.get(EKVIVALENTNI_POJEM);
-        assertEquals(2, matches.size());
+        assertThat(matches).hasSize(2);
     }
 
     @Test
@@ -67,10 +67,10 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU));
+        assertThat(result).containsKey(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
         @SuppressWarnings("unchecked")
         List<String> sources = (List<String>) result.get(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
-        assertEquals("https://zakon.example.org/sb/89-2012/par/23", sources.get(0));
+        assertThat(sources.get(0)).isEqualTo("https://zakon.example.org/sb/89-2012/par/23");
     }
 
     @Test
@@ -84,7 +84,7 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU));
+        assertThat(result).containsKey(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU);
     }
 
     @Test
@@ -103,9 +103,9 @@ class ConceptSourcePropertyTest {
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> sources = (List<Map<String, Object>>) result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-        assertNotNull(sources, "source linked under any namespace is found by its local name");
-        assertEquals(1, sources.size());
-        assertEquals(TEST_POJEM_NS + "doc1", sources.get(0).get("iri"));
+        assertThat(sources).as("source linked under any namespace is found by its local name").isNotNull();
+        assertThat(sources).hasSize(1);
+        assertThat(sources.get(0).get("iri")).isEqualTo(TEST_POJEM_NS + "doc1");
     }
 
     @Test
@@ -123,20 +123,20 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertNotNull(result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ));
+        assertThat(result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ)).isNotNull();
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> sources = (List<Map<String, Object>>) result.get(DEFINUJICI_NELEGISLATIVNI_ZDROJ);
         Map<String, Object> docObj = sources.get(0);
-        assertEquals("https://example.org/doc/1", docObj.get("iri"));
-        assertEquals("Digitální objekt", docObj.get("typ"));
+        assertThat(docObj.get("iri")).isEqualTo("https://example.org/doc/1");
+        assertThat(docObj.get("typ")).isEqualTo("Digitální objekt");
         @SuppressWarnings("unchecked")
         Map<String, Object> title = (Map<String, Object>) docObj.get(NAZEV);
-        assertEquals("Testovací dokument", title.get("cs"));
+        assertThat(title.get("cs")).isEqualTo("Testovací dokument");
         @SuppressWarnings("unchecked")
         Map<String, Object> description = (Map<String, Object>) docObj.get(POPIS);
-        assertNotNull(description);
-        assertEquals("Popis dokumentu", description.get("cs"));
-        assertEquals("https://example.org/files/doc.pdf", docObj.get("url"));
+        assertThat(description).isNotNull();
+        assertThat(description.get("cs")).isEqualTo("Popis dokumentu");
+        assertThat(docObj.get("url")).isEqualTo("https://example.org/files/doc.pdf");
     }
 
     @Test
@@ -148,7 +148,7 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(EKVIVALENTNI_POJEM));
+        assertThat(result).doesNotContainKey(EKVIVALENTNI_POJEM);
     }
 
     @Test
@@ -160,7 +160,7 @@ class ConceptSourcePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU));
-        assertFalse(result.containsKey(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU));
+        assertThat(result).doesNotContainKey(DEFINUJICI_USTANOVENI_PRAVNIHO_PREDPISU);
+        assertThat(result).doesNotContainKey(SOUVISEJICI_USTANOVENI_PRAVNIHO_PREDPISU);
     }
 }

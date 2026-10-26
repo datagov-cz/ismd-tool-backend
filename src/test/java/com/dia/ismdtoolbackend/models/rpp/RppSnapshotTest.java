@@ -9,8 +9,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class RppSnapshotTest {
 
@@ -20,21 +19,21 @@ class RppSnapshotTest {
     @Test
     void emptySentinelIsEmpty() {
         RppSnapshot snap = RppSnapshot.empty();
-        assertTrue(snap.isEmpty());
-        assertTrue(snap.isStale(Duration.ofHours(24), FIXED_CLOCK));
+        assertThat(snap.isEmpty()).isTrue();
+        assertThat(snap.isStale(Duration.ofHours(24), FIXED_CLOCK)).isTrue();
     }
 
     @Test
     void populatedSnapshotWithinTtlIsFresh() {
         RppSnapshot snap = populated(NOW.minus(Duration.ofHours(23)));
-        assertFalse(snap.isEmpty());
-        assertFalse(snap.isStale(Duration.ofHours(24), FIXED_CLOCK));
+        assertThat(snap.isEmpty()).isFalse();
+        assertThat(snap.isStale(Duration.ofHours(24), FIXED_CLOCK)).isFalse();
     }
 
     @Test
     void populatedSnapshotPastTtlIsStale() {
         RppSnapshot snap = populated(NOW.minus(Duration.ofHours(25)));
-        assertTrue(snap.isStale(Duration.ofHours(24), FIXED_CLOCK));
+        assertThat(snap.isStale(Duration.ofHours(24), FIXED_CLOCK)).isTrue();
     }
 
     private static RppSnapshot populated(Instant loadedAt) {

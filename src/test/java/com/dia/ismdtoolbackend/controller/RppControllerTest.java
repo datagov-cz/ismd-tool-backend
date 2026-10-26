@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -79,9 +80,9 @@ class RppControllerTest {
         ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> prefCap = ArgumentCaptor.forClass(String.class);
         verify(rppService).searchIsvs(qCap.capture(), limitCap.capture(), prefCap.capture());
-        org.junit.jupiter.api.Assertions.assertEquals("alfa", qCap.getValue());
-        org.junit.jupiter.api.Assertions.assertEquals(10, limitCap.getValue());
-        org.junit.jupiter.api.Assertions.assertEquals("A1382", prefCap.getValue());
+        assertThat(qCap.getValue()).isEqualTo("alfa");
+        assertThat(limitCap.getValue()).isEqualTo(10);
+        assertThat(prefCap.getValue()).isEqualTo("A1382");
     }
 
     @Test
@@ -93,7 +94,7 @@ class RppControllerTest {
 
         ArgumentCaptor<Integer> limitCap = ArgumentCaptor.forClass(Integer.class);
         verify(rppService).searchAgendas(any(), limitCap.capture());
-        org.junit.jupiter.api.Assertions.assertEquals(20, limitCap.getValue());
+        assertThat(limitCap.getValue()).isEqualTo(20);
     }
 
     @Test
@@ -120,7 +121,7 @@ class RppControllerTest {
 
         ArgumentCaptor<String> qCap = ArgumentCaptor.forClass(String.class);
         verify(rppService).searchAgendas(qCap.capture(), anyInt());
-        org.junit.jupiter.api.Assertions.assertNull(qCap.getValue());
+        assertThat(qCap.getValue()).isNull();
     }
 
     @Test

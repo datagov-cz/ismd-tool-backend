@@ -13,7 +13,8 @@ import org.springframework.cache.CacheManager;
 import java.time.LocalDate;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.LAW_361_2000;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -22,12 +23,9 @@ import static org.mockito.Mockito.when;
 @CacheSliceTest(EsbirkaCacheSliceBeans.class)
 class EsbirkaFragmentResolutionCacheTest {
 
-    private static final String FRAGMENT_IRI =
-            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01/dokument/norma/par_2/pism_d";
-    private static final String VERSION_IRI =
-            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01";
-    private static final String LAW_IRI =
-            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361";
+    private static final String LAW_IRI = LAW_361_2000;
+    private static final String VERSION_IRI = LAW_IRI + "/2024-04-01";
+    private static final String FRAGMENT_IRI = VERSION_IRI + "/dokument/norma/par_2/pism_d";
 
     @MockitoBean
     private EsbirkaClient client;
@@ -51,7 +49,7 @@ class EsbirkaFragmentResolutionCacheTest {
 
         Optional<FragmentResolutionModel> out = cache.fetch(FRAGMENT_IRI, VERSION_IRI, LAW_IRI);
 
-        assertEquals(Optional.of(model), out);
+        assertThat(out).isEqualTo(Optional.of(model));
         verify(client, times(1)).resolveFragment(FRAGMENT_IRI, VERSION_IRI, LAW_IRI);
     }
 
@@ -64,7 +62,7 @@ class EsbirkaFragmentResolutionCacheTest {
         Optional<FragmentResolutionModel> first = cache.fetch(FRAGMENT_IRI, VERSION_IRI, LAW_IRI);
         Optional<FragmentResolutionModel> second = cache.fetch(FRAGMENT_IRI, VERSION_IRI, LAW_IRI);
 
-        assertEquals(first, second);
+        assertThat(second).isEqualTo(first);
         verify(client, times(1)).resolveFragment(eq(FRAGMENT_IRI), eq(VERSION_IRI), eq(LAW_IRI));
     }
 

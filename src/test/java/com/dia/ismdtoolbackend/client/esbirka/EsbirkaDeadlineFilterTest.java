@@ -10,8 +10,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaDeadlineFilterTest {
 
@@ -25,9 +24,11 @@ class EsbirkaDeadlineFilterTest {
         filter.doFilter(request("/api/eli/law/content"), new MockHttpServletResponse(),
                 (req, res) -> during.set(EsbirkaRequestDeadline.current()));
 
-        assertTrue(during.get().isPresent());
-        assertTrue(during.get().get().remainingNanos() > 0);
-        assertEquals(Optional.empty(), EsbirkaRequestDeadline.current(), "cleared, so pooled threads do not inherit it");
+        assertThat(during.get()).isPresent();
+        assertThat(during.get().get().remainingNanos()).isGreaterThan(0);
+        assertThat(EsbirkaRequestDeadline.current())
+                .as("cleared, so pooled threads do not inherit it")
+                .isEqualTo(Optional.empty());
     }
 
     @Test
@@ -37,7 +38,7 @@ class EsbirkaDeadlineFilterTest {
         filter.doFilter(request("/api/ontologies"), new MockHttpServletResponse(),
                 (req, res) -> during.set(EsbirkaRequestDeadline.current()));
 
-        assertEquals(Optional.empty(), during.get());
+        assertThat(during.get()).isEqualTo(Optional.empty());
     }
 
     @Test
@@ -49,7 +50,7 @@ class EsbirkaDeadlineFilterTest {
         } catch (Exception expected) {
             // the failure itself is not under test
         }
-        assertEquals(Optional.empty(), EsbirkaRequestDeadline.current());
+        assertThat(EsbirkaRequestDeadline.current()).isEqualTo(Optional.empty());
     }
 
     private static MockHttpServletRequest request(String servletPath) {

@@ -23,7 +23,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -74,7 +73,7 @@ class ValidationServiceImplTest {
     void getValidationReport_ReturnsNullWhenNeverValidated() {
         when(validationReportRepository.findByOntologyMetadataId(ONTOLOGY_ID)).thenReturn(Optional.empty());
 
-        assertNull(validationService.getValidationReport(ontologyMetadata));
+        assertThat(validationService.getValidationReport(ontologyMetadata)).isNull();
     }
 
     @Test
@@ -85,11 +84,11 @@ class ValidationServiceImplTest {
 
         ValidationReportDto report = validationService.getValidationReport(ontologyMetadata);
 
-        assertNotNull(report);
-        assertEquals(1, report.getResults().size());
-        assertEquals(ValidationSeverity.ERROR, report.getResults().get(0).severity());
-        assertEquals(GRAPH_NAME, report.getOntologyIri());
-        assertEquals(timestamp, report.getTimestamp());
+        assertThat(report).isNotNull();
+        assertThat(report.getResults()).hasSize(1);
+        assertThat(report.getResults().get(0).severity()).isEqualTo(ValidationSeverity.ERROR);
+        assertThat(report.getOntologyIri()).isEqualTo(GRAPH_NAME);
+        assertThat(report.getTimestamp()).isEqualTo(timestamp);
     }
 
     /** Never validated is a state, not an error — the read path gets an empty report, not null. */
@@ -99,10 +98,10 @@ class ValidationServiceImplTest {
 
         ValidationReportDto report = validationService.getValidationReportOrEmpty(ontologyMetadata);
 
-        assertNotNull(report);
-        assertTrue(report.getResults().isEmpty());
-        assertEquals(GRAPH_NAME, report.getOntologyIri());
-        assertNull(report.getTimestamp());
+        assertThat(report).isNotNull();
+        assertThat(report.getResults()).isEmpty();
+        assertThat(report.getOntologyIri()).isEqualTo(GRAPH_NAME);
+        assertThat(report.getTimestamp()).isNull();
     }
 
     @Test
@@ -113,8 +112,8 @@ class ValidationServiceImplTest {
 
         ValidationReportDto report = validationService.getValidationReportOrEmpty(ontologyMetadata);
 
-        assertEquals(1, report.getResults().size());
-        assertEquals(timestamp, report.getTimestamp());
+        assertThat(report.getResults()).hasSize(1);
+        assertThat(report.getTimestamp()).isEqualTo(timestamp);
     }
 
     @Test

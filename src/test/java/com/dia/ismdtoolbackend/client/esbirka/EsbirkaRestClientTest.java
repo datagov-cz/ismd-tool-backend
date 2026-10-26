@@ -37,7 +37,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** {@link EsbirkaRestClient} over WireMock serving responses recorded from the live API. */
 class EsbirkaRestClientTest {
@@ -91,14 +92,17 @@ class EsbirkaRestClientTest {
         LawSearchResultDto result = service().searchLawsGrouped("1", 20);
 
         LawSearchGroupDto exact = result.getGroups().get(0);
-        assertEquals("1", exact.getCislo());
-        assertTrue(exact.isExactNumberMatch());
-        assertEquals(125, exact.getCount(), "every act numbered 1");
-        assertEquals("1/2026 Sb.", exact.getLaws().get(0).getCitace(), "newest act numbered 1 heads the group");
-        assertTrue(result.isTruncated());
-        assertTrue(result.getGroups().stream().noneMatch(g -> "102".equals(g.getCislo())),
-                "last fetched group (102) may be partial and is dropped");
-        assertEquals(20, result.getGroups().size());
+        assertThat(exact.getCislo()).isEqualTo("1");
+        assertThat(exact.isExactNumberMatch()).isTrue();
+        assertThat(exact.getCount()).as("every act numbered 1").isEqualTo(125);
+        assertThat(exact.getLaws().get(0).getCitace())
+                .as("newest act numbered 1 heads the group")
+                .isEqualTo("1/2026 Sb.");
+        assertThat(result.isTruncated()).isTrue();
+        assertThat(result.getGroups().stream().noneMatch(g -> "102".equals(g.getCislo())))
+                .as("last fetched group (102) may be partial and is dropped")
+                .isTrue();
+        assertThat(result.getGroups()).hasSize(20);
         WM.verify(1, postRequestedFor(urlEqualTo(SEARCH)));
     }
 
@@ -109,8 +113,8 @@ class EsbirkaRestClientTest {
         LawSearchResultDto result = service().searchLawsGrouped("49", 20);
 
         LawSearchGroupDto exact = result.getGroups().get(0);
-        assertEquals("49", exact.getCislo());
-        assertTrue(exact.getLaws().stream().map(LawDto::getIri).anyMatch(LAW_49::equals));
+        assertThat(exact.getCislo()).isEqualTo("49");
+        assertThat(exact.getLaws().stream().map(LawDto::getIri).anyMatch(LAW_49::equals)).isTrue();
         tools.jackson.databind.JsonNode rows = EsbirkaRestFixtures.JSON.readTree(EsbirkaRestFixtures.searchResponse("search-49")).get("seznam");
         long numbered49 = 0;
         boolean otherCollection = false;
@@ -121,10 +125,11 @@ class EsbirkaRestClientTest {
                 otherCollection |= !"sb".equals(segments[1]);
             }
         }
-        assertEquals(numbered49, exact.getCount(), "count covers every collection, as SPARQL");
-        assertTrue(otherCollection, "fixture holds acts numbered 49 outside Sb.");
-        assertFalse(result.isTruncated());
-        assertEquals(List.of("49", "490", "491"), result.getGroups().stream().limit(3).map(LawSearchGroupDto::getCislo).toList());
+        assertThat(exact.getCount()).as("count covers every collection, as SPARQL").isEqualTo(numbered49);
+        assertThat(otherCollection).as("fixture holds acts numbered 49 outside Sb.").isTrue();
+        assertThat(result.isTruncated()).isFalse();
+        assertThat(result.getGroups().stream().limit(3).map(LawSearchGroupDto::getCislo).toList())
+                .isEqualTo(List.of("49", "490", "491"));
     }
 
     @Test
@@ -133,15 +138,16 @@ class EsbirkaRestClientTest {
 
         LawSearchResultDto result = service().searchLawsGrouped("49/199", 20);
 
-        assertTrue(result.getGroups().stream().flatMap(g -> g.getLaws().stream())
-                .allMatch(l -> l.getRok() >= 1990 && l.getRok() <= 1999));
-        assertTrue(result.getGroups().get(0).getLaws().stream().map(LawDto::getIri).anyMatch(LAW_49::equals));
+        assertThat(result.getGroups().stream().flatMap(g -> g.getLaws().stream())
+                .allMatch(l -> l.getRok() >= 1990 && l.getRok() <= 1999))
+                .isTrue();
+        assertThat(result.getGroups().get(0).getLaws().stream().map(LawDto::getIri).anyMatch(LAW_49::equals)).isTrue();
     }
 
     @Test
     void lettersMatchNothingWithoutCallingUpstream() {
-        assertTrue(client.searchLawsByNumber("abc", null, 20).groups().isEmpty());
-        assertTrue(client.searchLawsByNumber("49", "19x", 20).groups().isEmpty());
+        assertThat(client.searchLawsByNumber("abc", null, 20).groups()).isEmpty();
+        assertThat(client.searchLawsByNumber("49", "19x", 20).groups()).isEmpty();
         WM.verify(0, anyRequestedFor(anyUrl()));
     }
 
@@ -152,7 +158,8 @@ class EsbirkaRestClientTest {
         WM.stubFor(get(urlEqualTo("/dokumenty-sbirky/%2Fsb%2F1997%2F49"))
                 .willReturn(json(EsbirkaRestFixtures.text("sb-1997-49/detail.json"))));
 
-        assertEquals(Optional.of(new LawModel(LAW_49, "49/1997 Sb.", "49", 1997, "sb")), client.findLaw("sb", "49", 1997));
+        assertThat(client.findLaw("sb", "49", 1997))
+                .isEqualTo(Optional.of(new LawModel(LAW_49, "49/1997 Sb.", "49", 1997, "sb")));
     }
 
     @Test
@@ -160,11 +167,12 @@ class EsbirkaRestClientTest {
         WM.stubFor(get(anyUrl()).willReturn(aResponse().withStatus(400).withHeader("Content-Type", "application/json")
                 .withBody(EsbirkaRestFixtures.text("errors/chyby-dokument-nenalezen.json"))));
 
-        assertEquals(Optional.empty(), client.findLaw("sb", "99999", 1997));
-        assertEquals(List.of(), client.fetchVersions(B + "/sb/1997/99999"));
-        assertEquals(List.of(), client.fetchVersionContent(B + "/sb/1997/99999/2025-11-01"));
-        assertEquals(Optional.empty(), client.resolveFragment(B + "/sb/1997/99999/2025-11-01/dokument/norma/par_1",
-                B + "/sb/1997/99999/2025-11-01", B + "/sb/1997/99999"));
+        assertThat(client.findLaw("sb", "99999", 1997)).isEqualTo(Optional.empty());
+        assertThat(client.fetchVersions(B + "/sb/1997/99999")).isEqualTo(List.of());
+        assertThat(client.fetchVersionContent(B + "/sb/1997/99999/2025-11-01")).isEqualTo(List.of());
+        assertThat(client.resolveFragment(B + "/sb/1997/99999/2025-11-01/dokument/norma/par_1",
+                B + "/sb/1997/99999/2025-11-01", B + "/sb/1997/99999"))
+                .isEqualTo(Optional.empty());
     }
 
     @Test
@@ -173,9 +181,9 @@ class EsbirkaRestClientTest {
 
         List<LawVersionModel> versions = client.fetchVersions(LAW_49);
 
-        assertEquals(35, versions.size());
-        assertEquals(V_49, versions.get(0).getIri());
-        assertTrue(versions.get(0).isLatest());
+        assertThat(versions).hasSize(35);
+        assertThat(versions.get(0).getIri()).isEqualTo(V_49);
+        assertThat(versions.get(0).isLatest()).isTrue();
     }
 
     @Test
@@ -184,11 +192,11 @@ class EsbirkaRestClientTest {
 
         List<FragmentModel> content = client.fetchVersionContent(V_49);
 
-        assertEquals(2508, content.size());
+        assertThat(content).hasSize(2508);
         for (int n = 0; n < 3; n++) {
             WM.verify(1, getRequestedFor(urlEqualTo(PAGES_49 + n)));
         }
-        assertEquals(EsbirkaRestMapper.toFragments(EsbirkaRestFixtures.pages("sb-1997-49")), content);
+        assertThat(content).isEqualTo(EsbirkaRestMapper.toFragments(EsbirkaRestFixtures.pages("sb-1997-49")));
     }
 
     @Test
@@ -199,20 +207,22 @@ class EsbirkaRestClientTest {
         Optional<FragmentResolutionModel> resolved = client.resolveFragment(
                 V_49 + "/dokument/norma/cast_3/hlava_2/par_22b/pism_a", V_49, LAW_49);
 
-        assertTrue(resolved.isPresent());
-        assertEquals("§ 22b písm. a)", resolved.get().citation());
-        assertTrue(resolved.get().isLatest());
-        assertNull(resolved.get().versionValidUntil());
-        assertTrue(resolved.get().bodyHtml().contains("zajistit dodržování limitů"));
-        assertEquals(Optional.empty(), client.resolveFragment(V_49 + "/dokument/norma/par_99999", V_49, LAW_49));
+        assertThat(resolved).isPresent();
+        assertThat(resolved.get().citation()).isEqualTo("§ 22b písm. a)");
+        assertThat(resolved.get().isLatest()).isTrue();
+        assertThat(resolved.get().versionValidUntil()).isNull();
+        assertThat(resolved.get().bodyHtml()).contains("zajistit dodržování limitů");
+        assertThat(client.resolveFragment(V_49 + "/dokument/norma/par_99999", V_49, LAW_49))
+                .isEqualTo(Optional.empty());
     }
 
     @Test
     void anUndatedVersionIsAMissingVersionNotAnError() {
         String undated = LAW_49 + "/aktualni";
 
-        assertEquals(List.of(), client.fetchVersionContent(undated));
-        assertEquals(Optional.empty(), client.resolveFragment(undated + "/dokument/norma/par_1", undated, LAW_49));
+        assertThat(client.fetchVersionContent(undated)).isEqualTo(List.of());
+        assertThat(client.resolveFragment(undated + "/dokument/norma/par_1", undated, LAW_49))
+                .isEqualTo(Optional.empty());
         WM.verify(0, anyRequestedFor(anyUrl()));
     }
 
@@ -221,7 +231,7 @@ class EsbirkaRestClientTest {
         stubHistorie();
         EsbirkaRequestDeadline.begin(EsbirkaDeadline.after(Duration.ZERO));
 
-        assertThrows(SparqlEndpointUnavailableException.class, () -> client.fetchVersions(LAW_49));
+        assertThatThrownBy(() -> client.fetchVersions(LAW_49)).isInstanceOf(SparqlEndpointUnavailableException.class);
         WM.verify(0, anyRequestedFor(anyUrl()));
     }
 
@@ -236,8 +246,8 @@ class EsbirkaRestClientTest {
         LawSearchResultDto result = service().searchLawsGrouped("civilním letectví", 20);
 
         LawDto top = result.getGroups().get(0).getLaws().get(0);
-        assertEquals(LAW_49, top.getIri());
-        assertEquals("Zákon č. 49/1997 Sb., o civilním letectví", top.getDisplayName());
+        assertThat(top.getIri()).isEqualTo(LAW_49);
+        assertThat(top.getDisplayName()).isEqualTo("Zákon č. 49/1997 Sb., o civilním letectví");
         WM.verify(1, getRequestedFor(urlPathEqualTo(SUGGEST))
                 .withQueryParam("text", equalTo("civilním letectví"))
                 .withQueryParam("maxPocet", equalTo("100")));
@@ -254,7 +264,7 @@ class EsbirkaRestClientTest {
 
         LawSearchResultDto result = service().searchLawsGrouped("zakon o civilnim letectvi", 20);
 
-        assertEquals(LAW_49, result.getGroups().get(0).getLaws().get(0).getIri());
+        assertThat(result.getGroups().get(0).getLaws().get(0).getIri()).isEqualTo(LAW_49);
         WM.verify(2, getRequestedFor(urlPathEqualTo(SUGGEST)));
         WM.verify(2, postRequestedFor(urlEqualTo(SEARCH)));
     }
@@ -266,7 +276,9 @@ class EsbirkaRestClientTest {
         LawDto law = service().searchLawsGrouped("49", 20).getGroups().get(0).getLaws().stream()
                 .filter(l -> LAW_49.equals(l.getIri())).findFirst().orElseThrow();
 
-        assertTrue(law.getDisplayName().startsWith("Zákon č. 49/1997 Sb., o civilním letectví"), law.getDisplayName());
+        assertThat(law.getDisplayName())
+                .as(law.getDisplayName())
+                .startsWith("Zákon č. 49/1997 Sb., o civilním letectví");
     }
 
     private EsbirkaService service() {

@@ -26,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.hamcrest.Matchers.nullValue;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -181,7 +181,7 @@ class EsbirkaControllerTest {
 
         ArgumentCaptor<String> qCap = ArgumentCaptor.forClass(String.class);
         verify(esbirkaService).searchLawsGrouped(qCap.capture(), eq(10));
-        assertNull(qCap.getValue());
+        assertThat(qCap.getValue()).isNull();
     }
 
     @Test

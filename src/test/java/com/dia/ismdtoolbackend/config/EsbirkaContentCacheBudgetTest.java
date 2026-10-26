@@ -17,9 +17,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaContentCacheBudgetTest {
 
@@ -32,7 +30,7 @@ class EsbirkaContentCacheBudgetTest {
 
         int weight = weigher.weigh("/sb/1997/49/2025-11-01", content);
 
-        assertTrue(weight >= 20_000 && weight < 21_000, "weight " + weight);
+        assertThat(weight >= 20_000 && weight < 21_000).as("weight " + weight).isTrue();
     }
 
     @Test
@@ -43,7 +41,7 @@ class EsbirkaContentCacheBudgetTest {
         root.setChildren(new ArrayList<>(List.of(child)));
         LawContentDto content = LawContentDto.builder().bodyHtml("z".repeat(5_000)).fragments(List.of(root)).build();
 
-        assertTrue(weigher.weigh("49/1997@", content) >= 20_000);
+        assertThat(weigher.weigh("49/1997@", content)).isGreaterThanOrEqualTo(20_000);
     }
 
     @Test
@@ -52,17 +50,21 @@ class EsbirkaContentCacheBudgetTest {
         Cache<Object, Object> lawContent = nativeCache(manager, "esbirkaLawContent");
         Cache<Object, Object> versionContent = nativeCache(manager, "esbirkaVersionContent");
 
-        assertNotSame(lawContent, versionContent, "a load nested in a load on one Caffeine cache is forbidden");
-        assertEquals(512 * 1024, lawContent.policy().eviction().orElseThrow().getMaximum());
-        assertEquals(512 * 1024, versionContent.policy().eviction().orElseThrow().getMaximum());
+        assertThat(versionContent)
+                .as("a load nested in a load on one Caffeine cache is forbidden")
+                .isNotSameAs(lawContent);
+        assertThat(lawContent.policy().eviction().orElseThrow().getMaximum()).isEqualTo(512 * 1024);
+        assertThat(versionContent.policy().eviction().orElseThrow().getMaximum()).isEqualTo(512 * 1024);
     }
 
     @Test
     void underSparqlRenderedContentKeepsTheWholeBudget() {
         CacheManager manager = manager("sparql", 1);
 
-        assertEquals(1024 * 1024, nativeCache(manager, "esbirkaLawContent").policy().eviction().orElseThrow().getMaximum());
-        assertEquals(0, nativeCache(manager, "esbirkaVersionContent").policy().eviction().orElseThrow().getMaximum());
+        assertThat(nativeCache(manager, "esbirkaLawContent").policy().eviction().orElseThrow().getMaximum())
+                .isEqualTo(1024 * 1024);
+        assertThat(nativeCache(manager, "esbirkaVersionContent").policy().eviction().orElseThrow().getMaximum())
+                .isEqualTo(0);
     }
 
     @Test
@@ -75,7 +77,7 @@ class EsbirkaContentCacheBudgetTest {
         Cache<Object, Object> versionContent = nativeCache(manager, "esbirkaVersionContent");
         versionContent.cleanUp();
 
-        assertEquals(2, versionContent.estimatedSize(), "0.5 MB holds two of the four ~0.2 MB entries");
+        assertThat(versionContent.estimatedSize()).as("0.5 MB holds two of the four ~0.2 MB entries").isEqualTo(2);
     }
 
     /**
@@ -116,7 +118,7 @@ class EsbirkaContentCacheBudgetTest {
             pool.shutdownNow();
         }
 
-        assertEquals(0, failures.get());
+        assertThat(failures.get()).isEqualTo(0);
     }
 
     private static CacheManager manager(String provider, int budgetMb) {

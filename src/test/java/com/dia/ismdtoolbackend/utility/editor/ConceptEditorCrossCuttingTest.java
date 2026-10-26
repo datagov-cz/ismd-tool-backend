@@ -7,7 +7,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static com.dia.constants.VocabularyConstants.*;
 
 /** Edit behavior shared by every concept type: IRI stability and null-means-unchanged. */
@@ -27,14 +27,14 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 
-        assertFalse(result.iriChanged);
-        assertEquals(conceptIri, result.newConceptIRI);
+        assertThat(result.iriChanged).isFalse();
+        assertThat(result.newConceptIRI).isEqualTo(conceptIri);
 
         Resource updated = model.getResource(conceptIri);
         Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
         Resource topType = model.getResource(OFN_NAMESPACE + TOP);
-        assertTrue(updated.hasProperty(RDF.type, tspType));
-        assertFalse(updated.hasProperty(RDF.type, topType));
+        assertThat(updated.hasProperty(RDF.type, tspType)).isTrue();
+        assertThat(updated.hasProperty(RDF.type, topType)).isFalse();
     }
     @Test
     void editConcept_ShouldUseIdentifier_WhenIdentifierIsNonNull() {
@@ -52,8 +52,8 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(oldIri, classConceptEditModel, model, null);
 
-        assertTrue(result.iriChanged);
-        assertEquals(expectedIri, result.newConceptIRI);
+        assertThat(result.iriChanged).isTrue();
+        assertThat(result.newConceptIRI).isEqualTo(expectedIri);
     }
     @Test
     void editConcept_ShouldNotRemoveExistingData_WhenEditFieldsAreNull() {
@@ -79,18 +79,18 @@ class ConceptEditorCrossCuttingTest extends ConceptEditorTestBase {
         ConceptEditor.EditResult result =
                 conceptEditor.editConcept(conceptIri, classConceptEditModel, model, null);
 
-        assertFalse(result.iriChanged);
-        assertEquals(0, result.changesCount);
+        assertThat(result.iriChanged).isFalse();
+        assertThat(result.changesCount).isEqualTo(0);
 
         Resource updated = model.getResource(conceptIri);
-        assertTrue(updated.hasProperty(SKOS.prefLabel));
-        assertTrue(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA)));
-        assertTrue(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP)));
-        assertTrue(updated.hasProperty(descProperty));
-        assertTrue(updated.hasProperty(SKOS.definition));
-        assertTrue(updated.hasProperty(SKOS.altLabel));
-        assertTrue(updated.hasProperty(exactMatchProp));
-        assertTrue(updated.hasProperty(ppdfProperty));
-        assertEquals(originalStatementCount, model.size());
+        assertThat(updated.hasProperty(SKOS.prefLabel)).isTrue();
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TRIDA))).isTrue();
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP))).isTrue();
+        assertThat(updated.hasProperty(descProperty)).isTrue();
+        assertThat(updated.hasProperty(SKOS.definition)).isTrue();
+        assertThat(updated.hasProperty(SKOS.altLabel)).isTrue();
+        assertThat(updated.hasProperty(exactMatchProp)).isTrue();
+        assertThat(updated.hasProperty(ppdfProperty)).isTrue();
+        assertThat(model.size()).isEqualTo(originalStatementCount);
     }
 }

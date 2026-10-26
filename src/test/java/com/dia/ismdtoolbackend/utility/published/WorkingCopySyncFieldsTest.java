@@ -23,10 +23,6 @@ import static com.dia.constants.VocabularyConstants.TOP_JSON_LD;
 import static com.dia.constants.VocabularyConstants.TSP_JSON_LD;
 import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ_JSON_LD;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The working-copy sync field vocabulary: what deviates, what may be accepted, how it applies. */
 class WorkingCopySyncFieldsTest {
@@ -45,7 +41,7 @@ class WorkingCopySyncFieldsTest {
                 .identifier(deviating("mistni", "publikovany"))
                 .build();
 
-        assertEquals(java.util.Set.of("definice", "identifikátor"), fields.deviatingSyncableKeys(deviation));
+        assertThat(fields.deviatingSyncableKeys(deviation)).isEqualTo(java.util.Set.of("definice", "identifikátor"));
     }
 
     @Test
@@ -56,21 +52,20 @@ class WorkingCopySyncFieldsTest {
                 .definition(deviating(Map.of("cs", "A"), Map.of("cs", "B")))
                 .build();
 
-        assertEquals(java.util.Set.of("definice"), fields.deviatingSyncableKeys(deviation));
-        assertFalse(fields.syncableKeys().contains(WorkingCopySyncFields.TYPE_KEY));
+        assertThat(fields.deviatingSyncableKeys(deviation)).isEqualTo(java.util.Set.of("definice"));
+        assertThat(fields.syncableKeys()).doesNotContain(WorkingCopySyncFields.TYPE_KEY);
     }
 
     @Test
     void nameIsNeverSyncable() {
         // An OFN concept's IRI is derived from its name; syncing the name would rewrite the IRI and break
         // the twin match, so "název" is not in the vocabulary and is never offered even if set.
-        assertFalse(fields.syncableKeys().contains("název"));
+        assertThat(fields.syncableKeys()).doesNotContain("název");
 
         PublishedConceptDeviationModel deviation = PublishedConceptDeviationModel.builder()
                 .name(deviating(Map.of("cs", "Místní"), Map.of("cs", "Publikovaný")))
                 .build();
-        assertTrue(fields.deviatingSyncableKeys(deviation).isEmpty(),
-                "a name deviation offers no syncable key");
+        assertThat(fields.deviatingSyncableKeys(deviation)).as("a name deviation offers no syncable key").isEmpty();
     }
 
     @Test
@@ -81,9 +76,9 @@ class WorkingCopySyncFieldsTest {
                 .alternativeName(deviating(Map.of("cs", "A"), Map.of("cs", "B")))
                 .build();
 
-        assertEquals(java.util.Set.of(WorkingCopySyncFields.ALT_NAME_KEY),
-                fields.deviatingSyncableKeys(deviation));
-        assertTrue(fields.syncableKeys().contains(WorkingCopySyncFields.ALT_NAME_KEY));
+        assertThat(fields.deviatingSyncableKeys(deviation))
+                .isEqualTo(java.util.Set.of(WorkingCopySyncFields.ALT_NAME_KEY));
+        assertThat(fields.syncableKeys()).contains(WorkingCopySyncFields.ALT_NAME_KEY);
     }
 
     @Test
@@ -96,8 +91,8 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply(WorkingCopySyncFields.ALT_NAME_KEY, edit, nkd);
 
-        assertEquals(List.of("Obec", "Municipalita"), edit.getAltNameModel().getAltName().get("cs"));
-        assertEquals(List.of("Municipality"), edit.getAltNameModel().getAltName().get("en"));
+        assertThat(edit.getAltNameModel().getAltName().get("cs")).isEqualTo(List.of("Obec", "Municipalita"));
+        assertThat(edit.getAltNameModel().getAltName().get("en")).isEqualTo(List.of("Municipality"));
     }
 
     @Test
@@ -110,7 +105,7 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply(WorkingCopySyncFields.ALT_NAME_KEY, edit, nkd);
 
-        assertEquals(List.of("Obec"), edit.getAltNameModel().getAltName().get("cs"));
+        assertThat(edit.getAltNameModel().getAltName().get("cs")).isEqualTo(List.of("Obec"));
     }
 
     @Test
@@ -120,13 +115,14 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply(WorkingCopySyncFields.ALT_NAME_KEY, edit, nkd);
 
-        assertTrue(edit.getAltNameModel().getAltName() == null
-                || edit.getAltNameModel().getAltName().isEmpty());
+        assertThat(edit.getAltNameModel().getAltName() == null
+                || edit.getAltNameModel().getAltName().isEmpty())
+                .isTrue();
     }
 
     @Test
     void deviatingKeys_nullDeviation_isEmpty() {
-        assertTrue(fields.deviatingSyncableKeys(null).isEmpty());
+        assertThat(fields.deviatingSyncableKeys(null)).isEmpty();
     }
 
     @Test
@@ -140,8 +136,8 @@ class WorkingCopySyncFieldsTest {
         fields.apply("definice", edit, nkd);
         fields.apply("identifikátor", edit, nkd);
 
-        assertEquals(Map.of("cs", "Publikovaná definice"), edit.getDefinitionModel().getDefinition());
-        assertEquals("publikovany-identifikator", edit.getIdentifier());
+        assertThat(edit.getDefinitionModel().getDefinition()).isEqualTo(Map.of("cs", "Publikovaná definice"));
+        assertThat(edit.getIdentifier()).isEqualTo("publikovany-identifikator");
     }
 
     @Test
@@ -156,8 +152,8 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply("definice", edit, nkd);
 
-        assertEquals(Map.of("cs", "Nová definice"), edit.getDefinitionModel().getDefinition());
-        assertNull(edit.getIdentifier(), "unaccepted field must stay null");
+        assertThat(edit.getDefinitionModel().getDefinition()).isEqualTo(Map.of("cs", "Nová definice"));
+        assertThat(edit.getIdentifier()).as("unaccepted field must stay null").isNull();
     }
 
     @Test
@@ -169,12 +165,12 @@ class WorkingCopySyncFieldsTest {
 
         PropertyConceptEditModel property = new PropertyConceptEditModel();
         fields.apply("obor-hodnot", property, nkd);
-        assertEquals("http://www.w3.org/2001/XMLSchema#string", property.getDataType());
-        assertNull(property.getDomain());
+        assertThat(property.getDataType()).isEqualTo("http://www.w3.org/2001/XMLSchema#string");
+        assertThat(property.getDomain()).isNull();
 
         RelationshipConceptEditModel relationship = new RelationshipConceptEditModel();
         fields.apply("obor-hodnot", relationship, nkd);
-        assertEquals("http://www.w3.org/2001/XMLSchema#string", relationship.getRange());
+        assertThat(relationship.getRange()).isEqualTo("http://www.w3.org/2001/XMLSchema#string");
     }
 
     @Test
@@ -187,7 +183,7 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply("nadřazená-třída", edit, nkd);
 
-        assertNull(edit.getSuperProperty());
+        assertThat(edit.getSuperProperty()).isNull();
     }
 
     @Test
@@ -201,7 +197,7 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply("je-ppdf", edit, nkd);
 
-        assertEquals(Boolean.FALSE, edit.getIsInPPDF());
+        assertThat(edit.getIsInPPDF()).isFalse();
     }
 
     @Test
@@ -213,7 +209,7 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply("je-ppdf", edit, nkd);
 
-        assertEquals(Boolean.TRUE, edit.getIsInPPDF());
+        assertThat(edit.getIsInPPDF()).isTrue();
     }
 
     @Test
@@ -222,13 +218,13 @@ class WorkingCopySyncFieldsTest {
 
         fields.apply("neexistující-vlastnost", edit, ConceptDetailModel.builder().build());
 
-        assertNull(edit.getNameModel());
+        assertThat(edit.getNameModel()).isNull();
     }
 
     @Test
     void objectSubjectAndPublicPrivate_areSyncableKeys() {
-        assertTrue(fields.syncableKeys().contains(WorkingCopySyncFields.OBJECT_SUBJECT_TYPE_KEY));
-        assertTrue(fields.syncableKeys().contains(WorkingCopySyncFields.IS_PUBLIC_KEY));
+        assertThat(fields.syncableKeys()).contains(WorkingCopySyncFields.OBJECT_SUBJECT_TYPE_KEY);
+        assertThat(fields.syncableKeys()).contains(WorkingCopySyncFields.IS_PUBLIC_KEY);
     }
 
     @Test
@@ -238,7 +234,7 @@ class WorkingCopySyncFieldsTest {
 
         ClassConceptEditModel klass = new ClassConceptEditModel();
         fields.apply(WorkingCopySyncFields.OBJECT_SUBJECT_TYPE_KEY, klass, nkd);
-        assertEquals("subjekt", klass.getType());
+        assertThat(klass.getType()).isEqualTo("subjekt");
 
         // No-op on a non-TRIDA type — it carries no such marker and must not blow up.
         PropertyConceptEditModel property = new PropertyConceptEditModel();
@@ -252,13 +248,13 @@ class WorkingCopySyncFieldsTest {
                 .types(List.of("Třída", "Veřejný údaj")).build();
         ClassConceptEditModel edit = new ClassConceptEditModel();
         fields.apply(WorkingCopySyncFields.IS_PUBLIC_KEY, edit, publicNkd);
-        assertEquals(Boolean.TRUE, edit.getIsPublic());
+        assertThat(edit.getIsPublic()).isTrue();
 
         ConceptDetailModel privateNkd = ConceptDetailModel.builder()
                 .types(List.of("Třída", "Neveřejný údaj")).build();
         ClassConceptEditModel edit2 = new ClassConceptEditModel();
         fields.apply(WorkingCopySyncFields.IS_PUBLIC_KEY, edit2, privateNkd);
-        assertEquals(Boolean.FALSE, edit2.getIsPublic());
+        assertThat(edit2.getIsPublic()).isFalse();
     }
 
     @Test

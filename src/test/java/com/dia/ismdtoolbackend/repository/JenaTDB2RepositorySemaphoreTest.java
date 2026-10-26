@@ -11,7 +11,9 @@ import org.springframework.mock.env.MockEnvironment;
 import java.net.http.HttpClient;
 import java.util.concurrent.Semaphore;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Tests for JenaTDB2Repository semaphore timeout and input validation behavior.
@@ -35,41 +37,42 @@ class JenaTDB2RepositorySemaphoreTest {
     @Test
     void conceptNotFoundInGraph_nullUri_shouldReturnTrue() {
         boolean result = repository.conceptNotFoundInGraph(null, "urn:graph:test");
-        assertTrue(result);
+        assertThat(result).isTrue();
     }
 
     @Test
     void conceptNotFoundInGraph_emptyUri_shouldReturnTrue() {
         boolean result = repository.conceptNotFoundInGraph("", "urn:graph:test");
-        assertTrue(result);
+        assertThat(result).isTrue();
     }
 
     @Test
     void conceptNotFoundInGraph_blankUri_shouldReturnTrue() {
         boolean result = repository.conceptNotFoundInGraph("   ", "urn:graph:test");
-        assertTrue(result);
+        assertThat(result).isTrue();
     }
 
     @Test
     void deleteConceptsFromGraph_nullList_shouldThrowIllegalArgument() {
-        assertThrows(IllegalArgumentException.class,
-                () -> repository.deleteConceptsFromGraph(null, "urn:graph:test"));
+        assertThatThrownBy(() -> repository.deleteConceptsFromGraph(null, "urn:graph:test"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void deleteConceptsFromGraph_emptyList_shouldThrowIllegalArgument() {
-        assertThrows(IllegalArgumentException.class,
-                () -> repository.deleteConceptsFromGraph(java.util.List.of(), "urn:graph:test"));
+        assertThatThrownBy(() -> repository.deleteConceptsFromGraph(java.util.List.of(), "urn:graph:test"))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void semaphoreExhausted_shouldThrowWithBusyMessage() {
         semaphore.drainPermits();
 
-        JenaTDB2Exception thrown = assertThrows(JenaTDB2Exception.class,
-                () -> repository.conceptNotFoundInGraph("urn:concept:1", "urn:graph:test"));
+        JenaTDB2Exception thrown = assertThatExceptionOfType(JenaTDB2Exception.class)
+                .isThrownBy(() -> repository.conceptNotFoundInGraph("urn:concept:1", "urn:graph:test"))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("busy"));
+        assertThat(thrown).hasMessageContaining("busy");
     }
 
     @Test
@@ -81,11 +84,14 @@ class JenaTDB2RepositorySemaphoreTest {
 
         Thread.currentThread().interrupt();
         try {
-            JenaTDB2Exception thrown = assertThrows(JenaTDB2Exception.class,
-                    () -> longTimeoutRepo.conceptNotFoundInGraph("urn:concept:1", "urn:graph:test"));
+            JenaTDB2Exception thrown = assertThatExceptionOfType(JenaTDB2Exception.class)
+                    .isThrownBy(() -> longTimeoutRepo.conceptNotFoundInGraph("urn:concept:1", "urn:graph:test"))
+                    .actual();
 
-            assertTrue(thrown.getMessage().contains("Interrupted"));
-            assertTrue(Thread.currentThread().isInterrupted(), "the interrupt flag is restored for the caller");
+            assertThat(thrown).hasMessageContaining("Interrupted");
+            assertThat(Thread.currentThread().isInterrupted())
+                    .as("the interrupt flag is restored for the caller")
+                    .isTrue();
         } finally {
             // Surefire runs every class on this thread; a flag left set breaks the next blocking call.
             Thread.interrupted();

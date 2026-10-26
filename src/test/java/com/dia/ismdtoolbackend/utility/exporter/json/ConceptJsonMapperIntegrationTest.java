@@ -11,7 +11,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Integration Tests")
 class ConceptJsonMapperIntegrationTest {
@@ -36,9 +36,10 @@ class ConceptJsonMapperIntegrationTest {
 
         ConceptData data = processor.processAllConcepts(model, structure);
 
-        assertNotNull(data);
-        assertTrue(data.getTotalConceptCount() >= 4,
-                "Should have at least 4 concepts: 2 classes + 1 relation + 1 property");
+        assertThat(data).isNotNull();
+        assertThat(data.getTotalConceptCount())
+                .as("Should have at least 4 concepts: 2 classes + 1 relation + 1 property")
+                .isGreaterThanOrEqualTo(4);
     }
 
     @Test
@@ -56,14 +57,14 @@ class ConceptJsonMapperIntegrationTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, osoba.getURI());
 
-        assertEquals(osoba.getURI(), result.get("iri"));
-        assertNotNull(result.get("typ"));
-        assertNotNull(result.get(NAZEV));
-        assertNotNull(result.get(DEFINICE));
-        assertNotNull(result.get(POPIS));
-        assertNotNull(result.get(EKVIVALENTNI_POJEM));
-        assertNotNull(result.get(NADRAZENA_TRIDA));
-        assertNotNull(result.get("nadřazený-pojem"));
+        assertThat(result.get("iri")).isEqualTo(osoba.getURI());
+        assertThat(result.get("typ")).isNotNull();
+        assertThat(result.get(NAZEV)).isNotNull();
+        assertThat(result.get(DEFINICE)).isNotNull();
+        assertThat(result.get(POPIS)).isNotNull();
+        assertThat(result.get(EKVIVALENTNI_POJEM)).isNotNull();
+        assertThat(result.get(NADRAZENA_TRIDA)).isNotNull();
+        assertThat(result.get("nadřazený-pojem")).isNotNull();
     }
 
     @Test
@@ -76,11 +77,11 @@ class ConceptJsonMapperIntegrationTest {
         ModelStructure structure = createModelStructure(model);
 
         ConceptData data = processor.processAllConcepts(model, structure);
-        assertEquals(3, data.getTotalConceptCount());
-        assertEquals(3, data.getConcepts().size());
+        assertThat(data.getTotalConceptCount()).isEqualTo(3);
+        assertThat(data.getConcepts()).hasSize(3);
         for (Map<String, Object> concept : data.getConcepts()) {
             String iri = (String) concept.get("iri");
-            assertEquals(concept, processor.processConceptByIri(model, structure, iri));
+            assertThat(processor.processConceptByIri(model, structure, iri)).isEqualTo(concept);
         }
     }
 
@@ -96,13 +97,13 @@ class ConceptJsonMapperIntegrationTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertNotNull(result.get(ZPUSOBY_SDILENI_ALT));
-        assertNotNull(result.get(ZPUSOB_ZISKANI_ALT));
-        assertNotNull(result.get(TYP_OBSAHU_ALT));
-        assertEquals(true, result.get(JE_PPDF));
-        assertNotNull(result.get(AGENDA));
-        assertNotNull(result.get(AIS));
-        assertNotNull(result.get(USTANOVENI_NEVEREJNOST));
+        assertThat(result.get(ZPUSOBY_SDILENI_ALT)).isNotNull();
+        assertThat(result.get(ZPUSOB_ZISKANI_ALT)).isNotNull();
+        assertThat(result.get(TYP_OBSAHU_ALT)).isNotNull();
+        assertThat(result.get(JE_PPDF)).isEqualTo(true);
+        assertThat(result.get(AGENDA)).isNotNull();
+        assertThat(result.get(AIS)).isNotNull();
+        assertThat(result.get(USTANOVENI_NEVEREJNOST)).isNotNull();
     }
 
     @Test
@@ -114,7 +115,7 @@ class ConceptJsonMapperIntegrationTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertEquals(concept.getURI(), result.get("iri"));
+        assertThat(result.get("iri")).isEqualTo(concept.getURI());
     }
 
     @Test
@@ -128,8 +129,8 @@ class ConceptJsonMapperIntegrationTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(POJEM_JSON_LD));
-        assertTrue(types.contains("Koncept"));
+        assertThat(types).contains(POJEM_JSON_LD);
+        assertThat(types).contains("Koncept");
     }
 
     @Test
@@ -144,7 +145,7 @@ class ConceptJsonMapperIntegrationTest {
 
         ConceptData data = processor.processAllConcepts(model, structure);
 
-        assertNotNull(data);
-        assertTrue(data.getTotalConceptCount() >= 2);
+        assertThat(data).isNotNull();
+        assertThat(data.getTotalConceptCount()).isGreaterThanOrEqualTo(2);
     }
 }

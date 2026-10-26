@@ -46,10 +46,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class EsbirkaRestTransportTest {
 
@@ -104,7 +101,7 @@ class EsbirkaRestTransportTest {
 
         Historie h = transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
 
-        assertEquals("/sb/1997/49/2025-11-01", h.zaznamy().get(0).get("staleUrl"));
+        assertThat(h.zaznamy().get(0).get("staleUrl")).isEqualTo("/sb/1997/49/2025-11-01");
         WM.verify(getRequestedFor(urlEqualTo(HISTORIE_PATH))
                 .withHeader(EsbirkaRestTransport.API_KEY_HEADER, equalTo(API_KEY))
                 .withHeader("Accept-Encoding", containing("gzip")));
@@ -134,7 +131,7 @@ class EsbirkaRestTransportTest {
 
         Historie h = transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
 
-        assertEquals(2001, h.zaznamy().size());
+        assertThat(h.zaznamy()).hasSize(2001);
     }
 
     @Test
@@ -145,7 +142,7 @@ class EsbirkaRestTransportTest {
         SearchResult result = transport.post(transport.uri("/rozsirena-vyhledavani"),
                 Map.of("pocet", 600), SearchResult.class, transport.newDeadline());
 
-        assertEquals(1, result.pocetCelkem());
+        assertThat(result.pocetCelkem()).isEqualTo(1);
         WM.verify(postRequestedFor(urlEqualTo("/rozsirena-vyhledavani"))
                 .withHeader("Content-Type", containing("application/json"))
                 .withRequestBody(equalToJson("{\"pocet\":600}")));
@@ -163,10 +160,10 @@ class EsbirkaRestTransportTest {
 
         Historie h = transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
 
-        assertEquals(1, h.zaznamy().size());
+        assertThat(h.zaznamy()).hasSize(1);
         WM.verify(2, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
-        assertEquals(1.0, calls("rate_limited"));
-        assertEquals(1.0, calls("success"));
+        assertThat(calls("rate_limited")).isEqualTo(1.0);
+        assertThat(calls("success")).isEqualTo(1.0);
     }
 
     @Test
@@ -175,8 +172,8 @@ class EsbirkaRestTransportTest {
         EsbirkaRestTransport transport = transport(c -> { });
 
         for (int i = 0; i < BREAKER_THRESHOLD + 1; i++) {
-            assertThrows(SparqlEndpointUnavailableException.class,
-                    () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class);
         }
         WM.verify(4 * (BREAKER_THRESHOLD + 1), getRequestedFor(urlEqualTo(HISTORIE_PATH)));
 
@@ -189,11 +186,11 @@ class EsbirkaRestTransportTest {
         EsbirkaRestTransport transport = transport(c -> { });
 
         for (int i = 0; i < BREAKER_THRESHOLD; i++) {
-            assertThrows(SparqlEndpointUnavailableException.class,
-                    () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class);
         }
         // WireMock sees more: the JDK client itself resends an idempotent GET once on a dropped connection.
-        assertEquals(4.0 * BREAKER_THRESHOLD, calls("io_error"));
+        assertThat(calls("io_error")).isEqualTo(4.0 * BREAKER_THRESHOLD);
 
         assertBreakerOpen(transport);
     }
@@ -207,11 +204,11 @@ class EsbirkaRestTransportTest {
         EsbirkaRestTransport transport = transport(c -> { });
 
         for (int i = 0; i < BREAKER_THRESHOLD + 1; i++) {
-            assertThrows(EsbirkaDocumentNotFoundException.class,
-                    () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(EsbirkaDocumentNotFoundException.class);
         }
         WM.verify(BREAKER_THRESHOLD + 1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
-        assertEquals(BREAKER_THRESHOLD + 1.0, calls("not_found"));
+        assertThat(calls("not_found")).isEqualTo(BREAKER_THRESHOLD + 1.0);
 
         assertBreakerClosed(transport);
     }
@@ -221,12 +218,13 @@ class EsbirkaRestTransportTest {
         WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(401, chyby("NEPLATNY_API_KLIC"))));
         EsbirkaRestTransport transport = transport(c -> { });
 
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
 
         WM.verify(1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
-        assertTrue(logs.list.stream().anyMatch(e -> e.getLevel() == Level.ERROR
-                && e.getFormattedMessage().contains("API key missing/invalid")));
+        assertThat(logs.list.stream().anyMatch(e -> e.getLevel() == Level.ERROR
+                && e.getFormattedMessage().contains("API key missing/invalid")))
+                .isTrue();
     }
 
     @Test
@@ -234,8 +232,8 @@ class EsbirkaRestTransportTest {
         WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(400, chyby("ZADAN_NEPLATNY_VSTUPNI_PARAMETR"))));
         EsbirkaRestTransport transport = transport(c -> { });
 
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
 
         WM.verify(1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
         assertBreakerClosed(transport);
@@ -247,8 +245,8 @@ class EsbirkaRestTransportTest {
         EsbirkaRestTransport transport = transport(c -> { });
 
         for (int i = 0; i < BREAKER_THRESHOLD; i++) {
-            assertThrows(SparqlEndpointUnavailableException.class,
-                    () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class);
         }
         WM.verify(BREAKER_THRESHOLD, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
 
@@ -259,8 +257,8 @@ class EsbirkaRestTransportTest {
     void blankKeyIs503WithoutCallingUpstream() {
         EsbirkaRestTransport transport = transport(c -> c.getRest().setApiKey("  "));
 
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
 
         WM.verify(0, anyRequestedFor(anyUrl()));
     }
@@ -273,11 +271,11 @@ class EsbirkaRestTransportTest {
         EsbirkaRestTransport transport = transport(c -> c.getRest().setRequestDeadlineMs(400));
 
         long t0 = System.nanoTime();
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
         long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
 
-        assertTrue(elapsedMs < 1_500, "deadline 400 ms, took " + elapsedMs + " ms");
+        assertThat(elapsedMs).as("deadline 400 ms, took " + elapsedMs + " ms").isLessThan(1_500);
         assertBreakerClosed(transport);
     }
 
@@ -291,11 +289,11 @@ class EsbirkaRestTransportTest {
         transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline());
 
         long t0 = System.nanoTime();
-        assertThrows(SparqlEndpointUnavailableException.class,
-                () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+        assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                .isInstanceOf(SparqlEndpointUnavailableException.class);
         long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
 
-        assertTrue(elapsedMs < 1_000, "deadline 300 ms, took " + elapsedMs + " ms");
+        assertThat(elapsedMs).as("deadline 300 ms, took " + elapsedMs + " ms").isLessThan(1_000);
         WM.verify(1, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
     }
 
@@ -305,8 +303,8 @@ class EsbirkaRestTransportTest {
         EsbirkaRestTransport transport = transport(c -> c.getRest().setTimeout(200));
 
         for (int i = 0; i < BREAKER_THRESHOLD; i++) {
-            assertThrows(SparqlEndpointUnavailableException.class,
-                    () -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()));
+            assertThatThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, transport.newDeadline()))
+                    .isInstanceOf(SparqlEndpointUnavailableException.class);
         }
         WM.verify(BREAKER_THRESHOLD, getRequestedFor(urlEqualTo(HISTORIE_PATH)));
 
@@ -473,9 +471,10 @@ class EsbirkaRestTransportTest {
     private void assertBreakerOpen(EsbirkaRestTransport transport) {
         WM.resetAll();
         WM.stubFor(get(urlEqualTo(HISTORIE_PATH)).willReturn(json(200, HISTORIE_JSON)));
-        SparqlEndpointUnavailableException e = assertThrows(SparqlEndpointUnavailableException.class,
-                () -> transport.get("historie", historieUri(transport), Historie.class, generousDeadline()));
-        assertTrue(e.getMessage().contains("circuit breaker open"), e.getMessage());
+        SparqlEndpointUnavailableException e = assertThatExceptionOfType(SparqlEndpointUnavailableException.class)
+                .isThrownBy(() -> transport.get("historie", historieUri(transport), Historie.class, generousDeadline()))
+                .actual();
+        assertThat(e).as(e.getMessage()).hasMessageContaining("circuit breaker open");
         WM.verify(0, anyRequestedFor(anyUrl()));
     }
 
@@ -485,9 +484,13 @@ class EsbirkaRestTransportTest {
 
     private void assertKeyNeverLogged() {
         for (ILoggingEvent event : logs.list) {
-            assertFalse(event.getFormattedMessage().contains(API_KEY), "key logged: " + event.getFormattedMessage());
+            assertThat(event.getFormattedMessage())
+                    .as("key logged: " + event.getFormattedMessage())
+                    .doesNotContain(API_KEY);
             for (IThrowableProxy t = event.getThrowableProxy(); t != null; t = t.getCause()) {
-                assertFalse(String.valueOf(t.getMessage()).contains(API_KEY), "key in logged exception: " + t.getMessage());
+                assertThat(String.valueOf(t.getMessage()))
+                        .as("key in logged exception: " + t.getMessage())
+                        .doesNotContain(API_KEY);
             }
         }
     }

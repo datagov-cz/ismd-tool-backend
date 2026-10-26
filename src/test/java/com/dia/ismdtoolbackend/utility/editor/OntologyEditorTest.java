@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.OntologyEditModel;
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
@@ -50,7 +50,7 @@ class OntologyEditorTest {
     }
 
     private void assertModelIs(String turtle) {
-        Model expected = Rdf.model(turtle);
+        Model expected = Ttl.parse(turtle);
         assertThat(model.isIsomorphicWith(expected))
                 .as("missing: %s%nextra: %s", expected.difference(model), model.difference(expected))
                 .isTrue();
@@ -61,7 +61,7 @@ class OntologyEditorTest {
 
         @Test
         void newNameMovesTheVocabularyAndEveryConceptInItsNamespace() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%1$s> skos:prefLabel "Old name"@cs ; dct:description "Old description"@cs ;
                         <http://example.com/hasConcept> <%2$sconcept-1> .
                     <%2$sconcept-1> a skos:Concept ; skos:prefLabel "Concept 1" .
@@ -85,7 +85,7 @@ class OntologyEditorTest {
 
         @Test
         void conceptsPointTheirSchemeAtTheNewVocabulary() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%1$s> skos:prefLabel "Old name"@cs .
                     <%2$sconcept-1> a skos:Concept ; skos:inScheme <%1$s> .
                     """.formatted(OLD_IRI, OLD_NS));
@@ -100,7 +100,7 @@ class OntologyEditorTest {
 
         @Test
         void linksBetweenTwoRenamedConceptsPointAtTheNewIris() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%1$s> skos:prefLabel "Old name"@cs .
                     <%2$spojem/a> a skos:Concept ; rdfs:subClassOf <%2$spojem/b> .
                     <%2$spojem/b> a skos:Concept .
@@ -117,7 +117,7 @@ class OntologyEditorTest {
 
         @Test
         void editedNameAndDescriptionReplaceTheCopiedValues() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> skos:prefLabel "Old name"@cs ; dct:description "Old description"@cs .
                     """.formatted(OLD_IRI));
 
@@ -130,7 +130,7 @@ class OntologyEditorTest {
 
         @Test
         void uneditedDescriptionMovesWithTheRename() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> skos:prefLabel "Old name"@cs ; dct:description "Kept description"@cs .
                     """.formatted(OLD_IRI));
 
@@ -143,7 +143,7 @@ class OntologyEditorTest {
 
         @Test
         void renameAndClearedDescriptionLeaveNoDescriptionOnTheNewIri() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> skos:prefLabel "Old name"@cs ; dct:description "Old description"@cs .
                     """.formatted(OLD_IRI));
 
@@ -155,7 +155,7 @@ class OntologyEditorTest {
         @Test
         void unchangedNameKeepsEveryIri() {
             String iri = "https://example.com/vocab/ontology";
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%1$s> skos:prefLabel "Ontology"@cs ; <http://example.com/hasConcept> <%1$s/concept-1> .
                     <%1$s/concept-1> a skos:Concept .
                     """.formatted(iri));
@@ -171,7 +171,7 @@ class OntologyEditorTest {
 
         @Test
         void renameOntoAnIriAlreadyInTheModelIsRejectedWithoutAWrite() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> skos:prefLabel "Old name"@cs .
                     <%s> skos:prefLabel "Existing ontology"@cs .
                     """.formatted(OLD_IRI, NEW_IRI));
@@ -191,7 +191,7 @@ class OntologyEditorTest {
 
         @Test
         void blankDescriptionRemovesIt() {
-            Rdf.add(model, "<%s> skos:prefLabel \"Slovník\"@cs ; dct:description \"Popis\"@cs .".formatted(IRI));
+            Ttl.add(model, "<%s> skos:prefLabel \"Slovník\"@cs ; dct:description \"Popis\"@cs .".formatted(IRI));
 
             OntologyEditor.EditResult result = ontologyEditor.editOntology(edit(null, cs("")), model, IRI + "/", IRI);
 
@@ -201,7 +201,7 @@ class OntologyEditorTest {
 
         @Test
         void newDescriptionReplacesTheOldOne() {
-            Rdf.add(model, "<%s> skos:prefLabel \"Slovník\"@cs ; dct:description \"Old\"@cs .".formatted(IRI));
+            Ttl.add(model, "<%s> skos:prefLabel \"Slovník\"@cs ; dct:description \"Old\"@cs .".formatted(IRI));
 
             ontologyEditor.editOntology(edit(null, cs("Updated")), model, IRI + "/", IRI);
 
@@ -210,7 +210,7 @@ class OntologyEditorTest {
 
         @Test
         void descriptionEditMergesPerLanguage() {
-            Rdf.add(model, """
+            Ttl.add(model, """
                     <%s> skos:prefLabel "Slovník"@cs ; dct:description "Popis"@cs, "Description"@en .
                     """.formatted(IRI));
             Map<String, String> description = new LinkedHashMap<>();
@@ -226,7 +226,7 @@ class OntologyEditorTest {
 
         @Test
         void emptyDescriptionMapOnAnUndescribedVocabularyChangesNothing() {
-            Rdf.add(model, "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(IRI));
+            Ttl.add(model, "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(IRI));
 
             ontologyEditor.editOntology(edit(null, Map.of()), model, IRI + "/", IRI);
 
@@ -235,7 +235,7 @@ class OntologyEditorTest {
 
         @Test
         void englishNameIsAddedNextToTheCzechOneWithoutARename() {
-            Rdf.add(model, "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(IRI));
+            Ttl.add(model, "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(IRI));
             OntologyEditModel editModel = new OntologyEditModel();
             editModel.setNameModel(Texts.name(Map.of("cs", "Slovník", "en", "Vocabulary")));
 
@@ -247,7 +247,7 @@ class OntologyEditorTest {
 
         @Test
         void nameWithoutCzechFallsBackToAnotherLanguageForTheIri() {
-            Rdf.add(model, "<%s> skos:prefLabel \"Vocabulary\"@en .".formatted(OLD_IRI));
+            Ttl.add(model, "<%s> skos:prefLabel \"Vocabulary\"@en .".formatted(OLD_IRI));
             OntologyEditModel editModel = new OntologyEditModel();
             editModel.setNameModel(Texts.name("en", "New ontology"));
 
@@ -259,7 +259,7 @@ class OntologyEditorTest {
 
         @Test
         void editWithNeitherNameNorDescriptionChangesNothing() {
-            Rdf.add(model, "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(IRI));
+            Ttl.add(model, "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(IRI));
 
             OntologyEditor.EditResult result = ontologyEditor.editOntology(new OntologyEditModel(), model, IRI + "/", IRI);
 
@@ -281,7 +281,7 @@ class OntologyEditorTest {
         @Test
         void transactionalModelIsCommittedOnSuccess() {
             Dataset dataset = DatasetFactory.createTxnMem();
-            dataset.executeWrite(() -> Rdf.add(dataset.getDefaultModel(),
+            dataset.executeWrite(() -> Ttl.add(dataset.getDefaultModel(),
                     "<%s> skos:prefLabel \"Old name\"@cs .".formatted(OLD_IRI)));
             Model txnModel = dataset.getDefaultModel();
 
@@ -289,13 +289,13 @@ class OntologyEditorTest {
 
             assertThat(dataset.isInTransaction()).isFalse();
             assertThat(dataset.calculateRead(() -> txnModel.isIsomorphicWith(
-                    Rdf.model("<%s> skos:prefLabel \"New ontology\"@cs .".formatted(NEW_IRI))))).isTrue();
+                    Ttl.parse("<%s> skos:prefLabel \"New ontology\"@cs .".formatted(NEW_IRI))))).isTrue();
         }
 
         @Test
         void failureWhileStagingIsWrappedAndRolledBack() {
             Dataset dataset = DatasetFactory.createTxnMem();
-            dataset.executeWrite(() -> Rdf.add(dataset.getDefaultModel(),
+            dataset.executeWrite(() -> Ttl.add(dataset.getDefaultModel(),
                     "<%s> skos:prefLabel \"Slovník\"@cs .".formatted(OLD_IRI)));
             Model txnModel = dataset.getDefaultModel();
             Model before = dataset.calculateRead(() -> ModelFactory.createDefaultModel().add(txnModel));

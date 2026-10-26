@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -497,8 +496,8 @@ class AiSuggestionControllerTest {
                 .andExpect(status().isAccepted());
         var capture = org.mockito.ArgumentCaptor.forClass(com.dia.ismdtoolbackend.controller.dto.ai.AiVocabularyExpansionRequestDto.class);
         verify(aiSuggestionService).expandVocabulary(eq(BEARER_TOKEN), eq(2024), eq(1), eq(LocalDate.of(2024, 1, 15)), capture.capture());
-        assertEquals("class-draft", capture.getValue().selectedClassId());
-        assertEquals("class-draft", capture.getValue().knownConceptualModel().classes().get(0).termId());
+        assertThat(capture.getValue().selectedClassId()).isEqualTo("class-draft");
+        assertThat(capture.getValue().knownConceptualModel().classes().get(0).termId()).isEqualTo("class-draft");
     }
 
     @Test

@@ -8,8 +8,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaRestErrorsTest {
 
@@ -29,8 +28,8 @@ class EsbirkaRestErrorsTest {
     })
     void classifiesByKod(String kod, Kind expected) {
         EsbirkaRestErrors.Classification c = classify(chyby(kod));
-        assertEquals(expected, c.kind());
-        assertEquals(kod, c.kod());
+        assertThat(c.kind()).isEqualTo(expected);
+        assertThat(c.kod()).isEqualTo(kod);
     }
 
     @Test
@@ -39,24 +38,24 @@ class EsbirkaRestErrorsTest {
                 {"chyby":[{"kod":"DOKUMENT_NENALEZEN","popis":"Dokument nenalezen.",
                   "datumCasChyby":"2026-10-17T10:00:00Z","correlationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                   "neznamePole":1}],"dalsi":true}""");
-        assertEquals(Kind.NOT_FOUND, c.kind());
-        assertEquals("Dokument nenalezen.", c.popis());
-        assertEquals("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", c.correlationId());
+        assertThat(c.kind()).isEqualTo(Kind.NOT_FOUND);
+        assertThat(c.popis()).isEqualTo("Dokument nenalezen.");
+        assertThat(c.correlationId()).isEqualTo("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     }
 
     @Test
     void edgeHtmlIsNotAnApiError() {
         EsbirkaRestErrors.Classification c = classify("<html><body><h1>429 Too Many Requests</h1></body></html>");
-        assertEquals(Kind.NOT_API_ERROR, c.kind());
-        assertNull(c.kod());
+        assertThat(c.kind()).isEqualTo(Kind.NOT_API_ERROR);
+        assertThat(c.kod()).isNull();
     }
 
     @Test
     void emptyOrKodlessBodiesAreNotApiErrors() {
-        assertEquals(Kind.NOT_API_ERROR, classify("").kind());
-        assertEquals(Kind.NOT_API_ERROR, classify("{\"chyby\":[]}").kind());
-        assertEquals(Kind.NOT_API_ERROR, classify("{\"chyby\":[{\"popis\":\"x\"}]}").kind());
-        assertEquals(Kind.NOT_API_ERROR, classify("[1,2]").kind());
+        assertThat(classify("").kind()).isEqualTo(Kind.NOT_API_ERROR);
+        assertThat(classify("{\"chyby\":[]}").kind()).isEqualTo(Kind.NOT_API_ERROR);
+        assertThat(classify("{\"chyby\":[{\"popis\":\"x\"}]}").kind()).isEqualTo(Kind.NOT_API_ERROR);
+        assertThat(classify("[1,2]").kind()).isEqualTo(Kind.NOT_API_ERROR);
     }
 
     private EsbirkaRestErrors.Classification classify(String body) {

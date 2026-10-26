@@ -10,7 +10,6 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.hamcrest.Matchers;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +19,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -74,7 +74,7 @@ class NkdDetailControllerTest {
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
         verify(nkdDetailService).getOntologyDetail(captor.capture());
-        org.assertj.core.api.Assertions.assertThat(captor.getValue())
+        assertThat(captor.getValue())
                 .isEqualTo("https://example.org/ontology/with space");
     }
 
@@ -243,9 +243,9 @@ class NkdDetailControllerTest {
         ArgumentCaptor<Integer> offsetCap = ArgumentCaptor.forClass(Integer.class);
         ArgumentCaptor<String> langCap = ArgumentCaptor.forClass(String.class);
         verify(nkdDetailService).listAllOntologies(limitCap.capture(), offsetCap.capture(), langCap.capture());
-        Assertions.assertEquals(20, limitCap.getValue());
-        Assertions.assertEquals(0, offsetCap.getValue());
-        Assertions.assertEquals("cs", langCap.getValue());
+        assertThat(limitCap.getValue()).isEqualTo(20);
+        assertThat(offsetCap.getValue()).isEqualTo(0);
+        assertThat(langCap.getValue()).isEqualTo("cs");
     }
 
     @Test
@@ -285,8 +285,7 @@ class NkdDetailControllerTest {
                 .andExpect(header().string("Content-Disposition",
                         Matchers.endsWith(".ttl\"")))
                 .andReturn();
-        Assertions.assertArrayEquals(body,
-                result.getResponse().getContentAsByteArray());
+        assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(body);
     }
 
     @Test
@@ -389,11 +388,7 @@ class NkdDetailControllerTest {
                 .andExpect(status().isOk())
                 .andReturn();
         String disposition = res.getResponse().getHeader("Content-Disposition");
-        Assertions.assertNotNull(disposition);
-        Assertions.assertTrue(disposition.endsWith(".ttl\""),
-                "Disposition should end with .ttl: " + disposition);
-        Assertions.assertTrue(disposition.contains("%"),
-                "Disposition should contain percent-encoded segment: " + disposition);
+        assertThat(disposition).isNotNull().endsWith(".ttl\"").contains("%");
     }
 
     @Test

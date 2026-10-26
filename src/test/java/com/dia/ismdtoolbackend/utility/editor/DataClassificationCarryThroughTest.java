@@ -12,8 +12,7 @@ import java.util.Set;
 
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE_LEGAL;
 import static com.dia.constants.VocabularyConstants.VEREJNY_UDAJ;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * {@link ConceptFieldUpdaters#updateDataClassification} is called unconditionally by every type editor.
@@ -59,8 +58,8 @@ class DataClassificationCarryThroughTest {
         fields.updateDataClassification(f.concept(), null, null, f.concept(), f.model(),
                 f.toRemove(), f.toAdd());
 
-        assertFalse(removes(f), "null isPublic must NOT remove the veřejný type — no silent data loss");
-        assertFalse(reAdds(f), "…and there is nothing to re-add — the classification is left as-is");
+        assertThat(removes(f)).as("null isPublic must NOT remove the veřejný type — no silent data loss").isFalse();
+        assertThat(reAdds(f)).as("…and there is nothing to re-add — the classification is left as-is").isFalse();
     }
 
     @Test
@@ -71,7 +70,7 @@ class DataClassificationCarryThroughTest {
         fields.updateDataClassification(f.concept(), Boolean.TRUE, null, f.concept(), f.model(),
                 f.toRemove(), f.toAdd());
 
-        assertFalse(removes(f), "carrying the current value must not remove the veřejný type");
-        assertFalse(reAdds(f), "…and stages nothing: the classification is already what was asked for");
+        assertThat(removes(f)).as("carrying the current value must not remove the veřejný type").isFalse();
+        assertThat(reAdds(f)).as("…and stages nothing: the classification is already what was asked for").isFalse();
     }
 }

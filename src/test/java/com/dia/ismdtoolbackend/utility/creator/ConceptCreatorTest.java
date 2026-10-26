@@ -6,8 +6,8 @@ import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
 import com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels;
-import com.dia.ismdtoolbackend.testsupport.fixtures.Rdf;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.ontology.OntologyException;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
@@ -25,9 +25,9 @@ import java.util.List;
 import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.iris;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.literals;
-import static com.dia.ismdtoolbackend.testsupport.fixtures.Rdf.types;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.iris;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.literals;
+import static com.dia.ismdtoolbackend.testsupport.rdf.Ttl.types;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -41,24 +41,24 @@ class ConceptCreatorTest {
     private static final String CODE_LIST = "https://data.mvcr.gov.cz/zdroj/číselníky/typy-turistických-cílů";
     private static final String DATASET = "https://data.gov.cz/zdroj/datové-sady/test-dataset";
 
-    private static final Property DEFINING_LEGAL = Rdf.property(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
-    private static final Property RELATED_LEGAL = Rdf.property(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
-    private static final Property SHARING = Rdf.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
-    private static final Property ACQUISITION = Rdf.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
-    private static final Property CONTENT_TYPE = Rdf.property(OFN_NAMESPACE + TYP_OBSAHU);
-    private static final Property AGENDA = Rdf.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
-    private static final Property AIS = Rdf.property(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
-    private static final Property PPDF = Rdf.property(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
-    private static final Property NAMESPACE_PROVISION = Rdf.property(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
-    private static final Property LEGAL_PROVISION = Rdf.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-    private static final Property HIERARCHY = Rdf.property(DEFAULT_NS + "nadřazená-třída");
-    private static final Property CODE_LIST_LINK = Rdf.property(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
+    private static final Property DEFINING_LEGAL = Ttl.property(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
+    private static final Property RELATED_LEGAL = Ttl.property(OFN_NAMESPACE + SOUVISEJICI_USTANOVENI);
+    private static final Property SHARING = Ttl.property(OFN_NAMESPACE + ZPUSOB_SDILENI);
+    private static final Property ACQUISITION = Ttl.property(OFN_NAMESPACE + ZPUSOB_ZISKANI);
+    private static final Property CONTENT_TYPE = Ttl.property(OFN_NAMESPACE + TYP_OBSAHU);
+    private static final Property AGENDA = Ttl.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
+    private static final Property AIS = Ttl.property(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
+    private static final Property PPDF = Ttl.property(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
+    private static final Property NAMESPACE_PROVISION = Ttl.property(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
+    private static final Property LEGAL_PROVISION = Ttl.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+    private static final Property HIERARCHY = Ttl.property(DEFAULT_NS + "nadřazená-třída");
+    private static final Property CODE_LIST_LINK = Ttl.property(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
 
     private final ConceptCreator conceptCreator = new ConceptCreator();
 
     private static void assertModelIs(Resource created, String turtle) {
         Model actual = created.getModel();
-        Model expected = Rdf.model(turtle);
+        Model expected = Ttl.parse(turtle);
         assertThat(actual.isIsomorphicWith(expected))
                 .as("missing: %s%nextra: %s", expected.difference(actual), actual.difference(expected))
                 .isTrue();
@@ -291,7 +291,7 @@ class ConceptCreatorTest {
             }));
 
             Resource codeList = created.getPropertyResourceValue(CODE_LIST_LINK);
-            assertThat(iris(codeList, Rdf.property(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU)))
+            assertThat(iris(codeList, Ttl.property(OFN_NAMESPACE_LEGAL + MA_V_NKOD_ZASTRESUJICI_DATOVOU_SADU)))
                     .containsExactly(DATASET);
         }
 

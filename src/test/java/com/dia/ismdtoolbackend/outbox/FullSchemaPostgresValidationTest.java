@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Boots the FULL application context against REAL Postgres (Testcontainers) with
@@ -53,8 +53,8 @@ class FullSchemaPostgresValidationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void graphNameIndexesExist() {
-        assertEquals(1, countIndex("ontologies", "idx_ontologies_graph_name"));
-        assertEquals(1, countIndex("concepts", "idx_concepts_graph_name"));
+        assertThat(countIndex("ontologies", "idx_ontologies_graph_name")).isEqualTo(1);
+        assertThat(countIndex("concepts", "idx_concepts_graph_name")).isEqualTo(1);
     }
 
     private int countIndex(String table, String indexName) {
