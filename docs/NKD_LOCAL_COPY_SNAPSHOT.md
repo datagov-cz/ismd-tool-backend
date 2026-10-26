@@ -199,7 +199,7 @@ concurrent GETs can't race the unique constraint or the no-transaction assertion
 | **Ontology detail (read)** | `OntologyServiceImpl` (`@Transactional(readOnly=true)`) | Read cached rows → DTOs; cold/stale/zero-row → `PENDING` + fire async `warmGraph`. No write in the GET. |
 | **Async warm** | `NkdSnapshotWarmer` → `NkdSnapshotOwnerWarmer` | Write PG snapshot rows per owner. No TDB2 delta (copy is PG-only). |
 | **Upload** | `OntologyController.uploadFromFile` | Fire `warmGraph` **after** the upload commits (NKD-independent; try/catch-guarded). Upload never calls NKD itself. |
-| **Edit** | `ConceptServiceImpl.reconcileNkdLinks` (in-tx, synchronous) | Detect allowed published targets → snapshot (PG row); reject domain/range→published (400); remove snapshots whose link the edit dropped (the link-edge removal folds into the edit change set). |
+| **Edit** | `NkdLinkReconciler.reconcileNkdLinks` (in-tx, synchronous) | Detect allowed published targets → snapshot (PG row); reject domain/range→published (400); remove snapshots whose link the edit dropped (the link-edge removal folds into the edit change set). |
 | **Upstream NKD deletion** | `NkdSnapshotEndpointServiceImpl` (UPDATE re-snapshot returns null) | Cascade: remove the owner→nkdIri link triple + the PG snapshot row; return a `CONCEPT_NOT_FOUND_IN_NKD` marker DTO. |
 | **Concept delete** | `ConceptServiceImpl.deleteConcept` | `cascadeConceptDeletion` drops the PG rows. No copy triples in the graph to sweep. |
 | **Ontology delete** | `OntologyServiceImpl.deleteOntology` | `cascadeGraphDeletion` drops all PG rows; `DELETE_GRAPH` removes the owner graph (no copies live there). |
@@ -251,6 +251,11 @@ target, not on the linker's published state.
 Rejections (all HTTP 400): a concept that is not a working copy, a concept with no deviation, and the
 non-syncable key `typ` (ISMD cannot convert between concept types). Unknown keys are rejected by name.
 `typ` stays **visible** in the deviation so the drift is not hidden — it simply cannot be accepted.
+
+> **Response is read after commit.** The sync transaction only enqueues its RDF delta (outbox); the
+> store changes in the after-commit drain. `ConceptService.syncWorkingCopy` therefore returns the slug
+> and the controller reads the detail afterwards — a read inside the transaction returns the pre-sync
+> graph and deviation, which makes the UI offer a sync that then 400s with "není co synchronizovat".
 
 > **Full-snapshot semantics.** The sync applies its accepted fields through the normal edit path, which
 > is a full-snapshot write. Fields not being synced are carried through at their current values —

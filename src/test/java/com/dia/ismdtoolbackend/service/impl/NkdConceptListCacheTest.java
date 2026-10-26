@@ -37,7 +37,8 @@ import static org.mockito.Mockito.when;
  * got cheaper but every warm request went to NKD live — measured at ~2ms → ~1s on a real endpoint.
  * These tests fail if that caching is lost again.
  */
-@SpringBootTest(classes = {CacheConfig.class, NkdDetailServiceImpl.class})
+@SpringBootTest(classes = {CacheConfig.class, NkdDetailServiceImpl.class, NkdRequestGuard.class,
+        NkdConceptListReader.class, NkdOntologyListReader.class, NkdCatalogTotalsReader.class})
 @Import(NkdConceptListCacheTest.TestBeans.class)
 class NkdConceptListCacheTest {
 

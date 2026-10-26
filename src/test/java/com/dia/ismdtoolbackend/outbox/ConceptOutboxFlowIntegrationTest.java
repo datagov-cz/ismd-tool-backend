@@ -9,6 +9,7 @@ import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
@@ -92,6 +93,9 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
             outboxRepository.deleteAll();
             conceptMetadataRepository.deleteAll();
             ontologyMetadataRepository.deleteAll();
+        });
+        // Own transaction: Hibernate flushes inserts before deletes, so the slug would collide.
+        txTemplate.executeWithoutResult(tx -> {
             OntologyMetadataEntity ont = new OntologyMetadataEntity();
             ont.setSlug("g-ontology");
             ont.setGraphName(GRAPH);
@@ -178,7 +182,7 @@ class ConceptOutboxFlowIntegrationTest extends PostgresIntegrationTestBase {
                 ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
                 OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger,
                 MetadataTouchService touchService) {
-            return new ConceptServiceImpl(
+            return ConceptServiceWiring.build(
                     conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
                     mock(OntologyDetailExtractor.class),
