@@ -39,6 +39,9 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -243,6 +246,39 @@ class OntologyUploadServiceImplTest {
         assertEquals(userId, result.getUser().getUserId());
 
         verify(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
+    }
+
+    @Test
+    void upload_runsValidationOnTheInjectedExecutor_notTheCommonPool() throws Exception {
+        String ontologyIRI = "http://example.org/test-ontology";
+        when(multipartFile.getBytes()).thenReturn(String.format(
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", ontologyIRI).getBytes());
+        when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
+
+        OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
+        savedEntity.setGraphName(ontologyIRI);
+        savedEntity.setId(1L);
+        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
+        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
+        OntologyMetadataModel savedModel = new OntologyMetadataModel();
+        savedModel.setId(1L);
+        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(savedModel);
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
+
+        AtomicReference<String> validationThread = new AtomicReference<>();
+        CountDownLatch validated = new CountDownLatch(1);
+        when(validationClient.requestValidationLenient(anyString(), eq(ontologyIRI))).thenAnswer(invocation -> {
+            validationThread.set(Thread.currentThread().getName());
+            validated.countDown();
+            return Optional.empty();
+        });
+
+        ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
+
+        // The wiring passes a direct executor, so the validation runs on this thread.
+        assertTrue(validated.await(5, TimeUnit.SECONDS), "validation was never started");
+        assertEquals(Thread.currentThread().getName(), validationThread.get());
     }
 
     @Test

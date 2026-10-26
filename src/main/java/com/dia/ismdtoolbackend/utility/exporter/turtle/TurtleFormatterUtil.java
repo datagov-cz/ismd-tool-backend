@@ -31,9 +31,10 @@ public class TurtleFormatterUtil {
 
     static {
         OFN_PREFIXES.put("dct", DCT_NS);
-        OFN_PREFIXES.put("owl", OWL2.getURI());
-        OFN_PREFIXES.put("rdf", RDF.getURI());
-        OFN_PREFIXES.put("rdfs", RDFS.getURI());
+        // Namespace constants load no Jena class, so this is safe as the first Jena use in the JVM.
+        OFN_PREFIXES.put("owl", OWL2.NS);
+        OFN_PREFIXES.put("rdf", RDF.uri);
+        OFN_PREFIXES.put("rdfs", RDFS.uri);
         OFN_PREFIXES.put("skos", SKOS_NS);
         OFN_PREFIXES.put("slovníky", OFN_NAMESPACE);
         OFN_PREFIXES.put("vsgov", OFN_NAMESPACE_VS);

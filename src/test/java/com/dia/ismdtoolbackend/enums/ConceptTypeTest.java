@@ -1,11 +1,14 @@
 package com.dia.ismdtoolbackend.enums;
 
 import com.dia.constants.VocabularyConstants;
+import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConceptTypeTest {
 
@@ -40,6 +43,23 @@ class ConceptTypeTest {
                 List.of(VocabularyConstants.POJEM_JSON_LD, "Koncept", VocabularyConstants.VLASTNOST_JSON_LD)));
         assertEquals(ConceptType.VZTAH, ConceptType.fromRdfTypes(
                 List.of(VocabularyConstants.POJEM_JSON_LD, "Koncept", VocabularyConstants.VZTAH_JSON_LD)));
+    }
+
+    @Test
+    void fromRdfTypes_sameRoleInEveryVocabulary_isOneRole() {
+        assertEquals(ConceptType.VZTAH, ConceptType.fromRdfTypes(
+                List.of(OWL_OBJECT_PROPERTY, OFN_VZTAH, VocabularyConstants.VZTAH_JSON_LD)));
+    }
+
+    @Test
+    void fromRdfTypes_twoRoles_throwInEitherOrder() {
+        for (List<String> types : List.of(List.of(OFN_VLASTNOST, OWL_OBJECT_PROPERTY),
+                List.of(OWL_OBJECT_PROPERTY, OFN_VLASTNOST),
+                List.of(VocabularyConstants.TRIDA_JSON_LD, VocabularyConstants.VZTAH_JSON_LD))) {
+            ConflictingConceptTypeException e = assertThrows(ConflictingConceptTypeException.class,
+                    () -> ConceptType.fromRdfTypes(types), types::toString);
+            assertTrue(e.getMessage().contains(" + "), e.getMessage());
+        }
     }
 
     @Test

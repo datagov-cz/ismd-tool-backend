@@ -12,6 +12,8 @@ import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.rdf.model.Resource;
 
+import java.util.concurrent.Executor;
+
 import static org.mockito.Mockito.mock;
 
 /** Builds an {@link OntologyUploadServiceImpl} and its step classes from leaf collaborators, for tests. */
@@ -19,6 +21,8 @@ public final class OntologyUploadServiceWiring {
 
     private static final String MAX_FILE_SIZE = "10MB";
     private static final int PARSE_TIMEOUT_SECONDS = 60;
+    /** Runs the post-upload validation on the calling thread, so it has finished when the upload returns. */
+    private static final Executor DIRECT = Runnable::run;
 
     private OntologyUploadServiceWiring() {
     }
@@ -73,7 +77,7 @@ public final class OntologyUploadServiceWiring {
                 jenaTDB2Repository,
                 metadataWriter,
                 transactions,
-                new UploadValidationRunner(validationClient, transactions));
+                new UploadValidationRunner(validationClient, transactions, DIRECT));
     }
 
     /** Runs the post-upload validation step on its own. */
@@ -99,6 +103,6 @@ public final class OntologyUploadServiceWiring {
                                                            OntologyMetadataRepository ontologyMetadataRepository,
                                                            ValidationReportRepository validationReportRepository) {
         return new UploadValidationRunner(validationClient, new OntologyUploadTransactions(
-                ontologyMetadataRepository, validationReportRepository, null));
+                ontologyMetadataRepository, validationReportRepository, null), DIRECT);
     }
 }

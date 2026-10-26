@@ -2,6 +2,7 @@ package com.dia.ismdtoolbackend.service.impl;
 
 import com.dia.ismdtoolbackend.IsmdToolBackendApplication;
 import com.dia.ismdtoolbackend.client.ValidationClient;
+import com.dia.ismdtoolbackend.config.AsyncConfig;
 import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -73,7 +74,7 @@ import static org.mockito.Mockito.when;
 @ActiveProfiles("junit")
 @EntityScan(basePackageClasses = ConceptMetadataEntity.class)
 @EnableJpaRepositories(basePackageClasses = ConceptMetadataRepository.class)
-@Import({JpaAuditingConfig.class, TransactionTemplateConfig.class,
+@Import({JpaAuditingConfig.class, TransactionTemplateConfig.class, AsyncConfig.class,
         OntologyUploadServiceImpl.class, UploadFileReader.class, UploadModelNormalizer.class, UploadVocabularyLock.class,
         UploadConceptRoleResolver.class, UploadConceptGate.class, UploadMetadataWriter.class,
         UploadValidationRunner.class, OntologyUploadTransactions.class,

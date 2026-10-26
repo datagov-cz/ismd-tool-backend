@@ -97,17 +97,24 @@ class ConceptSourceUpdater {
             log.warn("Skipped {} non-legal source(s) — url is blank or invalid", skipped);
         }
 
-        if (validSources.isEmpty()) {
-            removeAllByPredicate(newConcept, property, toRemove, toAdd);
-            return;
-        }
-
-        removeAllByPredicate(newConcept, property, toRemove, toAdd);
-
-        Resource digitalObjectType = model.createResource(DIGITALNI_OBJEKT);
         Property schemaUrlProperty = model.createProperty(SCHEMA_URL);
         Property dctermsTitle = model.createProperty(DCT_NS + "title");
         Property dctermsDescription = model.createProperty(DCT_NS + "description");
+
+        Set<SourceRecord> wanted = new HashSet<>();
+        validSources.forEach(source -> wanted.add(SourceRecord.of(source)));
+        Set<SourceRecord> current = currentSources(oldConcept, property, schemaUrlProperty, dctermsTitle,
+                dctermsDescription);
+        if (wanted.equals(current)) {
+            return;
+        }
+
+        removeSources(newConcept, oldConcept, property, toRemove, toAdd);
+        if (validSources.isEmpty()) {
+            return;
+        }
+
+        Resource digitalObjectType = model.createResource(DIGITALNI_OBJEKT);
 
         for (DigitalObjectModel source : validSources) {
             Resource digitalDocument = model.createResource();
@@ -126,6 +133,64 @@ class ConceptSourceUpdater {
             }
 
             toAdd.add(model.createStatement(newConcept, property, digitalDocument));
+        }
+    }
+
+    /** One non-legal source as compared between the stored concept and the edit; blank text is {@code null}. */
+    private record SourceRecord(String url, String title, String description) {
+
+        static SourceRecord of(DigitalObjectModel source) {
+            return new SourceRecord(source.getUrl().trim(), blankToNull(source.getName()),
+                    blankToNull(source.getDescription()));
+        }
+
+        private static String blankToNull(String value) {
+            return value == null || value.trim().isEmpty() ? null : value.trim();
+        }
+    }
+
+    /**
+     * The concept's stored sources under {@code property}, or {@code null} when one is not a digital-object
+     * blank node, so it never equals an edit and gets rewritten.
+     */
+    private Set<SourceRecord> currentSources(Resource concept, Property property, Property url,
+                                             Property title, Property description) {
+        Set<SourceRecord> sources = new HashSet<>();
+        for (Statement link : concept.listProperties(property).toList()) {
+            if (!link.getObject().isAnon()) {
+                return null;
+            }
+            Resource document = link.getObject().asResource();
+            Statement urlValue = document.getProperty(url);
+            if (urlValue == null) {
+                return null;
+            }
+            sources.add(new SourceRecord(lexical(urlValue), text(document, title), text(document, description)));
+        }
+        return sources;
+    }
+
+    private static String text(Resource document, Property property) {
+        Statement value = document.getProperty(property);
+        return value == null ? null : SourceRecord.blankToNull(lexical(value));
+    }
+
+    private static String lexical(Statement statement) {
+        RDFNode object = statement.getObject();
+        return object.isLiteral() ? object.asLiteral().getLexicalForm() : object.toString();
+    }
+
+    /** Unlinks every source under {@code property} and removes the blank-node documents it pointed to. */
+    private void removeSources(Resource newConcept, Resource oldConcept, Property property,
+                               Set<Statement> toRemove, Set<Statement> toAdd) {
+        List<RDFNode> documents = new java.util.ArrayList<>();
+        oldConcept.listProperties(property).forEachRemaining(link -> documents.add(link.getObject()));
+        newConcept.listProperties(property).forEachRemaining(link -> documents.add(link.getObject()));
+        removeAllByPredicate(newConcept, property, toRemove, toAdd);
+        for (RDFNode document : documents) {
+            if (document.isAnon()) {
+                toRemove.addAll(document.asResource().listProperties().toList());
+            }
         }
     }
 

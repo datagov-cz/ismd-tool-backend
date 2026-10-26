@@ -238,6 +238,44 @@ class ConceptEditorClassConceptTest extends ConceptEditorTestBase {
         }
 
         @Test
+        void unchangedNonLegalSourcesAreNotAChange() {
+            seedClass("""
+                    ; sl:%s [ a <%s> ; <%s> <https://example.com/doc1> ;
+                              dct:title "Doc 1"@cs ; dct:description "Popis 1"@cs ]
+                    """.formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
+            Model before = snapshot();
+            classConceptEditModel.setNameModel(Texts.name("cs", "Třída"));
+            classConceptEditModel.setDefiningNonLegalSource(
+                    List.of(new DigitalObjectModel("Doc 1", "Popis 1", "https://example.com/doc1")));
+            classConceptEditModel.setRelatedNonLegalSource(List.of());
+
+            ConceptEditor.EditResult result = edit();
+
+            assertThat(result.changesCount).isZero();
+            assertThat(result.statementsToRemove).isEmpty();
+            assertThat(result.statementsToAdd).isEmpty();
+            assertThat(model.isIsomorphicWith(before)).isTrue();
+        }
+
+        @Test
+        void replacedNonLegalSourceLeavesNothingOfTheOldDocument() {
+            seedClass("""
+                    ; sl:%s [ a <%s> ; <%s> <https://example.com/doc1> ;
+                              dct:title "Doc 1"@cs ; dct:description "Popis 1"@cs ]
+                    """.formatted(DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
+            classConceptEditModel.setDefiningNonLegalSource(
+                    List.of(new DigitalObjectModel("Doc 2", null, "https://example.com/doc2")));
+
+            edit();
+
+            Model expected = Rdf.model("""
+                    <%s> a ofn:třída ; skos:prefLabel "Třída"@cs ;
+                        sl:%s [ a <%s> ; <%s> <https://example.com/doc2> ; dct:title "Doc 2"@cs ] .
+                    """.formatted(CONCEPT, DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL));
+            assertThat(model.isIsomorphicWith(expected)).isTrue();
+        }
+
+        @Test
         void invalidNonLegalUrlsRejectTheWholeEditAndNameEveryField() {
             seedClass("""
                     ; sl:%s sl:digitální-dokument-1

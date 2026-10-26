@@ -1,12 +1,15 @@
 package com.dia.ismdtoolbackend.enums;
 
 import com.dia.constants.VocabularyConstants;
+import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.apache.jena.ontology.OntologyException;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 @Schema(type = "string", allowableValues = {"TRIDA", "VLASTNOST", "VZTAH", "KONCEPT"})
 public enum ConceptType {
@@ -61,7 +64,8 @@ public enum ConceptType {
      *   - the short OFN JSON-LD label (Třída/Vlastnost/Vztah — what the detail
      *     extractor's ConceptDetailModel.types carries).
      * Falls back to KONCEPT when no specific role marker is present, so the field
-     * is never null.
+     * is never null. Throws {@link ConflictingConceptTypeException} when the types
+     * name more than one role.
      */
     public static ConceptType fromRdfTypes(List<String> types) {
         if (types == null) {
@@ -70,15 +74,19 @@ public enum ConceptType {
         String tridaIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.TRIDA;
         String vlastnostIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.VLASTNOST;
         String vztahIri = VocabularyConstants.OFN_NAMESPACE + VocabularyConstants.VZTAH;
+        Set<ConceptType> roles = EnumSet.noneOf(ConceptType.class);
         for (String t : types) {
             if (tridaIri.equals(t) || OWL_CLASS.equals(t)
-                    || VocabularyConstants.TRIDA_JSON_LD.equals(t)) return TRIDA;
+                    || VocabularyConstants.TRIDA_JSON_LD.equals(t)) roles.add(TRIDA);
             if (vlastnostIri.equals(t) || OWL_DATATYPE_PROPERTY.equals(t)
-                    || VocabularyConstants.VLASTNOST_JSON_LD.equals(t)) return VLASTNOST;
+                    || VocabularyConstants.VLASTNOST_JSON_LD.equals(t)) roles.add(VLASTNOST);
             if (vztahIri.equals(t) || OWL_OBJECT_PROPERTY.equals(t)
-                    || VocabularyConstants.VZTAH_JSON_LD.equals(t)) return VZTAH;
+                    || VocabularyConstants.VZTAH_JSON_LD.equals(t)) roles.add(VZTAH);
         }
-        return KONCEPT;
+        if (roles.size() > 1) {
+            throw new ConflictingConceptTypeException(roles);
+        }
+        return roles.isEmpty() ? KONCEPT : roles.iterator().next();
     }
 
     /**
