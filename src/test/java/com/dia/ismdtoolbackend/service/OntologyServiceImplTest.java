@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
@@ -17,13 +16,15 @@ import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.*;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
+import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.*;
 import com.dia.ismdtoolbackend.service.NkdDetailService;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
+import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
+import com.dia.ismdtoolbackend.service.impl.OntologyServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.OntologyServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.OntologyServiceWiring;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
@@ -34,10 +35,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -53,58 +51,23 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyServiceImplTest {
 
-    @Mock private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
-
-    @Mock
+    private OutboxEntryRepository outboxRepository;
     private OntologyMetadataRepository ontologyMetadataRepository;
-
-    @Mock
-    private com.dia.ismdtoolbackend.service.impl.MetadataTouchService metadataTouchService;
-
-    @Mock
+    private MetadataTouchService metadataTouchService;
     private ConceptMetadataRepository conceptMetadataRepository;
-
-    @Mock
     private ValidationReportRepository validationReportRepository;
-
-    @Mock
     private JenaTDB2Repository jenaTDB2Repository;
-
-    @Mock
     private CommentRepository commentRepository;
-
-    @Mock
     private OntologyMetadataMapper ontologyMetadataMapper;
-
-    @Mock
     private ConceptMetadataMapper conceptMetadataMapper;
-
-    @Mock
     private OntologyEditor ontologyEditor;
-
-    @Mock
     private OntologyDetailExtractor detailExtractor;
-
-    @Mock
-    private NkdSparqlClient nkdSparqlClient;
-
-    @Mock
     private PublishedResourceUtil deviationChecker;
-
-    // Creation requires the outbox; legacy direct-delete tests explicitly disable it.
-    @Mock
     private OutboxWriter outboxWriter;
-
-    @Mock
     private OutboxRelayTrigger outboxRelayTrigger;
-
-    @Mock
     private NkdSnapshotService nkdSnapshotService;
-
-    @Mock
     private NkdDetailService nkdDetailService;
 
     private OntologyServiceImpl ontologyService;
@@ -118,11 +81,24 @@ class OntologyServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        ontologyService = OntologyServiceWiring.build(ontologyMetadataRepository, metadataTouchService,
-                conceptMetadataRepository, validationReportRepository, jenaTDB2Repository, commentRepository,
-                ontologyMetadataMapper, conceptMetadataMapper, ontologyEditor, detailExtractor, deviationChecker,
-                outboxWriter, outboxRepository, outboxRelayTrigger, null, null, nkdSnapshotService, null,
-                nkdDetailService);
+        OntologyServiceFixture fixture = new OntologyServiceFixture();
+        outboxRepository = fixture.outboxRepository();
+        ontologyMetadataRepository = fixture.ontologyMetadataRepository();
+        metadataTouchService = fixture.metadataTouchService();
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        validationReportRepository = fixture.validationReportRepository();
+        jenaTDB2Repository = fixture.jenaTDB2Repository();
+        commentRepository = fixture.commentRepository();
+        ontologyMetadataMapper = fixture.ontologyMetadataMapper();
+        conceptMetadataMapper = fixture.conceptMetadataMapper();
+        ontologyEditor = fixture.ontologyEditor();
+        detailExtractor = fixture.detailExtractor();
+        deviationChecker = fixture.deviationChecker();
+        outboxWriter = fixture.outboxWriter();
+        outboxRelayTrigger = fixture.outboxRelayTrigger();
+        nkdSnapshotService = fixture.nkdSnapshotService();
+        nkdDetailService = fixture.nkdDetailService();
+        ontologyService = fixture.build();
 
         testOntologyEntity = new OntologyMetadataEntity();
         testOntologyEntity.setId(TEST_ONTOLOGY_ID);
@@ -221,7 +197,7 @@ class OntologyServiceImplTest {
         verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
         verify(ontologyMetadataRepository).findBySlug(TEST_ONTOLOGY_SLUG);
         verifyNoMoreInteractions(ontologyMetadataRepository);
-        verifyNoInteractions(jenaTDB2Repository, nkdSparqlClient, nkdDetailService, nkdSnapshotService, outboxWriter);
+        verifyNoInteractions(jenaTDB2Repository, deviationChecker, nkdDetailService, nkdSnapshotService, outboxWriter);
     }
 
     @Test
@@ -236,7 +212,7 @@ class OntologyServiceImplTest {
         assertFalse(result.available());
         verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
         verifyNoMoreInteractions(ontologyMetadataRepository);
-        verifyNoInteractions(ontologyMetadataMapper, jenaTDB2Repository, nkdSparqlClient, nkdDetailService);
+        verifyNoInteractions(ontologyMetadataMapper, jenaTDB2Repository, deviationChecker, nkdDetailService);
     }
 
     @Test
@@ -246,7 +222,7 @@ class OntologyServiceImplTest {
 
         assertFalse(result.valid());
         assertFalse(result.available());
-        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, nkdSparqlClient);
+        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, deviationChecker);
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -280,7 +256,7 @@ class OntologyServiceImplTest {
 
         assertThrows(OntologyValidationException.class, () -> ontologyService.checkIri(
                 new OntologyIriCheckRequestDto("http://example.org/", name)));
-        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, nkdSparqlClient);
+        verifyNoInteractions(ontologyMetadataRepository, jenaTDB2Repository, deviationChecker);
     }
 
     // ========== createOntology Tests ==========

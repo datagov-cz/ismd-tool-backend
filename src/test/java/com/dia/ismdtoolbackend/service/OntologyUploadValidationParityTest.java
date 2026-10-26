@@ -14,9 +14,8 @@ import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
@@ -33,8 +32,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.StringWriter;
@@ -53,6 +50,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,7 +60,6 @@ import static org.mockito.Mockito.when;
  * vocabulary the same IRIs create/edit would.
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyUploadValidationParityTest {
 
     private static final String PREFIXES = "@prefix owl: <http://www.w3.org/2002/07/owl#> ."
@@ -76,14 +73,14 @@ class OntologyUploadValidationParityTest {
     private static final String ELI = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187";
     private static final String NKD_CLASS = "https://slovník.gov.cz/generický/veřejný-sektor/pojem/adresa";
 
-    @Mock private OntologyMetadataMapper ontologyMetadataMapper;
-    @Mock private OntologyMetadataRepository ontologyMetadataRepository;
-    @Mock private ConceptMetadataRepository conceptMetadataRepository;
-    @Mock private ValidationClient validationClient;
-    @Mock private ValidationReportRepository validationReportRepository;
-    @Mock private JenaTDB2Repository jenaTDB2Repository;
-    @Mock private PublishedResourceUtil publishedResourceUtil;
     @Mock private MultipartFile file;
+
+    private OntologyMetadataMapper ontologyMetadataMapper;
+    private OntologyMetadataRepository ontologyMetadataRepository;
+    private ConceptMetadataRepository conceptMetadataRepository;
+    private ValidationClient validationClient;
+    private JenaTDB2Repository jenaTDB2Repository;
+    private PublishedResourceUtil publishedResourceUtil;
 
     private OntologyUploadServiceImpl service;
     /** Turtle of the model handed to TDB2, captured during the call (the service closes the model). */
@@ -92,24 +89,31 @@ class OntologyUploadValidationParityTest {
 
     @BeforeEach
     void setUp() {
-        service = OntologyUploadServiceWiring.build(ontologyMetadataMapper, ontologyMetadataRepository,
-                conceptMetadataRepository, validationClient, validationReportRepository, jenaTDB2Repository,
-                publishedResourceUtil);
+        OntologyUploadServiceFixture fixture = new OntologyUploadServiceFixture();
+        ontologyMetadataMapper = fixture.ontologyMetadataMapper();
+        ontologyMetadataRepository = fixture.ontologyMetadataRepository();
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        validationClient = fixture.validationClient();
+        jenaTDB2Repository = fixture.jenaTDB2Repository();
+        publishedResourceUtil = fixture.publishedResourceUtil();
+        service = fixture.build();
 
+        // Working baseline: storage and persistence succeed. Lenient because the tests that reject the
+        // whole upload stop before reaching them, each at its own step.
         OntologyMetadataEntity entity = new OntologyMetadataEntity();
         entity.setId(1L);
-        when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(entity);
-        when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(entity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenAnswer(i -> {
+        lenient().when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        lenient().when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(entity);
+        lenient().when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(entity);
+        lenient().when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenAnswer(i -> {
             OntologyMetadataModel dto = new OntologyMetadataModel();
             dto.setId(1L);
             return dto;
         });
-        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(entity));
-        when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
-        when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        doAnswer(invocation -> {
+        lenient().when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(entity));
+        lenient().when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
+        lenient().when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        lenient().doAnswer(invocation -> {
             storedGraphName = invocation.getArgument(0);
             StringWriter out = new StringWriter();
             invocation.<OntModel>getArgument(1).write(out, "N-TRIPLE");

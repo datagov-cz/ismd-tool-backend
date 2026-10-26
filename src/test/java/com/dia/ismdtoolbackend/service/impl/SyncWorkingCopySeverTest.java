@@ -17,8 +17,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
@@ -34,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,7 +46,6 @@ import static org.mockito.Mockito.when;
  * the arithmetic runs against the true field vocabulary.
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class SyncWorkingCopySeverTest {
 
     private static final Long CONCEPT_ID = 7L;
@@ -83,19 +81,14 @@ class SyncWorkingCopySeverTest {
                 new ConceptDeviationComparator(), new WorkingCopySyncFields(),
                 new ConceptAccessGuard(conceptMetadataRepository), editOperation, detailReader);
 
+        // Working baseline, lenient because the tests that sync nothing stop before these reads.
         // The data-classification carry-through reads the concept's current RDF; an empty graph means
         // "nothing recorded", which is a valid state and keeps these tests focused on the sever.
-        when(jenaTDB2Repository.fetchGraph(anyString()))
+        lenient().when(jenaTDB2Repository.fetchGraph(anyString()))
                 .thenReturn(ModelFactory.createDefaultModel());
-
         // The service takes the locking read; the post-edit re-read is unlocked.
         when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
-        when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
-        when(nkdSparqlClient.fetchPublishedConcept(anyString()))
-                .thenReturn(Optional.of(OntologyDetailModel.ConceptDetailModel.builder()
-                        .name(Map.of("cs", "Publikovaná obec"))
-                        .description(Map.of("cs", "Publikovaný popis"))
-                        .build()));
+        lenient().when(conceptMetadataRepository.findById(CONCEPT_ID)).thenReturn(Optional.of(metadata));
     }
 
     /**
@@ -243,7 +236,7 @@ class SyncWorkingCopySeverTest {
 
     @Test
     void nkdConceptGoneAtApplyTime_isRejected_andNothingIsSevered() {
-        deviatingOn("definice");
+        // Rejected on the NKD read, before the local detail is consulted.
         when(nkdSparqlClient.fetchPublishedConcept(anyString())).thenReturn(Optional.empty());
 
         assertThrows(OntologyValidationException.class,

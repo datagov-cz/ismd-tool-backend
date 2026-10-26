@@ -6,21 +6,13 @@ import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
-import com.dia.ismdtoolbackend.repository.CommentRepository;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
-import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
-import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
-import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
@@ -32,10 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
@@ -55,26 +44,11 @@ import static org.mockito.Mockito.*;
  * actually producing the enqueued change set, and an invalid edit producing a 400 with no write.
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class ConceptEditFlowIntegrationTest {
 
-    @Mock private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
-
-    @Mock private ConceptMetadataRepository conceptMetadataRepository;
-    @Mock private OntologyMetadataRepository ontologyMetadataRepository;
-    @Mock private ConceptMetadataMapper conceptMetadataMapper;
-    @Mock private ConceptCreator conceptCreator;
-    @Mock private JenaTDB2Repository jenaTDB2Repository;
-    @Mock private OntologyDetailExtractor detailExtractor;
-    @Mock private CommentRepository commentRepository;
-    @Mock private NkdSparqlClient nkdSparqlClient;
-    @Mock private ConceptDeviationComparator deviationComparator;
-    @Mock private RppSnapshotHolder rppSnapshotHolder;
-    @Mock private ReferencedConceptsEnricher referencedConceptsEnricher;
-    @Mock private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
-    @Mock private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
-    @Mock private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
-
+    private ConceptMetadataRepository conceptMetadataRepository;
+    private ConceptMetadataMapper conceptMetadataMapper;
+    private OutboxWriter outboxWriter;
     private ConceptServiceImpl conceptService;
 
     private static final Long CONCEPT_ID = 1L;
@@ -85,27 +59,14 @@ class ConceptEditFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // Real editor — the whole point of this test.
-        ConceptEditor realEditor = new ConceptEditor();
-        // Real detector — stateless, pure; on these test models (no external NKD links) allowedTargets is
-        // empty so reconcileNkdLinks is a no-op and never calls the (mocked) snapshot service.
-        com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector linkDetector =
-                new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
-        conceptService = ConceptServiceWiring.build(
-                conceptMetadataRepository, ontologyMetadataRepository,
-                org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.impl.MetadataTouchService.class),
-                conceptMetadataMapper,
-                conceptCreator, realEditor, jenaTDB2Repository, detailExtractor,
-                commentRepository, nkdSparqlClient, deviationComparator,
-                rppSnapshotHolder,
-                org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
-                referencedConceptsEnricher,
-                outboxWriter, outboxRepository, outboxRelayTrigger,
-                nkdSnapshotService, linkDetector,
-                new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
-                org.mockito.Mockito.mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
-                new com.dia.ismdtoolbackend.config.NkdConfig(),
-                org.mockito.Mockito.mock(WorkingCopyDeviationServiceImpl.class));
+        // Real editor — the whole point of this test. The fixture's real link detector finds no external
+        // NKD links in these models, so the link reconcile is a no-op.
+        ConceptServiceFixture fixture = new ConceptServiceFixture().conceptEditor(new ConceptEditor());
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        outboxWriter = fixture.outboxWriter();
+        JenaTDB2Repository jenaTDB2Repository = fixture.jenaTDB2Repository();
+        conceptMetadataMapper = fixture.conceptMetadataMapper();
+        conceptService = fixture.build();
 
         Model model = ModelFactory.createDefaultModel();
         Resource concept = model.createResource(CONCEPT_IRI);
@@ -122,6 +83,10 @@ class ConceptEditFlowIntegrationTest {
 
         when(conceptMetadataRepository.findWithLockById(CONCEPT_ID)).thenReturn(Optional.of(entity));
         when(jenaTDB2Repository.fetchGraph(GRAPH_NAME)).thenReturn(model);
+    }
+
+    /** The edit passes validation and its metadata row saves. */
+    private void givenEditCommits() {
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(conceptMetadataMapper.toDto(any(ConceptMetadataEntity.class))).thenReturn(new ConceptMetadataModel());
     }
@@ -146,6 +111,7 @@ class ConceptEditFlowIntegrationTest {
         m.setDescriptionModel(desc);
         m.setPrivacyProvisions(List.of(VALID_ELI));
         m.setIsPublic(Boolean.FALSE);
+        givenEditCommits();
 
         conceptService.editConcept(CONCEPT_ID, m);
 
@@ -156,7 +122,8 @@ class ConceptEditFlowIntegrationTest {
         Model addedModel = ModelFactory.createDefaultModel().add(List.copyOf(added.getValue()));
         Resource concept = addedModel.getResource(CONCEPT_IRI);
         Property descProp = addedModel.createProperty("http://purl.org/dc/terms/description");
-        assertTrue(concept.hasProperty(descProp), "description must be written");
+        assertTrue(concept.hasProperty(descProp, addedModel.createLiteral("Nový popis", "cs")),
+                "the new description must be written");
         Property provisionProp = addedModel.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
         assertTrue(concept.hasProperty(provisionProp, addedModel.createResource(VALID_ELI)),
                 "privacy provision must be written end-to-end");
@@ -183,6 +150,7 @@ class ConceptEditFlowIntegrationTest {
         NameModel newName = new NameModel();
         newName.setName(Map.of("cs", "Nový název"));
         m.setNameModel(newName);
+        givenEditCommits();
 
         conceptService.editConcept(CONCEPT_ID, m);
 
@@ -199,7 +167,14 @@ class ConceptEditFlowIntegrationTest {
         assertTrue(added.getValue().stream().noneMatch(st ->
                         st.getSubject().isURIResource() && CONCEPT_IRI.equals(st.getSubject().getURI())),
                 "after rename, nothing may be re-added under the old IRI");
-        assertTrue(added.getValue().stream().anyMatch(st -> SKOS.prefLabel.equals(st.getPredicate())),
-                "the prefLabel must be added under the new IRI");
+        // The metadata row and the RDF agree on the IRI derived from the new name.
+        ArgumentCaptor<ConceptMetadataEntity> saved = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
+        verify(conceptMetadataRepository).save(saved.capture());
+        String newIri = saved.getValue().getConceptIri();
+        assertTrue(newIri.endsWith("/nový-název"), newIri);
+        Model addedModel = ModelFactory.createDefaultModel().add(List.copyOf(added.getValue()));
+        assertTrue(addedModel.contains(addedModel.createResource(newIri),
+                        SKOS.prefLabel, addedModel.createLiteral("Nový název", "cs")),
+                "the new name must be added under the new IRI");
     }
 }

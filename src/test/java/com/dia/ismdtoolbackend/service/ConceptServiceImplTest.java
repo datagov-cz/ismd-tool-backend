@@ -26,8 +26,11 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
+import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
+import com.dia.ismdtoolbackend.outbox.OutboxWriter;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
+import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
@@ -44,11 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -62,71 +61,26 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class ConceptServiceImplTest {
 
-    @Mock private com.dia.ismdtoolbackend.outbox.OutboxEntryRepository outboxRepository;
-
-    @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
-
-    @Mock
     private ConceptMetadataMapper conceptMetadataMapper;
-
-    @Mock
     private OntologyMetadataRepository ontologyMetadataRepository;
-
-    @Mock
-    private com.dia.ismdtoolbackend.service.impl.MetadataTouchService metadataTouchService;
-
-    @Mock
+    private MetadataTouchService metadataTouchService;
     private ConceptCreator conceptCreator;
-
-    @Mock
     private ConceptEditor conceptEditor;
-
-    @Mock
     private JenaTDB2Repository jenaTDB2Repository;
-
-    @Mock
     private RppSnapshotHolder rppSnapshotHolder;
-
-    @Mock
     private NkodCodelistService nkodCodelistService;
-
-    @Mock
     private OntologyDetailExtractor detailExtractor;
-
-    @Mock
     private CommentRepository commentRepository;
-
-    @Mock
     private NkdSparqlClient nkdSparqlClient;
-
-    @Mock
     private ConceptDeviationComparator deviationComparator;
-
-    @Mock
     private ReferencedConceptsEnricher referencedConceptsEnricher;
-
-    @Mock
-    private com.dia.ismdtoolbackend.outbox.OutboxWriter outboxWriter;
-
-    @Mock
-    private com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger outboxRelayTrigger;
-
-    @Mock
-    private com.dia.ismdtoolbackend.service.NkdSnapshotService nkdSnapshotService;
-
-    @Mock
+    private OutboxWriter outboxWriter;
+    private OutboxRelayTrigger outboxRelayTrigger;
+    private NkdSnapshotService nkdSnapshotService;
     private WorkingCopyDeviationServiceImpl workingCopyDeviationService;
-
-    // Real detector (stateless, pure). On these unit tests the edited concept has no external NKD link
-    // triples, so detection returns empty and reconcileNkdLinks is a no-op — the mocked snapshot service
-    // is never called. A mock would return null lists and NPE inside the reconcile.
-    @Spy
-    private com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector nkdLinkDetector =
-            new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector();
 
     private ConceptServiceImpl conceptService;
 
@@ -141,11 +95,28 @@ class ConceptServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        conceptService = ConceptServiceWiring.build(conceptMetadataRepository, ontologyMetadataRepository,
-                metadataTouchService, conceptMetadataMapper, conceptCreator, conceptEditor, jenaTDB2Repository,
-                detailExtractor, commentRepository, nkdSparqlClient, deviationComparator, rppSnapshotHolder,
-                nkodCodelistService, referencedConceptsEnricher, outboxWriter, outboxRepository, outboxRelayTrigger,
-                nkdSnapshotService, nkdLinkDetector, null, null, null, workingCopyDeviationService);
+        // The fixture's link detector is real: these concepts have no external NKD link triples, so the
+        // link reconcile is a no-op and never reaches the mocked snapshot service.
+        ConceptServiceFixture fixture = new ConceptServiceFixture();
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        conceptMetadataMapper = fixture.conceptMetadataMapper();
+        ontologyMetadataRepository = fixture.ontologyMetadataRepository();
+        metadataTouchService = fixture.metadataTouchService();
+        conceptCreator = fixture.conceptCreator();
+        conceptEditor = fixture.conceptEditor();
+        jenaTDB2Repository = fixture.jenaTDB2Repository();
+        rppSnapshotHolder = fixture.rppSnapshotHolder();
+        nkodCodelistService = fixture.nkodCodelistService();
+        detailExtractor = fixture.detailExtractor();
+        commentRepository = fixture.commentRepository();
+        nkdSparqlClient = fixture.nkdSparqlClient();
+        deviationComparator = fixture.deviationComparator();
+        referencedConceptsEnricher = fixture.referencedConceptsEnricher();
+        outboxWriter = fixture.outboxWriter();
+        outboxRelayTrigger = fixture.outboxRelayTrigger();
+        nkdSnapshotService = fixture.nkdSnapshotService();
+        workingCopyDeviationService = fixture.workingCopyDeviationService();
+        conceptService = fixture.build();
 
         testConceptEntity = new ConceptMetadataEntity();
         testConceptEntity.setId(TEST_CONCEPT_ID);
@@ -158,11 +129,6 @@ class ConceptServiceImplTest {
 
         testModel = ModelFactory.createDefaultModel();
         testResource = testModel.createResource(TEST_CONCEPT_IRI);
-
-        // getConceptDetail merges cross-graph rdfs:domain members into the fetched
-        // graph; default to no extra members so existing detail tests are unaffected.
-        when(jenaTDB2Repository.fetchExternalDomainMembers(anyString()))
-                .thenReturn(ModelFactory.createDefaultModel());
     }
 
     // ========== createConcept Tests ==========
@@ -675,8 +641,16 @@ class ConceptServiceImplTest {
     private static final org.apache.jena.rdf.model.Property RDFS_DOMAIN = org.apache.jena.vocabulary.RDFS.domain;
     private static final org.apache.jena.rdf.model.Property RDFS_RANGE = org.apache.jena.vocabulary.RDFS.range;
 
-    /** Stage an edit whose POST-edit model is {@code testModel} (which the test pre-populates). */
+    /** Stage an edit whose POST-edit model is {@code testModel} (which the test pre-populates) and which commits. */
     private ConceptEditModel stageEdit(boolean iriChanged, String newIri) {
+        ConceptEditModel editModel = stageEditUpToValidation(iriChanged, newIri);
+        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
+        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
+        return editModel;
+    }
+
+    /** Stage an edit up to the NKD link validation, for edits that validation rejects. */
+    private ConceptEditModel stageEditUpToValidation(boolean iriChanged, String newIri) {
         ConceptEditModel editModel = createValidConceptEditModel();
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(
                 iriChanged ? newIri : TEST_CONCEPT_IRI, iriChanged,
@@ -685,8 +659,6 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
-        when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
         return editModel;
     }
 
@@ -758,7 +730,7 @@ class ConceptServiceImplTest {
     void editConcept_domainPointsAtPublishedNkd_rejectedAs400() {
         // C3: rdfs:domain → a CONFIRMED-published NKD concept is invalid input → OntologyValidationException (400).
         testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEditUpToValidation(false, null);
         when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(java.util.List.of(NKD_SUPERCLASS));
 
         assertThrows(com.dia.ismdtoolbackend.exception.OntologyValidationException.class,
@@ -820,7 +792,7 @@ class ConceptServiceImplTest {
         String foreign = "https://slovník.gov.cz/agendový/999/pojem/foreign";
         testModel.add(testResource, RDFS_DOMAIN, testModel.createResource(NKD_SUPERCLASS));
         testModel.add(testResource, RDFS_RANGE, testModel.createResource(foreign));
-        ConceptEditModel editModel = stageEdit(false, null);
+        ConceptEditModel editModel = stageEditUpToValidation(false, null);
         stageLocallyOwnedWorkingCopy(NKD_SUPERCLASS);
         when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(java.util.List.of(foreign));
 
@@ -1202,7 +1174,7 @@ class ConceptServiceImplTest {
     void getConceptDetail_extractorReturnsNull_throws() {
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(null);
 
         OntologyException ex = assertThrows(OntologyException.class,
@@ -1212,11 +1184,11 @@ class ConceptServiceImplTest {
 
     @Test
     void getConceptDetail_unpublished_skipsDeviationCheck() {
-        // isPublished=false → checkPublishedConcept must short-circuit, NKD client never called.
+        // A non-working-copy has no NKD twin, so the deviation service is not consulted at all.
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
 
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(TEST_CONCEPT_IRI)
@@ -1235,8 +1207,7 @@ class ConceptServiceImplTest {
         assertEquals(detail, result.getConceptDetail());
         assertNull(result.getPublishedConceptDeviationModel());
         verify(referencedConceptsEnricher).enrich(detail);
-        verify(nkdSparqlClient, never()).fetchPublishedConcept(anyString());
-        verify(deviationComparator, never()).compareConceptDetails(any(), any(), any(), any());
+        verifyNoInteractions(workingCopyDeviationService);
     }
 
     @Test
@@ -1247,7 +1218,7 @@ class ConceptServiceImplTest {
         testConceptEntity.setIsPublished(true);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
 
         OntologyDetailModel.ConceptDetailModel localDetail =
                 OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
@@ -1282,35 +1253,11 @@ class ConceptServiceImplTest {
     }
 
     @Test
-    void getConceptDetail_notPublished_skipsDeviationEntirely() {
-        // A non-working-copy has no NKD twin — the deviation service must not even be consulted.
-        testConceptEntity.setIsPublished(false);
-        when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
-        Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
-
-        OntologyDetailModel.ConceptDetailModel localDetail =
-                OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
-        when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
-
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
-        when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
-
-        GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
-
-        assertNull(result.getPublishedConceptDeviationModel());
-        verify(workingCopyDeviationService, never()).deviationFor(any());
-    }
-
-    @Test
     void getConceptDetail_attachesComments() {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI))
                 .thenReturn(OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build());
 
@@ -1338,7 +1285,7 @@ class ConceptServiceImplTest {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
 
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(TEST_CONCEPT_IRI)
@@ -1366,7 +1313,7 @@ class ConceptServiceImplTest {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
 
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(TEST_CONCEPT_IRI)
@@ -1394,7 +1341,7 @@ class ConceptServiceImplTest {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
         // No agenda, no ais set on the detail.
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(TEST_CONCEPT_IRI)
@@ -1415,11 +1362,17 @@ class ConceptServiceImplTest {
 
     // ── resolveCodeList ────────────────────────────────────────────────
 
+    /** The detail read's graph, with no cross-graph rdfs:domain members to merge in. */
+    private void givenDetailGraph(Model graph) {
+        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(graph);
+        when(jenaTDB2Repository.fetchExternalDomainMembers(anyString())).thenReturn(ModelFactory.createDefaultModel());
+    }
+
     private OntologyDetailModel.ConceptDetailModel stubDetailWithCodeList(CodeListDto codeList) {
         testConceptEntity.setIsPublished(false);
         when(conceptMetadataRepository.findBySlug(TEST_SLUG)).thenReturn(Optional.of(testConceptEntity));
         Model rawModel = nonEmptyModel();
-        when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(rawModel);
+        givenDetailGraph(rawModel);
 
         OntologyDetailModel.ConceptDetailModel detail = OntologyDetailModel.ConceptDetailModel.builder()
                 .iri(TEST_CONCEPT_IRI)

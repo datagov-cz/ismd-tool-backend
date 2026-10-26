@@ -13,8 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -26,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -33,7 +32,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class NkodCodelistSnapshotHolderTest {
 
     private static final String POHLAVI = "https://data.gov.cz/zdroj/datové-sady/17651921/5ccc4289";
@@ -61,8 +59,10 @@ class NkodCodelistSnapshotHolderTest {
     void setUp() {
         config = new NkodConfig();
         clock = MutableClock.of("2026-09-30T10:00:00Z");
-        when(client.isEndpointConfigured()).thenReturn(true);
-        when(reader.readCodeListIri(anyString())).thenReturn(Optional.empty());
+        // Working baseline: the endpoint is configured and no distribution yields a code-list IRI. Lenient
+        // because the tests that never build a snapshot never read either.
+        lenient().when(client.isEndpointConfigured()).thenReturn(true);
+        lenient().when(reader.readCodeListIri(anyString())).thenReturn(Optional.empty());
     }
 
     @AfterEach

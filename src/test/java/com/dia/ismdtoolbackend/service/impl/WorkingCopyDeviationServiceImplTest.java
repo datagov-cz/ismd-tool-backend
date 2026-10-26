@@ -17,8 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
@@ -39,7 +37,6 @@ import static org.mockito.Mockito.when;
  * these are the plain-logic tests.
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class WorkingCopyDeviationServiceImplTest {
 
     private static final String IRI = "https://slovník.gov.cz/test/pojem/obec";
@@ -68,7 +65,11 @@ class WorkingCopyDeviationServiceImplTest {
                 deviationEnricher, cacheManager,
                 new LocalConceptProjectionReader(conceptMetadataRepository, jenaTDB2Repository,
                         detailExtractor, cacheManager));
+        local = ConceptDetailModel.builder().iri(IRI).build();
+    }
 
+    /** The concept's own graph, read and projected to {@link #local}. */
+    private void givenLocalGraph() {
         ConceptMetadataEntity metadata = new ConceptMetadataEntity();
         metadata.setConceptIri(IRI);
         metadata.setGraphName(GRAPH);
@@ -82,13 +83,12 @@ class WorkingCopyDeviationServiceImplTest {
         Model processedModel = ModelFactory.createDefaultModel();
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(rawModel);
         when(detailExtractor.applyOFNTransformations(rawModel)).thenReturn(processedModel);
-
-        local = ConceptDetailModel.builder().iri(IRI).build();
         when(detailExtractor.extractConceptDetail(processedModel, IRI)).thenReturn(local);
     }
 
     @Test
     void canonicalLocal_readsOfnTransformedModel() {
+        givenLocalGraph();
         ConceptDetailModel result = service.canonicalLocalConcept(IRI);
 
         assertThat(result).isSameAs(local);
@@ -144,6 +144,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviationForWithLocal_nullLocal_fallsBackToReadingIt() {
+        givenLocalGraph();
         ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
         when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
         when(conceptDeviationComparator.compareConceptDetails(local, published, SnapshotOrigin.WORKING_COPY, IRI))
@@ -162,6 +163,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviation_nkdMatches_runsComparatorWithWorkingCopyOrigin() {
+        givenLocalGraph();
         ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
         when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(published));
         PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
@@ -177,6 +179,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviation_enrichesTheResult() {
+        givenLocalGraph();
         // Resolution of concept/RPP refs is delegated to DeviationResolutionEnricher (own test); here we
         // only pin that deviationFor runs it on the comparator's output before returning.
         ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();
@@ -194,6 +197,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviation_notInNkd_returnsConceptNotFound_noComparison() {
+        givenLocalGraph();
         when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.empty());
 
         PublishedConceptDeviationModel result = service.deviationFor(IRI);
@@ -206,6 +210,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviation_nkdThrows_returnsEndpointUnavailable() {
+        givenLocalGraph();
         // The NKD client funnels every upstream failure through SparqlEndpointUnavailableException.
         when(nkdSparqlClient.fetchPublishedConcept(IRI))
                 .thenThrow(new SparqlEndpointUnavailableException(NkdSparqlClient.NKD_LABEL, "NKD timeout"));
@@ -217,6 +222,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void deviation_unexpectedFailure_returnsQueryErrorNotEndpointUnavailable() {
+        givenLocalGraph();
         // A fault on our side must not be reported as an NKD outage — that disguise hid an NPE here before.
         when(nkdSparqlClient.fetchPublishedConcept(IRI))
                 .thenReturn(Optional.of(ConceptDetailModel.builder().iri(IRI).build()));
@@ -353,14 +359,19 @@ class WorkingCopyDeviationServiceImplTest {
     void bulk_prefetchSkipsAlreadyCachedConcepts() {
         Model callerModel = ModelFactory.createDefaultModel();
         when(detailExtractor.extractConceptDetails(any(), any())).thenReturn(Map.of(IRI, local));
-        cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE)
-                .put("concept:" + IRI, Optional.of(ConceptDetailModel.builder().iri(IRI).build()));
-        when(conceptDeviationComparator.compareConceptDetails(any(), any(), any(), any()))
-                .thenReturn(PublishedConceptDeviationModel.builder().status(DeviationStatus.NO_DEVIATION).build());
+        ConceptDetailModel cached = ConceptDetailModel.builder().iri(IRI).build();
+        cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE).put("concept:" + IRI, Optional.of(cached));
+        // The per-concept read that the cache entry serves in production (the client's @Cacheable).
+        when(nkdSparqlClient.fetchPublishedConcept(IRI)).thenReturn(Optional.of(cached));
+        PublishedConceptDeviationModel expected = PublishedConceptDeviationModel.builder()
+                .status(DeviationStatus.NO_DEVIATION).build();
+        when(conceptDeviationComparator.compareConceptDetails(local, cached, SnapshotOrigin.WORKING_COPY, IRI))
+                .thenReturn(expected);
 
-        service.deviationForAll(callerModel, List.of(IRI));
+        Map<String, PublishedConceptDeviationModel> result = service.deviationForAll(callerModel, List.of(IRI));
 
         verify(nkdSparqlClient, never()).fetchPublishedConceptsBatched(any());
+        assertThat(result.get(IRI)).isSameAs(expected);
     }
 
     @Test
@@ -384,6 +395,7 @@ class WorkingCopyDeviationServiceImplTest {
 
     @Test
     void bulk_matchesPerIriResult_forTheSameConcept() {
+        givenLocalGraph();
         // The single-source-of-truth guarantee: bulk and per-IRI must not disagree.
         Model callerModel = ModelFactory.createDefaultModel();
         ConceptDetailModel published = ConceptDetailModel.builder().iri(IRI).build();

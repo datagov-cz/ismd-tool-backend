@@ -11,7 +11,6 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotService;
-import com.dia.ismdtoolbackend.service.WorkingCopyDeviationService;
 import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
 import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
@@ -20,36 +19,48 @@ import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
 import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
-/** Builds a {@link ConceptServiceImpl} and its operation classes from leaf collaborators, for tests. */
-public final class ConceptServiceWiring {
+import static org.mockito.Mockito.mock;
 
-    private ConceptServiceWiring() {
-    }
+/**
+ * Builds a {@link ConceptServiceImpl} and its operation classes for tests. Every collaborator is a mock unless a
+ * test replaces it, and a test reads its mocks from here, so it can only stub what the service really uses.
+ * Create the fixture in {@code @BeforeEach}: mocks made there are covered by the Mockito extension's strict stubs.
+ */
+@Getter
+@Setter
+@Accessors(fluent = true, chain = true)
+public final class ConceptServiceFixture {
 
-    public static ConceptServiceImpl build(ConceptMetadataRepository conceptMetadataRepository,
-                                           OntologyMetadataRepository ontologyMetadataRepository,
-                                           MetadataTouchService metadataTouchService,
-                                           ConceptMetadataMapper conceptMetadataMapper,
-                                           ConceptCreator conceptCreator,
-                                           ConceptEditor conceptEditor,
-                                           JenaTDB2Repository jenaTDB2Repository,
-                                           OntologyDetailExtractor detailExtractor,
-                                           CommentRepository commentRepository,
-                                           NkdSparqlClient nkdSparqlClient,
-                                           ConceptDeviationComparator deviationComparator,
-                                           RppSnapshotHolder rppSnapshotHolder,
-                                           NkodCodelistService nkodCodelistService,
-                                           ReferencedConceptsEnricher referencedConceptsEnricher,
-                                           OutboxWriter outboxWriter,
-                                           OutboxEntryRepository outboxRepository,
-                                           OutboxRelayTrigger outboxRelayTrigger,
-                                           NkdSnapshotService nkdSnapshotService,
-                                           NkdLinkDetector nkdLinkDetector,
-                                           WorkingCopySyncFields syncFields,
-                                           NkdSnapshotWarmer nkdSnapshotWarmer,
-                                           NkdConfig nkdConfig,
-                                           WorkingCopyDeviationService workingCopyDeviationService) {
+    private ConceptMetadataRepository conceptMetadataRepository = mock(ConceptMetadataRepository.class);
+    private OntologyMetadataRepository ontologyMetadataRepository = mock(OntologyMetadataRepository.class);
+    private MetadataTouchService metadataTouchService = mock(MetadataTouchService.class);
+    private ConceptMetadataMapper conceptMetadataMapper = mock(ConceptMetadataMapper.class);
+    private ConceptCreator conceptCreator = mock(ConceptCreator.class);
+    private ConceptEditor conceptEditor = mock(ConceptEditor.class);
+    private JenaTDB2Repository jenaTDB2Repository = mock(JenaTDB2Repository.class);
+    private OntologyDetailExtractor detailExtractor = mock(OntologyDetailExtractor.class);
+    private CommentRepository commentRepository = mock(CommentRepository.class);
+    private NkdSparqlClient nkdSparqlClient = mock(NkdSparqlClient.class);
+    private ConceptDeviationComparator deviationComparator = mock(ConceptDeviationComparator.class);
+    private RppSnapshotHolder rppSnapshotHolder = mock(RppSnapshotHolder.class);
+    private NkodCodelistService nkodCodelistService = mock(NkodCodelistService.class);
+    private ReferencedConceptsEnricher referencedConceptsEnricher = mock(ReferencedConceptsEnricher.class);
+    private OutboxWriter outboxWriter = mock(OutboxWriter.class);
+    private OutboxEntryRepository outboxRepository = mock(OutboxEntryRepository.class);
+    private OutboxRelayTrigger outboxRelayTrigger = mock(OutboxRelayTrigger.class);
+    private NkdSnapshotService nkdSnapshotService = mock(NkdSnapshotService.class);
+    private NkdSnapshotWarmer nkdSnapshotWarmer = mock(NkdSnapshotWarmer.class);
+    private WorkingCopyDeviationServiceImpl workingCopyDeviationService = mock(WorkingCopyDeviationServiceImpl.class);
+    /** Real: pure, and finds no links in data without external NKD triples. */
+    private NkdLinkDetector nkdLinkDetector = new NkdLinkDetector();
+    private WorkingCopySyncFields syncFields = new WorkingCopySyncFields();
+    private NkdConfig nkdConfig = new NkdConfig();
+
+    public ConceptServiceImpl build() {
         ConceptAccessGuard accessGuard = new ConceptAccessGuard(conceptMetadataRepository);
         InitialGraphGuard initialGraphGuard = new InitialGraphGuard(outboxRepository);
         ConceptEditOperation editOperation = new ConceptEditOperation(conceptMetadataRepository, jenaTDB2Repository,

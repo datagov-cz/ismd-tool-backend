@@ -1,7 +1,6 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.ConceptController;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
@@ -15,29 +14,21 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
-import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationTestBeans;
-import com.dia.ismdtoolbackend.service.NkdSnapshotService;
-import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
-import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
-import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
 import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.testsupport.pg.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
-import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.sys.JenaSystem;
@@ -255,23 +246,22 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                 NkdSparqlClient nkdSparqlClient, OutboxWriter writer, OutboxEntryRepository outboxRepository,
                 OutboxRelayTrigger trigger, MetadataTouchService touchService,
                 WorkingCopyDeviationServiceImpl deviationService) {
-            return ConceptServiceWiring.build(
-                    conceptRepo, ontologyRepo, touchService, mapper,
-                    new ConceptCreator(), new ConceptEditor(), tdb2,
-                    detailExtractor,
-                    mock(CommentRepository.class),
-                    nkdSparqlClient,
-                    new ConceptDeviationComparator(),
-                    mock(RppSnapshotHolder.class),
-                    mock(NkodCodelistService.class),
-                    mock(ReferencedConceptsEnricher.class),
-                    writer, outboxRepository, trigger,
-                    mock(NkdSnapshotService.class),
-                    new NkdLinkDetector(),
-                    new WorkingCopySyncFields(),
-                    mock(NkdSnapshotWarmer.class),
-                    new NkdConfig(),
-                    deviationService);
+            return new ConceptServiceFixture()
+                    .conceptMetadataRepository(conceptRepo)
+                    .ontologyMetadataRepository(ontologyRepo)
+                    .metadataTouchService(touchService)
+                    .conceptMetadataMapper(mapper)
+                    .conceptCreator(new ConceptCreator())
+                    .conceptEditor(new ConceptEditor())
+                    .jenaTDB2Repository(tdb2)
+                    .detailExtractor(detailExtractor)
+                    .nkdSparqlClient(nkdSparqlClient)
+                    .deviationComparator(new ConceptDeviationComparator())
+                    .outboxWriter(writer)
+                    .outboxRepository(outboxRepository)
+                    .outboxRelayTrigger(trigger)
+                    .workingCopyDeviationService(deviationService)
+                    .build();
         }
     }
 }

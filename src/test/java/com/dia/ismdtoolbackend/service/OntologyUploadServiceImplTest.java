@@ -4,7 +4,6 @@ import com.dia.ismdtoolbackend.exception.EmptyFileException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.UnsupportedRdfFormatException;
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
@@ -21,7 +20,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceFixture;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.riot.Lang;
@@ -31,13 +30,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -48,48 +47,33 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyUploadServiceImplTest {
-
-    @Mock
-    private OntologyMetadataMapper ontologyMetadataMapper;
-
-    @Mock
-    private OntologyMetadataRepository ontologyMetadataRepository;
-
-    @Mock
-    private ConceptMetadataRepository conceptMetadataRepository;
-
-    @Mock
-    private ValidationClient validationClient;
-
-    @Mock
-    private ValidationReportRepository validationReportRepository;
-
-    @Mock
-    private JenaTDB2Repository jenaTDB2Repository;
 
     @Mock
     private MultipartFile multipartFile;
 
-    @Mock
-    private NkdSparqlClient nkdSparqlClient;
-
-    @Mock
+    private OntologyUploadServiceFixture fixture;
+    private OntologyMetadataMapper ontologyMetadataMapper;
+    private OntologyMetadataRepository ontologyMetadataRepository;
+    private ConceptMetadataRepository conceptMetadataRepository;
+    private ValidationClient validationClient;
+    private ValidationReportRepository validationReportRepository;
+    private JenaTDB2Repository jenaTDB2Repository;
     private PublishedResourceUtil publishedResourceUtil;
 
     private OntologyUploadServiceImpl ontologyUploadService;
 
     @BeforeEach
     void setUp() {
-        ontologyUploadService = OntologyUploadServiceWiring.build(
-                ontologyMetadataMapper,
-                ontologyMetadataRepository,
-                conceptMetadataRepository,
-                validationClient,
-                validationReportRepository,
-                jenaTDB2Repository,
-                publishedResourceUtil);
+        fixture = new OntologyUploadServiceFixture();
+        ontologyMetadataMapper = fixture.ontologyMetadataMapper();
+        ontologyMetadataRepository = fixture.ontologyMetadataRepository();
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        validationClient = fixture.validationClient();
+        validationReportRepository = fixture.validationReportRepository();
+        jenaTDB2Repository = fixture.jenaTDB2Repository();
+        publishedResourceUtil = fixture.publishedResourceUtil();
+        ontologyUploadService = fixture.build();
     }
 
     @Test
@@ -104,8 +88,7 @@ class OntologyUploadServiceImplTest {
         when(report.getResults()).thenReturn(Collections.emptyList());
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.of(report));
 
-        OntologyUploadServiceWiring.runValidation(validationClient, ontologyMetadataRepository,
-                validationReportRepository, "@prefix x: <x> .", "http://example.org/o");
+        fixture.runValidation("@prefix x: <x> .", "http://example.org/o");
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
@@ -123,8 +106,7 @@ class OntologyUploadServiceImplTest {
         // Lenient returns empty when the validator was unavailable — ingest proceeds, status flagged.
         when(validationClient.requestValidationLenient(anyString(), anyString())).thenReturn(Optional.empty());
 
-        OntologyUploadServiceWiring.runValidation(validationClient, ontologyMetadataRepository,
-                validationReportRepository, "@prefix x: <x> .", "http://example.org/o");
+        fixture.runValidation("@prefix x: <x> .", "http://example.org/o");
 
         ArgumentCaptor<OntologyMetadataEntity> captor = ArgumentCaptor.forClass(OntologyMetadataEntity.class);
         verify(ontologyMetadataRepository).save(captor.capture());
@@ -235,7 +217,6 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(eq(ontologyIRI), any(OntModel.class));
 
@@ -293,7 +274,6 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test-ontology.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         assertThrows(OntologyUploadException.class, () ->
                 ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
@@ -317,7 +297,6 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.isEmpty()).thenReturn(false);
         when(multipartFile.getContentType()).thenReturn("text/turtle");
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         assertThrows(OntologyUploadException.class, () ->
                 ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null));
@@ -365,7 +344,6 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
         when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
         when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
@@ -407,7 +385,8 @@ class OntologyUploadServiceImplTest {
         ).getBytes();
     }
 
-    private void stubPersistenceForDecisionFlow(String userId) {
+    /** The vocabulary row saves; with {@code conceptsOwned}, concept slugs and IRIs are free as well. */
+    private void stubPersistenceForDecisionFlow(String userId, boolean conceptsOwned) {
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(DECISION_ONTOLOGY);
         savedEntity.setUserId(userId);
@@ -419,10 +398,10 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(dto);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
-        when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
-        when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
-        doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+        if (conceptsOwned) {
+            when(conceptMetadataRepository.findByConceptIri(anyString())).thenReturn(Optional.empty());
+            when(conceptMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+        }
     }
 
     private List<String> capturedSavedConceptIris() {
@@ -439,7 +418,6 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         InSchemeDecisionRequiredException ex = assertThrows(InSchemeDecisionRequiredException.class, () ->
                 ontologyUploadService.uploadFromFile(multipartFile, userId, null, null));
@@ -465,13 +443,12 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, false);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.EXCLUDE_ALL, null);
 
-        // Both concepts excluded → no inScheme → no ownership rows. saveAll may be called
-        // with an empty list or not at all; either way neither concept is claimed.
-        verify(conceptMetadataRepository, atMost(1)).saveAll(anyList());
+        // Both concepts excluded → no inScheme → no ownership rows, so no concept row is written.
+        verify(conceptMetadataRepository, never()).saveAll(anyList());
         // TDB2 still persisted (triples kept as context).
         verify(jenaTDB2Repository).putOntologyModel(eq(DECISION_ONTOLOGY), any(OntModel.class));
     }
@@ -482,7 +459,7 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(
                 multipartFile, userId, NormalizeMode.PER_CONCEPT, List.of(DECISION_C1));
@@ -498,7 +475,7 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(twoMissingInSchemeTtl());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
@@ -526,7 +503,7 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(ttl);
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, false);
 
         // Snapshot the model contents DURING the call — the service closes finalModel in
         // its finally block, so post-call inspection would hit a closed model.
@@ -587,7 +564,7 @@ class OntologyUploadServiceImplTest {
                 ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
@@ -604,7 +581,7 @@ class OntologyUploadServiceImplTest {
                 ofnRoleTaggedTtl("https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost"));
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
@@ -648,7 +625,7 @@ class OntologyUploadServiceImplTest {
 
         org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
         bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
-        assertEquals("no recognized type", OntologyUploadServiceWiring.roleRejectionReason(bare),
+        assertEquals("no recognized type", OntologyUploadServiceFixture.roleRejectionReason(bare),
                 "A concept declaring no role must say so plainly");
 
         org.apache.jena.rdf.model.Resource both = model.createResource(DECISION_C2);
@@ -656,7 +633,7 @@ class OntologyUploadServiceImplTest {
         both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
         both.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.DatatypeProperty);
         assertEquals("conflicting types: VLASTNOST + VZTAH",
-                OntologyUploadServiceWiring.roleRejectionReason(both),
+                OntologyUploadServiceFixture.roleRejectionReason(both),
                 "A contradiction must name both roles it declared, so the file's author can fix it");
     }
 
@@ -674,7 +651,7 @@ class OntologyUploadServiceImplTest {
         both.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(
                 "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
 
-        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(both);
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(both);
 
         assertNull(resolved, "A concept carrying both the vlastnost and vztah OFN role tags "
                 + "declares two roles and must be dropped");
@@ -693,7 +670,7 @@ class OntologyUploadServiceImplTest {
                 "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah"));
         rel.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.ObjectProperty);
 
-        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(rel);
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(rel);
 
         assertEquals(ConceptType.VZTAH, resolved,
                 "slovníky:vztah + owl:ObjectProperty is one role stated twice — the normal shape "
@@ -719,7 +696,7 @@ class OntologyUploadServiceImplTest {
         when(multipartFile.getBytes()).thenReturn(ttl.getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
         when(multipartFile.isEmpty()).thenReturn(false);
-        stubPersistenceForDecisionFlow(userId);
+        stubPersistenceForDecisionFlow(userId, true);
 
         ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
 
@@ -743,7 +720,7 @@ class OntologyUploadServiceImplTest {
         org.apache.jena.rdf.model.Resource bare = model.createResource(DECISION_C1);
         bare.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
 
-        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(bare);
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(bare);
 
         assertNull(resolved, "A concept with no class/property/relationship signal must resolve to "
                 + "null so extractAndSaveConceptMetadata drops it instead of saving a null type");
@@ -761,7 +738,7 @@ class OntologyUploadServiceImplTest {
         base.addProperty(org.apache.jena.vocabulary.RDF.type, model.createResource(DECISION_POJEM));
         base.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
 
-        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(base);
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(base);
 
         assertNull(resolved, "skos:Concept is the base type every concept carries — it must not "
                 + "claim the TRIDA role on its own");
@@ -775,7 +752,7 @@ class OntologyUploadServiceImplTest {
         cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.SKOS.Concept);
         cls.addProperty(org.apache.jena.vocabulary.RDF.type, org.apache.jena.vocabulary.OWL2.Class);
 
-        ConceptType resolved = OntologyUploadServiceWiring.resolveConceptType(cls);
+        ConceptType resolved = OntologyUploadServiceFixture.resolveConceptType(cls);
 
         assertEquals(ConceptType.TRIDA, resolved,
                 "owl:Class is the real class signal and must still resolve to TRIDA");
@@ -823,38 +800,40 @@ class OntologyUploadServiceImplTest {
     }
 
     @Test
-    void testUploadFromFile_NKDCheckBeforeMetadataCreation() throws IOException {
+    void upload_conceptsPublishedInNkd_areSavedAsPublished() throws IOException {
         String graphName = "http://example.org/test-ontology";
-        String userId = "user123";
-        byte[] fileContent = String.format("@prefix owl: <http://www.w3.org/2002/07/owl#> . <%s> a owl:Ontology .", graphName).getBytes();
-
-        when(multipartFile.getBytes()).thenReturn(fileContent);
+        String published = graphName + "/pojem/published";
+        String draft = graphName + "/pojem/draft";
+        when(multipartFile.getBytes()).thenReturn(("""
+                @prefix owl: <http://www.w3.org/2002/07/owl#> .
+                @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+                @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
+                <%1$s> a owl:Ontology, skos:ConceptScheme .
+                <%2$s> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
+                <%3$s> a ofn:pojem, owl:Class ; skos:inScheme <%1$s> .
+                """.formatted(graphName, published, draft)).getBytes());
         when(multipartFile.getOriginalFilename()).thenReturn("test.ttl");
-
-        // NKD check returns some published concepts
-        List<String> publishedConcepts = List.of("http://example.org/concept1", "http://example.org/concept2");
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(publishedConcepts);
+        when(publishedResourceUtil.checkPublishedResourcesInNKD(any(), any())).thenReturn(List.of(published));
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
         savedEntity.setGraphName(graphName);
-        savedEntity.setUserId(userId);
         savedEntity.setId(1L);
-
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-        expectedDto.setId(1L);
-
+        OntologyMetadataModel savedModel = new OntologyMetadataModel();
+        savedModel.setId(1L);
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataMapper.toEntity(any(OntologyMetadataModel.class))).thenReturn(savedEntity);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
-        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
+        when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(savedModel);
         when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
 
-        doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
+        ontologyUploadService.uploadFromFile(multipartFile, "user123", NormalizeMode.NORMALIZE_ALL, null);
 
-        ontologyUploadService.uploadFromFile(multipartFile, userId, NormalizeMode.NORMALIZE_ALL, null);
-
-        // Verify metadata save happens
-        verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ConceptMetadataEntity>> saved = ArgumentCaptor.forClass(List.class);
+        verify(conceptMetadataRepository).saveAll(saved.capture());
+        Map<String, Boolean> publishedByIri = new HashMap<>();
+        saved.getValue().forEach(c -> publishedByIri.put(c.getConceptIri(), c.getIsPublished()));
+        assertEquals(Map.of(published, true, draft, false), publishedByIri);
     }
 
     @Test
@@ -868,7 +847,6 @@ class OntologyUploadServiceImplTest {
 
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.empty());
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         // Simulate TDB2 failure
         doThrow(new RuntimeException("TDB2 connection failed"))
@@ -907,7 +885,6 @@ class OntologyUploadServiceImplTest {
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(expectedDto);
 
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(Collections.emptyList());
 
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any(OntModel.class));
 

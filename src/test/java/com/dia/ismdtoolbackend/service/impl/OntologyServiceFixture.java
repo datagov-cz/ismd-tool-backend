@@ -18,32 +18,43 @@ import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.OntologyEditor;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 
-/** Builds an {@link OntologyServiceImpl} and its operation classes from leaf collaborators, for tests. */
-public final class OntologyServiceWiring {
+import static org.mockito.Mockito.mock;
 
-    private OntologyServiceWiring() {
-    }
+/**
+ * Builds an {@link OntologyServiceImpl} and its operation classes for tests. Every collaborator is a mock unless a
+ * test replaces it, and a test reads its mocks from here, so it can only stub what the service really uses.
+ * Create the fixture in {@code @BeforeEach}: mocks made there are covered by the Mockito extension's strict stubs.
+ */
+@Getter
+@Setter
+@Accessors(fluent = true, chain = true)
+public final class OntologyServiceFixture {
 
-    public static OntologyServiceImpl build(OntologyMetadataRepository ontologyMetadataRepository,
-                                            MetadataTouchService metadataTouchService,
-                                            ConceptMetadataRepository conceptMetadataRepository,
-                                            ValidationReportRepository validationReportRepository,
-                                            JenaTDB2Repository jenaTDB2Repository,
-                                            CommentRepository commentRepository,
-                                            OntologyMetadataMapper ontologyMetadataMapper,
-                                            ConceptMetadataMapper conceptMetadataMapper,
-                                            OntologyEditor ontologyEditor,
-                                            OntologyDetailExtractor detailExtractor,
-                                            PublishedResourceUtil deviationChecker,
-                                            OutboxWriter outboxWriter,
-                                            OutboxEntryRepository outboxRepository,
-                                            OutboxRelayTrigger outboxRelayTrigger,
-                                            NkdConceptSnapshotRepository nkdSnapshotRepository,
-                                            NkdSnapshotWarmer nkdSnapshotWarmer,
-                                            NkdSnapshotService nkdSnapshotService,
-                                            NkdConfig nkdConfig,
-                                            NkdDetailService nkdDetailService) {
+    private OntologyMetadataRepository ontologyMetadataRepository = mock(OntologyMetadataRepository.class);
+    private MetadataTouchService metadataTouchService = mock(MetadataTouchService.class);
+    private ConceptMetadataRepository conceptMetadataRepository = mock(ConceptMetadataRepository.class);
+    private ValidationReportRepository validationReportRepository = mock(ValidationReportRepository.class);
+    private JenaTDB2Repository jenaTDB2Repository = mock(JenaTDB2Repository.class);
+    private CommentRepository commentRepository = mock(CommentRepository.class);
+    private OntologyMetadataMapper ontologyMetadataMapper = mock(OntologyMetadataMapper.class);
+    private ConceptMetadataMapper conceptMetadataMapper = mock(ConceptMetadataMapper.class);
+    private OntologyEditor ontologyEditor = mock(OntologyEditor.class);
+    private OntologyDetailExtractor detailExtractor = mock(OntologyDetailExtractor.class);
+    private PublishedResourceUtil deviationChecker = mock(PublishedResourceUtil.class);
+    private OutboxWriter outboxWriter = mock(OutboxWriter.class);
+    private OutboxEntryRepository outboxRepository = mock(OutboxEntryRepository.class);
+    private OutboxRelayTrigger outboxRelayTrigger = mock(OutboxRelayTrigger.class);
+    private NkdConceptSnapshotRepository nkdSnapshotRepository = mock(NkdConceptSnapshotRepository.class);
+    private NkdSnapshotWarmer nkdSnapshotWarmer = mock(NkdSnapshotWarmer.class);
+    private NkdSnapshotService nkdSnapshotService = mock(NkdSnapshotService.class);
+    private NkdDetailService nkdDetailService = mock(NkdDetailService.class);
+    private NkdConfig nkdConfig = new NkdConfig();
+
+    public OntologyServiceImpl build() {
         OntologyMetadataEnricher enricher = new OntologyMetadataEnricher(
                 jenaTDB2Repository, ontologyMetadataMapper, commentRepository);
         InitialGraphGuard initialGraphGuard = new InitialGraphGuard(outboxRepository);
