@@ -7,9 +7,11 @@ import com.dia.ismdtoolbackend.controller.dto.NkodCodelistCheckDto;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NkodCodelistStatus;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.models.DescriptionModel;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
@@ -136,7 +138,6 @@ class ConceptServiceImplTest {
     @Test
     void createConcept_Success() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
         ontologyMetadata.setId(1L);
@@ -149,7 +150,12 @@ class ConceptServiceImplTest {
 
         ConceptMetadataModel result = conceptService.createConcept(createModel, TEST_USER_ID);
 
-        assertNotNull(result);
+        // The response is the saved row, mapped.
+        assertEquals(TEST_CONCEPT_ID, result.getId());
+        assertEquals(TEST_CONCEPT_IRI, result.getConceptIri());
+        assertEquals(TEST_CONCEPT_NAME, result.getConceptName());
+        assertEquals(TEST_USER_ID, result.getUser().getUserId());
+        assertEquals(ConceptSourceTag.DRAFT, result.getSourceTag());
         verify(conceptCreator).createSingleConcept(createModel);
         verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), eq(java.util.Set.of()), anySet());
         verify(outboxRelayTrigger).nudgeAfterCommit();
@@ -293,7 +299,6 @@ class ConceptServiceImplTest {
         ConceptCreateModel createModel = createValidConceptCreateModel();
         createModel.setDefiningLegalSource(List.of(
                 "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187"));
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
         ontologyMetadata.setId(1L);
@@ -347,7 +352,6 @@ class ConceptServiceImplTest {
     @Test
     void createConcept_SavesCorrectMetadata() {
         ConceptCreateModel createModel = createValidConceptCreateModel();
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         OntologyMetadataEntity ontologyMetadata = new OntologyMetadataEntity();
         ontologyMetadata.setId(1L);
@@ -917,7 +921,6 @@ class ConceptServiceImplTest {
     void editConcept_WithoutIRIChange() {
         ConceptEditModel editModel = createValidConceptEditModel();
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
@@ -928,7 +931,7 @@ class ConceptServiceImplTest {
 
         ConceptMetadataModel result = conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
-        assertNotNull(result);
+        assertEquals(TEST_CONCEPT_IRI, result.getConceptIri());
         verify(outboxWriter).enqueueUpsert(eq(TEST_GRAPH_NAME), eq(TEST_CONCEPT_IRI), anySet(), anySet());
         verify(conceptMetadataRepository).save(any(ConceptMetadataEntity.class));
     }
@@ -938,7 +941,6 @@ class ConceptServiceImplTest {
         String newIRI = "http://example.org/pojem/new-concept";
         ConceptEditModel editModel = createValidConceptEditModel();
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(newIRI, true, 5);
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
@@ -949,7 +951,7 @@ class ConceptServiceImplTest {
 
         ConceptMetadataModel result = conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
-        assertNotNull(result);
+        assertEquals(newIRI, result.getConceptIri());
         ArgumentCaptor<ConceptMetadataEntity> captor = ArgumentCaptor.forClass(ConceptMetadataEntity.class);
         verify(conceptMetadataRepository).save(captor.capture());
         assertEquals(newIRI, captor.getValue().getConceptIri());
@@ -963,7 +965,6 @@ class ConceptServiceImplTest {
         nameMap.put("cs", newName);
         editModel.getNameModel().setName(nameMap);
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
@@ -984,7 +985,6 @@ class ConceptServiceImplTest {
         ConceptEditModel editModel = createValidConceptEditModel();
         editModel.setInTezaurus(true);
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
@@ -1005,7 +1005,6 @@ class ConceptServiceImplTest {
         ConceptEditModel editModel = createValidConceptEditModel();
         editModel.setInTezaurus(false);
         ConceptEditor.EditResult editResult = new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, 5);
-        ConceptMetadataModel expectedDto = new ConceptMetadataModel();
 
         testModel.add(testResource, testModel.createProperty("http://example.org/prop"), "value");
 
@@ -1177,9 +1176,6 @@ class ConceptServiceImplTest {
                 .build();
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
@@ -1205,9 +1201,6 @@ class ConceptServiceImplTest {
                 OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build();
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(localDetail);
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(true);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
@@ -1241,20 +1234,21 @@ class ConceptServiceImplTest {
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI))
                 .thenReturn(OntologyDetailModel.ConceptDetailModel.builder().iri(TEST_CONCEPT_IRI).build());
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-
         CommentEntity comment = new CommentEntity();
+        comment.setId(5L);
+        comment.setUserId("commenter");
+        comment.setComment("Upřesnit definici");
+        comment.setConceptMetadata(testConceptEntity);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of(comment));
-        when(conceptMetadataMapper.commentEntitiesToModels(List.of(comment)))
-                .thenReturn(new ArrayList<>(List.of()));
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
 
-        assertNotNull(result.getConceptMetadata());
-        verify(commentRepository).findByConceptMetadataId(TEST_CONCEPT_ID);
-        verify(conceptMetadataMapper).commentEntitiesToModels(List.of(comment));
+        assertEquals(1, result.getConceptMetadata().getComments().size());
+        CommentModel attached = result.getConceptMetadata().getComments().get(0);
+        assertEquals(5L, attached.getId());
+        assertEquals("commenter", attached.getUserId());
+        assertEquals("Upřesnit definici", attached.getComment());
+        assertEquals(TEST_CONCEPT_IRI, attached.getConceptIRI());
     }
 
     // ── resolveRppReferences branches ──────────────────────────────────
@@ -1272,9 +1266,6 @@ class ConceptServiceImplTest {
                 .build();
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         RppAgenda agenda = mock(RppAgenda.class);
@@ -1299,9 +1290,6 @@ class ConceptServiceImplTest {
                 .build();
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         RppIsvs isvs = mock(RppIsvs.class);
@@ -1325,9 +1313,6 @@ class ConceptServiceImplTest {
                 .build();
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         conceptService.getConceptDetail(TEST_SLUG);
@@ -1356,9 +1341,6 @@ class ConceptServiceImplTest {
                 .build();
         when(detailExtractor.extractConceptDetail(rawModel, TEST_CONCEPT_IRI)).thenReturn(detail);
 
-        ConceptMetadataModel metadataDto = new ConceptMetadataModel();
-        metadataDto.setIsPublished(false);
-        metadataDto.setConceptIri(TEST_CONCEPT_IRI);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
         return detail;
     }

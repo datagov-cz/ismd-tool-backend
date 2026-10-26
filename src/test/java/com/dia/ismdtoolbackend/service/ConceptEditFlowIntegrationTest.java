@@ -2,7 +2,6 @@ package com.dia.ismdtoolbackend.service;
 
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
@@ -47,7 +46,6 @@ import static org.mockito.Mockito.*;
 class ConceptEditFlowIntegrationTest {
 
     private ConceptMetadataRepository conceptMetadataRepository;
-    private ConceptMetadataMapper conceptMetadataMapper;
     private OutboxWriter outboxWriter;
     private ConceptServiceImpl conceptService;
 
@@ -65,7 +63,6 @@ class ConceptEditFlowIntegrationTest {
         conceptMetadataRepository = fixture.conceptMetadataRepository();
         outboxWriter = fixture.outboxWriter();
         JenaTDB2Repository jenaTDB2Repository = fixture.jenaTDB2Repository();
-        conceptMetadataMapper = fixture.conceptMetadataMapper();
         conceptService = fixture.build();
 
         Model model = ModelFactory.createDefaultModel();
@@ -88,7 +85,6 @@ class ConceptEditFlowIntegrationTest {
     /** The edit passes validation and its metadata row saves. */
     private void givenEditCommits() {
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(conceptMetadataMapper.toDto(any(ConceptMetadataEntity.class))).thenReturn(new ConceptMetadataModel());
     }
 
     private ClassConceptEditModel editModel() {

@@ -5,7 +5,7 @@ import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.CommentException;
 import com.dia.ismdtoolbackend.exception.CommentNotFoundException;
-import com.dia.ismdtoolbackend.mapper.CommentMapper;
+import com.dia.ismdtoolbackend.mapper.CommentMapperImpl;
 import com.dia.ismdtoolbackend.models.CommentCreateModel;
 import com.dia.ismdtoolbackend.models.CommentModel;
 import com.dia.ismdtoolbackend.repository.CommentRepository;
@@ -16,7 +16,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,9 +30,6 @@ import static org.mockito.Mockito.*;
 class CommentServiceImplTest {
 
     @Mock
-    private CommentMapper commentMapper;
-
-    @Mock
     private CommentRepository commentRepository;
 
     @Mock
@@ -42,12 +38,10 @@ class CommentServiceImplTest {
     @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
 
-    @InjectMocks
     private CommentServiceImpl commentService;
 
     private CommentEntity testCommentEntity;
     private CommentCreateModel testCommentCreateModel;
-    private CommentModel testCommentModel;
     private OntologyMetadataEntity testOntologyMetadata;
     private ConceptMetadataEntity testConceptMetadata;
 
@@ -59,6 +53,10 @@ class CommentServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // The real mapper: the response is what the generated mapping produces from the saved row.
+        commentService = new CommentServiceImpl(new CommentMapperImpl(), commentRepository,
+                ontologyMetadataRepository, conceptMetadataRepository);
+
         testCommentEntity = new CommentEntity();
         testCommentEntity.setId(TEST_COMMENT_ID);
         testCommentEntity.setComment(TEST_COMMENT_TEXT);
@@ -67,11 +65,6 @@ class CommentServiceImplTest {
 
         testCommentCreateModel = new CommentCreateModel();
         testCommentCreateModel.setComment(TEST_COMMENT_TEXT);
-
-        testCommentModel = new CommentModel();
-        testCommentModel.setId(TEST_COMMENT_ID);
-        testCommentModel.setComment(TEST_COMMENT_TEXT);
-        testCommentModel.setUserId(TEST_USER_ID);
 
         testOntologyMetadata = new OntologyMetadataEntity();
         testOntologyMetadata.setId(10L);
@@ -82,35 +75,39 @@ class CommentServiceImplTest {
         testConceptMetadata.setConceptIri(TEST_CONCEPT_IRI);
     }
 
+    /** The repository assigns the id on save, as the database does. */
+    private void givenSaveAssignsId() {
+        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> {
+            CommentEntity saved = invocation.getArgument(0);
+            saved.setId(TEST_COMMENT_ID);
+            return saved;
+        });
+    }
+
     // ========== postComment Tests - Ontology Comments ==========
 
     @Test
     void postComment_ToOntology_Success() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.of(testOntologyMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
-        assertNotNull(result);
         assertEquals(TEST_COMMENT_ID, result.getId());
         assertEquals(TEST_USER_ID, result.getUserId());
-
-        verify(commentRepository).save(any(CommentEntity.class));
-        verify(commentMapper).toDto(testCommentEntity);
+        assertEquals(TEST_COMMENT_TEXT, result.getComment());
+        assertNotNull(result.getPostedTime());
+        // Derived back from the linked ontology row, not echoed from the request.
+        assertEquals(TEST_ONTOLOGY_IRI, result.getOntologyIRI());
+        assertNull(result.getConceptIRI());
     }
 
     @Test
     void postComment_ToOntology_LinksOwningOntologyMetadata() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.of(testOntologyMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
@@ -126,8 +123,6 @@ class CommentServiceImplTest {
     @Test
     void postComment_ToOntology_UnresolvableIRI_Rejected() {
         testCommentCreateModel.setOntologyIRI(TEST_ONTOLOGY_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(ontologyMetadataRepository.findByGraphName(TEST_ONTOLOGY_IRI)).thenReturn(Optional.empty());
 
         CommentException exception = assertThrows(CommentException.class,
@@ -142,27 +137,22 @@ class CommentServiceImplTest {
     @Test
     void postComment_ToConcept_Success() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenReturn(testCommentEntity);
-        when(commentMapper.toDto(testCommentEntity)).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         CommentModel result = commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
-        assertNotNull(result);
         assertEquals(TEST_COMMENT_ID, result.getId());
-        verify(commentRepository).save(any(CommentEntity.class));
+        assertEquals(TEST_COMMENT_TEXT, result.getComment());
+        assertEquals(TEST_CONCEPT_IRI, result.getConceptIRI());
+        assertNull(result.getOntologyIRI());
     }
 
     @Test
     void postComment_ToConcept_LinksOwningConceptMetadata() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.of(testConceptMetadata));
-        when(commentRepository.save(any(CommentEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(commentMapper.toDto(any(CommentEntity.class))).thenReturn(testCommentModel);
+        givenSaveAssignsId();
 
         commentService.postComment(testCommentCreateModel, TEST_USER_ID);
 
@@ -177,8 +167,6 @@ class CommentServiceImplTest {
     @Test
     void postComment_ToConcept_UnresolvableIRI_Rejected() {
         testCommentCreateModel.setConceptIRI(TEST_CONCEPT_IRI);
-
-        when(commentMapper.toEntity(eq(testCommentCreateModel), eq(TEST_USER_ID), any(LocalDateTime.class))).thenReturn(testCommentEntity);
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
 
         CommentException exception = assertThrows(CommentException.class,

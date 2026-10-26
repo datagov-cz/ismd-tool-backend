@@ -4,6 +4,7 @@ import com.dia.ismdtoolbackend.controller.dto.GetNkdOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckRequestDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
+import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.entity.CommentEntity;
@@ -168,14 +169,15 @@ class OntologyServiceImplTest {
 
     @Test
     void getOntologyMetadataBySlug_Success() {
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
-
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         OntologyMetadataModel result = ontologyService.getOntologyMetadataBySlug(TEST_ONTOLOGY_SLUG);
 
-        assertSame(expectedDto, result);
+        assertEquals(TEST_ONTOLOGY_ID, result.getId());
+        assertEquals(TEST_ONTOLOGY_SLUG, result.getSlug());
+        assertEquals(TEST_GRAPH_NAME, result.getGraphName());
+        assertEquals(TEST_USER_ID, result.getUser().getUserId());
+        assertEquals(ConceptSourceTag.DRAFT, result.getSourceTag());
     }
 
     @Test
@@ -212,7 +214,7 @@ class OntologyServiceImplTest {
         assertFalse(result.available());
         verify(ontologyMetadataRepository).findByGraphName(TEST_GRAPH_NAME);
         verifyNoMoreInteractions(ontologyMetadataRepository);
-        verifyNoInteractions(ontologyMetadataMapper, jenaTDB2Repository, deviationChecker, nkdDetailService);
+        verifyNoInteractions(jenaTDB2Repository, deviationChecker, nkdDetailService);
     }
 
     @Test
@@ -236,7 +238,6 @@ class OntologyServiceImplTest {
         assertTrue(result.valid());
         clearInvocations(ontologyMetadataRepository);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(new OntologyMetadataModel());
 
         ontologyService.createOntology(model, TEST_USER_ID);
 
@@ -264,15 +265,15 @@ class OntologyServiceImplTest {
     @Test
     void createOntology_Success() throws OntologyException {
         OntologyCreateModel createModel = createValidOntologyCreateModel();
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         OntologyMetadataModel result = ontologyService.createOntology(createModel, TEST_USER_ID);
 
-        assertNotNull(result);
+        assertEquals(TEST_ONTOLOGY_ID, result.getId());
+        assertEquals(TEST_GRAPH_NAME, result.getGraphName());
+        assertEquals(TEST_USER_ID, result.getUser().getUserId());
         verify(outboxWriter).enqueueCreateGraph(anyString(), any(Model.class));
         verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
     }
@@ -280,14 +281,14 @@ class OntologyServiceImplTest {
     @Test
     void createOntology_AlreadyExists() throws OntologyException {
         OntologyCreateModel createModel = createValidOntologyCreateModel();
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.of(testOntologyEntity));
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         OntologyMetadataModel result = ontologyService.createOntology(createModel, TEST_USER_ID);
 
-        assertNotNull(result);
+        // The existing vocabulary is returned unchanged.
+        assertEquals(TEST_ONTOLOGY_ID, result.getId());
+        assertEquals(TEST_ONTOLOGY_SLUG, result.getSlug());
         verify(jenaTDB2Repository, never()).saveOntologyModel(anyString(), any(Model.class));
         verify(ontologyMetadataRepository, never()).save(any(OntologyMetadataEntity.class));
     }
@@ -388,11 +389,9 @@ class OntologyServiceImplTest {
     void createOntology_DescriptionEmpty_Succeeds() throws OntologyException {
         OntologyCreateModel createModel = createValidOntologyCreateModel();
         createModel.setDescriptionModel(new DescriptionModel());
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
         when(ontologyMetadataRepository.findByGraphName(anyString())).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         assertNotNull(ontologyService.createOntology(createModel, TEST_USER_ID));
     }
@@ -418,9 +417,8 @@ class OntologyServiceImplTest {
         verify(jenaTDB2Repository).fetchGraph(TEST_GRAPH_NAME);
         verify(detailExtractor).applyOFNTransformations(modelWithData);
         verify(detailExtractor).extractOntologyDetail(modelWithData);
+        // No metadata DTO is built: nothing reads the comments or concept rows it would map.
         verifyNoInteractions(
-                ontologyMetadataMapper,
-                conceptMetadataMapper,
                 commentRepository,
                 conceptMetadataRepository,
                 deviationChecker
@@ -441,37 +439,27 @@ class OntologyServiceImplTest {
                 .concepts(List.of())
                 .build();
 
-        OntologyMetadataModel metadataModel = new OntologyMetadataModel();
-        metadataModel.setSlug(TEST_ONTOLOGY_SLUG);
-        metadataModel.setGraphName(TEST_GRAPH_NAME);
-
         ConceptMetadataEntity conceptEntity = new ConceptMetadataEntity();
         conceptEntity.setConceptIri(TEST_GRAPH_NAME + "/pojem/test-concept");
         conceptEntity.setConceptName("test-concept");
         conceptEntity.setGraphName(TEST_GRAPH_NAME);
 
-        ConceptMetadataModel conceptModel = new ConceptMetadataModel();
-        conceptModel.setConceptIri(TEST_GRAPH_NAME + "/pojem/test-concept");
-        conceptModel.setConceptName("test-concept");
-        conceptModel.setGraphName(TEST_GRAPH_NAME);
-
         when(ontologyMetadataRepository.findBySlug(TEST_ONTOLOGY_SLUG)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(modelWithData);
         when(detailExtractor.applyOFNTransformations(modelWithData)).thenReturn(modelWithData);
         when(detailExtractor.extractOntologyDetail(modelWithData)).thenReturn(detailModel);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(metadataModel);
         when(commentRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
-        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
         when(conceptMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(List.of(conceptEntity));
-        when(conceptMetadataMapper.toDto(conceptEntity)).thenReturn(conceptModel);
 
         GetOntologyDto result = ontologyService.getOntologyDetailModel(TEST_ONTOLOGY_SLUG);
 
         assertNotNull(result);
         assertNotNull(result.getOntologyMetadata());
         assertNotNull(result.getOntologyDetail());
-        assertNotNull(result.getOntologyMetadata().getConcepts());
         assertEquals(1, result.getOntologyMetadata().getConcepts().size());
+        ConceptMetadataModel concept = result.getOntologyMetadata().getConcepts().get(0);
+        assertEquals(TEST_GRAPH_NAME + "/pojem/test-concept", concept.getConceptIri());
+        assertEquals("test-concept", concept.getConceptName());
         assertEquals(TEST_ONTOLOGY_SLUG, result.getOntologyMetadata().getSlug());
         assertEquals(TEST_GRAPH_NAME, result.getOntologyDetail().getIri());
         // fetchGraph is called once: enrichMetadataFromModel reuses the already-fetched rawModel
@@ -479,7 +467,6 @@ class OntologyServiceImplTest {
         verify(detailExtractor).applyOFNTransformations(modelWithData);
         // extractOntologyDetail is called once in main flow (not in checkPublishedOntology since ontology is not published)
         verify(detailExtractor).extractOntologyDetail(modelWithData);
-        verify(conceptMetadataMapper).toDto(conceptEntity);
     }
 
     // ========== foreign member count Tests ==========
@@ -613,17 +600,15 @@ class OntologyServiceImplTest {
     void editOntology_WithoutIRIChange() throws OntologyException {
         OntologyEditModel editModel = createValidOntologyEditModel();
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(TEST_GRAPH_NAME, false);
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         testModel.add(testModel.createResource("http://example.org/test"), testModel.createProperty("http://example.org/prop"), "value");
         when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         OntologyMetadataModel result = ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel);
 
-        assertNotNull(result);
+        assertEquals(TEST_GRAPH_NAME, result.getGraphName());
         verify(jenaTDB2Repository).saveOntologyModel(TEST_GRAPH_NAME, testModel);
         verify(jenaTDB2Repository, never()).deleteGraph(anyString());
         verify(ontologyMetadataRepository, never()).save(any());
@@ -634,7 +619,6 @@ class OntologyServiceImplTest {
         OntologyEditModel editModel = createValidOntologyEditModel();
         String newIRI = "http://example.org/new-ontology";
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(newIRI, true);
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
         when(ontologyMetadataRepository.findById(TEST_ONTOLOGY_ID)).thenReturn(Optional.of(testOntologyEntity));
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
@@ -642,11 +626,10 @@ class OntologyServiceImplTest {
         when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
         when(conceptMetadataRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(new ArrayList<>());
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         OntologyMetadataModel result = ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel);
 
-        assertNotNull(result);
+        assertEquals(newIRI, result.getGraphName());
         verify(jenaTDB2Repository).saveOntologyModel(newIRI, testModel);
         verify(jenaTDB2Repository).deleteGraph(TEST_GRAPH_NAME);
         verify(ontologyMetadataRepository).save(any(OntologyMetadataEntity.class));
@@ -661,7 +644,6 @@ class OntologyServiceImplTest {
         OntologyEditModel editModel = createValidOntologyEditModel();
         String newIRI = "http://example.org/new-ontology";
         OntologyEditor.EditResult editResult = new OntologyEditor.EditResult(newIRI, true);
-        OntologyMetadataModel expectedDto = new OntologyMetadataModel();
 
         ConceptMetadataEntity concept1 = new ConceptMetadataEntity();
         concept1.setConceptIri(TEST_GRAPH_NAME + "/pojem/concept1");
@@ -681,11 +663,10 @@ class OntologyServiceImplTest {
         when(ontologyEditor.editOntology(eq(editModel), any(Model.class), anyString(), anyString())).thenReturn(editResult);
         when(conceptMetadataRepository.findByOntologyMetadataId(TEST_ONTOLOGY_ID)).thenReturn(concepts);
         when(ontologyMetadataRepository.save(any(OntologyMetadataEntity.class))).thenReturn(testOntologyEntity);
-        when(ontologyMetadataMapper.toDto(testOntologyEntity)).thenReturn(expectedDto);
 
         OntologyMetadataModel result = ontologyService.editOntology(TEST_ONTOLOGY_ID, editModel);
 
-        assertNotNull(result);
+        assertEquals(newIRI, result.getGraphName());
         verify(conceptMetadataRepository).saveAll(argThat(savedConcepts -> {
             List<ConceptMetadataEntity> conceptList = (List<ConceptMetadataEntity>) savedConcepts;
             return conceptList.size() == 2 &&
@@ -1023,22 +1004,21 @@ class OntologyServiceImplTest {
         when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1", "http://example.org/o/2")))
                 .thenReturn(batchModel);
 
-        OntologyMetadataModel m1 = new OntologyMetadataModel();
-        OntologyMetadataModel m2 = new OntologyMetadataModel();
-        OntologyMetadataModel mNoGraph = new OntologyMetadataModel();
-        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(ontologyMetadataMapper.toDto(e2)).thenReturn(m2);
-        when(ontologyMetadataMapper.toDto(eNoGraph)).thenReturn(mNoGraph);
-
         // Comments come back in ONE batched query and are grouped by owning ontology in memory.
         CommentEntity comment = new CommentEntity();
+        comment.setComment("K o/1");
         comment.setOntologyMetadata(e1);
         when(commentRepository.findByOntologyMetadataIdIn(List.of(1L, 2L, 3L))).thenReturn(List.of(comment));
-        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
 
         List<OntologyMetadataModel> out = ontologyService.getAll(null, null);
 
         assertEquals(3, out.size());
+        OntologyMetadataModel m1 = out.get(0);
+        OntologyMetadataModel m2 = out.get(1);
+        OntologyMetadataModel mNoGraph = out.get(2);
+        assertEquals("K o/1", m1.getComments().get(0).getComment());
+        assertEquals("http://example.org/o/1", m1.getComments().get(0).getOntologyIRI());
+        assertTrue(m2.getComments().isEmpty());
         // o/1 has one untagged skos:prefLabel — keys under DEFAULT_LANG.
         assertEquals(Map.of("cs", "Slovník 1"), m1.getName());
         // o/2 has cs+en variants of both prefLabel and description — every one is returned.
@@ -1074,11 +1054,7 @@ class OntologyServiceImplTest {
                 m.createLiteral("Vocabulary", "en"));
         when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1"))).thenReturn(m);
 
-        OntologyMetadataModel m1 = new OntologyMetadataModel();
-        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
-
-        ontologyService.getAll(null, null);
+        OntologyMetadataModel m1 = ontologyService.getAll(null, null).get(0);
 
         assertEquals(2, m1.getName().size());
         assertEquals("Vocabulary", m1.getName().get("en"));
@@ -1099,11 +1075,7 @@ class OntologyServiceImplTest {
                 m.createLiteral("Jiný"));
         when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/muj-slovnik"))).thenReturn(m);
 
-        OntologyMetadataModel m1 = new OntologyMetadataModel();
-        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
-
-        ontologyService.getAll(null, null);
+        OntologyMetadataModel m1 = ontologyService.getAll(null, null).get(0);
 
         assertEquals(Map.of("cs", "Muj slovnik"), m1.getName());
         assertNull(m1.getPopis());
@@ -1117,7 +1089,6 @@ class OntologyServiceImplTest {
 
         assertTrue(out.isEmpty());
         verify(jenaTDB2Repository, never()).fetchMetadataProperties(anyList());
-        verify(ontologyMetadataMapper, never()).toDto(any(OntologyMetadataEntity.class));
     }
 
     @Test
@@ -1152,14 +1123,11 @@ class OntologyServiceImplTest {
         when(jenaTDB2Repository.fetchMetadataProperties(List.of("http://example.org/o/1")))
                 .thenReturn(batchModel);
 
-        OntologyMetadataModel m1 = new OntologyMetadataModel();
-        when(ontologyMetadataMapper.toDto(e1)).thenReturn(m1);
-        when(ontologyMetadataMapper.commentEntitiesToModels(anyList())).thenReturn(new ArrayList<>());
-
         List<OntologyMetadataModel> out = ontologyService.getBySlugs(List.of("slug-1"));
 
         assertEquals(1, out.size());
-        assertEquals(Map.of("cs", "Slovník 1"), m1.getName());
+        assertEquals("http://example.org/o/1", out.get(0).getGraphName());
+        assertEquals(Map.of("cs", "Slovník 1"), out.get(0).getName());
     }
 
     @Test
