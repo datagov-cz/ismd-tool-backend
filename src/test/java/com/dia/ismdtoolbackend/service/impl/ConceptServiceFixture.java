@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
+import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
 import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
@@ -38,7 +39,8 @@ public final class ConceptServiceFixture {
     private ConceptMetadataRepository conceptMetadataRepository = mock(ConceptMetadataRepository.class);
     private OntologyMetadataRepository ontologyMetadataRepository = mock(OntologyMetadataRepository.class);
     private MetadataTouchService metadataTouchService = mock(MetadataTouchService.class);
-    private ConceptMetadataMapper conceptMetadataMapper = mock(ConceptMetadataMapper.class);
+    /** Real: generated and pure, so a test asserts what the mapping really produces. */
+    private ConceptMetadataMapper conceptMetadataMapper = new ConceptMetadataMapperImpl();
     private ConceptCreator conceptCreator = mock(ConceptCreator.class);
     private ConceptEditor conceptEditor = mock(ConceptEditor.class);
     private JenaTDB2Repository jenaTDB2Repository = mock(JenaTDB2Repository.class);

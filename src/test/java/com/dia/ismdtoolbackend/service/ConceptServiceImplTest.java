@@ -146,7 +146,6 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         ConceptMetadataModel result = conceptService.createConcept(createModel, TEST_USER_ID);
 
@@ -304,7 +303,6 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         assertNotNull(conceptService.createConcept(createModel, TEST_USER_ID));
         verify(conceptCreator).createSingleConcept(createModel);
@@ -359,7 +357,6 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         conceptService.createConcept(createModel, TEST_USER_ID);
 
@@ -426,7 +423,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -451,7 +447,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(renameResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -489,7 +484,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -513,7 +507,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(noOp);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -537,7 +530,6 @@ class ConceptServiceImplTest {
                     return new ConceptEditor.EditResult(TEST_CONCEPT_IRI, false, java.util.Set.of(), java.util.Set.of());
                 });
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -584,7 +576,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -626,7 +617,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -645,7 +635,6 @@ class ConceptServiceImplTest {
     private ConceptEditModel stageEdit(boolean iriChanged, String newIri) {
         ConceptEditModel editModel = stageEditUpToValidation(iriChanged, newIri);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
         return editModel;
     }
 
@@ -689,7 +678,6 @@ class ConceptServiceImplTest {
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any()))
                 .thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(new ConceptMetadataModel());
         when(nkdSnapshotService.findForConcept(TEST_CONCEPT_ID)).thenReturn(java.util.List.of());
 
         // Mock the snapshot service to contribute a sentinel triple into the change set.
@@ -887,7 +875,6 @@ class ConceptServiceImplTest {
         when(conceptMetadataRepository.findByConceptIri(TEST_CONCEPT_IRI)).thenReturn(Optional.empty());
         when(ontologyMetadataRepository.findByGraphName(TEST_GRAPH_NAME)).thenReturn(Optional.of(ontologyMetadata));
         when(conceptMetadataRepository.save(any())).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(any())).thenReturn(new ConceptMetadataModel());
 
         conceptService.createConcept(createModel, TEST_USER_ID);
 
@@ -938,7 +925,6 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         ConceptMetadataModel result = conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -960,7 +946,6 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         ConceptMetadataModel result = conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -986,7 +971,6 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -1008,7 +992,6 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -1030,7 +1013,6 @@ class ConceptServiceImplTest {
         when(jenaTDB2Repository.fetchGraph(TEST_GRAPH_NAME)).thenReturn(testModel);
         when(conceptEditor.editConcept(eq(TEST_CONCEPT_IRI), eq(editModel), any(Model.class), eq(TEST_GRAPH_NAME), any())).thenReturn(editResult);
         when(conceptMetadataRepository.save(any(ConceptMetadataEntity.class))).thenReturn(testConceptEntity);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(expectedDto);
 
         conceptService.editConcept(TEST_CONCEPT_ID, editModel);
 
@@ -1198,7 +1180,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         GetConceptDto result = conceptService.getConceptDetail(TEST_SLUG);
@@ -1227,7 +1208,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(true);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         PublishedConceptDeviationModel deviationResult = PublishedConceptDeviationModel.builder()
@@ -1264,7 +1244,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
 
         CommentEntity comment = new CommentEntity();
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of(comment));
@@ -1296,7 +1275,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         RppAgenda agenda = mock(RppAgenda.class);
@@ -1324,7 +1302,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         RppIsvs isvs = mock(RppIsvs.class);
@@ -1351,7 +1328,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
 
         conceptService.getConceptDetail(TEST_SLUG);
@@ -1383,7 +1359,6 @@ class ConceptServiceImplTest {
         ConceptMetadataModel metadataDto = new ConceptMetadataModel();
         metadataDto.setIsPublished(false);
         metadataDto.setConceptIri(TEST_CONCEPT_IRI);
-        when(conceptMetadataMapper.toDto(testConceptEntity)).thenReturn(metadataDto);
         when(commentRepository.findByConceptMetadataId(TEST_CONCEPT_ID)).thenReturn(List.of());
         return detail;
     }
