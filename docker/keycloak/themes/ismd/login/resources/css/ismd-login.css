@@ -1,0 +1,301 @@
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/roboto-regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/roboto-medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/roboto-bold.woff2") format("woff2");
+}
+
+:root {
+  --ismd-blue: #2b6daf;
+  --ismd-blue-hover: #1e5086;
+  --ismd-blue-active: #1d455f;
+  --ismd-text: #1f1f1f;
+  --ismd-border: #a9a9a9;
+  --ismd-focus: #2362a2;
+  --ismd-error: #b42318;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body,
+body.login-pf {
+  box-sizing: border-box;
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ismd-text);
+  font-family: "Roboto", Arial, sans-serif;
+}
+
+/* Keycloak's parent theme targets `.login-pf body`, which is more specific
+   than a plain body rule and otherwise keeps PatternFly's dark background. */
+.login-pf body {
+  background: #153451 url("../img/login-background.svg") center / cover no-repeat fixed;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+a {
+  color: var(--ismd-blue);
+}
+
+.login-pf-page {
+  min-height: 100vh;
+  padding: 145px 24px 48px;
+}
+
+.login-pf-page .login-pf-page-header,
+#kc-header {
+  margin: 0 auto 42px;
+  padding: 0;
+  text-align: center;
+}
+
+#kc-header-wrapper {
+  display: inline-flex;
+  min-height: 80px;
+  align-items: center;
+  margin: 0;
+  padding: 0 0 0 90px;
+  background: url("../img/lion.svg") left center / 60px 80px no-repeat;
+  color: #fff;
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-align: left;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.login-pf-page .card-pf,
+#kc-content-wrapper {
+  width: 100%;
+  max-width: 368px;
+  margin: 0 auto;
+}
+
+.login-pf-page .card-pf {
+  padding: 22px 24px 24px;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.login-pf-page .card-pf .login-pf-header {
+  margin: 0;
+}
+
+#kc-page-title {
+  margin: 0 0 24px;
+  color: #111;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+#kc-content,
+#kc-form,
+#kc-form-wrapper {
+  width: 100%;
+}
+
+#kc-locale {
+  display: none;
+}
+
+.form-group {
+  margin: 0 0 21px;
+}
+
+.form-group:last-child,
+#kc-form-buttons {
+  margin-bottom: 0;
+}
+
+#kc-form-login .form-group {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.control-label,
+.pf-c-form__label-text {
+  display: block;
+  margin-bottom: 6px;
+  color: #292929;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.form-control,
+.pf-c-form-control,
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+  width: 100%;
+  height: 40px;
+  padding: 8px 11px;
+  border: 1px solid var(--ismd-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+  color: var(--ismd-text);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.form-control:hover,
+.pf-c-form-control:hover,
+input[type="text"]:hover,
+input[type="email"]:hover,
+input[type="password"]:hover {
+  border-color: #707070;
+}
+
+.form-control:focus,
+.pf-c-form-control:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus {
+  border-color: var(--ismd-focus);
+  box-shadow: 0 0 0 2px rgb(35 98 162 / 25%);
+}
+
+.pf-c-input-group {
+  position: relative;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pf-c-input-group .pf-c-form-control {
+  border-radius: 8px 0 0 8px;
+  border-right: 0;
+  box-shadow: none;
+}
+
+.pf-c-input-group .pf-c-button,
+.pf-c-input-group button {
+  width: 42px;
+  padding: 0;
+  border: 1px solid var(--ismd-border);
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  background: #fff;
+  box-shadow: none;
+  color: var(--ismd-blue);
+}
+
+.pf-c-input-group .pf-c-button:hover,
+.pf-c-input-group .pf-c-button:focus,
+.pf-c-input-group .pf-c-button:active {
+  box-shadow: none;
+}
+
+.pf-c-input-group:hover .pf-c-form-control,
+.pf-c-input-group:hover .pf-c-button {
+  border-color: #707070;
+}
+
+.pf-c-input-group:focus-within {
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.pf-c-input-group:focus-within .pf-c-form-control,
+.pf-c-input-group:focus-within .pf-c-button {
+  border-color: var(--ismd-focus);
+}
+
+.pf-c-input-group:focus-within .pf-c-form-control {
+  box-shadow: none;
+}
+
+#kc-form-options,
+#kc-form-login .login-pf-settings,
+#kc-registration,
+#kc-social-providers,
+.login-pf-signup {
+  display: none;
+}
+
+#kc-form-login .pf-c-button.pf-m-primary,
+#kc-form-login input[type="submit"],
+#kc-form-buttons .btn-primary {
+  width: 100%;
+  min-height: 40px;
+  margin: 0;
+  padding: 9px 48px 9px 24px;
+  border: 0;
+  border-radius: 8px;
+  background-color: var(--ismd-blue);
+  background-image: url("../img/login-arrow.svg");
+  background-position: calc(50% + 57px) center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  box-shadow: none;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-transform: none;
+}
+
+#kc-form-login .pf-c-button.pf-m-primary:hover,
+#kc-form-login input[type="submit"]:hover,
+#kc-form-buttons .btn-primary:hover {
+  background-color: var(--ismd-blue-hover);
+}
+
+#kc-form-login .pf-c-button.pf-m-primary:active,
+#kc-form-login input[type="submit"]:active,
+#kc-form-buttons .btn-primary:active {
+  background-color: var(--ismd-blue-active);
+}
+
+#kc-form-login .pf-c-button.pf-m-primary:focus-visible,
+#kc-form-login input[type="submit"]:focus-visible,
+#kc-form-buttons .btn-primary:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.alert {
+  margin: 0 0 18px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.alert-error,
+.pf-m-danger {
+  color: var(--ismd-error);
+}
