@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.controller.dto;
 
 import com.dia.ismdtoolbackend.enums.NkodCodelistStatus;
 import com.dia.ismdtoolbackend.models.nkod.NkodCodelist;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -17,7 +17,7 @@ class NkodCodelistCheckDtoTest {
         JsonNode json = mapper.valueToTree(
                 NkodCodelistCheckDto.builder().status(NkodCodelistStatus.MISSING).build());
 
-        assertThat(json.get("status").asText()).isEqualTo("MISSING");
+        assertThat(json.get("status").asString()).isEqualTo("MISSING");
         assertThat(json.has("codelist")).isFalse();
     }
 
@@ -33,8 +33,8 @@ class NkodCodelistCheckDtoTest {
         JsonNode json = mapper.valueToTree(NkodCodelistCheckDto.builder()
                 .status(NkodCodelistStatus.NEW_VERSION).codelist(current).build());
 
-        assertThat(json.get("status").asText()).isEqualTo("NEW_VERSION");
-        assertThat(json.at("/codelist/codeListIri").asText()).endsWith("/151/2025-01-01");
+        assertThat(json.get("status").asString()).isEqualTo("NEW_VERSION");
+        assertThat(json.at("/codelist/codeListIri").asString()).endsWith("/151/2025-01-01");
         assertThat(json.get("codelist").has("validFrom")).isFalse();
         assertThat(json.get("codelist").has("description")).isFalse();
     }

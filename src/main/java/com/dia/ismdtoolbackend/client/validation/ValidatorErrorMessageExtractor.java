@@ -1,8 +1,9 @@
 package com.dia.ismdtoolbackend.client.validation;
 
 import com.dia.validation.ValidatorErrorResponse;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -23,8 +24,9 @@ class ValidatorErrorMessageExtractor {
 
     private static final String FALLBACK = "Validační služba odmítla požadavek.";
 
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private final ObjectMapper objectMapper = JsonMapper.builder()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .build();
 
     String extract(HttpClientErrorException e) {
         String body = e.getResponseBodyAsString();

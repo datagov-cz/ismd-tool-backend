@@ -62,19 +62,12 @@ class WorkingCopyDeviationServiceImplTest {
 
     private ConceptDetailModel local;
 
-    private WorkingCopyDeviationServiceImpl newService(WorkingCopyDeviationServiceImpl self) {
-        return new WorkingCopyDeviationServiceImpl(conceptMetadataRepository, jenaTDB2Repository,
-                detailExtractor, conceptDeviationComparator, nkdSparqlClient,
-                deviationEnricher, cacheManager, self);
-    }
-
     @BeforeEach
     void setUp() {
-        // Pass the instance as its own `self` — in production Spring injects the @Lazy proxy so
-        // canonicalLocalConcept is cached; the unit test just needs the internal call to resolve. Build a
-        // throwaway first so the real instance can reference itself.
-        service = newService(null);
-        service = newService(service);
+        service = new WorkingCopyDeviationServiceImpl(conceptDeviationComparator, nkdSparqlClient,
+                deviationEnricher, cacheManager,
+                new LocalConceptProjectionReader(conceptMetadataRepository, jenaTDB2Repository,
+                        detailExtractor, cacheManager));
 
         ConceptMetadataEntity metadata = new ConceptMetadataEntity();
         metadata.setConceptIri(IRI);

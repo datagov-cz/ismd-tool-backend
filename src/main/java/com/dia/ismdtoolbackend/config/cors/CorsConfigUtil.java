@@ -33,10 +33,13 @@ public class CorsConfigUtil {
             "https://host.docker.internal:[*]"
     );
 
-    public CorsConfiguration createProductionCorsConfiguration() {
+    /** No origin is allowed while {@code allowedOrigins} is empty. */
+    public CorsConfiguration createProductionCorsConfiguration(List<String> allowedOrigins) {
         var config = new CorsConfiguration();
-        // TODO: change to relevant domain before production release
-        config.setAllowedOrigins(List.of("https://www.domain.com"));
+        if (allowedOrigins.isEmpty()) {
+            log.warn("No production CORS origins configured (cors.allowed-origins); cross-origin requests are rejected");
+        }
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);

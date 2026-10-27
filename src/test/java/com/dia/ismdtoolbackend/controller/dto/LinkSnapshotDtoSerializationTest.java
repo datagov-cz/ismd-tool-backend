@@ -5,9 +5,8 @@ import com.dia.ismdtoolbackend.enums.SnapshotLinkType;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -17,9 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class LinkSnapshotDtoSerializationTest {
 
-    // Mirror Spring Boot's HTTP mapper: JSR-310 is auto-registered there (jackson-datatype-jsr310
-    // on the classpath; OutboxStatusDto already returns an Instant over the wire).
-    private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Test
     void getOntologyDto_withoutLinkSnapshots_omitsField() throws Exception {

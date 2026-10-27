@@ -50,11 +50,7 @@ The application uses a **hybrid storage architecture** combining relational and 
 **Application Properties**:
 
 ```properties
-# Direct TDB2 access (local development)
-jena.access.method=direct
-jena.tdb2.location=./data/tdb2/production-dataset
-
-# Fuseki HTTP endpoint (deployment)
+# Fuseki HTTP endpoint
 jena.fuseki.url=${FUSEKI_URL}  # Default: http://localhost:3030/ismd-tool-dataset
 ```
 
@@ -616,7 +612,7 @@ Returns: Graph URI containing the concept
          │
          ▼
 ┌─────────────────────────┐
-│  ConceptProcessor       │
+│  ConceptJsonMapper      │
 │  - Process each concept │
 │  - Extract properties   │
 │  - Build relationships  │
@@ -665,7 +661,7 @@ Returns: Graph URI containing the concept
 ┌──────────────────┐    ┌─────────────────────────┐
 │ model.write()    │    │  JsonExporter           │
 │ format="TTL"     │    │  - ModelAnalyzer        │
-└──────────────────┘    │  - ConceptProcessor     │
+└──────────────────┘    │  - ConceptJsonMapper    │
                         │  - JsonFormatter        │
                         └─────────────────────────┘
          │                         │
@@ -708,7 +704,7 @@ This context defines the mapping from Czech property names to RDF predicates.
 |---------------|---------|-------------|
 | `OntologyDetailExtractor` | Extracts structured data from RDF | `applyOFNTransformations()`, `extract()` |
 | `ModelAnalyzer` | Analyzes RDF model structure | `analyzeOntology()`, `extractConcepts()` |
-| `ConceptProcessor` | Processes concepts for export | `processConcept()`, `extractProperties()` |
+| `ConceptJsonMapper` | Maps RDF concepts to JSON / JSON-LD objects | `processAllConcepts()`, `processConceptByIri()` |
 | `JsonFormatter` | Formats data as JSON-LD | `formatOntology()`, `formatConcept()` |
 | `JsonExporter` | Exports RDF to JSON-LD | `export()` |
 | `TurtleFilterUtil` | Filters RDF triples | `filterTriples()` |
@@ -839,7 +835,7 @@ tdb2.tdbstats --loc=/data/tdb2/production-dataset --graph=<graph-uri>
 | Ontology Creator | `src/main/java/com/dia/ismdtoolbackend/utility/OntologyCreator.java` |
 | Model Analyzer | `src/main/java/com/dia/ismdtoolbackend/utility/ModelAnalyzer.java` |
 | JSON Exporter | `src/main/java/com/dia/ismdtoolbackend/utility/JsonExporter.java` |
-| Concept Processor | `src/main/java/com/dia/ismdtoolbackend/utility/ConceptProcessor.java` |
+| Concept JSON mapper | `src/main/java/com/dia/ismdtoolbackend/utility/exporter/json/ConceptJsonMapper.java` |
 
 ### External Resources
 

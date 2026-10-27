@@ -318,4 +318,12 @@ class ConceptInputValidatorTest {
             assertTrue(ConceptInputValidator.validate((ClassConceptEditModel) null).isEmpty());
         }
     }
+
+    @Test
+    void invalidInputWithoutAValuePrintsOnlyItsReason() {
+        assertEquals("Třída nemůže být současně veřejná",
+                new InvalidInput("isPublic", null, "Třída nemůže být současně veřejná").toString());
+        assertEquals("exactMatch='x' (neplatné IRI)",
+                new InvalidInput("exactMatch", "x", "neplatné IRI").toString());
+    }
 }

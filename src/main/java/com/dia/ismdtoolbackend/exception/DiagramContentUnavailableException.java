@@ -13,9 +13,6 @@ package com.dia.ismdtoolbackend.exception;
  */
 public class DiagramContentUnavailableException extends RuntimeException {
 
-    /** Stable error code the FE branches on, rather than the localized message. */
-    public static final String ERROR_CODE = "DIAGRAM_CONTENT_UNAVAILABLE";
-
     public DiagramContentUnavailableException(Throwable cause) {
         super("Obsah pojmů diagramu se nepodařilo načíst. Zkuste to prosím znovu.", cause);
     }

@@ -12,9 +12,6 @@ import java.util.List;
  */
 public class InSchemeDecisionRequiredException extends RuntimeException {
 
-    /** Stable error code the FE branches on (not the localized message). */
-    public static final String ERROR_CODE = "MISSING_INSCHEME_DECISION_REQUIRED";
-
     private final transient String graphName;
     private final transient List<MissingConceptDto> conceptsMissingInScheme;
 

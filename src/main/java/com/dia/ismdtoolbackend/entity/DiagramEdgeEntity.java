@@ -2,8 +2,8 @@ package com.dia.ismdtoolbackend.entity;
 
 import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -83,7 +83,7 @@ public class DiagramEdgeEntity {
         }
         try {
             return DiagramJson.MAPPER.readValue(segmentsJson, WAYPOINTS);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to deserialize segments JSON for diagram edge id={}", id, e);
             return null;
         }
@@ -97,7 +97,7 @@ public class DiagramEdgeEntity {
         }
         try {
             this.segmentsJson = DiagramJson.MAPPER.writeValueAsString(segments);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize segments for diagram edge id=" + id, e);
         }

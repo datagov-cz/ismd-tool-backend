@@ -2,7 +2,7 @@ package com.dia.ismdtoolbackend.entity;
 
 import com.dia.ismdtoolbackend.models.diagram.DiagramJson;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.core.JacksonException;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -73,7 +73,7 @@ public class DiagramPendingEditEntity {
         }
         try {
             return DiagramJson.MAPPER.readValue(pendingEditJson, DiagramPendingEdit.class);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to deserialize pending-edit JSON for row id={}, concept {}",
                     id, conceptIri, e);
             return null;
@@ -89,7 +89,7 @@ public class DiagramPendingEditEntity {
         }
         try {
             this.pendingEditJson = DiagramJson.MAPPER.writeValueAsString(edit);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(
                     "Failed to serialize pending edit for concept " + conceptIri, e);
         }

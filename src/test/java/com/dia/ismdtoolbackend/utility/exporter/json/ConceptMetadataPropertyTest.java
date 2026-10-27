@@ -13,14 +13,14 @@ import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("ConceptProcessor - Metadata Properties (A104/L111)")
+@DisplayName("ConceptJsonMapper - Metadata Properties (A104/L111)")
 class ConceptMetadataPropertyTest {
 
-    private ConceptProcessor processor;
+    private ConceptJsonMapper processor;
 
     @BeforeEach
     void setUp() {
-        processor = new ConceptProcessor();
+        processor = new ConceptJsonMapper();
     }
 
     @Test
@@ -108,6 +108,25 @@ class ConceptMetadataPropertyTest {
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) result.get(USTANOVENI_NEVEREJNOST);
         assertTrue(values.contains("https://zakon.example.org/sb/111-2009/par/5"));
+    }
+
+    @Test
+    @DisplayName("ustanovení read under the canonical OFN property, merged without duplicates")
+    void ustanoveniNeverejnost_canonicalProperty() {
+        OntModel model = createDefaultModel();
+        Resource concept = addOwlClass(model, "udaj", "Údaj");
+        String shared = "https://zakon.example.org/sb/111-2009/par/5";
+        String canonicalOnly = "https://zakon.example.org/sb/111-2009/par/6";
+        addUstanoveniNeverejnost(concept, model, shared);
+        org.apache.jena.rdf.model.Property canonical = model.createProperty(
+                "https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/" + USTANOVENI_LONG);
+        concept.addProperty(canonical, model.createResource(shared));
+        concept.addProperty(canonical, model.createResource(canonicalOnly));
+        ModelStructure structure = createModelStructure(model);
+
+        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+
+        assertEquals(List.of(shared, canonicalOnly), result.get(USTANOVENI_NEVEREJNOST));
     }
 
     @Test

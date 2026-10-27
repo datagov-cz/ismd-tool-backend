@@ -47,8 +47,8 @@ aplikuje **relay** (přenašeč):
 jako **FAILED** a zpřístupní se v admin API k ručnímu opakování. Řádky **DONE** se uchovávají jako
 auditní stopa a po `outbox.done-retention` se automaticky promažou.
 
-Při `outbox.enabled=false` (výchozí) se místa zápisu vrací k **původnímu přímému zápisu** — nasazení
-kódu nic nemění, dokud prostředí outbox v konfigutaci povolí.
+Outbox je pro pokrytá místa zápisu jedinou cestou — neexistuje žádný vypínač ani návrat k přímému
+zápisu.
 
 **Pokrytá místa zápisu (4):** vytvoření pojmu, editace pojmu (vč. přejmenování), smazání pojmu,
 smazání slovníku. **Nepokryto:** **upload** slovníku (stále přímý zápis — tuto cestu jistí
@@ -74,7 +74,6 @@ v `application.properties`.
 
 | Vlastnost | Proměnná prostředí | Výchozí | Význam |
 |---|---|---|---|
-| `outbox.enabled` | `OUTBOX_ENABLED` | `false` | Hlavní vypínač. `false` → původní přímý zápis, žádný relay, žádná změna chování. |
 | `outbox.relay-cron` | `OUTBOX_RELAY_CRON` | `*/10 * * * * *` | Rozvrh záchytného přenosu (cron Spring 6 polí). Horkou cestu řeší pošťouchnutí po commitu; toto jen zachytí řádky po pádu. |
 | `outbox.max-attempts` | `OUTBOX_MAX_ATTEMPTS` | `10` | Počet pokusů o aplikaci, než se řádek označí FAILED (a zablokuje svůj agregát). |
 | `outbox.batch-size` | `OUTBOX_BATCH_SIZE` | `100` | Max. počet řádků zpracovaných v jednom průchodu relaye. |
@@ -109,8 +108,8 @@ curl -s "http://localhost:8081/popisujeme/api/admin/outbox/status" \
 
 - **Zdravé:** `pending` se vyprázdní, `failed` = 0, `oldestPendingCreatedAt` zůstává
   null/aktuální.
-- **Relay zaseknutý / vypnutý:** `oldestPendingCreatedAt` stárne. Zkontrolujte `outbox.enabled`, zda
-  běží plánovač a dostupnost Fuseki. `POST /drain` vynutí průchod.
+- **Relay zaseknutý:** `oldestPendingCreatedAt` stárne. Zkontrolujte, zda běží plánovač,
+  a dostupnost Fuseki. `POST /drain` vynutí průchod.
 - **Řádek je FAILED:** `GET /failed` ukáže id + `lastError`. Odstraňte příčinu (typicky vypnuté
   Fuseki nebo vadná data), obnovte Fuseki, poté `POST /retry/{id}` → `POST /drain`. Agregát je do té
   doby zablokován.
@@ -128,7 +127,7 @@ Považuje **Postgres za zdroj pravdy**, vyjmenuje **vlastněné** subjekty pojm�
 s PG metadaty a **hlásí rozejití** podle kategorií. Spuštění:
 
 - **Plánovaně:** `reconciler.cron` (výchozí denně ve 03:00), ovládáno přes `reconciler.enabled`
-  (výchozí vypnuto — nasazení samo nespustí skenování).
+  (výchozí zapnuto; lokální profil jej vypíná).
 - **Na vyžádání:** admin endpoint funguje **bez ohledu na `reconciler.enabled`**.
 
 Je to záchytná síť za outboxem a jediný mechanismus, který zachytí rozejití z **cesty uploadu**
@@ -167,7 +166,7 @@ Prefix `reconciler.*` (vázáno v `ReconcilerConfig`).
 
 | Vlastnost | Proměnná prostředí | Výchozí | Význam                                                                                                                   |
 |---|---|---|--------------------------------------------------------------------------------------------------------------------------|
-| `reconciler.enabled` | `RECONCILER_ENABLED` | `false` | Hlavní vypínač **plánovaného** běhu. Admin endpoint funguje bez ohledu na něj.                                           |
+| `reconciler.enabled` | `RECONCILER_ENABLED` | `true` (`false` v lokálním profilu) | Hlavní vypínač **plánovaného** běhu. Admin endpoint funguje bez ohledu na něj.                                           |
 | `reconciler.cron` | `RECONCILER_CRON` | `0 0 3 * * *` | Rozvrh plánovaného běhu (cron Spring). Výchozí denně ve 03:00.                                                           |
 | `reconciler.max-concepts` | `RECONCILER_MAX_CONCEPTS` | `200000` | Pojistka: běh raději ukončit s jasnou chybou než dojde k OOM, pokud počet PG řádků překročí tuto mez. `0` = bez omezení. |
 
@@ -238,14 +237,14 @@ Klíčové vlastnosti očekávaného stavu:
 
 ## Detekční model rekonciliátoru
 
-- **Pořadí čtení je bezpodmínečně TDB2 první, PG poslední** (nemění se podle `outbox.enabled`). Přínos
-  tohoto pořadí závisí na aktivním režimu zápisu a vždy jde jen o drobnou optimalizaci — nikoli
+- **Pořadí čtení je bezpodmínečně TDB2 první, PG poslední**. Přínos
+  tohoto pořadí závisí na režimu daného místa zápisu a vždy jde jen o drobnou optimalizaci — nikoli
   o mechanismus správnosti:
-  - **Přímý zápis (outbox vypnut):** zápisy jsou TDB2 první, poté PG commit. Okno „za letu“ je „RDF
+  - **Přímý zápis (místa, která outbox nepokrývá):** zápisy jsou TDB2 první, poté PG commit. Okno „za letu“ je „RDF
     zapsáno, PG zatím necommitnuto“ → přechodný falešný `RDF_ORPHAN`. Čtení PG jako *posledního* činí
     onen pozdní commit s nejvyšší pravděpodobností viditelným, čímž okno zmenšuje. Pro tento případ
     bylo pořadí zvoleno.
-  - **Outbox (outbox zapnut):** pořadí se obrací — nejprve commituje PG (metadata + outbox řádek),
+  - **Outbox (pokrytá místa):** pořadí se obrací — nejprve commituje PG (metadata + outbox řádek),
     relay aplikuje TDB2 až poté. Okno „za letu“ se mění na „PG commitnuto, TDB2 zatím neaplikováno“ →
     přechodný falešný `PG_MISSING_RDF`, nikoli sirotek. Pro *tuto* situaci by pomohlo číst TDB2 jako
     poslední, takže TDB2-první je mírně kontraproduktivní — v praxi však posunutí po commitu zapíše

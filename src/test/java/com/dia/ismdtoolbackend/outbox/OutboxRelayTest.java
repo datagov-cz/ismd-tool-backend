@@ -69,6 +69,8 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
 
     @BeforeEach
     void resetState() {
+        // The Postgres container is shared by every subclass; start from an empty table.
+        txTemplate.executeWithoutResult(tx -> repository.deleteAll());
         tdb2.reset();
         // The OutboxConfig bean is a shared singleton; tests mutate maxAttempts/batchSize. Reset to
         // defaults each test so mutations can't leak across an undefined JUnit method order.
@@ -437,7 +439,7 @@ class OutboxRelayTest extends PostgresIntegrationTestBase {
         e.setAggregateIri(aggregate);
         e.setOperation(OutboxOperation.DELETE_CONCEPTS);
         try {
-            e.setTargetIris(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(targetIris));
+            e.setTargetIris(new tools.jackson.databind.ObjectMapper().writeValueAsString(targetIris));
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }

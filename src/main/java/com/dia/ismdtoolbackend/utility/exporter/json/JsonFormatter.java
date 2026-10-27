@@ -1,8 +1,9 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
 import com.dia.ismdtoolbackend.exception.JsonExportException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
@@ -16,8 +17,9 @@ public class JsonFormatter {
     private final ObjectMapper objectMapper;
 
     public JsonFormatter() {
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        this.objectMapper = JsonMapper.builder()
+                .enable(SerializationFeature.INDENT_OUTPUT)
+                .build();
     }
 
     public String formatAsJson(ModelStructure structure, ConceptData conceptData) {

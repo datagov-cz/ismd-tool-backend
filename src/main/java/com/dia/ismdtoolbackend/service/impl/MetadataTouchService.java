@@ -44,7 +44,7 @@ public class MetadataTouchService {
     /**
      * Bumps the concept's {@code updatedAt} and propagates to its parent ontology.
      *
-     * <p>The entity must already be managed and, on the outbox path, already locked by the caller —
+     * <p>The entity must already be managed and already locked by the caller —
      * this method does not re-lock it, so the caller's concept-first ordering is preserved.
      */
     @Transactional(propagation = Propagation.MANDATORY)

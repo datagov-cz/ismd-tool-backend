@@ -37,10 +37,8 @@ class EsbirkaGroupedSearchTest {
 
     @org.junit.jupiter.api.BeforeEach
     void buildService() {
-        // In production `self` is the Spring proxy that adds @Cacheable; here it is a plain
-        // self-reference, so the one-arg delegation is exercised without the caching layer.
-        service = new EsbirkaServiceImpl(client, null, null, null);
-        org.springframework.test.util.ReflectionTestUtils.setField(service, "self", service);
+        // Built without Spring, so the search runs without the caching layer.
+        service = EsbirkaServiceWiring.build(client, null, null);
     }
 
     private static LawModel law(String cislo, int rok) {
@@ -182,7 +180,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).searchLawNumberGroups("49", "1997", 20);
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(
                 org.mockito.ArgumentMatchers.anyList(), eq("1997"),
-                eq(EsbirkaServiceImpl.GROUPED_ROW_LIMIT));
+                eq(EsbirkaLawSearch.GROUPED_ROW_LIMIT));
     }
 
     @Test
@@ -216,23 +214,23 @@ class EsbirkaGroupedSearchTest {
 
     @Test
     void needleSplitCoversEveryShapeTheFeCanSend() {
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle("49", "1997"),
-                EsbirkaServiceImpl.splitGroupedNeedle("49/1997"));
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle("49", null),
-                EsbirkaServiceImpl.splitGroupedNeedle("49"));
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle("49", null),
-                EsbirkaServiceImpl.splitGroupedNeedle("49/"));
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle("49", "19"),
-                EsbirkaServiceImpl.splitGroupedNeedle("49/19"));
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle("49", "1997"),
-                EsbirkaServiceImpl.splitGroupedNeedle(" 49/1997 Sb. "));
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle(null, null),
-                EsbirkaServiceImpl.splitGroupedNeedle("  "));
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle(null, null),
-                EsbirkaServiceImpl.splitGroupedNeedle(null));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", "1997"),
+                EsbirkaLawSearch.splitGroupedNeedle("49/1997"));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", null),
+                EsbirkaLawSearch.splitGroupedNeedle("49"));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", null),
+                EsbirkaLawSearch.splitGroupedNeedle("49/"));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", "19"),
+                EsbirkaLawSearch.splitGroupedNeedle("49/19"));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", "1997"),
+                EsbirkaLawSearch.splitGroupedNeedle(" 49/1997 Sb. "));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle(null, null),
+                EsbirkaLawSearch.splitGroupedNeedle("  "));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle(null, null),
+                EsbirkaLawSearch.splitGroupedNeedle(null));
         // A leading slash leaves no číslo, so nothing is pinned but the year still filters.
-        assertEquals(new EsbirkaServiceImpl.GroupedNeedle(null, "1997"),
-                EsbirkaServiceImpl.splitGroupedNeedle("/1997"));
+        assertEquals(new EsbirkaLawSearch.GroupedNeedle(null, "1997"),
+                EsbirkaLawSearch.splitGroupedNeedle("/1997"));
     }
 
     @Test
@@ -394,7 +392,7 @@ class EsbirkaGroupedSearchTest {
         // A group larger than the display cap must be truncated in `laws` while `count`
         // still reports the true total, or the FE shows a false number.
         List<LawModel> many = new ArrayList<>();
-        for (int i = 0; i < EsbirkaServiceImpl.MAX_LAWS_PER_GROUP + 25; i++) {
+        for (int i = 0; i < EsbirkaLawSearch.MAX_LAWS_PER_GROUP + 25; i++) {
             many.add(law("49", 1900 + i));
         }
         when(client.searchLawNumberGroups(eq("49"), org.mockito.ArgumentMatchers.any(), anyInt()))
@@ -403,10 +401,10 @@ class EsbirkaGroupedSearchTest {
                 .thenReturn(many);
 
         LawSearchGroupDto g = service.searchLawsGrouped("49", 20).getGroups().get(0);
-        assertEquals(EsbirkaServiceImpl.MAX_LAWS_PER_GROUP, g.getLaws().size(), "display capped");
+        assertEquals(EsbirkaLawSearch.MAX_LAWS_PER_GROUP, g.getLaws().size(), "display capped");
         assertEquals(120, g.getCount(), "count stays dataset-wide");
         // The cap must keep the NEWEST acts, not an arbitrary slice.
-        assertEquals(1900 + EsbirkaServiceImpl.MAX_LAWS_PER_GROUP + 24, g.getLaws().get(0).getRok());
+        assertEquals(1900 + EsbirkaLawSearch.MAX_LAWS_PER_GROUP + 24, g.getLaws().get(0).getRok());
     }
 
     @Test
@@ -424,7 +422,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(cisla.capture(), org.mockito.ArgumentMatchers.any(), rowLimit.capture());
         assertEquals(List.of("49", "490"), cisla.getValue().stream().sorted().toList(),
                 "exactly the čísla step 1 returned");
-        assertEquals(EsbirkaServiceImpl.GROUPED_ROW_LIMIT, rowLimit.getValue(),
+        assertEquals(EsbirkaLawSearch.GROUPED_ROW_LIMIT, rowLimit.getValue(),
                 "act fetch must be row-capped — group size is unbounded");
     }
 }

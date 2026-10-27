@@ -8,7 +8,6 @@ import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -54,7 +53,6 @@ class NkdSnapshotEndpointServiceImplTest {
     @Mock private NkdSnapshotService nkdSnapshotService;
     @Mock private JenaTDB2Repository jenaTDB2Repository;
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
-    @Mock private OutboxConfig outboxConfig;
     @Mock private OutboxWriter outboxWriter;
     @Mock private OutboxRelayTrigger outboxRelayTrigger;
 
@@ -77,7 +75,6 @@ class NkdSnapshotEndpointServiceImplTest {
         snapshot.setLinkPredicate(SnapshotLinkType.BROADER_CLASS.value());
         snapshot.setOwningConcept(owner);
 
-        when(outboxConfig.isEnabled()).thenReturn(true);
     }
 
     @Test
@@ -131,7 +128,6 @@ class NkdSnapshotEndpointServiceImplTest {
         g.add(g.getResource(OWNER_IRI), org.apache.jena.vocabulary.RDFS.subClassOf, g.getResource(NKD_IRI));
         when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(g);
         // removeSnapshotAndLink contributes to the passed change set so the flush actually fires.
-        when(outboxConfig.isEnabled()).thenReturn(true);
 
         service.removeSnapshot(CONCEPT_ID, SNAPSHOT_ID);
 

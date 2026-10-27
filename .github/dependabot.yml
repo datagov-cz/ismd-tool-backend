@@ -38,3 +38,17 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # Watches the digest-pinned base images in the Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      docker-images:
+        patterns:
+          - "*"

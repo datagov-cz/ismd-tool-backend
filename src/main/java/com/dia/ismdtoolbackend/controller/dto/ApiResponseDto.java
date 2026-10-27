@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.controller.dto;
 
+import com.dia.ismdtoolbackend.enums.ErrorCode;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -11,12 +12,8 @@ public class ApiResponseDto<T> {
     private T data;
     private String message;
     private boolean success;
-    /**
-     * Stable, machine-readable error code for the FE to branch on (e.g.
-     * {@code MISSING_INSCHEME_DECISION_REQUIRED}). Null for success responses and for
-     * errors that don't need a distinct code.
-     */
-    private String errorCode;
+    /** Set on every error response, null on success. */
+    private ErrorCode errorCode;
 
     public ApiResponseDto(T data, String message, boolean success) {
         this.data = data;
@@ -40,11 +37,18 @@ public class ApiResponseDto<T> {
         return new ApiResponseDto<>(message, true);
     }
 
-    public static <T> ApiResponseDto<T> error(String message) {
-        return new ApiResponseDto<>(message, false);
+    /** An error carrying the code's own message. */
+    public static <T> ApiResponseDto<T> error(ErrorCode errorCode) {
+        return error(errorCode, null, null);
     }
 
-    public static <T> ApiResponseDto<T> error(T data, String message, String errorCode) {
-        return new ApiResponseDto<>(data, message, false, errorCode);
+    public static <T> ApiResponseDto<T> error(ErrorCode errorCode, String message) {
+        return error(errorCode, message, null);
+    }
+
+    /** A blank message falls back to the code's own, so an error always carries both. */
+    public static <T> ApiResponseDto<T> error(ErrorCode errorCode, String message, T data) {
+        String text = message == null || message.isBlank() ? errorCode.getDefaultMessage() : message;
+        return new ApiResponseDto<>(data, text, false, errorCode);
     }
 }

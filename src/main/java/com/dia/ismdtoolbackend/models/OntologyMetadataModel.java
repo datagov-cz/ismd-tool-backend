@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.models;
 
+import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptSourceTag;
 import com.dia.ismdtoolbackend.enums.OntologyValidationStatus;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
@@ -35,4 +36,10 @@ public class OntologyMetadataModel {
     private OntologyValidationStatus lastValidationStatus;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Instant lastValidationAt;
+    /** Upload response only: concepts of the file that were not imported, with the reason. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<RejectedConceptDto> rejectedConcepts;
+    /** Upload response only: IRIs whose trailing slash was stripped, as they appeared in the file. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<String> correctedIris;
 }

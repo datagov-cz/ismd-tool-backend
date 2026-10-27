@@ -24,13 +24,13 @@ import java.util.Map;
  * subsequent container resolves into map hits.
  *
  * <p>Extracted to a dedicated component so Spring's caching proxy intercepts the call —
- * {@code @Cacheable} on a method called from within {@code EsbirkaServiceImpl} would be
+ * {@code @Cacheable} on a method called from within {@code EsbirkaLegalSourceResolver} would be
  * bypassed. {@code sync} makes concurrent misses on one version share a single fetch.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class EsbirkaSubtreeBodyCache {
+class EsbirkaSubtreeBodyCache {
 
     private final EsbirkaSparqlClient client;
 
@@ -44,7 +44,7 @@ public class EsbirkaSubtreeBodyCache {
         if (rows.isEmpty()) {
             return Map.of();
         }
-        List<FragmentDto> roots = EsbirkaServiceImpl.assembleTree(rows, versionIri);
+        List<FragmentDto> roots = EsbirkaFragmentTree.assembleTree(rows, versionIri);
         Map<String, String> out = new HashMap<>(rows.size());
         for (FragmentDto root : roots) {
             index(root, out);

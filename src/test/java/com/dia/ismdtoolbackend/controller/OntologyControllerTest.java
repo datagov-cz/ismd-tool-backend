@@ -28,7 +28,7 @@ import com.dia.ismdtoolbackend.service.ValidationService;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
 import com.dia.validation.ValidationSeverity;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,7 +36,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.jena.riot.Lang;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -134,10 +133,10 @@ class OntologyControllerTest {
     @WithMockSecurityUser(userId = "user123")
     void createWithConcepts_RejectsMissingCollectionsAndNullTerms() throws Exception {
         var json = new ObjectMapper().valueToTree(sample());
-        ((com.fasterxml.jackson.databind.node.ObjectNode) json).remove("classes");
+        ((tools.jackson.databind.node.ObjectNode) json).remove("classes");
         mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
                 .andExpect(status().isBadRequest());
-        ((com.fasterxml.jackson.databind.node.ObjectNode) json).putArray("classes").addNull();
+        ((tools.jackson.databind.node.ObjectNode) json).putArray("classes").addNull();
         mockMvc.perform(post("/api/ontology/create-with-concepts").contentType(MediaType.APPLICATION_JSON).content(json.toString()))
                 .andExpect(status().isBadRequest());
         verifyNoInteractions(ontologyService);
@@ -314,7 +313,7 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
-    void testUploadFromFile_MissingFile() throws Exception {
+    void testUploadFromFile_EmptyJsonLdFile() throws Exception {
         String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -330,6 +329,19 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_noFilePart_returnsBadRequest() throws Exception {
+        mockMvc.perform(multipart("/api/ontology/upload")
+                        .param("normalizeMode", "NORMALIZE_ALL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.message").value("Chybí povinná část požadavku 'file'."));
+
+        verifyNoInteractions(ontologyUploadService);
     }
 
     @Test
@@ -535,6 +547,38 @@ class OntologyControllerTest {
 
     @Test
     @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_conflictingConceptTypes_returnsBadRequestNamingTheConcepts() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException(
+                        List.of("https://x/y/pojem/a", "https://x/y/pojem/b")));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_CONCEPT_TYPE_CONFLICT"))
+                .andExpect(jsonPath("$.data[0]").value("https://x/y/pojem/a"))
+                .andExpect(jsonPath("$.data[1]").value("https://x/y/pojem/b"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_uploadInProgress_returnsConflict() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
+
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), any(), any()))
+                .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyUploadInProgressException("Slovník se právě nahrává: https://x/y"));
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_IN_PROGRESS"))
+                .andExpect(jsonPath("$.message").value("Slovník se právě nahrává: https://x/y"));
+    }
+
+    @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_missingOntologyIri_returnsSpecificStatusCodeAndMessage() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle", "x".getBytes());
 
@@ -604,7 +648,7 @@ class OntologyControllerTest {
         mockMvc.perform(multipart("/api/ontology/upload").file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.errorCode").doesNotExist())
+                .andExpect(jsonPath("$.errorCode").value("UPLOAD_FAILED"))
                 .andExpect(jsonPath("$.message").value("Zpracování RDF souboru bylo přerušeno."));
     }
 
@@ -1323,134 +1367,6 @@ class OntologyControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
-    }
-
-    // ========== Request Catalog Record Tests ==========
-
-    @Test
-    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
-    @WithMockSecurityUser(userId = "user123")
-    void testRequestCatalogRecord_Success() throws Exception {
-        String slug = "test-ontology";
-
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-        ontologyMetadata.setSlug(slug);
-
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
-
-        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
-                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
-        catalogRequest.setOntologyMetadata(ontologyMetadata);
-        catalogRequest.setValidationReport(validationReport);
-
-        com.dia.dto.CatalogRecordDto catalogRecordDto = mock(com.dia.dto.CatalogRecordDto.class);
-
-        TestOntologySecurityService.setAllowModify(true);
-        when(ontologyService.getTtlContentFromOntology(any()))
-                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
-        when(validationClient.requestCatalogRecord(any()))
-                .thenReturn(java.util.Optional.of(catalogRecordDto));
-
-        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(catalogRequest)))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").exists())
-                .andExpect(jsonPath("$.message").value("Žádost o katalogizační záznam proběhla úspěšně."));
-    }
-
-    @Test
-    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
-    @WithMockSecurityUser(userId = "user123")
-    void testRequestCatalogRecord_ServiceUnavailable() throws Exception {
-        String slug = "test-ontology";
-
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
-
-        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
-                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
-        catalogRequest.setOntologyMetadata(ontologyMetadata);
-        catalogRequest.setValidationReport(validationReport);
-
-        TestOntologySecurityService.setAllowModify(true);
-        when(ontologyService.getTtlContentFromOntology(any()))
-                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
-        when(validationClient.requestCatalogRecord(any()))
-                .thenReturn(java.util.Optional.empty());
-
-        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(catalogRequest)))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Žádost o katalogizační záznam se nezdařila - validační služba nevrátila odpověď, nebo je nedostupná."));
-    }
-
-    @Test
-    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
-    @WithMockSecurityUser(userId = "user123")
-    void testRequestCatalogRecord_AccessDenied() throws Exception {
-        String slug = "test-ontology";
-
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
-
-        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
-                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
-        catalogRequest.setOntologyMetadata(ontologyMetadata);
-        catalogRequest.setValidationReport(validationReport);
-
-        TestOntologySecurityService.setAllowModify(false);
-
-        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(catalogRequest)))
-                .andExpect(status().isForbidden())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist())
-                .andExpect(jsonPath("$.message").value("Přístup odepřen: nemáte oprávnění k této operaci."));
-    }
-
-    @Test
-    @Disabled("catalog-record endpoint deprecated and hidden from OpenAPI")
-    @WithMockSecurityUser(userId = "user123")
-    void testRequestCatalogRecord_InvalidValidationReport() throws Exception {
-        String slug = "test-ontology";
-
-        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
-        ontologyMetadata.setId(1L);
-        ontologyMetadata.setGraphName("http://example.org/test-ontology");
-
-        com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
-
-        com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto catalogRequest =
-                new com.dia.ismdtoolbackend.controller.dto.CatalogRequestDto();
-        catalogRequest.setOntologyMetadata(ontologyMetadata);
-        catalogRequest.setValidationReport(validationReport);
-
-        TestOntologySecurityService.setAllowModify(true);
-        when(ontologyService.getTtlContentFromOntology(any()))
-                .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
-        when(validationClient.requestCatalogRecord(any()))
-                .thenReturn(java.util.Optional.empty());
-
-        mockMvc.perform(post("/api/ontology/{slug}/catalog-record", slug)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(catalogRequest)))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     // ========== Get Concepts By IRI Tests ==========

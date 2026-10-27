@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * overlay — can no longer silently strip the classification.
  *
  * <p>These tests pin that guard (so it is not silently removed) and prove the carry-through path —
- * {@code ConceptServiceImpl.carryCurrentDataClassification} passes the CURRENT value through when the
+ * {@code WorkingCopySyncOperation.carryCurrentDataClassification} passes the CURRENT value through when the
  * user did not accept the field.
  */
 class DataClassificationCarryThroughTest {
@@ -72,6 +72,7 @@ class DataClassificationCarryThroughTest {
         fields.updateDataClassification(f.concept(), Boolean.TRUE, null, f.concept(), f.model(),
                 f.toRemove(), f.toAdd());
 
-        assertTrue(reAdds(f), "carrying the current value re-adds the veřejný type, so the net effect is a no-op");
+        assertFalse(removes(f), "carrying the current value must not remove the veřejný type");
+        assertFalse(reAdds(f), "…and stages nothing: the classification is already what was asked for");
     }
 }

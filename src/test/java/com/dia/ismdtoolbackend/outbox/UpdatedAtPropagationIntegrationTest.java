@@ -12,6 +12,7 @@ import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
@@ -204,7 +205,6 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
     static class Beans {
         @Bean OutboxConfig outboxConfig() {
             OutboxConfig c = new OutboxConfig();
-            c.setEnabled(true);
             return c;
         }
         @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
@@ -223,7 +223,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
                 ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
                 MetadataTouchService touchService, ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
                 OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository, OutboxRelayTrigger trigger) {
-            return new ConceptServiceImpl(
+            return ConceptServiceWiring.build(
                     conceptRepo, ontologyRepo, touchService, mapper,
                     new ConceptCreator(), new ConceptEditor(), tdb2,
                     mock(OntologyDetailExtractor.class),
@@ -233,7 +233,7 @@ class UpdatedAtPropagationIntegrationTest extends PostgresIntegrationTestBase {
                     mock(RppSnapshotHolder.class),
                     mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
                     mock(ReferencedConceptsEnricher.class),
-                    outboxConfig, writer, outboxRepository, trigger,
+                    writer, outboxRepository, trigger,
                     mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
                     new NkdLinkDetector(),
                     new WorkingCopySyncFields(),

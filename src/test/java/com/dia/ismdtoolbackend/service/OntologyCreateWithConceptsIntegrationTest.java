@@ -69,7 +69,6 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
     @BeforeEach
     void reset() {
         tx.executeWithoutResult(status -> { outbox.deleteAll(); concepts.deleteAll(); ontologies.deleteAll(); });
-        config.setEnabled(true);
         config.setBatchSize(100);
         config.setMaxAttempts(3);
         rdf.reset();
@@ -101,6 +100,21 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
             assertTrue(graph.contains(graph.getResource(iri), SKOS.inScheme, graph.getResource(GRAPH)));
             assertEquals("creator", concepts.findByConceptIri(iri).orElseThrow().getUserId());
         }
+    }
+
+    @Test
+    void deletesOntologyWhoseGraphIsMissing() {
+        service.createWithConcepts(sample(), "creator");
+        Long id = ontologies.findByGraphName(GRAPH).orElseThrow().getId();
+        rdf.reset();
+        assertFalse(rdf.graphHasData(GRAPH));
+
+        service.deleteOntology(id);
+
+        assertEquals(0, ontologies.count());
+        assertEquals(0, concepts.count());
+        assertTrue(outbox.findAll().stream().allMatch(row -> row.getStatus() == OutboxStatus.DONE));
+        assertFalse(rdf.graphHasData(GRAPH));
     }
 
     @Test
@@ -322,17 +336,14 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
     }
 
     @Test
-    void conceptMutationsRespectInitialGraphBarrierEvenWhenOutboxIsDisabled() {
+    void conceptMutationsRespectInitialGraphBarrier() {
         rdf.failAfterWrite = true;
         var created = service.createWithConcepts(sample(), "creator");
         var id = concepts.findByConceptIri(created.conceptIris().get("driver")).orElseThrow().getId();
         var edit = new com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel();
         edit.setConceptType("třída");
-        for (boolean enabled : new boolean[]{true, false}) {
-            config.setEnabled(enabled);
-            assertThrows(OntologyCreationConflictException.class, () -> conceptService.editConcept(id, edit));
-            assertThrows(OntologyCreationConflictException.class, () -> conceptService.deleteConcept(id));
-        }
+        assertThrows(OntologyCreationConflictException.class, () -> conceptService.editConcept(id, edit));
+        assertThrows(OntologyCreationConflictException.class, () -> conceptService.deleteConcept(id));
         var concept = new com.dia.ismdtoolbackend.models.concept.ClassConceptModel();
         concept.setConceptType("třída");
         concept.setType("objekt");
@@ -342,6 +353,7 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         name.setName(java.util.Map.of("cs", "Další"));
         concept.setNameModel(name);
         assertThrows(OntologyCreationConflictException.class, () -> conceptService.createConcept(concept, "creator"));
+        assertEquals(1, outbox.count());
         assertEquals(1, rdf.writes);
         assertEquals(4, concepts.count());
     }
@@ -360,14 +372,6 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
         assertThrows(OntologyCreationConflictException.class, () -> service.createOntology(request.ontology(), "creator"));
         assertEquals(1, outbox.count());
         assertEquals(1, ontologies.count());
-    }
-
-    @Test
-    void disabledOutboxRejectsBothCreatesWithoutWrites() {
-        config.setEnabled(false);
-        assertThrows(org.apache.jena.ontology.OntologyException.class, () -> service.createOntology(sample().ontology(), "creator"));
-        assertThrows(org.apache.jena.ontology.OntologyException.class, () -> service.createWithConcepts(sample(), "creator"));
-        assertRolledBackWithoutRdf();
     }
 
     @Test
@@ -523,29 +527,29 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
 
     @TestConfiguration
     static class Beans {
-        @Bean OutboxConfig config() { var c = new OutboxConfig(); c.setEnabled(true); return c; }
+        @Bean OutboxConfig config() { return new OutboxConfig(); }
         @Bean OutboxWriter writer(OutboxEntryRepository r) { return new OutboxWriter(r); }
         @Bean OutboxRelay relay(OutboxEntryRepository r, FaultInjectingTdb2 rdf, OutboxConfig c) { return new OutboxRelay(r, rdf, c); }
         @Bean OutboxRelayTrigger trigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
         @Bean ConceptServiceImpl conceptService(ConceptMetadataRepository concepts, OntologyMetadataRepository ontologies,
                                                FaultInjectingTdb2 rdf, OutboxConfig config, OutboxWriter writer,
                                                OutboxEntryRepository outbox, OutboxRelayTrigger trigger) {
-            return new ConceptServiceImpl(concepts, ontologies, mock(MetadataTouchService.class), new ConceptMetadataMapperImpl(),
+            return ConceptServiceWiring.build(concepts, ontologies, mock(MetadataTouchService.class), new ConceptMetadataMapperImpl(),
                     new com.dia.ismdtoolbackend.utility.creator.ConceptCreator(), new com.dia.ismdtoolbackend.utility.editor.ConceptEditor(), rdf,
                     mock(OntologyDetailExtractor.class), mock(CommentRepository.class), mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
                     mock(ConceptDeviationComparator.class), mock(com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder.class),
                     mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
-                    mock(ReferencedConceptsEnricher.class), config, writer, outbox, trigger, mock(NkdSnapshotService.class),
+                    mock(ReferencedConceptsEnricher.class), writer, outbox, trigger, mock(NkdSnapshotService.class),
                     new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
                     new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(), mock(NkdSnapshotWarmer.class),
                     new NkdConfig(), mock(WorkingCopyDeviationServiceImpl.class));
         }
         @Bean FaultInjectingTdb2 rdf() { return new FaultInjectingTdb2(); }
         @Bean OntologyServiceImpl ontologyService(OntologyMetadataRepository ontologies, ConceptMetadataRepository concepts, FaultInjectingTdb2 rdf, OutboxConfig config, OutboxWriter writer, OutboxEntryRepository outbox, OutboxRelayTrigger trigger) {
-            return new OntologyServiceImpl(ontologies, mock(MetadataTouchService.class), concepts,
+            return OntologyServiceWiring.build(ontologies, mock(MetadataTouchService.class), concepts,
                     mock(ValidationReportRepository.class), rdf, mock(CommentRepository.class),
                     new OntologyMetadataMapperImpl(), mock(ConceptMetadataMapper.class), new OntologyEditor(),
-                    mock(OntologyDetailExtractor.class), mock(PublishedResourceUtil.class), config,
+                    mock(OntologyDetailExtractor.class), mock(PublishedResourceUtil.class),
                     writer, outbox, trigger, mock(NkdConceptSnapshotRepository.class),
                     mock(NkdSnapshotWarmer.class), mock(NkdSnapshotService.class), new NkdConfig(), mock(NkdDetailService.class));
         }

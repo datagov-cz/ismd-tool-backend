@@ -6,7 +6,6 @@ import com.dia.ismdtoolbackend.entity.NkdConceptSnapshotEntity;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
 import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
 import com.dia.ismdtoolbackend.outbox.OutboxWriter;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
@@ -19,7 +18,6 @@ import com.dia.ismdtoolbackend.service.snapshot.OwnerChangeSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
@@ -28,7 +26,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -45,7 +42,6 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
     private final NkdSnapshotService nkdSnapshotService;
     private final JenaTDB2Repository jenaTDB2Repository;
     private final ConceptMetadataRepository conceptMetadataRepository;
-    private final OutboxConfig outboxConfig;
     private final OutboxWriter outboxWriter;
     private final OutboxRelayTrigger outboxRelayTrigger;
 
@@ -108,21 +104,14 @@ public class NkdSnapshotEndpointServiceImpl implements NkdSnapshotEndpointServic
         return snapshot;
     }
 
-    /** Flush the owner change set as one owner-keyed aggregate: outbox upsert, or direct delta when off. */
+    /** Flush the owner change set as one owner-keyed outbox upsert. */
     private void flush(String graphName, ConceptMetadataEntity owner, OwnerChangeSet cs) {
         if (cs.toRemove.isEmpty() && cs.toAdd.isEmpty()) {
             return;
         }
         touchOwner(owner);
-        String ownerIri = owner.getConceptIri();
-        if (outboxConfig.isEnabled()) {
-            outboxWriter.enqueueUpsert(graphName, ownerIri, cs.toRemove, cs.toAdd);
-            outboxRelayTrigger.nudgeAfterCommit();
-            return;
-        }
-        Model removeModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toRemove));
-        Model addModel = ModelFactory.createDefaultModel().add(new ArrayList<>(cs.toAdd));
-        jenaTDB2Repository.applyConceptDelta(ownerIri, graphName, removeModel, addModel);
+        outboxWriter.enqueueUpsert(graphName, owner.getConceptIri(), cs.toRemove, cs.toAdd);
+        outboxRelayTrigger.nudgeAfterCommit();
     }
 
     /** Stamp the owner's {@code updatedAt} so the concept row reflects the RDF change just made. */
