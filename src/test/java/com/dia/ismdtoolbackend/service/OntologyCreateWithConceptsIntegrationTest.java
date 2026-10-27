@@ -103,6 +103,21 @@ class OntologyCreateWithConceptsIntegrationTest extends PostgresIntegrationTestB
     }
 
     @Test
+    void deletesOntologyWhoseGraphIsMissing() {
+        service.createWithConcepts(sample(), "creator");
+        Long id = ontologies.findByGraphName(GRAPH).orElseThrow().getId();
+        rdf.reset();
+        assertFalse(rdf.graphHasData(GRAPH));
+
+        service.deleteOntology(id);
+
+        assertEquals(0, ontologies.count());
+        assertEquals(0, concepts.count());
+        assertTrue(outbox.findAll().stream().allMatch(row -> row.getStatus() == OutboxStatus.DONE));
+        assertFalse(rdf.graphHasData(GRAPH));
+    }
+
+    @Test
     void repeatRequestConflictsWithoutChangingStoredGraph() {
         service.createWithConcepts(sample(), "creator");
         Model before = rdf.fetchGraph(GRAPH);
