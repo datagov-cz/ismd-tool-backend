@@ -54,9 +54,8 @@ class OntologyMetadataEnricher {
         List<Long> ontologyIds = entities.stream()
                 .map(OntologyMetadataEntity::getId)
                 .toList();
-        Map<Long, List<CommentEntity>> commentsByOntologyId = ontologyIds.isEmpty()
-                ? Map.of()
-                : commentRepository.findByOntologyMetadataIdIn(ontologyIds).stream()
+        Map<Long, List<CommentEntity>> commentsByOntologyId =
+                commentRepository.findByOntologyMetadataIdIn(ontologyIds).stream()
                         .collect(java.util.stream.Collectors.groupingBy(c -> c.getOntologyMetadata().getId()));
 
         return entities.stream()
@@ -116,12 +115,6 @@ class OntologyMetadataEnricher {
             }
 
             Resource ontologyResource = rdfModel.getResource(graphName);
-            if (ontologyResource == null) {
-                log.warn("Cannot find ontology resource for IRI: {}", graphName);
-                model.setName(fallbackName);
-                return;
-            }
-
             Map<String, String> names = extractMultilingualValue(ontologyResource, SKOS.prefLabel);
             if (names.isEmpty()) {
                 model.setName(fallbackName);
@@ -158,12 +151,13 @@ class OntologyMetadataEnricher {
                 continue;
             }
             Literal literal = object.asLiteral();
+            // Jena returns "" (never null) for both an empty lexical form and a missing language.
             String value = literal.getString();
-            if (value == null || value.trim().isEmpty()) {
+            if (value.trim().isEmpty()) {
                 continue;
             }
             String lang = literal.getLanguage();
-            valuesByLang.putIfAbsent((lang != null && !lang.isEmpty()) ? lang : DEFAULT_LANG, value);
+            valuesByLang.putIfAbsent(lang.isEmpty() ? DEFAULT_LANG : lang, value);
         }
         return valuesByLang;
     }

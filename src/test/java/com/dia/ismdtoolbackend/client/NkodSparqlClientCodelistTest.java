@@ -2,15 +2,18 @@ package com.dia.ismdtoolbackend.client;
 
 import com.dia.ismdtoolbackend.models.nkod.NkodCodelist;
 import com.dia.ismdtoolbackend.models.nkod.NkodCodelistEntry;
+import com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson;
+import com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.Binding;
 import org.apache.jena.query.ResultSet;
-import org.apache.jena.query.ResultSetFactory;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.literal;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.typed;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.uri;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -35,7 +38,7 @@ class NkodSparqlClientCodelistTest {
             MPSV, "Ministerstvo práce a sociálních věcí",
             UK, "Univerzita Karlova");
 
-    private static final String ROWS = String.join(",",
+    private static final List<Binding[]> ROWS = List.of(
             row(POHLAVI_151, "Pohlaví",
                     "https://rpp-opendata.egon.gov.cz/odrpp/datovasada/ciselnikyVdf/ciselnik_151_20250101.jsonld",
                     DIA, "Datová sada POHLAVI slouží pro vyplnění hodnoty údaje „Pohlaví“.",
@@ -56,49 +59,23 @@ class NkodSparqlClientCodelistTest {
             row(ROLE, "Role účastníka v projektu", null,
                     TACR, "Tento číselník obsahuje seznam rolí účastníka (subjektu) v projektu.", null, null));
 
-    private static List<NkodCodelistEntry> map(String bindings, Map<String, String> names) {
-        return NkodSparqlClient.groupByDataset(NkodSparqlClient.mapCodelistRows(resultSet(
-                List.of("dataset", "title", "downloadUrl", "publisher", "description",
-                        "rppIdentifier", "validFrom"), bindings)), names);
+    private static List<NkodCodelistEntry> map(List<Binding[]> rows, Map<String, String> names) {
+        SparqlJson result = SparqlJson.select("dataset", "title", "downloadUrl", "publisher", "description",
+                "rppIdentifier", "validFrom");
+        rows.forEach(result::row);
+        return NkodSparqlClient.groupByDataset(NkodSparqlClient.mapCodelistRows(result.toResultSet()), names);
     }
 
-    private static ResultSet resultSet(List<String> vars, String bindings) {
-        String json = """
-                {"head":{"vars":[%s]},"results":{"bindings":[%s]}}
-                """.formatted(String.join(",", vars.stream().map(v -> "\"" + v + "\"").toList()), bindings);
-        return ResultSetFactory.fromJSON(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
-    }
-
-    private static String row(String dataset, String title, String url, String publisher, String description,
-                              String rppId, String validFrom) {
-        StringBuilder sb = new StringBuilder("{");
-        sb.append(uri("dataset", dataset));
-        if (title != null) {
-            sb.append(',').append("\"title\":{\"type\":\"literal\",\"xml:lang\":\"cs\",\"value\":\"%s\"}"
-                    .formatted(title));
-        }
-        if (url != null) {
-            sb.append(',').append(uri("downloadUrl", url));
-        }
-        sb.append(',').append(uri("publisher", publisher));
-        sb.append(',').append("\"description\":{\"type\":\"literal\",\"xml:lang\":\"cs\",\"value\":\"%s\"}"
-                .formatted(description.replace("\"", "\\\"")));
-        if (rppId != null) {
-            sb.append(',').append(typed("rppIdentifier", rppId, "anyURI"));
-        }
-        if (validFrom != null) {
-            sb.append(',').append(typed("validFrom", validFrom, "date"));
-        }
-        return sb.append('}').toString();
-    }
-
-    private static String uri(String var, String value) {
-        return "\"%s\":{\"type\":\"uri\",\"value\":\"%s\"}".formatted(var, value);
-    }
-
-    private static String typed(String var, String value, String xsdType) {
-        return "\"%s\":{\"type\":\"literal\",\"datatype\":\"http://www.w3.org/2001/XMLSchema#%s\",\"value\":\"%s\"}"
-                .formatted(var, xsdType, value);
+    private static Binding[] row(String dataset, String title, String url, String publisher, String description,
+                                 String rppId, String validFrom) {
+        return new Binding[]{
+                uri("dataset", dataset),
+                literal("title", title, "cs"),
+                uri("downloadUrl", url),
+                uri("publisher", publisher),
+                literal("description", description, "cs"),
+                typed("rppIdentifier", rppId, "xsd:anyURI"),
+                typed("validFrom", validFrom, "xsd:date")};
     }
 
     private static NkodCodelistEntry entry(List<NkodCodelistEntry> entries, String datasetIri) {
@@ -167,10 +144,12 @@ class NkodSparqlClientCodelistTest {
 
     @Test
     void rowWithoutTitle_isSkipped() {
-        String untitled = row("https://data.gov.cz/zdroj/datové-sady/x/untitled", null,
-                "https://x/a.jsonld", DIA, "d", null, null);
+        List<Binding[]> rows = new ArrayList<>();
+        rows.add(row("https://data.gov.cz/zdroj/datové-sady/x/untitled", null,
+                "https://x/a.jsonld", DIA, "d", null, null));
+        rows.addAll(ROWS);
 
-        assertThat(map(untitled + "," + ROWS, NAMES)).extracting(NkodCodelistEntry::datasetIri)
+        assertThat(map(rows, NAMES)).extracting(NkodCodelistEntry::datasetIri)
                 .doesNotContain("https://data.gov.cz/zdroj/datové-sady/x/untitled")
                 .hasSize(5);
     }
@@ -182,14 +161,12 @@ class NkodSparqlClientCodelistTest {
 
     @Test
     void publisherNames_mapsEachPublisher() {
-        String bindings = String.join(",",
-                "{" + uri("publisher", DIA)
-                        + ",\"name\":{\"type\":\"literal\",\"xml:lang\":\"cs\",\"value\":\"Digitální a informační agentura\"}}",
-                "{" + uri("publisher", UK)
-                        + ",\"name\":{\"type\":\"literal\",\"xml:lang\":\"cs\",\"value\":\"Univerzita Karlova\"}}");
+        ResultSet publishers = SparqlJson.select("publisher", "name")
+                .row(uri("publisher", DIA), literal("name", "Digitální a informační agentura", "cs"))
+                .row(uri("publisher", UK), literal("name", "Univerzita Karlova", "cs"))
+                .toResultSet();
 
-        Map<String, String> names = NkodSparqlClient.mapPublisherNames(
-                resultSet(List.of("publisher", "name"), bindings));
+        Map<String, String> names = NkodSparqlClient.mapPublisherNames(publishers);
 
         assertThat(names).containsOnly(
                 Map.entry(DIA, "Digitální a informační agentura"),

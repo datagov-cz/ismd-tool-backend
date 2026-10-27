@@ -13,9 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.law;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -28,8 +27,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class EsbirkaGroupedSearchTest {
 
-    private static final String BASE = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/";
-
     @Mock
     private EsbirkaSparqlClient client;
 
@@ -37,12 +34,12 @@ class EsbirkaGroupedSearchTest {
 
     @org.junit.jupiter.api.BeforeEach
     void buildService() {
+        // The two stubbed SPARQL queries below run behind the client's real single entry point.
+        org.mockito.Mockito.lenient().when(client.searchLawsByNumber(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), anyInt()))
+                .thenCallRealMethod();
         // Built without Spring, so the search runs without the caching layer.
         service = EsbirkaServiceWiring.build(client, null, null);
-    }
-
-    private static LawModel law(String cislo, int rok) {
-        return new LawModel(BASE + rok + "/" + cislo, cislo + "/" + rok + " Sb.", cislo, rok, "sb");
     }
 
     /**
@@ -111,14 +108,14 @@ class EsbirkaGroupedSearchTest {
 
         // The flat list was 10 rows of near-identical noise; grouped it is 2 decisions
         // (49 and 490 — 1/2049 is year-only noise that a číslo prefix never matches).
-        assertEquals(2, out.getGroups().size());
+        assertThat(out.getGroups()).hasSize(2);
         LawSearchGroupDto first = out.getGroups().get(0);
-        assertEquals("49", first.getCislo(), "the exact-number group must lead");
-        assertTrue(first.isExactNumberMatch());
-        assertEquals(8, first.getCount(), "every act numbered 49 stays in one group");
+        assertThat(first.getCislo()).as("the exact-number group must lead").isEqualTo("49");
+        assertThat(first.isExactNumberMatch()).isTrue();
+        assertThat(first.getCount()).as("every act numbered 49 stays in one group").isEqualTo(8);
         // 49/1997 is reachable inside the group even though it is the OLDEST — the flat
         // list dropped it off the page entirely.
-        assertTrue(first.getLaws().stream().anyMatch(l -> "49/1997 Sb.".equals(l.getCitace())));
+        assertThat(first.getLaws().stream().anyMatch(l -> "49/1997 Sb.".equals(l.getCitace()))).isTrue();
     }
 
     @Test
@@ -126,9 +123,9 @@ class EsbirkaGroupedSearchTest {
         stubGroupedSearch("49", fortyNineRows());
         LawSearchResultDto out = service.searchLawsGrouped("49", 20);
 
-        assertTrue(out.isAmbiguous(), "a bare number leaves the year unresolved");
-        assertEquals("49", out.getQuery());
-        assertEquals(9, out.getTotalMatches(), "eight acts numbered 49, plus 490/2001");
+        assertThat(out.isAmbiguous()).as("a bare number leaves the year unresolved").isTrue();
+        assertThat(out.getQuery()).isEqualTo("49");
+        assertThat(out.getTotalMatches()).as("eight acts numbered 49, plus 490/2001").isEqualTo(9);
     }
 
     @Test
@@ -140,10 +137,10 @@ class EsbirkaGroupedSearchTest {
 
         LawSearchResultDto out = service.searchLawsGrouped("49/1997", 20);
 
-        assertFalse(out.isAmbiguous(), "a single matching act needs no further choice");
-        assertEquals(1, out.getGroups().size());
-        assertEquals(1, out.getGroups().get(0).getCount());
-        assertEquals("49/1997 Sb.", out.getGroups().get(0).getLaws().get(0).getCitace());
+        assertThat(out.isAmbiguous()).as("a single matching act needs no further choice").isFalse();
+        assertThat(out.getGroups()).hasSize(1);
+        assertThat(out.getGroups().get(0).getCount()).isEqualTo(1);
+        assertThat(out.getGroups().get(0).getLaws().get(0).getCitace()).isEqualTo("49/1997 Sb.");
     }
 
     @Test
@@ -155,9 +152,9 @@ class EsbirkaGroupedSearchTest {
 
         LawSearchResultDto out = service.searchLawsGrouped("49/1997", 20);
 
-        assertFalse(out.getGroups().isEmpty(), "a qualified needle must not blank the list");
-        assertEquals(1, out.getTotalMatches());
-        assertEquals("49/1997", out.getQuery(), "the echoed query stays as the user typed it");
+        assertThat(out.getGroups()).as("a qualified needle must not blank the list").isNotEmpty();
+        assertThat(out.getTotalMatches()).isEqualTo(1);
+        assertThat(out.getQuery()).as("the echoed query stays as the user typed it").isEqualTo("49/1997");
     }
 
     @Test
@@ -166,7 +163,7 @@ class EsbirkaGroupedSearchTest {
         // permanently false for anything containing '/', so the FE lost its exactness signal.
         stubGroupedSearch("49", "1997", fortyNineRows());
 
-        assertTrue(service.searchLawsGrouped("49/1997", 20).getGroups().get(0).isExactNumberMatch());
+        assertThat(service.searchLawsGrouped("49/1997", 20).getGroups().get(0).isExactNumberMatch()).isTrue();
     }
 
     @Test
@@ -180,7 +177,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.Mockito.verify(client).searchLawNumberGroups("49", "1997", 20);
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(
                 org.mockito.ArgumentMatchers.anyList(), eq("1997"),
-                eq(EsbirkaLawSearch.GROUPED_ROW_LIMIT));
+                eq(EsbirkaSparqlClient.GROUPED_ROW_LIMIT));
     }
 
     @Test
@@ -188,19 +185,21 @@ class EsbirkaGroupedSearchTest {
         // The FE searches per keystroke. "49/", "49/1", "49/19" are all states a user passes
         // through; each must narrow rather than blank, or the list flickers empty mid-typing.
         stubGroupedSearch("49", null, fortyNineRows());
-        assertFalse(service.searchLawsGrouped("49/", 20).getGroups().isEmpty(),
-                "a trailing slash carries no year — behave like the bare number");
+        assertThat(service.searchLawsGrouped("49/", 20).getGroups())
+                .as("a trailing slash carries no year — behave like the bare number")
+                .isNotEmpty();
 
         stubGroupedSearch("49", "202", fortyNineRows());
         LawSearchResultDto out = service.searchLawsGrouped("49/202", 20);
-        assertEquals(7, out.getTotalMatches(),
-                "the seven 49/202x acts — 49/1997 and 490/2001 both fall outside the prefix");
+        assertThat(out.getTotalMatches())
+                .as("the seven 49/202x acts — 49/1997 and 490/2001 both fall outside the prefix")
+                .isEqualTo(7);
     }
 
     @Test
     void trailingSbSuffixIsStrippedFromAQualifiedNeedle() {
         stubGroupedSearch("49", "1997", fortyNineRows());
-        assertEquals(1, service.searchLawsGrouped("  49/1997 Sb.  ", 20).getTotalMatches());
+        assertThat(service.searchLawsGrouped("  49/1997 Sb.  ", 20).getTotalMatches()).isEqualTo(1);
     }
 
     @Test
@@ -209,42 +208,39 @@ class EsbirkaGroupedSearchTest {
         // it keeps the číslo half's results on screen.
         stubGroupedSearch("49", null, fortyNineRows());
 
-        assertFalse(service.searchLawsGrouped("49/abc", 20).getGroups().isEmpty());
+        assertThat(service.searchLawsGrouped("49/abc", 20).getGroups()).isNotEmpty();
     }
 
     @Test
     void needleSplitCoversEveryShapeTheFeCanSend() {
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", "1997"),
-                EsbirkaLawSearch.splitGroupedNeedle("49/1997"));
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", null),
-                EsbirkaLawSearch.splitGroupedNeedle("49"));
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", null),
-                EsbirkaLawSearch.splitGroupedNeedle("49/"));
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", "19"),
-                EsbirkaLawSearch.splitGroupedNeedle("49/19"));
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle("49", "1997"),
-                EsbirkaLawSearch.splitGroupedNeedle(" 49/1997 Sb. "));
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle(null, null),
-                EsbirkaLawSearch.splitGroupedNeedle("  "));
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle(null, null),
-                EsbirkaLawSearch.splitGroupedNeedle(null));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle("49/1997"))
+                .isEqualTo(new EsbirkaLawSearch.GroupedNeedle("49", "1997"));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle("49")).isEqualTo(new EsbirkaLawSearch.GroupedNeedle("49", null));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle("49/"))
+                .isEqualTo(new EsbirkaLawSearch.GroupedNeedle("49", null));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle("49/19"))
+                .isEqualTo(new EsbirkaLawSearch.GroupedNeedle("49", "19"));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle(" 49/1997 Sb. "))
+                .isEqualTo(new EsbirkaLawSearch.GroupedNeedle("49", "1997"));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle("  ")).isEqualTo(new EsbirkaLawSearch.GroupedNeedle(null, null));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle(null)).isEqualTo(new EsbirkaLawSearch.GroupedNeedle(null, null));
         // A leading slash leaves no číslo, so nothing is pinned but the year still filters.
-        assertEquals(new EsbirkaLawSearch.GroupedNeedle(null, "1997"),
-                EsbirkaLawSearch.splitGroupedNeedle("/1997"));
+        assertThat(EsbirkaLawSearch.splitGroupedNeedle("/1997"))
+                .isEqualTo(new EsbirkaLawSearch.GroupedNeedle(null, "1997"));
     }
 
     @Test
     void noMatchesIsNotAmbiguous() {
         // Nothing to choose between — the FE should say "not found", not "pick a year".
-        when(client.searchLawNumberGroups(eq("zzz"), org.mockito.ArgumentMatchers.any(), anyInt())).thenReturn(List.of());
-        LawSearchResultDto out = service.searchLawsGrouped("zzz", 20);
+        when(client.searchLawNumberGroups(eq("999999"), org.mockito.ArgumentMatchers.any(), anyInt())).thenReturn(List.of());
+        LawSearchResultDto out = service.searchLawsGrouped("999999", 20);
         // No numbers matched, so the act fetch must not even be attempted.
         org.mockito.Mockito.verify(client, org.mockito.Mockito.never())
                 .fetchLawsByNumbers(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any(), anyInt());
 
-        assertFalse(out.isAmbiguous());
-        assertTrue(out.getGroups().isEmpty());
-        assertEquals(0, out.getTotalMatches());
+        assertThat(out.isAmbiguous()).isFalse();
+        assertThat(out.getGroups()).isEmpty();
+        assertThat(out.getTotalMatches()).isEqualTo(0);
     }
 
     @Test
@@ -253,8 +249,8 @@ class EsbirkaGroupedSearchTest {
         List<com.dia.ismdtoolbackend.controller.dto.LawDto> laws =
                 service.searchLawsGrouped("49", 20).getGroups().get(0).getLaws();
 
-        assertEquals(2026, laws.get(0).getRok());
-        assertEquals(1997, laws.get(laws.size() - 1).getRok());
+        assertThat(laws.get(0).getRok()).isEqualTo(2026);
+        assertThat(laws.get(laws.size() - 1).getRok()).isEqualTo(1997);
     }
 
     @Test
@@ -269,10 +265,10 @@ class EsbirkaGroupedSearchTest {
         stubGroupedSearch("49", rows);
 
         LawSearchResultDto out = service.searchLawsGrouped("49", 20);
-        assertEquals("49", out.getGroups().get(0).getCislo());
-        assertTrue(out.getGroups().get(0).isExactNumberMatch());
-        assertEquals("490", out.getGroups().get(1).getCislo());
-        assertFalse(out.getGroups().get(1).isExactNumberMatch());
+        assertThat(out.getGroups().get(0).getCislo()).isEqualTo("49");
+        assertThat(out.getGroups().get(0).isExactNumberMatch()).isTrue();
+        assertThat(out.getGroups().get(1).getCislo()).isEqualTo("490");
+        assertThat(out.getGroups().get(1).isExactNumberMatch()).isFalse();
     }
 
     @Test
@@ -288,9 +284,9 @@ class EsbirkaGroupedSearchTest {
 
         LawSearchResultDto out = service.searchLawsGrouped("49", 1);
 
-        assertEquals(1, out.getGroups().size(), "limit bounds groups");
-        assertEquals(8, out.getGroups().get(0).getCount());
-        assertEquals(8, out.getGroups().get(0).getLaws().size(), "the group keeps every act");
+        assertThat(out.getGroups()).as("limit bounds groups").hasSize(1);
+        assertThat(out.getGroups().get(0).getCount()).isEqualTo(8);
+        assertThat(out.getGroups().get(0).getLaws()).as("the group keeps every act").hasSize(8);
     }
 
     @Test
@@ -306,7 +302,7 @@ class EsbirkaGroupedSearchTest {
         org.mockito.ArgumentCaptor<List<String>> cap =
                 org.mockito.ArgumentCaptor.forClass(List.class);
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(cap.capture(), org.mockito.ArgumentMatchers.any(), anyInt());
-        assertTrue(cap.getValue().contains("49"), "act fetch is scoped to the chosen čísla");
+        assertThat(cap.getValue()).as("act fetch is scoped to the chosen čísla").contains("49");
     }
 
     @Test
@@ -319,9 +315,9 @@ class EsbirkaGroupedSearchTest {
                 .thenReturn(List.of(law("49", 1997), law("49", 2026)));
 
         LawSearchResultDto out = service.searchLawsGrouped("49", 20);
-        assertEquals(120, out.getGroups().get(0).getCount(), "count is dataset-wide");
-        assertEquals(2, out.getGroups().get(0).getLaws().size(), "laws hold what was fetched");
-        assertEquals(120, out.getTotalMatches());
+        assertThat(out.getGroups().get(0).getCount()).as("count is dataset-wide").isEqualTo(120);
+        assertThat(out.getGroups().get(0).getLaws()).as("laws hold what was fetched").hasSize(2);
+        assertThat(out.getTotalMatches()).isEqualTo(120);
     }
 
     @Test
@@ -336,13 +332,13 @@ class EsbirkaGroupedSearchTest {
         when(client.fetchLawsByNumbers(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any(), anyInt()))
                 .thenReturn(List.of());
 
-        assertTrue(service.searchLawsGrouped("4", 20).isTruncated());
+        assertThat(service.searchLawsGrouped("4", 20).isTruncated()).isTrue();
     }
 
     @Test
     void normalResultIsNotFlaggedTruncated() {
         stubGroupedSearch("49", fortyNineRows());
-        assertFalse(service.searchLawsGrouped("49", 20).isTruncated());
+        assertThat(service.searchLawsGrouped("49", 20).isTruncated()).isFalse();
     }
 
     @Test
@@ -350,9 +346,10 @@ class EsbirkaGroupedSearchTest {
         stubGroupedSearch(null, List.of(law("49", 2026), law("1", 2049)));
 
         LawSearchResultDto out = service.searchLawsGrouped(null, 20);
-        assertEquals(null, out.getQuery());
-        assertTrue(out.getGroups().stream().noneMatch(LawSearchGroupDto::isExactNumberMatch),
-                "no needle means no group can be an exact match");
+        assertThat(out.getQuery()).isNull();
+        assertThat(out.getGroups().stream().noneMatch(LawSearchGroupDto::isExactNumberMatch))
+                .as("no needle means no group can be an exact match")
+                .isTrue();
     }
 
     @Test
@@ -366,9 +363,8 @@ class EsbirkaGroupedSearchTest {
                         .filter(m -> "49".equals(m.getCislo())).toList());
 
         LawSearchResultDto out = service.searchLawsGrouped("49", 20);
-        assertEquals(1, out.getGroups().size());
-        assertTrue(out.isAmbiguous(),
-                "one číslo spanning many years still needs a year choice");
+        assertThat(out.getGroups()).hasSize(1);
+        assertThat(out.isAmbiguous()).as("one číslo spanning many years still needs a year choice").isTrue();
     }
 
     @Test
@@ -382,9 +378,9 @@ class EsbirkaGroupedSearchTest {
                 .thenReturn(List.of());
 
         LawSearchResultDto out = service.searchLawsGrouped("4", 20);
-        assertEquals(List.of("49", "499", "4999"),
-                out.getGroups().stream().map(LawSearchGroupDto::getCislo).toList(),
-                "shortest číslo first — NOT largest group first");
+        assertThat(out.getGroups().stream().map(LawSearchGroupDto::getCislo).toList())
+                .as("shortest číslo first — NOT largest group first")
+                .isEqualTo(List.of("49", "499", "4999"));
     }
 
     @Test
@@ -401,10 +397,10 @@ class EsbirkaGroupedSearchTest {
                 .thenReturn(many);
 
         LawSearchGroupDto g = service.searchLawsGrouped("49", 20).getGroups().get(0);
-        assertEquals(EsbirkaLawSearch.MAX_LAWS_PER_GROUP, g.getLaws().size(), "display capped");
-        assertEquals(120, g.getCount(), "count stays dataset-wide");
+        assertThat(g.getLaws()).as("display capped").hasSize(EsbirkaLawSearch.MAX_LAWS_PER_GROUP);
+        assertThat(g.getCount()).as("count stays dataset-wide").isEqualTo(120);
         // The cap must keep the NEWEST acts, not an arbitrary slice.
-        assertEquals(1900 + EsbirkaLawSearch.MAX_LAWS_PER_GROUP + 24, g.getLaws().get(0).getRok());
+        assertThat(g.getLaws().get(0).getRok()).isEqualTo(1900 + EsbirkaLawSearch.MAX_LAWS_PER_GROUP + 24);
     }
 
     @Test
@@ -420,9 +416,11 @@ class EsbirkaGroupedSearchTest {
         org.mockito.ArgumentCaptor<Integer> rowLimit =
                 org.mockito.ArgumentCaptor.forClass(Integer.class);
         org.mockito.Mockito.verify(client).fetchLawsByNumbers(cisla.capture(), org.mockito.ArgumentMatchers.any(), rowLimit.capture());
-        assertEquals(List.of("49", "490"), cisla.getValue().stream().sorted().toList(),
-                "exactly the čísla step 1 returned");
-        assertEquals(EsbirkaLawSearch.GROUPED_ROW_LIMIT, rowLimit.getValue(),
-                "act fetch must be row-capped — group size is unbounded");
+        assertThat(cisla.getValue().stream().sorted().toList())
+                .as("exactly the čísla step 1 returned")
+                .isEqualTo(List.of("49", "490"));
+        assertThat(rowLimit.getValue())
+                .as("act fetch must be row-capped — group size is unbounded")
+                .isEqualTo(EsbirkaSparqlClient.GROUPED_ROW_LIMIT);
     }
 }

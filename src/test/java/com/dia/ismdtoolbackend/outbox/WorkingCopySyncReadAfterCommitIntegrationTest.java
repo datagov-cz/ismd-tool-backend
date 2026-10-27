@@ -1,13 +1,11 @@
 package com.dia.ismdtoolbackend.outbox;
 
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
-import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.ConceptController;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.WorkingCopySyncRequestDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.OntologyValidationException;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
 import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
@@ -16,26 +14,20 @@ import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.DefinitionModel;
 import com.dia.ismdtoolbackend.models.concept.PublishedConceptDeviationModel.DeviationStatus;
-import com.dia.ismdtoolbackend.repository.CommentRepository;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.NkdSnapshotEndpointService;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
+import com.dia.ismdtoolbackend.service.impl.ConceptServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
-import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
 import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationTestBeans;
-import com.dia.ismdtoolbackend.service.NkdSnapshotService;
-import com.dia.ismdtoolbackend.service.nkod.NkodCodelistService;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
-import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
-import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
+import com.dia.ismdtoolbackend.testsupport.pg.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
-import com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.sys.JenaSystem;
@@ -55,11 +47,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -82,7 +74,7 @@ import static org.mockito.Mockito.when;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("junit")
 @Import({WorkingCopySyncReadAfterCommitIntegrationTest.Beans.class, WorkingCopyDeviationTestBeans.class,
-        TransactionTemplateConfig.class,
+        TransactionTemplateConfig.class, PgTestData.class,
         com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
 @EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class})
 @EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class})
@@ -96,13 +88,13 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
     private static final String PUBLISHED_DEFINITION = "Publikovaná definice";
 
     @Autowired private ConceptMetadataRepository conceptMetadataRepository;
-    @Autowired private OntologyMetadataRepository ontologyMetadataRepository;
-    @Autowired private OutboxEntryRepository outboxRepository;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private ConceptServiceImpl service;
     @Autowired private InMemoryTdb2 tdb2;
     @Autowired private OntologyDetailExtractor detailExtractor;
-    @Autowired private NkdSparqlClient nkdSparqlClient;
+    /** The NKD twin; Spring resets it after every test. */
+    @MockitoBean private NkdSparqlClient nkdSparqlClient;
+    @Autowired private PgTestData data;
     @Autowired private CacheManager cacheManager;
 
     private ConceptController controller;
@@ -116,21 +108,7 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
 
     @BeforeEach
     void setUp() {
-        txTemplate.executeWithoutResult(tx -> {
-            outboxRepository.deleteAll();
-            conceptMetadataRepository.deleteAll();
-            ontologyMetadataRepository.deleteAll();
-        });
-        // Own transaction: Hibernate flushes inserts before deletes, so the slug would collide.
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity ont = new OntologyMetadataEntity();
-            ont.setSlug("g-ontology");
-            ont.setGraphName(GRAPH);
-            ont.setUserId(USER);
-            ont.setIsPublished(false);
-            ont.setCreatedAt(LocalDateTime.now());
-            ontologyMetadataRepository.save(ont);
-        });
+        data.createOntology("g-ontology", GRAPH, USER, false);
         tdb2.reset();
         cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
         controller = new ConceptController(service, mock(NkdSnapshotEndpointService.class));
@@ -257,7 +235,6 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
             return new OutboxRelay(r, t, c);
         }
         @Bean OutboxRelayTrigger outboxRelayTrigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
-        @Bean NkdSparqlClient nkdSparqlClient() { return mock(NkdSparqlClient.class); }
         @Bean OntologyDetailExtractor ontologyDetailExtractor(ConceptMetadataRepository c) {
             return new OntologyDetailExtractor(c);
         }
@@ -268,23 +245,21 @@ class WorkingCopySyncReadAfterCommitIntegrationTest extends PostgresIntegrationT
                 NkdSparqlClient nkdSparqlClient, OutboxWriter writer, OutboxEntryRepository outboxRepository,
                 OutboxRelayTrigger trigger, MetadataTouchService touchService,
                 WorkingCopyDeviationServiceImpl deviationService) {
-            return ConceptServiceWiring.build(
-                    conceptRepo, ontologyRepo, touchService, mapper,
-                    new ConceptCreator(), new ConceptEditor(), tdb2,
-                    detailExtractor,
-                    mock(CommentRepository.class),
-                    nkdSparqlClient,
-                    new ConceptDeviationComparator(),
-                    mock(RppSnapshotHolder.class),
-                    mock(NkodCodelistService.class),
-                    mock(ReferencedConceptsEnricher.class),
-                    writer, outboxRepository, trigger,
-                    mock(NkdSnapshotService.class),
-                    new NkdLinkDetector(),
-                    new WorkingCopySyncFields(),
-                    mock(NkdSnapshotWarmer.class),
-                    new NkdConfig(),
-                    deviationService);
+            return new ConceptServiceFixture()
+                    .conceptMetadataRepository(conceptRepo)
+                    .ontologyMetadataRepository(ontologyRepo)
+                    .metadataTouchService(touchService)
+                    .conceptMetadataMapper(mapper)
+                    .conceptCreator(new ConceptCreator())
+                    .conceptEditor(new ConceptEditor())
+                    .jenaTDB2Repository(tdb2)
+                    .detailExtractor(detailExtractor)
+                    .nkdSparqlClient(nkdSparqlClient)
+                    .outboxWriter(writer)
+                    .outboxRepository(outboxRepository)
+                    .outboxRelayTrigger(trigger)
+                    .workingCopyDeviationService(deviationService)
+                    .build();
         }
     }
 }

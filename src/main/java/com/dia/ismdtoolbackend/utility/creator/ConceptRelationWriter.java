@@ -139,9 +139,7 @@ final class ConceptRelationWriter {
                         ontModel.createResource("http://www.w3.org/2001/XMLSchema#" + localName));
                 return;
             }
-        }
-
-        if (DataTypeConverter.isUri(trimmedDataType)) {
+        } else if (DataTypeConverter.isUri(trimmedDataType)) {
             propertyResource.addProperty(RDFS.range, ontModel.createResource(trimmedDataType));
             return;
         }

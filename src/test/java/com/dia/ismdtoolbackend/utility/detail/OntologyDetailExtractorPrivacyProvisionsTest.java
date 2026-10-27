@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * The privacy provisions a concept is created with must be readable both from the stored graph
@@ -53,7 +53,7 @@ class OntologyDetailExtractorPrivacyProvisionsTest {
 
         OntologyDetailModel detail = extractor.extractOntologyDetail(graph, iri -> null);
 
-        assertEquals(List.of(ELI), detail.getConcepts().get(0).getPrivacyProvisions());
+        assertThat(detail.getConcepts().get(0).getPrivacyProvisions()).isEqualTo(List.of(ELI));
     }
 
     @Test
@@ -63,6 +63,6 @@ class OntologyDetailExtractorPrivacyProvisionsTest {
         OntologyDetailModel detail = extractor.extractOntologyDetail(
                 extractor.applyOFNTransformations(graph), iri -> null);
 
-        assertEquals(List.of(ELI), detail.getConcepts().get(0).getPrivacyProvisions());
+        assertThat(detail.getConcepts().get(0).getPrivacyProvisions()).isEqualTo(List.of(ELI));
     }
 }

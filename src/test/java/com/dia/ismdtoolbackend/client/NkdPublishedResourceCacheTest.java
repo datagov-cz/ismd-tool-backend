@@ -1,31 +1,26 @@
 package com.dia.ismdtoolbackend.client;
 
-import com.dia.ismdtoolbackend.config.CacheConfig;
 import com.dia.ismdtoolbackend.config.ExternalSparqlConfig;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheSliceTest;
+import com.dia.ismdtoolbackend.testsupport.cache.CacheTestSupport;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.mockito.ArgumentMatchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.cache.CacheManager;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import java.util.Objects;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,8 +33,7 @@ import static org.mockito.Mockito.when;
  * <p>The shared {@link HttpSparqlExecutor} bean is a mock, so the test exercises both proxies and
  * the cache without any HTTP.
  */
-@SpringBootTest(classes = {CacheConfig.class, NkdSparqlClient.class, NkdPublishedResourceFetcher.class})
-@Import(NkdPublishedResourceCacheTest.TestBeans.class)
+@CacheSliceTest({NkdSparqlClient.class, NkdPublishedResourceFetcher.class})
 class NkdPublishedResourceCacheTest {
 
     private static final String CONCEPT_IRI = "https://slovnik.gov.cz/datovy/osoby/pojem/osoba";
@@ -51,14 +45,20 @@ class NkdPublishedResourceCacheTest {
     @Autowired
     private CacheManager cacheManager;
 
-    @Autowired
+    @MockitoBean(name = ExternalSparqlConfig.NKD_SPARQL_EXECUTOR)
     private HttpSparqlExecutor executorMock;
+
+    /** Passes the model through; the tests count SPARQL calls, not what the extractor builds. */
+    @MockitoBean
+    private OntologyDetailExtractor ontologyDetailExtractor;
 
     @BeforeEach
     void setUp() {
-        Objects.requireNonNull(cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE)).clear();
-        reset(executorMock);
+        CacheTestSupport.clearAll(cacheManager);
         when(executorMock.isConfigured()).thenReturn(true);
+        when(ontologyDetailExtractor.applyOFNTransformationsForNkd(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(ontologyDetailExtractor.extractConceptDetail(any(), anyString(), any()))
+                .thenReturn(OntologyDetailModel.ConceptDetailModel.builder().iri(CONCEPT_IRI).build());
     }
 
     @Test
@@ -121,8 +121,8 @@ class NkdPublishedResourceCacheTest {
         Optional<OntologyDetailModel.ConceptDetailModel> first = client.fetchPublishedConcept(CONCEPT_IRI);
         Optional<OntologyDetailModel.ConceptDetailModel> second = client.fetchPublishedConcept(CONCEPT_IRI);
 
-        assertTrue(first.isPresent());
-        assertTrue(second.isPresent());
+        assertThat(first).isPresent();
+        assertThat(second).isPresent();
         // One network construct despite two calls — the second served from cache.
         verify(executorMock, times(1)).construct(anyString(), eq(buildExpectedQuery()));
     }
@@ -134,8 +134,8 @@ class NkdPublishedResourceCacheTest {
         Optional<OntologyDetailModel.ConceptDetailModel> first = client.fetchPublishedConcept(CONCEPT_IRI);
         Optional<OntologyDetailModel.ConceptDetailModel> second = client.fetchPublishedConcept(CONCEPT_IRI);
 
-        assertTrue(first.isEmpty());
-        assertTrue(second.isEmpty());
+        assertThat(first).isEmpty();
+        assertThat(second).isEmpty();
         // Optional.empty() ("not in NKD") is cached too — no second probe for a known-absent IRI.
         verify(executorMock, times(1)).construct(anyString(), anyString());
     }
@@ -146,47 +146,20 @@ class NkdPublishedResourceCacheTest {
                 .thenThrow(new RuntimeException("NKD down"))
                 .thenReturn(Optional.empty());
 
-        try {
-            client.fetchPublishedConcept(CONCEPT_IRI);
-        } catch (RuntimeException ignored) {
-            // expected on the first call
-        }
+        assertThat(catchThrowable(() -> client.fetchPublishedConcept(CONCEPT_IRI))).hasMessage("NKD down");
         // Second call must re-invoke the executor — a thrown failure is never cached.
         Optional<OntologyDetailModel.ConceptDetailModel> second = client.fetchPublishedConcept(CONCEPT_IRI);
 
-        assertTrue(second.isEmpty());
+        assertThat(second).isEmpty();
         verify(executorMock, times(2)).construct(anyString(), anyString());
     }
 
     @Test
-    void cacheRegistered_withExpectedName() {
-        assertNotNull(cacheManager.getCache(NkdSparqlClient.PUBLISHED_RESOURCE_CACHE),
-                "nkdPublishedResource cache must be registered");
+    void cacheRegistered_withTtlAndBound() {
+        CacheTestSupport.assertBoundedWithTtl(cacheManager, NkdSparqlClient.PUBLISHED_RESOURCE_CACHE);
     }
 
     private static String buildExpectedQuery() {
         return com.dia.ismdtoolbackend.query.NKDSPARQLConstructQuery.buildConstructQuery(CONCEPT_IRI);
-    }
-
-    @TestConfiguration
-    static class TestBeans {
-        @Bean(ExternalSparqlConfig.NKD_SPARQL_EXECUTOR)
-        HttpSparqlExecutor nkdSparqlExecutor() {
-            return mock(HttpSparqlExecutor.class);
-        }
-
-        @Bean
-        OntologyDetailExtractor ontologyDetailExtractor() {
-            // Mocked: the cache test only cares that the SPARQL executor is hit once, not what
-            // the extractor produces. A real extractor would drag in ConceptMetadataRepository
-            // and run the OFN transform — irrelevant here.
-            OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
-            when(extractor.applyOFNTransformationsForNkd(ArgumentMatchers.any()))
-                    .thenAnswer(inv -> inv.getArgument(0));
-            when(extractor.extractConceptDetail(ArgumentMatchers.any(), anyString(),
-                    ArgumentMatchers.any()))
-                    .thenReturn(mock(OntologyDetailModel.ConceptDetailModel.class));
-            return extractor;
-        }
     }
 }

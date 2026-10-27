@@ -72,7 +72,7 @@ class IsmdConceptSearch {
         List<SearchResultDto> merged = mergeByIri(raw.pg(), raw.fuseki());
         backfillPgIdsForFusekiOnlyRows(merged);
         enrichPgOnlyLabels(merged, raw.fusekiIris(), lang, fusekiDegraded);
-        return applyRelationTypeFilter(merged, relationTypes);
+        return applyRelationTypeFilter(merged, relationTypes, fusekiDegraded);
     }
 
     Integer countConceptMatches(String query, Boolean publishedFilter,
@@ -269,10 +269,12 @@ class IsmdConceptSearch {
     /**
      * Optional Fuseki-side post-filter by relation type (subClassOf, exactMatch,
      * etc.). Failure is non-fatal: returns the unfiltered list rather than
-     * blanking the page.
+     * blanking the page, and flips {@code fusekiDegraded} so the response
+     * carries {@link SearchSourceStatus#DEGRADED}.
      */
     List<SearchResultDto> applyRelationTypeFilter(List<SearchResultDto> mergedResults,
-                                                           List<RelationType> relationTypes) {
+                                                           List<RelationType> relationTypes,
+                                                           AtomicBoolean fusekiDegraded) {
         if (relationTypes == null || relationTypes.isEmpty() || mergedResults.isEmpty()) {
             return mergedResults;
         }
@@ -294,6 +296,7 @@ class IsmdConceptSearch {
             return filtered;
         } catch (Exception e) {
             log.warn("Fuseki relation type filtering failed, returning unfiltered results: {}", e.getMessage());
+            fusekiDegraded.set(true);
             return mergedResults;
         }
     }

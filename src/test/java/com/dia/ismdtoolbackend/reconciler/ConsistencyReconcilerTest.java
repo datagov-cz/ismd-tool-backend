@@ -9,20 +9,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class ConsistencyReconcilerTest {
 
     private static final String GRAPH = "https://slovník.gov.cz/g";
@@ -71,10 +75,6 @@ class ConsistencyReconcilerTest {
         return m;
     }
 
-    private long count(ReconciliationReport r, MismatchCategory c) {
-        return r.mismatches().stream().filter(m -> m.category() == c).count();
-    }
-
     @Test
     void cleanState_noMismatches() {
         when(jenaTDB2Repository.listNamedGraphs()).thenReturn(List.of(GRAPH));
@@ -84,9 +84,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(0, r.totalMismatches(), "Matching PG + TDB2 yields no findings");
-        assertEquals(1, r.ownedRdfConceptsScanned());
-        assertEquals(1, r.pgConceptsScanned());
+        assertThat(r.totalMismatches()).as("Matching PG + TDB2 yields no findings").isEqualTo(0);
+        assertThat(r.ownedRdfConceptsScanned()).isEqualTo(1);
+        assertThat(r.pgConceptsScanned()).isEqualTo(1);
     }
 
     @Test
@@ -98,8 +98,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.RDF_ORPHAN));
-        assertEquals(iri, r.mismatches().get(0).conceptIri());
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.RDF_ORPHAN, iri));
     }
 
     @Test
@@ -111,7 +112,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.PG_MISSING_RDF));
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.PG_MISSING_RDF, iri));
     }
 
     @Test
@@ -125,7 +128,7 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(0, r.totalMismatches(), "A draft with both stores in sync is clean");
+        assertThat(r.totalMismatches()).as("A draft with both stores in sync is clean").isEqualTo(0);
     }
 
     @Test
@@ -140,8 +143,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(0, r.totalMismatches(),
-                "A referenced NKD concept (not in the owned set) produces no RDF_ORPHAN");
+        assertThat(r.totalMismatches())
+                .as("A referenced NKD concept (not in the owned set) produces no RDF_ORPHAN")
+                .isEqualTo(0);
     }
 
     @Test
@@ -153,7 +157,9 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.GRAPH_ORPHAN));
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::graphName)
+                .containsExactly(tuple(MismatchCategory.GRAPH_ORPHAN, GRAPH));
     }
 
     @Test
@@ -167,8 +173,10 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.IRI_GRAPH_MISMATCH));
-        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF), "Found elsewhere ≠ missing");
+        // Found elsewhere ≠ missing: the mismatch is the only finding.
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.IRI_GRAPH_MISMATCH, iri));
     }
 
     @Test
@@ -185,13 +193,11 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.SUSPECTED_RENAME));
-        assertEquals(0, count(r, MismatchCategory.RDF_ORPHAN), "Paired orphan must not also be RDF_ORPHAN");
-        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF), "Paired old IRI must not also be PG_MISSING_RDF");
-        Mismatch rename = r.mismatches().stream()
-                .filter(m -> m.category() == MismatchCategory.SUSPECTED_RENAME).findFirst().orElseThrow();
-        assertEquals(newIri, rename.conceptIri(), "conceptIri = new (TDB2) IRI");
-        assertEquals(oldIri, rename.relatedIri(), "relatedIri = old (PG) IRI");
+        // One finding: conceptIri = new (TDB2) IRI, relatedIri = old (PG) IRI. The paired
+        // orphan and missing row are not reported on their own.
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri, Mismatch::relatedIri)
+                .containsExactly(tuple(MismatchCategory.SUSPECTED_RENAME, newIri, oldIri));
     }
 
     @Test
@@ -206,31 +212,54 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(0, count(r, MismatchCategory.SUSPECTED_RENAME));
-        assertEquals(1, count(r, MismatchCategory.RDF_ORPHAN));
-        assertEquals(1, count(r, MismatchCategory.PG_MISSING_RDF));
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactlyInAnyOrder(
+                        tuple(MismatchCategory.RDF_ORPHAN, newIri),
+                        tuple(MismatchCategory.PG_MISSING_RDF, oldIri));
     }
 
     @Test
     void reentrancyGuard_secondConcurrentRunReturnsNull() throws Exception {
         // Hold the run inside listNamedGraphs while a second thread tries to reconcile.
-        java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1);
-        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        CountDownLatch inside = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
         when(jenaTDB2Repository.listNamedGraphs()).thenAnswer(inv -> {
             inside.countDown();
-            release.await();
+            release.await(10, TimeUnit.SECONDS);
             return List.of();
         });
 
-        Thread first = new Thread(() -> reconciler.reconcile("FIRST"));
-        first.start();
-        assertTrue(inside.await(2, java.util.concurrent.TimeUnit.SECONDS), "first run should start");
+        ExecutorService firstRunner = Executors.newSingleThreadExecutor();
+        try {
+            Future<ReconciliationReport> first =
+                    firstRunner.submit(() -> reconciler.reconcile("FIRST"));
+            assertThat(inside.await(5, TimeUnit.SECONDS)).as("first run should start").isTrue();
+
+            ReconciliationReport second = reconciler.reconcile("SECOND");
+            assertThat(second).as("A run already in progress must return null").isNull();
+
+            release.countDown();
+            first.get(5, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+            firstRunner.shutdownNow();
+        }
+    }
+
+    @Test
+    void failedRun_releasesGuard_nextRunCompletes() {
+        when(jenaTDB2Repository.listNamedGraphs())
+                .thenThrow(new IllegalStateException("Fuseki down"))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> reconciler.reconcile("FIRST"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Fuseki down");
 
         ReconciliationReport second = reconciler.reconcile("SECOND");
-        assertNull(second, "A run already in progress must return null");
-
-        release.countDown();
-        first.join(2000);
+        assertThat(second).isNotNull();
+        assertThat(second.triggeredBy()).isEqualTo("SECOND");
     }
 
     @Test
@@ -248,7 +277,7 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(0, r.totalMismatches(), "Owned in declared graph (plus another) is not a mismatch");
+        assertThat(r.totalMismatches()).as("Owned in declared graph (plus another) is not a mismatch").isEqualTo(0);
     }
 
     @Test
@@ -262,16 +291,17 @@ class ConsistencyReconcilerTest {
 
         ReconciliationReport r = reconciler.reconcile("TEST");
 
-        assertEquals(1, count(r, MismatchCategory.IRI_GRAPH_MISMATCH),
-                "Null graphName with a resolvable IRI is a data-quality finding");
-        assertEquals(0, count(r, MismatchCategory.PG_MISSING_RDF));
+        // Null graphName with a resolvable IRI is a data-quality finding.
+        assertThat(r.mismatches())
+                .extracting(Mismatch::category, Mismatch::conceptIri)
+                .containsExactly(tuple(MismatchCategory.IRI_GRAPH_MISMATCH, iri));
     }
 
     @Test
     void report_countsByCategory_includesAllCategoriesWithZeros() {
         ReconciliationReport r = reconciler.reconcile("TEST");
         Map<MismatchCategory, Integer> counts = r.countsByCategory();
-        assertEquals(MismatchCategory.values().length, counts.size());
-        assertTrue(counts.values().stream().allMatch(v -> v == 0));
+        assertThat(counts).hasSize(MismatchCategory.values().length);
+        assertThat(counts.values().stream().allMatch(v -> v == 0)).isTrue();
     }
 }

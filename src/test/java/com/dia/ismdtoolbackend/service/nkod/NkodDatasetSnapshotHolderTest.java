@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.config.NkodConfig;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetRow;
 import com.dia.ismdtoolbackend.models.nkod.NkodDatasetSnapshot;
+import com.dia.ismdtoolbackend.testsupport.time.MutableClock;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -103,14 +105,14 @@ class NkodDatasetSnapshotHolderTest {
         when(client.isEndpointConfigured()).thenReturn(true);
         when(client.harvestDatasets()).thenReturn(List.of(row("urn:a", "Alfa")));
 
-        MutableClock clock = new MutableClock(Instant.parse("2026-09-15T10:00:00Z"));
+        MutableClock clock = MutableClock.of("2026-09-15T10:00:00Z");
         NkodDatasetSnapshotHolder holder = holder(clock);
         holder.warmOnStartup();
         assertThat(holder.peek().size()).isEqualTo(1);
 
         when(client.harvestDatasets())
                 .thenThrow(new SparqlEndpointUnavailableException("NKOD", "down"));
-        clock.advanceHours(config.getSnapshot().getTtlHours() + 1);
+        clock.advance(Duration.ofHours(config.getSnapshot().getTtlHours() + 1));
 
         NkodDatasetSnapshot served = holder.get();
 
@@ -148,43 +150,15 @@ class NkodDatasetSnapshotHolderTest {
         when(client.isEndpointConfigured()).thenReturn(true);
         when(client.harvestDatasets()).thenReturn(List.of(row("urn:a", "Alfa")));
 
-        MutableClock clock = new MutableClock(Instant.parse("2026-09-15T10:00:00Z"));
+        MutableClock clock = MutableClock.of("2026-09-15T10:00:00Z");
         NkodDatasetSnapshotHolder holder = holder(clock);
         holder.warmOnStartup();
 
-        clock.advanceHours(config.getSnapshot().getTtlHours() + 1);
+        clock.advance(Duration.ofHours(config.getSnapshot().getTtlHours() + 1));
         when(client.harvestDatasets())
                 .thenReturn(List.of(row("urn:a", "Alfa"), row("urn:b", "Beta")));
 
         assertThat(holder.get().size()).isEqualTo(2);
         verify(client, times(2)).harvestDatasets();
-    }
-
-    /** Test clock that can be moved past the TTL. */
-    private static final class MutableClock extends Clock {
-        private Instant now;
-
-        private MutableClock(Instant now) {
-            this.now = now;
-        }
-
-        void advanceHours(long hours) {
-            now = now.plusSeconds(hours * 3600);
-        }
-
-        @Override
-        public java.time.ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(java.time.ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return now;
-        }
     }
 }

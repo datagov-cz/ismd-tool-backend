@@ -11,7 +11,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Hierarchical Relationships")
 class ConceptHierarchyTest {
@@ -34,10 +34,10 @@ class ConceptHierarchyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, child.getURI());
 
-        assertTrue(result.containsKey(NADRAZENA_TRIDA));
+        assertThat(result).containsKey(NADRAZENA_TRIDA);
         @SuppressWarnings("unchecked")
         List<String> parents = (List<String>) result.get(NADRAZENA_TRIDA);
-        assertTrue(parents.contains(parent.getURI()));
+        assertThat(parents).contains(parent.getURI());
     }
 
     @Test
@@ -55,7 +55,7 @@ class ConceptHierarchyTest {
 
         @SuppressWarnings("unchecked")
         List<String> parents = (List<String>) result.get(NADRAZENA_TRIDA);
-        assertEquals(2, parents.size());
+        assertThat(parents).hasSize(2);
     }
 
     @Test
@@ -69,10 +69,10 @@ class ConceptHierarchyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, childRelation.getURI());
 
-        assertTrue(result.containsKey(NADRAZENY_VZTAH));
+        assertThat(result).containsKey(NADRAZENY_VZTAH);
         @SuppressWarnings("unchecked")
         List<String> superProps = (List<String>) result.get(NADRAZENY_VZTAH);
-        assertTrue(superProps.contains(parentRelation.getURI()));
+        assertThat(superProps).contains(parentRelation.getURI());
     }
 
     @Test
@@ -86,10 +86,10 @@ class ConceptHierarchyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, childProp.getURI());
 
-        assertTrue(result.containsKey(NADRAZENA_VLASTNOST));
+        assertThat(result).containsKey(NADRAZENA_VLASTNOST);
         @SuppressWarnings("unchecked")
         List<String> superProps = (List<String>) result.get(NADRAZENA_VLASTNOST);
-        assertTrue(superProps.contains(parentProp.getURI()));
+        assertThat(superProps).contains(parentProp.getURI());
     }
 
     @Test
@@ -103,10 +103,10 @@ class ConceptHierarchyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, narrower.getURI());
 
-        assertTrue(result.containsKey("nadřazený-pojem"));
+        assertThat(result).containsKey("nadřazený-pojem");
         @SuppressWarnings("unchecked")
         List<String> broaderList = (List<String>) result.get("nadřazený-pojem");
-        assertTrue(broaderList.contains(broader.getURI()));
+        assertThat(broaderList).contains(broader.getURI());
     }
 
     @Test
@@ -118,10 +118,10 @@ class ConceptHierarchyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(NADRAZENA_TRIDA));
-        assertFalse(result.containsKey(NADRAZENY_VZTAH));
-        assertFalse(result.containsKey(NADRAZENA_VLASTNOST));
-        assertFalse(result.containsKey("nadřazený-pojem"));
+        assertThat(result).doesNotContainKey(NADRAZENA_TRIDA);
+        assertThat(result).doesNotContainKey(NADRAZENY_VZTAH);
+        assertThat(result).doesNotContainKey(NADRAZENA_VLASTNOST);
+        assertThat(result).doesNotContainKey("nadřazený-pojem");
     }
 
     @Test
@@ -136,7 +136,7 @@ class ConceptHierarchyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, child.getURI());
 
-        assertFalse(result.containsKey(NADRAZENY_VZTAH));
-        assertFalse(result.containsKey(NADRAZENA_VLASTNOST));
+        assertThat(result).doesNotContainKey(NADRAZENY_VZTAH);
+        assertThat(result).doesNotContainKey(NADRAZENA_VLASTNOST);
     }
 }

@@ -12,14 +12,18 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -100,6 +104,71 @@ class OntologyLabelLookupTest {
         assertThat(lookup.labelsByGraph(List.of())).isEmpty();
         assertThat(lookup.labelsByGraph(null)).isEmpty();
         verify(jenaTDB2Repository, never()).fetchMetadataProperties(any(List.class));
+    }
+
+    @Test
+    @DisplayName("Null and empty graph names are dropped; none left means no query")
+    void blankGraphNamesDropped() {
+        when(jenaTDB2Repository.fetchMetadataProperties(anyList()))
+                .thenReturn(modelWithLabels(GRAPH_A, Map.of("cs", "Pracovní poměr")));
+
+        assertThat(lookup.labelsByGraph(Arrays.asList(null, "", GRAPH_A))).containsOnlyKeys(GRAPH_A);
+        verify(jenaTDB2Repository).fetchMetadataProperties(List.of(GRAPH_A));
+
+        assertThat(lookup.labelsByGraph(Arrays.asList(null, ""))).isEmpty();
+        verifyNoMoreInteractions(jenaTDB2Repository);
+    }
+
+    @Test
+    @DisplayName("A null metadata model yields an empty map")
+    void nullMetadataModel() {
+        when(jenaTDB2Repository.fetchMetadataProperties(anyList())).thenReturn(null);
+
+        assertThat(lookup.labelsByGraph(List.of(GRAPH_A))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Untagged label keys under the default language; first per language wins; IRI and blank values skipped")
+    void labelValueRules() {
+        Model model = ModelFactory.createDefaultModel();
+        Resource ontology = model.createResource(GRAPH_A);
+        ontology.addProperty(SKOS.prefLabel, model.createResource(GRAPH_B));
+        ontology.addProperty(SKOS.prefLabel, model.createLiteral("   ", "en"));
+        ontology.addProperty(SKOS.prefLabel, model.createLiteral("Employment", "en"));
+        ontology.addProperty(SKOS.prefLabel, "Pracovní poměr");
+        when(jenaTDB2Repository.fetchMetadataProperties(anyList())).thenReturn(model);
+
+        Map<String, String> labels = lookup.labelsByGraph(List.of(GRAPH_A)).get(GRAPH_A);
+
+        assertThat(labels).containsOnly(
+                Map.entry("en", "Employment"), Map.entry(DEFAULT_LANG, "Pracovní poměr"));
+    }
+
+    @Test
+    @DisplayName("A graph whose only labels are skipped values is absent")
+    void onlySkippedLabelsMeansAbsent() {
+        Model model = ModelFactory.createDefaultModel();
+        model.createResource(GRAPH_A).addProperty(SKOS.prefLabel, "");
+        when(jenaTDB2Repository.fetchMetadataProperties(anyList())).thenReturn(model);
+
+        assertThat(lookup.labelsByGraph(List.of(GRAPH_A))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("labelFor returns the language map of one graph")
+    void labelForReturnsMap() {
+        when(jenaTDB2Repository.fetchMetadataProperties(List.of(GRAPH_A)))
+                .thenReturn(modelWithLabels(GRAPH_A, Map.of("cs", "Pracovní poměr")));
+
+        assertThat(lookup.labelFor(GRAPH_A)).containsOnly(Map.entry("cs", "Pracovní poměr"));
+    }
+
+    @Test
+    @DisplayName("labelFor with a null or empty graph returns null without a query")
+    void labelForBlankGraph() {
+        assertThat(lookup.labelFor(null)).isNull();
+        assertThat(lookup.labelFor("")).isNull();
+        verifyNoInteractions(jenaTDB2Repository);
     }
 
     @Test

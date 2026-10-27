@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedLegalSourceDto.EnrichmentStatus;
 import com.dia.ismdtoolbackend.exception.SparqlEndpointUnavailableException;
@@ -13,10 +13,9 @@ import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.LAW_361_2000;
+import static com.dia.ismdtoolbackend.testsupport.fixtures.EsbirkaFixtures.legacyLawIri;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -26,21 +25,20 @@ import static org.mockito.Mockito.when;
 
 class EsbirkaServiceImplResolveTest {
 
-    private static final String LAW_URL =
-            "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361";
+    private static final String LAW_URL = LAW_361_2000;
     private static final String VERSION_URL = LAW_URL + "/2024-04-01";
     private static final String FRAGMENT_URL = VERSION_URL + "/dokument/norma/cast_1/hlava_1/par_2/pism_d";
     private static final String LEGACY_FRAGMENT_URL =
-            "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2000/361/2024-04-01/dokument/norma/par_2/pism_d";
+            legacyLawIri("361", 2000) + "/2024-04-01/dokument/norma/par_2/pism_d";
 
-    private EsbirkaSparqlClient client;
+    private EsbirkaClient client;
     private EsbirkaFragmentResolutionCache cache;
     private EsbirkaSubtreeBodyCache subtreeBodyCache;
     private EsbirkaServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        client = mock(EsbirkaSparqlClient.class);
+        client = mock(EsbirkaClient.class);
         cache = mock(EsbirkaFragmentResolutionCache.class);
         subtreeBodyCache = mock(EsbirkaSubtreeBodyCache.class);
         // Working baseline: the version resolves, it simply holds no subtree for this fragment.
@@ -54,11 +52,11 @@ class EsbirkaServiceImplResolveTest {
     void resolveLegalSource_lawUrl_returnsSkippedNonFragment() {
         ResolvedLegalSourceDto dto = service.resolveLegalSource(LAW_URL);
 
-        assertEquals(EnrichmentStatus.SKIPPED_NON_FRAGMENT, dto.getEnrichmentStatus());
-        assertEquals(ParsedEli.Level.LAW, dto.getLevel());
-        assertEquals("361", dto.getLawNumber());
-        assertEquals(2000, dto.getLawYear());
-        assertTrue(dto.getDisplayLabel().startsWith("Zákon č. 361/2000 Sb."));
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.SKIPPED_NON_FRAGMENT);
+        assertThat(dto.getLevel()).isEqualTo(ParsedEli.Level.LAW);
+        assertThat(dto.getLawNumber()).isEqualTo("361");
+        assertThat(dto.getLawYear()).isEqualTo(2000);
+        assertThat(dto.getDisplayLabel()).startsWith("Zákon č. 361/2000 Sb.");
         verify(cache, never()).fetch(any(), any(), any());
     }
 
@@ -66,10 +64,10 @@ class EsbirkaServiceImplResolveTest {
     void resolveLegalSource_versionUrl_returnsSkippedNonFragment() {
         ResolvedLegalSourceDto dto = service.resolveLegalSource(VERSION_URL);
 
-        assertEquals(EnrichmentStatus.SKIPPED_NON_FRAGMENT, dto.getEnrichmentStatus());
-        assertEquals(ParsedEli.Level.VERSION, dto.getLevel());
-        assertEquals(LocalDate.of(2024, 4, 1), dto.getVersionDate());
-        assertTrue(dto.getDisplayLabel().contains("(znění od 1. 4. 2024)"));
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.SKIPPED_NON_FRAGMENT);
+        assertThat(dto.getLevel()).isEqualTo(ParsedEli.Level.VERSION);
+        assertThat(dto.getVersionDate()).isEqualTo(LocalDate.of(2024, 4, 1));
+        assertThat(dto.getDisplayLabel()).contains("(znění od 1. 4. 2024)");
         verify(cache, never()).fetch(any(), any(), any());
     }
 
@@ -81,17 +79,20 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
 
-        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
-        assertEquals(ParsedEli.Level.FRAGMENT, dto.getLevel());
-        assertEquals("§ 2 písm. d)", dto.getFragmentCitation());
-        assertNull(dto.getFragmentBodyHtml(),
-                "structural fragments without obsah must surface as null bodyHtml (not blank, not error)");
-        assertNull(dto.getFragmentBody(),
-                "null bodyHtml must yield null fragmentBody (mirrors the nullable contract)");
-        assertEquals(LocalDate.of(2024, 12, 31), dto.getVersionValidUntil());
-        assertTrue(dto.getIsLatestVersion());
-        assertTrue(dto.getDisplayLabel().contains("§ 2 písm. d)"),
-                "displayLabel should use SPARQL citation when available: " + dto.getDisplayLabel());
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.OK);
+        assertThat(dto.getLevel()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(dto.getFragmentCitation()).isEqualTo("§ 2 písm. d)");
+        assertThat(dto.getFragmentBodyHtml())
+                .as("structural fragments without obsah must surface as null bodyHtml (not blank, not error)")
+                .isNull();
+        assertThat(dto.getFragmentBody())
+                .as("null bodyHtml must yield null fragmentBody (mirrors the nullable contract)")
+                .isNull();
+        assertThat(dto.getVersionValidUntil()).isEqualTo(LocalDate.of(2024, 12, 31));
+        assertThat(dto.getIsLatestVersion()).isTrue();
+        assertThat(dto.getDisplayLabel())
+                .as("displayLabel should use SPARQL citation when available: " + dto.getDisplayLabel())
+                .contains("§ 2 písm. d)");
     }
 
     @Test
@@ -103,11 +104,13 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
 
-        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
-        assertEquals(body, dto.getFragmentBodyHtml(),
-                "fragmentBodyHtml must be passed verbatim from SPARQL obsah (preserves <var>/<a> tags for FE rendering)");
-        assertEquals("1. Předání bude uskutečněno do čtyřiceti pěti (45) dnů.", dto.getFragmentBody(),
-                "fragmentBody is the same obsah with markup stripped to raw text");
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.OK);
+        assertThat(dto.getFragmentBodyHtml())
+                .as("fragmentBodyHtml must be passed verbatim from SPARQL obsah (preserves <var>/<a> tags for FE rendering)")
+                .isEqualTo(body);
+        assertThat(dto.getFragmentBody())
+                .as("fragmentBody is the same obsah with markup stripped to raw text")
+                .isEqualTo("1. Předání bude uskutečněno do čtyřiceti pěti (45) dnů.");
     }
 
     @Test
@@ -121,12 +124,14 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(containerUrl);
 
-        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus());
-        assertEquals(assembled, dto.getFragmentBodyHtml(),
-                "a container carrying no obsah must surface its descendants' assembled body");
-        assertEquals("Poznámka 1", dto.getFragmentBody(),
-                "fragmentBody is the assembled body with markup stripped");
-        assertTrue(dto.getDisplayLabel().contains("Poznámky pod čarou"));
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.OK);
+        assertThat(dto.getFragmentBodyHtml())
+                .as("a container carrying no obsah must surface its descendants' assembled body")
+                .isEqualTo(assembled);
+        assertThat(dto.getFragmentBody())
+                .as("fragmentBody is the assembled body with markup stripped")
+                .isEqualTo("Poznámka 1");
+        assertThat(dto.getDisplayLabel()).contains("Poznámky pod čarou");
     }
 
     @Test
@@ -136,7 +141,7 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
 
-        assertEquals("<p>vlastní text</p>", dto.getFragmentBodyHtml());
+        assertThat(dto.getFragmentBodyHtml()).isEqualTo("<p>vlastní text</p>");
         verify(subtreeBodyCache, never()).bodiesByFragmentIri(any());
     }
 
@@ -149,10 +154,11 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(VERSION_URL + "/dokument/poznamkypodcarou");
 
-        assertEquals(EnrichmentStatus.OK, dto.getEnrichmentStatus(),
-                "a failed body assembly must not downgrade an otherwise-resolved fragment");
-        assertNull(dto.getFragmentBodyHtml());
-        assertEquals("Poznámky pod čarou", dto.getFragmentCitation());
+        assertThat(dto.getEnrichmentStatus())
+                .as("a failed body assembly must not downgrade an otherwise-resolved fragment")
+                .isEqualTo(EnrichmentStatus.OK);
+        assertThat(dto.getFragmentBodyHtml()).isNull();
+        assertThat(dto.getFragmentCitation()).isEqualTo("Poznámky pod čarou");
     }
 
     @Test
@@ -161,11 +167,11 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
 
-        assertEquals(EnrichmentStatus.NOT_FOUND, dto.getEnrichmentStatus());
-        assertNull(dto.getFragmentCitation());
-        assertNull(dto.getVersionValidUntil());
-        assertNotNull(dto.getDisplayLabel(), "displayLabel must fall back to parse-only");
-        assertTrue(dto.getDisplayLabel().contains("§ 2"), "fallback citation should include § 2");
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.NOT_FOUND);
+        assertThat(dto.getFragmentCitation()).isNull();
+        assertThat(dto.getVersionValidUntil()).isNull();
+        assertThat(dto.getDisplayLabel()).as("displayLabel must fall back to parse-only").isNotNull();
+        assertThat(dto.getDisplayLabel()).as("fallback citation should include § 2").contains("§ 2");
     }
 
     @Test
@@ -175,30 +181,30 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(FRAGMENT_URL);
 
-        assertEquals(EnrichmentStatus.UNAVAILABLE, dto.getEnrichmentStatus());
-        assertNull(dto.getFragmentCitation());
-        assertNotNull(dto.getDisplayLabel());
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.UNAVAILABLE);
+        assertThat(dto.getFragmentCitation()).isNull();
+        assertThat(dto.getDisplayLabel()).isNotNull();
     }
 
     @Test
     void resolveLegalSource_invalidUrl_null_returnsInvalidIri() {
         ResolvedLegalSourceDto dto = service.resolveLegalSource(null);
-        assertEquals(EnrichmentStatus.INVALID_IRI, dto.getEnrichmentStatus());
-        assertNull(dto.getLevel());
-        assertNull(dto.getDisplayLabel());
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.INVALID_IRI);
+        assertThat(dto.getLevel()).isNull();
+        assertThat(dto.getDisplayLabel()).isNull();
         verify(cache, never()).fetch(any(), any(), any());
     }
 
     @Test
     void resolveLegalSource_invalidUrl_garbage_returnsInvalidIri() {
         ResolvedLegalSourceDto dto = service.resolveLegalSource("not-a-url");
-        assertEquals(EnrichmentStatus.INVALID_IRI, dto.getEnrichmentStatus());
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.INVALID_IRI);
     }
 
     @Test
     void resolveLegalSource_invalidUrl_foreignHost_returnsInvalidIri() {
         ResolvedLegalSourceDto dto = service.resolveLegalSource("https://example.com/eli/cz/sb/2000/361");
-        assertEquals(EnrichmentStatus.INVALID_IRI, dto.getEnrichmentStatus());
+        assertThat(dto.getEnrichmentStatus()).isEqualTo(EnrichmentStatus.INVALID_IRI);
     }
 
     @Test
@@ -208,12 +214,13 @@ class EsbirkaServiceImplResolveTest {
 
         ResolvedLegalSourceDto dto = service.resolveLegalSource(LEGACY_FRAGMENT_URL);
 
-        assertEquals(LEGACY_FRAGMENT_URL, dto.getOriginalUrl(),
-                "originalUrl preserved verbatim");
-        assertTrue(dto.getLawIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"),
-                "lawIri must use canonical host");
-        assertTrue(dto.getFragmentIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"),
-                "fragmentIri must use canonical host");
+        assertThat(dto.getOriginalUrl()).as("originalUrl preserved verbatim").isEqualTo(LEGACY_FRAGMENT_URL);
+        assertThat(dto.getLawIri())
+                .as("lawIri must use canonical host")
+                .startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
+        assertThat(dto.getFragmentIri())
+                .as("fragmentIri must use canonical host")
+                .startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
     }
 
 }

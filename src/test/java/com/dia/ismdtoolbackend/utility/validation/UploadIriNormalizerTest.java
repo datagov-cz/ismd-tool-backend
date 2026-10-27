@@ -12,10 +12,8 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class UploadIriNormalizerTest {
 
@@ -50,12 +48,12 @@ class UploadIriNormalizerTest {
 
         List<String> corrected = UploadIriNormalizer.normalize(model);
 
-        assertEquals(List.of(VOCABULARY + "/", CONCEPT + "/"), corrected);
-        assertTrue(isSubject(model, VOCABULARY));
-        assertFalse(isSubject(model, VOCABULARY + "/"));
-        assertTrue(has(model, CONCEPT, SKOS_IN_SCHEME, VOCABULARY));
-        assertTrue(has(model, VOCABULARY + "/pojem/student", RDFS_SUB_CLASS_OF, CONCEPT));
-        assertFalse(model.listStatements().toList().toString().contains(CONCEPT + "/"));
+        assertThat(corrected).isEqualTo(List.of(VOCABULARY + "/", CONCEPT + "/"));
+        assertThat(isSubject(model, VOCABULARY)).isTrue();
+        assertThat(isSubject(model, VOCABULARY + "/")).isFalse();
+        assertThat(has(model, CONCEPT, SKOS_IN_SCHEME, VOCABULARY)).isTrue();
+        assertThat(has(model, VOCABULARY + "/pojem/student", RDFS_SUB_CLASS_OF, CONCEPT)).isTrue();
+        assertThat(model.listStatements().toList().toString()).doesNotContain(CONCEPT + "/");
     }
 
     @Test
@@ -70,13 +68,16 @@ class UploadIriNormalizerTest {
 
         List<String> corrected = UploadIriNormalizer.normalize(model);
 
-        assertEquals(4, corrected.size());
-        assertTrue(has(model, CONCEPT, OFN + "definující-ustanovení", ELI));
-        assertTrue(has(model, CONCEPT, VOCABULARY + "/související-ustanovení", ELI));
-        assertTrue(has(model, CONCEPT, VOCABULARY + "/ustanovení-dokládající-neveřejnost-údaje", ELI));
-        assertTrue(has(model, CONCEPT, VOCABULARY + "/agenda", "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A104"));
-        assertTrue(has(model, CONCEPT, "http://www.w3.org/2004/02/skos/core#exactMatch", "https://example.org/pojem/osoba"));
-        assertTrue(has(model, CONCEPT, "http://www.w3.org/2000/01/rdf-schema#domain", "https://example.org/pojem/subjekt"));
+        assertThat(corrected).hasSize(4);
+        assertThat(has(model, CONCEPT, OFN + "definující-ustanovení", ELI)).isTrue();
+        assertThat(has(model, CONCEPT, VOCABULARY + "/související-ustanovení", ELI)).isTrue();
+        assertThat(has(model, CONCEPT, VOCABULARY + "/ustanovení-dokládající-neveřejnost-údaje", ELI)).isTrue();
+        assertThat(has(model, CONCEPT, VOCABULARY + "/agenda", "https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A104"))
+                .isTrue();
+        assertThat(has(model, CONCEPT, "http://www.w3.org/2004/02/skos/core#exactMatch", "https://example.org/pojem/osoba"))
+                .isTrue();
+        assertThat(has(model, CONCEPT, "http://www.w3.org/2000/01/rdf-schema#domain", "https://example.org/pojem/subjekt"))
+                .isTrue();
     }
 
     @Test
@@ -90,8 +91,8 @@ class UploadIriNormalizerTest {
         Model model = model(turtle);
         Model before = model(turtle);
 
-        assertTrue(UploadIriNormalizer.normalize(model).isEmpty());
-        assertTrue(model.isIsomorphicWith(before));
+        assertThat(UploadIriNormalizer.normalize(model)).isEmpty();
+        assertThat(model.isIsomorphicWith(before)).isTrue();
     }
 
     @Test
@@ -99,8 +100,8 @@ class UploadIriNormalizerTest {
         Model model = model("<" + CONCEPT + "/> a ofn:pojem, owl:Class ."
                 + " <" + VOCABULARY + "/pojem/student> a ofn:pojem ; rdfs:subClassOf <" + CONCEPT + "> .");
 
-        assertEquals(List.of(CONCEPT + "/"), UploadIriNormalizer.normalize(model));
-        assertTrue(isSubject(model, CONCEPT));
+        assertThat(UploadIriNormalizer.normalize(model)).isEqualTo(List.of(CONCEPT + "/"));
+        assertThat(isSubject(model, CONCEPT)).isTrue();
     }
 
     @Test
@@ -109,12 +110,13 @@ class UploadIriNormalizerTest {
                 + " <" + CONCEPT + "> a ofn:pojem ; skos:prefLabel \"B\"@cs .");
         long sizeBefore = model.size();
 
-        OntologyUploadIriCollisionException e = assertThrows(
-                OntologyUploadIriCollisionException.class, () -> UploadIriNormalizer.normalize(model));
+        OntologyUploadIriCollisionException e = assertThatExceptionOfType(OntologyUploadIriCollisionException.class)
+                .isThrownBy(() -> UploadIriNormalizer.normalize(model))
+                .actual();
 
-        assertTrue(e.getMessage().contains(CONCEPT + "/"));
-        assertEquals(sizeBefore, model.size());
-        assertTrue(isSubject(model, CONCEPT + "/"));
+        assertThat(e).hasMessageContaining(CONCEPT + "/");
+        assertThat(model.size()).isEqualTo(sizeBefore);
+        assertThat(isSubject(model, CONCEPT + "/")).isTrue();
     }
 
     private static final String OFN = "https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/";

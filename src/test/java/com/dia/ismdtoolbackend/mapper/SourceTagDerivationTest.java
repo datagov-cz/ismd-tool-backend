@@ -7,8 +7,7 @@ import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.concept.ConceptMetadataModel;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Phase B2: {@code sourceTag} is derived from {@code is_published} in the mappers, so every {@code toDto}
@@ -38,38 +37,38 @@ class SourceTagDerivationTest {
     void concept_published_isWorkingCopy() {
         ConceptMetadataModel model = conceptMapper.toDto(concept(true));
 
-        assertEquals(ConceptSourceTag.WORKING_COPY, model.getSourceTag());
-        assertEquals(true, model.getIsPublished(), "isPublished stays for back-compat");
+        assertThat(model.getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);
+        assertThat(model.getIsPublished()).as("isPublished stays for back-compat").isTrue();
     }
 
     @Test
     void concept_notPublished_isDraft() {
-        assertEquals(ConceptSourceTag.DRAFT, conceptMapper.toDto(concept(false)).getSourceTag());
+        assertThat(conceptMapper.toDto(concept(false)).getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
     }
 
     @Test
     void concept_nullPublished_tagOmitted() {
         // "not recorded" is not the same claim as "confirmed local" — NON_NULL omits it from the payload
         // rather than asserting DRAFT.
-        assertNull(conceptMapper.toDto(concept(null)).getSourceTag());
+        assertThat(conceptMapper.toDto(concept(null)).getSourceTag()).isNull();
     }
 
     @Test
     void ontology_published_isWorkingCopy() {
         OntologyMetadataModel model = ontologyMapper.toDto(ontology(true));
 
-        assertEquals(ConceptSourceTag.WORKING_COPY, model.getSourceTag());
-        assertEquals(true, model.getIsPublished());
+        assertThat(model.getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);
+        assertThat(model.getIsPublished()).isTrue();
     }
 
     @Test
     void ontology_notPublished_isDraft() {
-        assertEquals(ConceptSourceTag.DRAFT, ontologyMapper.toDto(ontology(false)).getSourceTag());
+        assertThat(ontologyMapper.toDto(ontology(false)).getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
     }
 
     @Test
     void ontology_nullPublished_tagOmitted() {
-        assertNull(ontologyMapper.toDto(ontology(null)).getSourceTag());
+        assertThat(ontologyMapper.toDto(ontology(null)).getSourceTag()).isNull();
     }
 
     @Test
@@ -79,7 +78,7 @@ class SourceTagDerivationTest {
         OntologyMetadataModel ontologyModel = ontologyMapper.toDto(ontology(true));
         ConceptMetadataModel severedConcept = conceptMapper.toDto(concept(false));
 
-        assertEquals(ConceptSourceTag.WORKING_COPY, ontologyModel.getSourceTag());
-        assertEquals(ConceptSourceTag.DRAFT, severedConcept.getSourceTag());
+        assertThat(ontologyModel.getSourceTag()).isEqualTo(ConceptSourceTag.WORKING_COPY);
+        assertThat(severedConcept.getSourceTag()).isEqualTo(ConceptSourceTag.DRAFT);
     }
 }

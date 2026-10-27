@@ -1,6 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.client.EsbirkaSparqlClient;
+import com.dia.ismdtoolbackend.client.EsbirkaClient;
 import com.dia.ismdtoolbackend.controller.dto.FragmentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawContentDto;
 import com.dia.ismdtoolbackend.controller.dto.LawVersionDto;
@@ -19,30 +19,21 @@ import java.util.List;
 
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaFragmentTree.FRAGMENT_ROW_WARN_THRESHOLD;
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaFragmentTree.assembleTree;
+import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.DEFAULT_SBIRKA;
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.ELI_MARKER;
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.NumberYear;
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.canonicalize;
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.parseNumberYear;
 import static com.dia.ismdtoolbackend.service.impl.EsbirkaLawReference.requireValidIri;
 
-/** Reads the fragment tree and the whole-version content of a law, cached per law and version. */
+/** Reads the whole-version content of a law, cached per law and version. */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 class EsbirkaLawContentReader {
 
-    private final EsbirkaSparqlClient client;
+    private final EsbirkaClient client;
     private final EsbirkaLawVersionsReader versionsReader;
-
-    public List<FragmentDto> getFragments(String versionIri) {
-        String iri = requireValidIri(versionIri, "Neplatný identifikátor znění právního aktu.");
-        List<FragmentModel> rows = client.fetchFragments(iri);
-        if (rows.size() > FRAGMENT_ROW_WARN_THRESHOLD) {
-            log.warn("Fragment tree for {} has {} rows (over {} threshold).",
-                    iri, rows.size(), FRAGMENT_ROW_WARN_THRESHOLD);
-        }
-        return assembleTree(rows, iri);
-    }
 
     /**
      * Whole-version content for a caller-chosen znění; null/blank {@code versionIri} renders
@@ -70,7 +61,7 @@ class EsbirkaLawContentReader {
         NumberYear ny = parseNumberYear(lawRef);
         String effectiveVersionIri = resolveContentVersionIri(lawRef, versionIri);
 
-        LawModel law = client.findLawByNumberYear(ny.number(), ny.year())
+        LawModel law = client.findLaw(ny.sbirka(), ny.number(), ny.year())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Právní akt č. " + ny.number() + "/" + ny.year() + " nebyl nalezen."));
 
@@ -179,12 +170,14 @@ class EsbirkaLawContentReader {
 
     /**
      * Cache-key normalization: trims and strips a trailing " Sb." so equivalent refs share a
-     * cache entry — an IRI and the číslo/rok it denotes collapse to the same key. Called
+     * cache entry — an IRI and the číslo/rok it denotes collapse to the same key. A collection
+     * other than Sb. prefixes the key, since a číslo/rok can exist in several collections. Called
      * reflectively by the {@code @Cacheable} SpEL key on {@link #getLawContent}, so it must
      * stay {@code public} despite having no Java caller.
      */
     public String normalizeLawRef(String lawRef) {
         NumberYear ny = parseNumberYear(lawRef);
-        return ny.number() + "/" + ny.year();
+        String numberYear = ny.number() + "/" + ny.year();
+        return DEFAULT_SBIRKA.equals(ny.sbirka()) ? numberYear : ny.sbirka() + ":" + numberYear;
     }
 }

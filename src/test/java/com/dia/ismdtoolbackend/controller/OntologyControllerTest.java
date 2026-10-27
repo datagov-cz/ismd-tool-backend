@@ -2,8 +2,6 @@ package com.dia.ismdtoolbackend.controller;
 
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.config.ValidationConfig;
-import com.dia.ismdtoolbackend.config.security.TestOntologySecurityService;
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.GetOntologyDto;
 import com.dia.ismdtoolbackend.controller.dto.OntologyCreateWithConceptsResponseDto;
@@ -12,6 +10,7 @@ import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.sample;
 import com.dia.ismdtoolbackend.controller.dto.OntologyIriCheckResponseDto;
 import com.dia.ismdtoolbackend.controller.dto.MinimalConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.MissingConceptDto;
+import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
 import com.dia.ismdtoolbackend.enums.SearchSource;
 import com.dia.ismdtoolbackend.exception.EmptyFileException;
@@ -25,6 +24,8 @@ import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import com.dia.ismdtoolbackend.service.OntologyService;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.service.ValidationService;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
+import com.dia.ismdtoolbackend.testsupport.web.StubOntologySecurityService;
 import com.dia.validation.ValidationReportDto;
 import com.dia.validation.ValidationResult;
 import com.dia.validation.ValidationSeverity;
@@ -34,15 +35,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.jena.riot.Lang;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -56,22 +52,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>
  * Uses @WebMvcTest to load only the web layer with Spring Security enabled.
  * Authentication is provided via @WithMockSecurityUser annotation.
- * Authorization checks (@PreAuthorize) are handled via TestOntologySecurityService.
+ * Authorization checks (@PreAuthorize) are answered by StubOntologySecurityService.
  * <p>
  * Note: @MockitoBean replaces Spring Boot's deprecated @MockBean in these MVC
  * slice tests.
  */
-@WebMvcTest(controllers = OntologyController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-    })
-@Import({TestSecurityConfig.class, TestOntologySecurityService.class, com.dia.ismdtoolbackend.config.GlobalExceptionHandler.class})
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = OntologyController.class)
 class OntologyControllerTest {
+
+    @Autowired
+    private StubOntologySecurityService ontologySecurity;
 
     @Autowired
     private MockMvc mockMvc;
@@ -101,12 +91,6 @@ class OntologyControllerTest {
     private com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer nkdSnapshotWarmer;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @BeforeEach
-    void setUp() {
-        // Reset security service to allow modifications by default
-        TestOntologySecurityService.reset();
-    }
 
     @Test
     @WithMockSecurityUser(userId = "user123")
@@ -202,7 +186,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -212,7 +195,29 @@ class OntologyControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data.graphName").value("file"))
                 .andExpect(jsonPath("$.data.user.userId").value(userId))
-                .andExpect(jsonPath("$.message").isString());
+                .andExpect(jsonPath("$.message").value("Slovník úspěšně nahrán: file"));
+
+        verify(nkdSnapshotWarmer).warmGraphNow("file");
+    }
+
+    /** The upload is committed before the warm-up, so a warmer failure must not fail the request. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testUploadFromFile_warmerFailure_stillReturnsOk() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.ttl", "text/turtle",
+                "<http://example.org/test> a <http://www.w3.org/2002/07/owl#Ontology> .".getBytes());
+        OntologyMetadataModel saved = new OntologyMetadataModel();
+        saved.setGraphName("https://example.org/graph");
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), isNull(), isNull())).thenReturn(saved);
+        doThrow(new org.springframework.core.task.TaskRejectedException("executor saturated"))
+                .when(nkdSnapshotWarmer).warmGraphNow("https://example.org/graph");
+
+        mockMvc.perform(multipart("/api/ontology/upload").file(file))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.graphName").value("https://example.org/graph"));
+
+        verify(nkdSnapshotWarmer).warmGraphNow("https://example.org/graph");
     }
 
     @Test
@@ -230,7 +235,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("generated-graph-name");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -254,11 +258,9 @@ class OntologyControllerTest {
                 new byte[0]
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
-        TestOntologySecurityService.setAllowModify(true);
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(emptyFile))
                 .andExpect(status().isBadRequest())
@@ -278,7 +280,6 @@ class OntologyControllerTest {
                 "some content".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new UnsupportedRdfFormatException("RDF jazyk není podporován."));
 
@@ -290,9 +291,10 @@ class OntologyControllerTest {
                 .andExpect(jsonPath("$.message").value("RDF jazyk není podporován."));
     }
 
+    /** An unexpected service failure maps to the generic 500 without leaking its message or warming NKD. */
     @Test
+    @WithMockSecurityUser(userId = "user123")
     void testUploadFromFile_ServiceException() throws Exception {
-        String userId = "user123";
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.ttl",
@@ -300,15 +302,23 @@ class OntologyControllerTest {
                 "invalid rdf content".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
-        when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
-                .thenThrow(new RuntimeException("Parse error"));
+        when(ontologyUploadService.uploadFromFile(any(), eq("user123"), isNull(), isNull()))
+                .thenThrow(new RuntimeException("Parse error at line 7 in /srv/tdb2"));
 
         mockMvc.perform(multipart("/api/ontology/upload")
                         .file(file))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.data").doesNotExist());
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.errorCode").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.message").value("Nastala neočekávaná chyba."))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("Parse error"))));
+
+        verify(ontologyUploadService).uploadFromFile(
+                argThat(f -> "test.ttl".equals(f.getOriginalFilename())), eq("user123"), isNull(), isNull());
+        verifyNoInteractions(nkdSnapshotWarmer);
     }
 
     @Test
@@ -322,7 +332,6 @@ class OntologyControllerTest {
                 "".getBytes()
         );
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new EmptyFileException("Soubor je prázdný."));
 
@@ -359,7 +368,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("file");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.JSONLD);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -382,7 +390,6 @@ class OntologyControllerTest {
 
         String graphName = "https://slovník.gov.cz/a3791";
         String conceptIri = graphName + "/pojem/vysoká-škola";
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenThrow(new InSchemeDecisionRequiredException(
                         graphName,
@@ -412,7 +419,6 @@ class OntologyControllerTest {
         expected.setGraphName("file");
         expected.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expected);
 
@@ -441,7 +447,6 @@ class OntologyControllerTest {
         expectedMetadata.setGraphName("large-ontology");
         expectedMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(expectedMetadata);
 
@@ -486,7 +491,6 @@ class OntologyControllerTest {
         existingMetadata.setGraphName("file");
         existingMetadata.setUser(new UserModel(userId));
 
-        when(ontologyUploadService.determineRDFFormat(any())).thenReturn(Lang.TURTLE);
         when(ontologyUploadService.uploadFromFile(any(), eq(userId), any(), any()))
                 .thenReturn(existingMetadata);
 
@@ -657,7 +661,6 @@ class OntologyControllerTest {
     void testDeleteOntology_Success() throws Exception {
         Long ontologyId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doNothing().when(ontologyService).deleteOntology(ontologyId);
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
@@ -672,7 +675,6 @@ class OntologyControllerTest {
     void testDeleteOntology_NotFound() throws Exception {
         Long ontologyId = 999L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník s ID 999 nebyl nalezen"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
@@ -688,7 +690,7 @@ class OntologyControllerTest {
     void testDeleteOntology_AccessDenied() throws Exception {
         Long ontologyId = 1L;
 
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
 
         mockMvc.perform(delete("/api/ontology/{ontologyId}/delete", ontologyId))
                 .andExpect(status().isForbidden())
@@ -702,7 +704,6 @@ class OntologyControllerTest {
     void testDeleteOntology_UnexpectedException() throws Exception {
         Long ontologyId = 1L;
 
-        TestOntologySecurityService.setAllowModify(true);
         doThrow(new RuntimeException("Neočekávaná chyba"))
                 .when(ontologyService).deleteOntology(ontologyId);
 
@@ -781,7 +782,6 @@ class OntologyControllerTest {
         OntologyMetadataModel expectedMetadata = new OntologyMetadataModel();
         expectedMetadata.setGraphName("http://example.org/test-ontology");
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(eq(ontologyId), any(OntologyEditModel.class)))
                 .thenReturn(expectedMetadata);
 
@@ -800,7 +800,6 @@ class OntologyControllerTest {
         Long ontologyId = 999L;
         OntologyEditModel editModel = new OntologyEditModel();
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.editOntology(eq(ontologyId), any()))
                 .thenThrow(new com.dia.ismdtoolbackend.exception.OntologyNotFoundException("Slovník nebyl nalezen"));
 
@@ -847,14 +846,35 @@ class OntologyControllerTest {
 
     @Test
     void testDownloadOntology_InvalidFormat() throws Exception {
-        Long ontologyId = 1L;
-
-        when(ontologyDownloadService.downloadOntology(ontologyId, "invalid"))
-                .thenThrow(new IllegalArgumentException("Unsupported format"));
-
-        mockMvc.perform(get("/api/ontology/{ontologyId}/download", ontologyId)
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L)
                         .param("format", "invalid"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("INVALID_ARGUMENT"))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith(
+                        "Nepodporovaný formát: invalid.")));
+
+        verifyNoInteractions(ontologyDownloadService, ontologyService, validationService);
+    }
+
+    @Test
+    void testDownloadOntology_UppercaseFormat_isNormalised() throws Exception {
+        when(validationConfig.isEnableOntologyViolationDownload()).thenReturn(true);
+        when(ontologyDownloadService.downloadOntology(1L, "ttl")).thenReturn("ttl body");
+
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L)
+                        .param("format", "TTL"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"ontology_1.ttl\""))
+                .andExpect(content().string("ttl body"));
+    }
+
+    @Test
+    void testDownloadOntology_MissingFormat_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/ontology/{ontologyId}/download", 1L))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(ontologyDownloadService, ontologyService, validationService);
     }
 
     @Test
@@ -1252,7 +1272,6 @@ class OntologyControllerTest {
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         when(validationClient.requestValidation(anyString(), anyString()))
@@ -1280,7 +1299,6 @@ class OntologyControllerTest {
 
         com.dia.validation.ValidationReportDto validationReport = new com.dia.validation.ValidationReportDto();
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         when(validationClient.requestValidation(anyString(), anyString()))
@@ -1305,7 +1323,6 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
         // Validator down → client throws the unavailable exception → 503.
@@ -1332,7 +1349,6 @@ class OntologyControllerTest {
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
         ontologyMetadata.setSlug(slug);
 
-        TestOntologySecurityService.setAllowModify(true);
         when(ontologyService.getTtlContentFromOntology(any()))
                 .thenReturn("bad ttl");
         // Validator answered with a 4xx → client throws a rejection carrying the validator's message → 400.
@@ -1358,7 +1374,7 @@ class OntologyControllerTest {
         ontologyMetadata.setId(1L);
         ontologyMetadata.setGraphName("http://example.org/test-ontology");
 
-        TestOntologySecurityService.setAllowModify(false);
+        ontologySecurity.denyModify();
 
         mockMvc.perform(post("/api/ontology/{slug}/validate", slug)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1512,5 +1528,116 @@ class OntologyControllerTest {
         mockMvc.perform(get("/api/ontology/concepts")
                         .param("source", "ISMD"))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ========== Validate: no report ==========
+
+    /** An empty answer from the validator is an outage: 503, and nothing is saved. */
+    @Test
+    @WithMockSecurityUser(userId = "user123")
+    void testValidateOntology_NoReportReceived_returns503AndSavesNothing() throws Exception {
+        OntologyMetadataModel ontologyMetadata = new OntologyMetadataModel();
+        ontologyMetadata.setGraphName("http://example.org/test-ontology");
+        when(ontologyService.getTtlContentFromOntology(any())).thenReturn("ttl");
+        when(validationClient.requestValidation("ttl", "http://example.org/test-ontology"))
+                .thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/ontology/{slug}/validate", "test-ontology")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ontologyMetadata)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.errorCode").value("VALIDATION_SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("Validační služba není momentálně dostupná."));
+
+        verify(validationClient).requestValidation("ttl", "http://example.org/test-ontology");
+        verifyNoInteractions(validationService);
+    }
+
+    // ========== List: empty slug list ==========
+
+    /** An empty {@code slugs} parameter is no filter: the plain list is served. */
+    @Test
+    void testGetOntologyList_EmptySlugs_fallsBackToGetAll() throws Exception {
+        when(ontologyService.getAll(null, null)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/ontology/list").param("slugs", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+
+        verify(ontologyService).getAll(null, null);
+        verify(ontologyService, never()).getBySlugs(any());
+    }
+
+    // ========== Resolve concept references ==========
+
+    private static final String RESOLVE_URL = "/api/ontology/concepts/resolve";
+
+    /** Datatype namespaces, CURIEs and non-http schemes are dropped before resolution; order is kept. */
+    @Test
+    void resolveConcepts_dropsDatatypeAndNonHttpIris_beforeResolving() throws Exception {
+        String httpIri = "http://example.org/pojem/a";
+        String httpsIri = "https://example.org/pojem/b";
+        ResolvedConceptDto resolvedA = ResolvedConceptDto.builder()
+                .iri(httpIri)
+                .conceptName(java.util.Map.of("cs", "Pojem A"))
+                .conceptSlug("pojem-a")
+                .ontologyIri("http://example.org/slovnik")
+                .source(SearchSource.ISMD)
+                .build();
+        when(referencedConceptResolutionEngine.resolveAllForDisplay(List.of(httpIri, httpsIri)))
+                .thenReturn(java.util.Map.of(httpIri, resolvedA));
+
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"iris":[
+                                  "http://example.org/pojem/a",
+                                  "http://www.w3.org/2001/XMLSchema#string",
+                                  "http://www.w3.org/2000/01/rdf-schema#Literal",
+                                  "xsd:date",
+                                  "urn:uuid:1234",
+                                  "ftp://example.org/x",
+                                  "https://example.org/pojem/b"
+                                ]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Metadata referencovaných pojmů byla úspěšně načtena."))
+                .andExpect(jsonPath("$.data.resolved.length()").value(1))
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].conceptSlug").value("pojem-a"))
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].source").value("ISMD"))
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].conceptName.cs").value("Pojem A"))
+                // NON_NULL: unresolved relationship ends are omitted, not null
+                .andExpect(jsonPath("$.data.resolved['http://example.org/pojem/a'].resolvedRange").doesNotExist());
+
+        verify(referencedConceptResolutionEngine).resolveAllForDisplay(List.of(httpIri, httpsIri));
+        verifyNoMoreInteractions(referencedConceptResolutionEngine);
+    }
+
+    /** Only datatypes in the batch: the engine is asked for nothing and the map is empty, not an error. */
+    @Test
+    void resolveConcepts_onlyDatatypes_resolvesEmptyList() throws Exception {
+        when(referencedConceptResolutionEngine.resolveAllForDisplay(List.of())).thenReturn(java.util.Map.of());
+
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"iris\":[\"http://www.w3.org/2001/XMLSchema#integer\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resolved").isMap())
+                .andExpect(jsonPath("$.data.resolved.length()").value(0));
+
+        verify(referencedConceptResolutionEngine).resolveAllForDisplay(List.of());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"{\"iris\":[]}", "{}", "{\"iris\":[\" \"]}"})
+    void resolveConcepts_emptyOrBlankIris_returns400WithoutResolving(String body) throws Exception {
+        mockMvc.perform(post(RESOLVE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("REQUEST_VALIDATION_FAILED"));
+
+        verifyNoInteractions(referencedConceptResolutionEngine);
     }
 }

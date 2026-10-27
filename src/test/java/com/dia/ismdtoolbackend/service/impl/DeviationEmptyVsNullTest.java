@@ -8,9 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * A field one side models as an empty collection and the other as null must not deviate.
@@ -41,11 +39,13 @@ class DeviationEmptyVsNullTest {
 
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(local, published);
 
-        assertNull(deviation.getDefiningNonLegalSources(),
-                "an empty local list vs a null published value is not a deviation");
-        assertNull(deviation.getRelatedNonLegalSources());
-        assertEquals(DeviationStatus.NO_DEVIATION, deviation.getStatus(),
-                "identical concepts must not report deviations because of empty-vs-null");
+        assertThat(deviation.getDefiningNonLegalSources())
+                .as("an empty local list vs a null published value is not a deviation")
+                .isNull();
+        assertThat(deviation.getRelatedNonLegalSources()).isNull();
+        assertThat(deviation.getStatus())
+                .as("identical concepts must not report deviations because of empty-vs-null")
+                .isEqualTo(DeviationStatus.NO_DEVIATION);
     }
 
     @Test
@@ -59,10 +59,10 @@ class DeviationEmptyVsNullTest {
 
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(local, published);
 
-        assertNull(deviation.getPrivacyProvisions());
-        assertNull(deviation.getSharingMethods());
-        assertNull(deviation.getAlternativeName());
-        assertEquals(DeviationStatus.NO_DEVIATION, deviation.getStatus());
+        assertThat(deviation.getPrivacyProvisions()).isNull();
+        assertThat(deviation.getSharingMethods()).isNull();
+        assertThat(deviation.getAlternativeName()).isNull();
+        assertThat(deviation.getStatus()).isEqualTo(DeviationStatus.NO_DEVIATION);
     }
 
     /** The guard must not swallow real differences — populated vs empty still deviates. */
@@ -77,11 +77,13 @@ class DeviationEmptyVsNullTest {
 
         PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(local, published);
 
-        assertEquals(DeviationStatus.HAS_DEVIATIONS, deviation.getStatus(),
-                "a real difference must survive the empty/null guard");
-        assertNotNull(deviation.getPrivacyProvisions(),
-                "the deviating field itself must be reported, not just the status");
-        assertEquals(List.of("§ 1"), deviation.getPrivacyProvisions().getLocalValue());
+        assertThat(deviation.getStatus())
+                .as("a real difference must survive the empty/null guard")
+                .isEqualTo(DeviationStatus.HAS_DEVIATIONS);
+        assertThat(deviation.getPrivacyProvisions())
+                .as("the deviating field itself must be reported, not just the status")
+                .isNotNull();
+        assertThat(deviation.getPrivacyProvisions().getLocalValue()).isEqualTo(List.of("§ 1"));
     }
 
     @Test
@@ -91,7 +93,11 @@ class DeviationEmptyVsNullTest {
                 .build();
         ConceptDetailModel published = ConceptDetailModel.builder().build();
 
-        assertEquals(DeviationStatus.HAS_DEVIATIONS,
-                comparator.compareConceptDetails(local, published).getStatus());
+        PublishedConceptDeviationModel deviation = comparator.compareConceptDetails(local, published);
+
+        assertThat(deviation.getStatus()).isEqualTo(DeviationStatus.HAS_DEVIATIONS);
+        assertThat(deviation.getPrivacyProvisions()).isNotNull();
+        assertThat(deviation.getPrivacyProvisions().getLocalValue()).containsExactly("§ 1");
+        assertThat(deviation.getPrivacyProvisions().getPublishedValue()).isNull();
     }
 }

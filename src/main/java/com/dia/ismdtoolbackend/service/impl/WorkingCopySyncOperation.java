@@ -226,7 +226,8 @@ class WorkingCopySyncOperation {
         } else if (editModel instanceof PropertyConceptEditModel p) {
             p.setIsPublic(isPublic);
             p.setPrivacyProvisions(provisions);
-        } else if (editModel instanceof RelationshipConceptEditModel r) {
+        } else {
+            RelationshipConceptEditModel r = (RelationshipConceptEditModel) editModel;
             r.setIsPublic(isPublic);
             r.setPrivacyProvisions(provisions);
         }

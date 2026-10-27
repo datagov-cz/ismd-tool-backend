@@ -1,0 +1,331 @@
+{
+ "historie": [
+  {
+   "datumUcinnostiZneniOd": "2027-01-01",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2027-01-01",
+   "typZneni": "BUDOUCI",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/460",
+     "kodDokumentuSbirky": "460/2016 Sb."
+    },
+    {
+     "staleUrl": "/sb/2026/159",
+     "kodDokumentuSbirky": "159/2026 Sb."
+    }
+   ],
+   "cisloZneni": 20,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2026-01-01",
+   "datumUcinnostiZneniDo": "2026-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2026-01-01",
+   "typZneni": "AKTUALNI",
+   "novely": [
+    {
+     "staleUrl": "/sb/2025/176",
+     "kodDokumentuSbirky": "176/2025 Sb."
+    },
+    {
+     "staleUrl": "/sb/2025/268",
+     "kodDokumentuSbirky": "268/2025 Sb."
+    },
+    {
+     "staleUrl": "/sb/2025/270",
+     "kodDokumentuSbirky": "270/2025 Sb."
+    },
+    {
+     "staleUrl": "/sb/2025/290",
+     "kodDokumentuSbirky": "290/2025 Sb."
+    },
+    {
+     "staleUrl": "/sb/2025/333",
+     "kodDokumentuSbirky": "333/2025 Sb."
+    }
+   ],
+   "cisloZneni": 19,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2025-07-01",
+   "datumUcinnostiZneniDo": "2025-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2025-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2024/144",
+     "kodDokumentuSbirky": "144/2024 Sb."
+    },
+    {
+     "staleUrl": "/sb/2025/78",
+     "kodDokumentuSbirky": "78/2025 Sb."
+    }
+   ],
+   "cisloZneni": 18,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2025-06-01",
+   "datumUcinnostiZneniDo": "2025-06-30",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2025-06-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2025/120",
+     "kodDokumentuSbirky": "120/2025 Sb."
+    }
+   ],
+   "cisloZneni": 17,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2025-02-15",
+   "datumUcinnostiZneniDo": "2025-05-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2025-02-15",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2025/32",
+     "kodDokumentuSbirky": "32/2025 Sb."
+    }
+   ],
+   "cisloZneni": 16,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2025-01-01",
+   "datumUcinnostiZneniDo": "2025-02-14",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2025-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2024/123",
+     "kodDokumentuSbirky": "123/2024 Sb."
+    }
+   ],
+   "cisloZneni": 15,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2024-04-01",
+   "datumUcinnostiZneniDo": "2024-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2024-04-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2024/31",
+     "kodDokumentuSbirky": "31/2024 Sb."
+    }
+   ],
+   "cisloZneni": 14,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2024-01-01",
+   "datumUcinnostiZneniDo": "2024-03-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2024-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2023/414",
+     "kodDokumentuSbirky": "414/2023 Sb."
+    }
+   ],
+   "cisloZneni": 13,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2023-01-06",
+   "datumUcinnostiZneniDo": "2023-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2023-01-06",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2022/374",
+     "kodDokumentuSbirky": "374/2022 Sb."
+    },
+    {
+     "staleUrl": "/sb/2022/429",
+     "kodDokumentuSbirky": "429/2022 Sb."
+    }
+   ],
+   "cisloZneni": 12,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2023-01-05",
+   "datumUcinnostiZneniDo": "2023-01-05",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2023-01-05",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2022/429",
+     "kodDokumentuSbirky": "429/2022 Sb."
+    }
+   ],
+   "cisloZneni": 11,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2021-07-01",
+   "datumUcinnostiZneniDo": "2023-01-04",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2021-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2021/192",
+     "kodDokumentuSbirky": "192/2021 Sb."
+    }
+   ],
+   "cisloZneni": 10,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2021-01-01",
+   "datumUcinnostiZneniDo": "2021-06-30",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2021-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2020/33",
+     "kodDokumentuSbirky": "33/2020 Sb."
+    }
+   ],
+   "cisloZneni": 9,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2020-07-01",
+   "datumUcinnostiZneniDo": "2020-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2020-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2020/163",
+     "kodDokumentuSbirky": "163/2020 Sb."
+    }
+   ],
+   "cisloZneni": 8,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2018-12-01",
+   "datumUcinnostiZneniDo": "2020-06-30",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2018-12-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2018/171",
+     "kodDokumentuSbirky": "171/2018 Sb."
+    }
+   ],
+   "cisloZneni": 7,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2018-07-01",
+   "datumUcinnostiZneniDo": "2018-11-30",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2018-07-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2018/111",
+     "kodDokumentuSbirky": "111/2018 Sb."
+    }
+   ],
+   "cisloZneni": 6,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2018-01-01",
+   "datumUcinnostiZneniDo": "2018-06-30",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2018-01-01",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/460",
+     "kodDokumentuSbirky": "460/2016 Sb."
+    }
+   ],
+   "cisloZneni": 5,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2017-02-28",
+   "datumUcinnostiZneniDo": "2017-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2017-02-28",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/460",
+     "kodDokumentuSbirky": "460/2016 Sb."
+    }
+   ],
+   "cisloZneni": 4,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2016-12-30",
+   "datumUcinnostiZneniDo": "2017-02-27",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2016-12-30",
+   "typZneni": "MINULE",
+   "novely": [
+    {
+     "staleUrl": "/sb/2016/460",
+     "kodDokumentuSbirky": "460/2016 Sb."
+    }
+   ],
+   "cisloZneni": 3,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2014-01-01",
+   "datumUcinnostiZneniDo": "2016-12-29",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2014-01-01",
+   "typZneni": "MINULE",
+   "novely": [],
+   "cisloZneni": 2,
+   "poznamky": []
+  },
+  {
+   "datumUcinnostiZneniOd": "2012-03-22",
+   "datumUcinnostiZneniDo": "2013-12-31",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/2012-03-22",
+   "typZneni": "MINULE_NEUCINNE",
+   "novely": [],
+   "cisloZneni": 1,
+   "poznamky": [
+    "Minulé neúčinné znění právního aktu."
+   ]
+  },
+  {
+   "datumUcinnostiZneniOd": "2012-03-22",
+   "datumCasVyhlaseni": "2012-03-22T00:00:00.000+01:00",
+   "staleUrl": "/sb/2012/89/0000-00-00",
+   "typZneni": "VYHLASENE",
+   "novely": [],
+   "poznamky": []
+  }
+ ]
+}

@@ -12,25 +12,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import static com.dia.ismdtoolbackend.support.VocabularyCreationRequests.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class VocabularyConceptBuilderTest {
     @Test
     void resolvesReferencesAndPreservesReviewedMetadataWithoutMutatingRequest() {
         var request = sample();
         var result = VocabularyConceptBuilder.prepare(request, GRAPH, "user");
-        assertEquals(4, result.concepts().size());
+        assertThat(result.concepts()).hasSize(4);
         var attribute = (PropertyConceptModel) result.concepts().get(2);
         var relationship = (RelationshipConceptModel) result.concepts().get(3);
-        assertEquals(result.conceptIris().get("vehicle"), attribute.getDomain());
-        assertEquals(result.conceptIris().get("driver"), relationship.getDomain());
-        assertEquals(result.conceptIris().get("vehicle"), relationship.getRange());
-        assertEquals(Map.of("cs", "Hmotnost v kilogramech"), attribute.getDescriptionModel().getDescription());
-        assertEquals(Map.of("cs", "Hmotnost vozidla"), attribute.getDefinitionModel().getDefinition());
-        assertEquals(List.of(LEGAL.replace("https://e-sbirka.gov.cz", "https://opendata.eselpoint.gov.cz/esel-esb")), attribute.getDefiningLegalSource());
-        assertEquals("xsd:decimal", attribute.getDataType());
-        assertEquals("vehicle", request.attributes().get(0).associatedClass().ref());
-        assertTrue(result.conceptIris().values().stream().allMatch(iri -> iri.startsWith(GRAPH + "/")));
+        assertThat(attribute.getDomain()).isEqualTo(result.conceptIris().get("vehicle"));
+        assertThat(relationship.getDomain()).isEqualTo(result.conceptIris().get("driver"));
+        assertThat(relationship.getRange()).isEqualTo(result.conceptIris().get("vehicle"));
+        assertThat(attribute.getDescriptionModel().getDescription()).isEqualTo(Map.of("cs", "Hmotnost v kilogramech"));
+        assertThat(attribute.getDefinitionModel().getDefinition()).isEqualTo(Map.of("cs", "Hmotnost vozidla"));
+        assertThat(attribute.getDefiningLegalSource())
+                .isEqualTo(List.of(LEGAL.replace("https://e-sbirka.gov.cz", "https://opendata.eselpoint.gov.cz/esel-esb")));
+        assertThat(attribute.getDataType()).isEqualTo("xsd:decimal");
+        assertThat(request.attributes().get(0).associatedClass().ref()).isEqualTo("vehicle");
+        assertThat(result.conceptIris().values().stream().allMatch(iri -> iri.startsWith(GRAPH + "/"))).isTrue();
     }
 
     @Test
@@ -40,7 +42,8 @@ class VocabularyConceptBuilderTest {
         child = new ClassDto(child.ref(), child.name(), child.definition(), child.explanation(), child.type(), List.of(ref("vehicle")), LEGAL);
         var request = new OntologyCreateWithConceptsRequestDto(source.ontology(), List.of(child, clazz("vehicle", "Vozidlo")), List.of(), List.of());
         var result = VocabularyConceptBuilder.prepare(request, GRAPH, "user");
-        assertEquals(List.of(result.conceptIris().get("vehicle")), ((ClassConceptModel) result.concepts().get(0)).getBroaderConcept());
+        assertThat(((ClassConceptModel) result.concepts().get(0)).getBroaderConcept())
+                .isEqualTo(List.of(result.conceptIris().get("vehicle")));
     }
 
     @ParameterizedTest
@@ -49,7 +52,8 @@ class VocabularyConceptBuilderTest {
         var source = sample();
         var attribute = new AttributeDto("weight", reference, Map.of("cs", "Hmotnost"), null, null, null, null);
         var request = new OntologyCreateWithConceptsRequestDto(source.ontology(), source.classes(), List.of(attribute), List.of());
-        assertThrows(ConceptValidationException.class, () -> VocabularyConceptBuilder.prepare(request, GRAPH, "user"));
+        assertThatThrownBy(() -> VocabularyConceptBuilder.prepare(request, GRAPH, "user"))
+                .isInstanceOf(ConceptValidationException.class);
     }
 
     static Stream<AiConceptReferenceDto> invalidReferences() {
@@ -64,23 +68,25 @@ class VocabularyConceptBuilderTest {
         String external = "https://other.example.org/Class";
         var relationship = new RelationshipDto("link", ref("vehicle"), new AiConceptReferenceDto(null, external), Map.of("cs", "Odkaz"), null, null, null);
         var result = VocabularyConceptBuilder.prepare(new OntologyCreateWithConceptsRequestDto(source.ontology(), source.classes(), List.of(), List.of(relationship)), GRAPH, "user");
-        assertEquals(external, ((RelationshipConceptModel) result.concepts().get(2)).getRange());
+        assertThat(((RelationshipConceptModel) result.concepts().get(2)).getRange()).isEqualTo(external);
     }
 
     @Test
     void rejectsDuplicateRefsAcrossTypes() {
         var source = sample();
         var attribute = new AttributeDto("vehicle", ref("driver"), Map.of("cs", "Hmotnost"), null, null, null, null);
-        assertThrows(ConceptValidationException.class, () -> VocabularyConceptBuilder.prepare(
-                new OntologyCreateWithConceptsRequestDto(source.ontology(), source.classes(), List.of(attribute), List.of()), GRAPH, "user"));
+        assertThatThrownBy(() -> VocabularyConceptBuilder.prepare(
+                new OntologyCreateWithConceptsRequestDto(source.ontology(), source.classes(), List.of(attribute), List.of()), GRAPH, "user"))
+                .isInstanceOf(ConceptValidationException.class);
     }
 
     @Test
     void rejectsNamesMappingToSameIri() {
         var source = sample();
         var classes = List.of(clazz("a", "Stejné"), clazz("b", "stejné"));
-        assertThrows(ConceptValidationException.class, () -> VocabularyConceptBuilder.prepare(
-                new OntologyCreateWithConceptsRequestDto(source.ontology(), classes, List.of(), List.of()), GRAPH, "user"));
+        assertThatThrownBy(() -> VocabularyConceptBuilder.prepare(
+                new OntologyCreateWithConceptsRequestDto(source.ontology(), classes, List.of(), List.of()), GRAPH, "user"))
+                .isInstanceOf(ConceptValidationException.class);
     }
 
     @Test
@@ -88,8 +94,9 @@ class VocabularyConceptBuilderTest {
         var source = sample();
         for (var term : List.of(new ClassDto("a", Map.of("en", "Car"), null, null, source.classes().get(0).type(), List.of(), null),
                 new ClassDto("a", Map.of("cs", "Auto"), null, null, source.classes().get(0).type(), List.of(), "https://invalid.example.org/law"))) {
-            assertThrows(ConceptValidationException.class, () -> VocabularyConceptBuilder.prepare(
-                    new OntologyCreateWithConceptsRequestDto(source.ontology(), List.of(term), List.of(), List.of()), GRAPH, "user"));
+            assertThatThrownBy(() -> VocabularyConceptBuilder.prepare(
+                    new OntologyCreateWithConceptsRequestDto(source.ontology(), List.of(term), List.of(), List.of()), GRAPH, "user"))
+                    .isInstanceOf(ConceptValidationException.class);
         }
     }
 
@@ -98,16 +105,18 @@ class VocabularyConceptBuilderTest {
         var source = sample();
         var a = new ClassDto("a", Map.of("cs", "A"), null, null, source.classes().get(0).type(), List.of(ref("b")), null);
         var b = new ClassDto("b", Map.of("cs", "B"), null, null, a.type(), List.of(ref("a")), null);
-        assertThrows(ConceptValidationException.class, () -> VocabularyConceptBuilder.prepare(
-                new OntologyCreateWithConceptsRequestDto(source.ontology(), List.of(a, b), List.of(), List.of()), GRAPH, "user"));
+        assertThatThrownBy(() -> VocabularyConceptBuilder.prepare(
+                new OntologyCreateWithConceptsRequestDto(source.ontology(), List.of(a, b), List.of(), List.of()), GRAPH, "user"))
+                .isInstanceOf(ConceptValidationException.class);
         var inverse = new RelationshipDto("drivenBy", ref("vehicle"), ref("driver"), Map.of("cs", "je řízeno"), null, null, null);
-        assertEquals(4, VocabularyConceptBuilder.prepare(new OntologyCreateWithConceptsRequestDto(source.ontology(), source.classes(), List.of(),
-                List.of(source.relationships().get(0), inverse)), GRAPH, "user").concepts().size());
+        assertThat(VocabularyConceptBuilder.prepare(new OntologyCreateWithConceptsRequestDto(source.ontology(), source.classes(), List.of(),
+                List.of(source.relationships().get(0), inverse)), GRAPH, "user").concepts())
+                .hasSize(4);
     }
 
     @Test
     void acceptsEmptySelection() {
         var request = new OntologyCreateWithConceptsRequestDto(sample().ontology(), List.of(), List.of(), List.of());
-        assertTrue(VocabularyConceptBuilder.prepare(request, GRAPH, "user").concepts().isEmpty());
+        assertThat(VocabularyConceptBuilder.prepare(request, GRAPH, "user").concepts()).isEmpty();
     }
 }

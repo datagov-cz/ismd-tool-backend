@@ -42,12 +42,8 @@ class ConceptGovernanceUpdater {
 
         Property agendaProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
 
-        if (agendaCode.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, agendaProperty, toRemove, toAdd);
-            return;
-        }
-
         removeAllByPredicate(newConcept, agendaProperty, toRemove, toAdd);
+        if (agendaCode.trim().isEmpty()) return;
 
         if (UtilityMethods.isValidAgendaValue(agendaCode)) {
             String transformed = UtilityMethods.transformAgendaValue(agendaCode);
@@ -66,12 +62,8 @@ class ConceptGovernanceUpdater {
 
         Property aisProperty = model.createProperty(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
 
-        if (aisCode.trim().isEmpty()) {
-            removeAllByPredicate(oldConcept, aisProperty, toRemove, toAdd);
-            return;
-        }
-
         removeAllByPredicate(newConcept, aisProperty, toRemove, toAdd);
+        if (aisCode.trim().isEmpty()) return;
 
         if (UtilityMethods.isValidAISValue(aisCode)) {
             String transformed = UtilityMethods.transformAISValue(aisCode);

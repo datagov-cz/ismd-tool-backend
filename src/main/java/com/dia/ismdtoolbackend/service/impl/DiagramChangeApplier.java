@@ -97,6 +97,9 @@ public class DiagramChangeApplier {
         if (isStaleBase(concept, overlay)) {
             throw new DiagramStaleBaseException("Pojem byl mezitím upraven; načtěte diagram znovu.");
         }
+        if (op == DiagramOp.CONVERT_TO_HIERARCHY) {
+            requireCompleteMarker(overlay.getConvertToHierarchy(), concept.getConceptIri());
+        }
 
         // Captured before the edit: a triple edge's id embeds its endpoints, so once RDF moves them the
         // old ids are unrecoverable and a membership row would strand on a key nothing projects.
@@ -154,13 +157,16 @@ public class DiagramChangeApplier {
         return rekeys;
     }
 
-    /** The URI objects of one predicate, in graph order; the live targets an edge id is built from. */
+    /**
+     * The URI objects of one predicate, in graph order; the live targets an edge id is built from. A model
+     * holds each triple once, so the list has no duplicates and no nulls.
+     */
     private List<String> uriObjects(Resource subject, Property predicate) {
         List<String> uris = new ArrayList<>();
         StmtIterator it = subject.listProperties(predicate);
         while (it.hasNext()) {
             RDFNode object = it.next().getObject();
-            if (object.isURIResource() && !uris.contains(object.asResource().getURI())) {
+            if (object.isURIResource()) {
                 uris.add(object.asResource().getURI());
             }
         }
@@ -170,13 +176,13 @@ public class DiagramChangeApplier {
     private void collectRekeys(List<EdgeRekey> rekeys, List<DiagramEdgeEntity> rows, String source,
                                List<String> liveTargets, List<String> stagedTargets,
                                DiagramEdgeKind kind) {
-        if (stagedTargets == null || liveTargets == null) {
+        if (stagedTargets == null) {
             return;
         }
         for (int i = 0; i < liveTargets.size() && i < stagedTargets.size(); i++) {
             String oldTarget = liveTargets.get(i);
             String newTarget = stagedTargets.get(i);
-            if (oldTarget == null || newTarget == null || oldTarget.equals(newTarget)) {
+            if (newTarget == null || oldTarget.equals(newTarget)) {
                 continue;
             }
             String oldKey = DiagramContentResolver.projectedEdgeId(kind, source, oldTarget);
@@ -195,9 +201,6 @@ public class DiagramChangeApplier {
      */
     private void collectConvertRekey(List<EdgeRekey> rekeys, Long diagramId, String vztahIri,
                                      DiagramPendingEdit.ConvertToHierarchy marker) {
-        if (marker.getAddBroaderOn() == null || marker.getBroader() == null) {
-            return;
-        }
         String newKey = DiagramContentResolver.projectedEdgeId(
                 DiagramEdgeKind.SUBCLASS_OF, marker.getAddBroaderOn(), marker.getBroader());
         diagramEdgeRepository.findByDiagramId(diagramId).stream()
@@ -223,6 +226,18 @@ public class DiagramChangeApplier {
             rekey.row().setEdgeKey(rekey.newKey());
             diagramEdgeRepository.save(rekey.row());
         }
+    }
+
+    /** The stored marker bypasses request validation, so a missing end is rejected before the VZTAH is deleted. */
+    private static void requireCompleteMarker(DiagramPendingEdit.ConvertToHierarchy marker, String vztahIri) {
+        if (isBlank(marker.getAddBroaderOn()) || isBlank(marker.getBroader())) {
+            throw new ConceptValidationException(
+                    "Převod vztahu " + vztahIri + " na hierarchii nemá vyplněnou cílovou nebo nadřazenou třídu.");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**
@@ -256,24 +271,13 @@ public class DiagramChangeApplier {
 
     /**
      * Op 6 adds a super-class, but the edit model's {@code broaderConcept} is a full replace, so existing
-     * {@code rdfs:subClassOf} links are read and carried through. Existing first, new appended.
+     * {@code rdfs:subClassOf} links are read and carried through. Existing first, new appended;
+     * {@code newBroader} is non-blank, {@link #requireCompleteMarker} having checked it.
      */
     private List<String> mergedBroaderFor(ConceptMetadataEntity targetClass, String newBroader) {
         Model graph = jenaTDB2Repository.fetchGraph(targetClass.getGraphName());
-        Resource classRes = graph.getResource(targetClass.getConceptIri());
-
-        List<String> merged = new ArrayList<>();
-        StmtIterator it = classRes.listProperties(RDFS.subClassOf);
-        while (it.hasNext()) {
-            RDFNode object = it.next().getObject();
-            if (object.isURIResource()) {
-                String existing = object.asResource().getURI();
-                if (!merged.contains(existing)) {
-                    merged.add(existing);
-                }
-            }
-        }
-        if (newBroader != null && !merged.contains(newBroader)) {
+        List<String> merged = uriObjects(graph.getResource(targetClass.getConceptIri()), RDFS.subClassOf);
+        if (!merged.contains(newBroader)) {
             merged.add(newBroader);
         }
         return merged;

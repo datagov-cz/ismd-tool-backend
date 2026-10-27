@@ -1,19 +1,17 @@
 package com.dia.ismdtoolbackend.reconciler;
 
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -23,16 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 409-on-run-in-progress contract. Method security ({@code @PreAuthorize}) is exercised via
  * {@link TestSecurityConfig} + {@link WithMockSecurityUser}.
  */
-@WebMvcTest(controllers = ReconcilerController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-    })
-@Import(TestSecurityConfig.class)
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = ReconcilerController.class)
 class ReconcilerControllerTest {
 
     @Autowired
@@ -48,12 +37,15 @@ class ReconcilerControllerTest {
     @Test
     @WithMockSecurityUser(userId = "admin", roles = {"ROLE_ADMIN"})
     void run_asAdmin_returnsReport() throws Exception {
-        when(runService.run(anyString())).thenReturn(emptyReport("ADMIN:admin"));
+        when(runService.run("ADMIN:admin")).thenReturn(emptyReport("ADMIN:admin"));
 
         mockMvc.perform(post("/api/admin/reconciler/run"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.triggeredBy").value("ADMIN:admin"));
+
+        // The run is attributed to the authenticated admin.
+        verify(runService).run("ADMIN:admin");
     }
 
     @Test
@@ -61,16 +53,20 @@ class ReconcilerControllerTest {
     void run_asNonAdmin_isForbidden() throws Exception {
         mockMvc.perform(post("/api/admin/reconciler/run"))
                 .andExpect(status().isForbidden());
+
+        verifyNoInteractions(runService);
     }
 
     @Test
     @WithMockSecurityUser(userId = "admin", roles = {"ROLE_ADMIN"})
     void run_whenAlreadyInProgress_returns409() throws Exception {
-        when(runService.run(anyString())).thenReturn(null); // a run is already in progress
+        when(runService.run("ADMIN:admin")).thenReturn(null); // a run is already in progress
 
         mockMvc.perform(post("/api/admin/reconciler/run"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.success").value(false));
+
+        verify(runService).run("ADMIN:admin");
     }
 
     @Test

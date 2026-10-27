@@ -129,11 +129,15 @@ class NkodDatasetServiceImplTest {
 
     @Test
     void limitIsClampedToConfiguredMaximum() {
-        givenCatalogue(row("urn:a", "Alfa"));
+        NkodConfig config = new NkodConfig();
+        config.getSearch().setMaxLimit(2);
+        service = new NkodDatasetServiceImpl(snapshotHolder, client, resolutionEngine, config);
+        givenCatalogue(row("urn:a", "Alfa"), row("urn:b", "Beta"), row("urn:c", "Gama"));
 
         NkodDatasetListDto page = service.listDatasets(null, 99999, 0, "cs");
 
-        assertThat(page.getDatasets()).hasSize(1);
+        assertThat(page.getDatasets()).extracting(d -> d.getIri()).containsExactly("urn:a", "urn:b");
+        assertThat(page.getTotalCount()).isEqualTo(3);
     }
 
     @Test

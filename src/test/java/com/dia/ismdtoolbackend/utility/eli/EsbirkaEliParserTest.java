@@ -6,11 +6,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.LocalDate;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaEliParserTest {
 
@@ -23,49 +19,49 @@ class EsbirkaEliParserTest {
     void parse_lawOnlyIri_returnsLawLevel() {
         ParsedEli p = EsbirkaEliParser.parse(CANONICAL_LAW);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.LAW, p.level());
-        assertEquals("361", p.lawNumber());
-        assertEquals(2000, p.lawYear());
-        assertEquals("sb", p.sbirkaCode());
-        assertEquals(CANONICAL_LAW, p.lawIri());
-        assertNull(p.versionIri());
-        assertNull(p.fragmentIri());
-        assertNull(p.versionDate());
-        assertTrue(p.fragmentSegments().isEmpty());
-        assertEquals("/eli/cz/sb/2000/361", p.eliPath());
-        assertEquals("https://opendata.eselpoint.gov.cz/esel-esb", p.domain());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.LAW);
+        assertThat(p.lawNumber()).isEqualTo("361");
+        assertThat(p.lawYear()).isEqualTo(2000);
+        assertThat(p.sbirkaCode()).isEqualTo("sb");
+        assertThat(p.lawIri()).isEqualTo(CANONICAL_LAW);
+        assertThat(p.versionIri()).isNull();
+        assertThat(p.fragmentIri()).isNull();
+        assertThat(p.versionDate()).isNull();
+        assertThat(p.fragmentSegments()).isEmpty();
+        assertThat(p.eliPath()).isEqualTo("/eli/cz/sb/2000/361");
+        assertThat(p.domain()).isEqualTo("https://opendata.eselpoint.gov.cz/esel-esb");
     }
 
     @Test
     void parse_versionIri_returnsVersionLevel() {
         ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.VERSION, p.level());
-        assertEquals(LocalDate.of(2024, 4, 1), p.versionDate());
-        assertEquals(CANONICAL_VERSION, p.versionIri());
-        assertEquals(CANONICAL_LAW, p.lawIri());
-        assertNull(p.fragmentIri());
-        assertTrue(p.fragmentSegments().isEmpty());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.VERSION);
+        assertThat(p.versionDate()).isEqualTo(LocalDate.of(2024, 4, 1));
+        assertThat(p.versionIri()).isEqualTo(CANONICAL_VERSION);
+        assertThat(p.lawIri()).isEqualTo(CANONICAL_LAW);
+        assertThat(p.fragmentIri()).isNull();
+        assertThat(p.fragmentSegments()).isEmpty();
     }
 
     @Test
     void parse_fragmentIri_returnsFragmentLevel() {
         ParsedEli p = EsbirkaEliParser.parse(CANONICAL_FRAGMENT);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
-        assertTrue(p.isFragment());
-        assertEquals(CANONICAL_FRAGMENT, p.fragmentIri());
-        assertEquals(CANONICAL_VERSION, p.versionIri());
-        assertEquals(CANONICAL_LAW, p.lawIri());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(p.isFragment()).isTrue();
+        assertThat(p.fragmentIri()).isEqualTo(CANONICAL_FRAGMENT);
+        assertThat(p.versionIri()).isEqualTo(CANONICAL_VERSION);
+        assertThat(p.lawIri()).isEqualTo(CANONICAL_LAW);
 
-        assertEquals(4, p.fragmentSegments().size());
-        assertEquals(new ParsedEli.FragmentSegment("cast", "1"), p.fragmentSegments().get(0));
-        assertEquals(new ParsedEli.FragmentSegment("hlava", "1"), p.fragmentSegments().get(1));
-        assertEquals(new ParsedEli.FragmentSegment("par", "2"), p.fragmentSegments().get(2));
-        assertEquals(new ParsedEli.FragmentSegment("pism", "d"), p.fragmentSegments().get(3));
+        assertThat(p.fragmentSegments()).hasSize(4);
+        assertThat(p.fragmentSegments().get(0)).isEqualTo(new ParsedEli.FragmentSegment("cast", "1"));
+        assertThat(p.fragmentSegments().get(1)).isEqualTo(new ParsedEli.FragmentSegment("hlava", "1"));
+        assertThat(p.fragmentSegments().get(2)).isEqualTo(new ParsedEli.FragmentSegment("par", "2"));
+        assertThat(p.fragmentSegments().get(3)).isEqualTo(new ParsedEli.FragmentSegment("pism", "d"));
     }
 
     @Test
@@ -75,12 +71,12 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(legacyFragment);
 
-        assertTrue(p.isValid());
-        assertEquals(legacyFragment, p.originalUrl());
-        assertEquals("https://opendata.eselpoint.gov.cz/esel-esb", p.domain());
-        assertTrue(p.lawIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
-        assertTrue(p.versionIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
-        assertTrue(p.fragmentIri().startsWith("https://opendata.eselpoint.gov.cz/esel-esb/"));
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.originalUrl()).isEqualTo(legacyFragment);
+        assertThat(p.domain()).isEqualTo("https://opendata.eselpoint.gov.cz/esel-esb");
+        assertThat(p.lawIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
+        assertThat(p.versionIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
+        assertThat(p.fragmentIri()).startsWith("https://opendata.eselpoint.gov.cz/esel-esb/");
     }
 
     @Test
@@ -89,37 +85,37 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(legacyLaw);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.LAW, p.level());
-        assertEquals(legacyLaw, p.originalUrl());
-        assertEquals(CANONICAL_LAW, p.lawIri());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.LAW);
+        assertThat(p.originalUrl()).isEqualTo(legacyLaw);
+        assertThat(p.lawIri()).isEqualTo(CANONICAL_LAW);
     }
 
     @Test
     void parse_null_returnsInvalid() {
         ParsedEli p = EsbirkaEliParser.parse(null);
-        assertFalse(p.isValid());
-        assertNull(p.level());
-        assertNull(p.originalUrl());
+        assertThat(p.isValid()).isFalse();
+        assertThat(p.level()).isNull();
+        assertThat(p.originalUrl()).isNull();
     }
 
     @Test
     void parse_blank_returnsInvalid() {
         ParsedEli p = EsbirkaEliParser.parse("   ");
-        assertFalse(p.isValid());
+        assertThat(p.isValid()).isFalse();
     }
 
     @Test
     void parse_foreignHost_returnsInvalid() {
         ParsedEli p = EsbirkaEliParser.parse("https://example.com/eli/cz/sb/2000/361");
-        assertFalse(p.isValid());
-        assertNull(p.level());
+        assertThat(p.isValid()).isFalse();
+        assertThat(p.level()).isNull();
     }
 
     @Test
     void parse_nonEliPath_returnsInvalid() {
         ParsedEli p = EsbirkaEliParser.parse("https://opendata.eselpoint.gov.cz/esel-esb/foo/bar");
-        assertFalse(p.isValid());
+        assertThat(p.isValid()).isFalse();
     }
 
     @Test
@@ -127,24 +123,24 @@ class EsbirkaEliParserTest {
         String url = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/not-a-date";
         ParsedEli p = EsbirkaEliParser.parse(url);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.VERSION, p.level());
-        assertNull(p.versionDate());
-        assertNotNull(p.versionIri());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.VERSION);
+        assertThat(p.versionDate()).isNull();
+        assertThat(p.versionIri()).isNotNull();
     }
 
     @Test
     void parse_fragmentMissingDokumentNorma_returnsInvalid() {
         String bogusFragment = CANONICAL_VERSION + "/something/else/par_2";
         ParsedEli p = EsbirkaEliParser.parse(bogusFragment);
-        assertFalse(p.isValid());
+        assertThat(p.isValid()).isFalse();
     }
 
     @Test
     void parse_yearNotInteger_returnsInvalid() {
         String url = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/twentythousand/361";
         ParsedEli p = EsbirkaEliParser.parse(url);
-        assertFalse(p.isValid());
+        assertThat(p.isValid()).isFalse();
     }
 
     @ParameterizedTest
@@ -154,11 +150,11 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(url);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
-        assertEquals(1, p.fragmentSegments().size());
-        assertEquals(kind, p.fragmentSegments().get(0).kind());
-        assertEquals("1", p.fragmentSegments().get(0).number());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(p.fragmentSegments()).hasSize(1);
+        assertThat(p.fragmentSegments().get(0).kind()).isEqualTo(kind);
+        assertThat(p.fragmentSegments().get(0).number()).isEqualTo("1");
     }
 
     @ParameterizedTest
@@ -168,15 +164,15 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(url);
 
-        assertTrue(p.isValid(), "container root must resolve: " + container);
-        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
-        assertTrue(p.isContainerRoot());
-        assertFalse(p.isDocumentRoot());
-        assertEquals(container, p.container());
-        assertTrue(p.fragmentSegments().isEmpty());
-        assertEquals(url, p.fragmentIri());
-        assertEquals(CANONICAL_VERSION, p.versionIri());
-        assertEquals(CANONICAL_LAW, p.lawIri());
+        assertThat(p.isValid()).as("container root must resolve: " + container).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(p.isContainerRoot()).isTrue();
+        assertThat(p.isDocumentRoot()).isFalse();
+        assertThat(p.container()).isEqualTo(container);
+        assertThat(p.fragmentSegments()).isEmpty();
+        assertThat(p.fragmentIri()).isEqualTo(url);
+        assertThat(p.versionIri()).isEqualTo(CANONICAL_VERSION);
+        assertThat(p.lawIri()).isEqualTo(CANONICAL_LAW);
     }
 
     @ParameterizedTest
@@ -186,21 +182,21 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(url);
 
-        assertTrue(p.isValid(), "non-norma container must resolve: " + container);
-        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
-        assertFalse(p.isContainerRoot());
-        assertEquals(container, p.container());
-        assertEquals(1, p.fragmentSegments().size());
-        assertEquals(new ParsedEli.FragmentSegment("par", "2"), p.fragmentSegments().get(0));
+        assertThat(p.isValid()).as("non-norma container must resolve: " + container).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(p.isContainerRoot()).isFalse();
+        assertThat(p.container()).isEqualTo(container);
+        assertThat(p.fragmentSegments()).hasSize(1);
+        assertThat(p.fragmentSegments().get(0)).isEqualTo(new ParsedEli.FragmentSegment("par", "2"));
     }
 
     @Test
     void parse_containerWithSiblingSuffix_stripsSuffixFromContainer() {
         ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION + "/dokument/prilohy:4");
 
-        assertTrue(p.isValid());
-        assertEquals("prilohy", p.container());
-        assertTrue(p.isContainerRoot());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.container()).isEqualTo("prilohy");
+        assertThat(p.isContainerRoot()).isTrue();
     }
 
     /**
@@ -213,14 +209,14 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(url);
 
-        assertTrue(p.isValid());
-        assertEquals(ParsedEli.Level.FRAGMENT, p.level());
-        assertTrue(p.isDocumentRoot());
-        assertFalse(p.isContainerRoot());
-        assertNull(p.container());
-        assertTrue(p.fragmentSegments().isEmpty());
-        assertEquals(url, p.fragmentIri());
-        assertEquals(CANONICAL_VERSION, p.versionIri());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.level()).isEqualTo(ParsedEli.Level.FRAGMENT);
+        assertThat(p.isDocumentRoot()).isTrue();
+        assertThat(p.isContainerRoot()).isFalse();
+        assertThat(p.container()).isNull();
+        assertThat(p.fragmentSegments()).isEmpty();
+        assertThat(p.fragmentIri()).isEqualTo(url);
+        assertThat(p.versionIri()).isEqualTo(CANONICAL_VERSION);
     }
 
     /** The promulgated-text version ({@code VYHLZNE}) is a real version whose date is not a date. */
@@ -230,22 +226,22 @@ class EsbirkaEliParserTest {
 
         ParsedEli p = EsbirkaEliParser.parse(url);
 
-        assertTrue(p.isValid());
-        assertTrue(p.isDocumentRoot());
-        assertNull(p.versionDate());
-        assertEquals(url, p.fragmentIri());
+        assertThat(p.isValid()).isTrue();
+        assertThat(p.isDocumentRoot()).isTrue();
+        assertThat(p.versionDate()).isNull();
+        assertThat(p.fragmentIri()).isEqualTo(url);
     }
 
     @Test
     void parse_nonDokumentSixthSegment_returnsInvalid() {
         ParsedEli p = EsbirkaEliParser.parse(CANONICAL_VERSION + "/neco");
-        assertFalse(p.isValid());
+        assertThat(p.isValid()).isFalse();
     }
 
     @Test
     void parse_preservesOriginalUrlVerbatim() {
         String original = "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2000/361";
         ParsedEli p = EsbirkaEliParser.parse(original);
-        assertEquals(original, p.originalUrl());
+        assertThat(p.originalUrl()).isEqualTo(original);
     }
 }

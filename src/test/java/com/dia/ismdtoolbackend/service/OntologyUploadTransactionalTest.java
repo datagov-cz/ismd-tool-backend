@@ -1,6 +1,5 @@
 package com.dia.ismdtoolbackend.service;
 
-import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
@@ -16,9 +15,8 @@ import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.repository.ValidationReportRepository;
+import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceFixture;
 import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.OntologyUploadServiceWiring;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntModelSpec;
@@ -30,10 +28,7 @@ import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
@@ -42,7 +37,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -53,40 +50,27 @@ import static org.mockito.Mockito.*;
  * - Model resource cleanup on failure paths
  */
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
 class OntologyUploadTransactionalTest {
 
-    @Mock
     private OntologyMetadataMapper ontologyMetadataMapper;
-
-    @Mock
     private OntologyMetadataRepository ontologyMetadataRepository;
-
-    @Mock
     private ConceptMetadataRepository conceptMetadataRepository;
-
-    @Mock
     private ValidationClient validationClient;
-
-    @Mock
-    private ValidationReportRepository validationReportRepository;
-
-    @Mock
     private JenaTDB2Repository jenaTDB2Repository;
-
-    @Mock
-    private NkdSparqlClient nkdSparqlClient;
-
-    @Mock
     private PublishedResourceUtil deviationChecker;
 
     private OntologyUploadServiceImpl uploadService;
 
     @BeforeEach
     void setUp() {
-        uploadService = OntologyUploadServiceWiring.buildWithMockedGate(ontologyMetadataMapper,
-                ontologyMetadataRepository, conceptMetadataRepository, validationClient,
-                validationReportRepository, jenaTDB2Repository, deviationChecker);
+        OntologyUploadServiceFixture fixture = new OntologyUploadServiceFixture().withMockedConceptGate();
+        ontologyMetadataMapper = fixture.ontologyMetadataMapper();
+        ontologyMetadataRepository = fixture.ontologyMetadataRepository();
+        conceptMetadataRepository = fixture.conceptMetadataRepository();
+        validationClient = fixture.validationClient();
+        jenaTDB2Repository = fixture.jenaTDB2Repository();
+        deviationChecker = fixture.publishedResourceUtil();
+        uploadService = fixture.build();
     }
 
     private MultipartFile createTurtleFile(String content) throws IOException {
@@ -94,10 +78,7 @@ class OntologyUploadTransactionalTest {
         when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn((long) content.length());
         when(file.getOriginalFilename()).thenReturn("test-ontology.ttl");
-        when(file.getContentType()).thenReturn("text/turtle");
-        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-        when(file.getInputStream()).thenReturn(new ByteArrayInputStream(bytes));
-        when(file.getBytes()).thenReturn(bytes);
+        when(file.getBytes()).thenReturn(content.getBytes(StandardCharsets.UTF_8));
         return file;
     }
 
@@ -111,10 +92,11 @@ class OntologyUploadTransactionalTest {
         doThrow(new RuntimeException("TDB2 connection failed"))
                 .when(jenaTDB2Repository).putOntologyModel(anyString(), any());
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadRdfStoreException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadRdfStoreException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("TDB2 connection failed"));
+        assertThat(thrown).hasMessageContaining("TDB2 connection failed");
         // Metadata repository should not have been called
         verify(ontologyMetadataRepository, never()).save(any());
     }
@@ -131,12 +113,13 @@ class OntologyUploadTransactionalTest {
         // Metadata save fails
         when(ontologyMetadataRepository.save(any())).thenThrow(new RuntimeException("DB constraint violation"));
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadMetadataException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadMetadataException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
         // TDB2 should be cleaned up
         verify(jenaTDB2Repository).deleteGraph(anyString());
-        assertTrue(thrown.getMessage().contains("DB constraint violation"));
+        assertThat(thrown).hasMessageContaining("DB constraint violation");
     }
 
     @Test
@@ -152,17 +135,26 @@ class OntologyUploadTransactionalTest {
         doThrow(new RuntimeException("TDB2 cleanup failed"))
                 .when(jenaTDB2Repository).deleteGraph(anyString());
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadMetadataException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadMetadataException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
         // Original exception should still propagate
-        assertTrue(thrown.getMessage().contains("DB failure"));
+        assertThat(thrown).hasMessageContaining("DB failure");
         verify(jenaTDB2Repository).deleteGraph(anyString());
     }
 
     @Test
     void uploadFromFile_conceptMetadataExtractionFails_shouldCleanupTDB2() throws IOException {
-        String ttl = "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n<https://example.com/ontology> a owl:Ontology .";
+        // One owned concept, so the concept rows are really written and their save is what fails.
+        String ttl = """
+                @prefix owl: <http://www.w3.org/2002/07/owl#> .
+                @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+                @prefix ofn: <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/> .
+                <https://example.com/ontology> a owl:Ontology, skos:ConceptScheme .
+                <https://example.com/ontology/pojem/osoba> a ofn:pojem, owl:Class ;
+                    skos:inScheme <https://example.com/ontology> .
+                """;
         MultipartFile file = createTurtleFile(ttl);
 
         OntologyMetadataEntity savedEntity = new OntologyMetadataEntity();
@@ -180,45 +172,49 @@ class OntologyUploadTransactionalTest {
         doNothing().when(jenaTDB2Repository).putOntologyModel(anyString(), any());
         when(ontologyMetadataRepository.save(any())).thenReturn(savedEntity);
         when(ontologyMetadataMapper.toDto(any(OntologyMetadataEntity.class))).thenReturn(model);
-        // Concept metadata extraction fails
+        when(ontologyMetadataRepository.findById(1L)).thenReturn(Optional.of(savedEntity));
         doThrow(new RuntimeException("Concept extraction error"))
                 .when(conceptMetadataRepository).saveAll(any());
 
-        OntologyUploadException thrown = assertThrows(OntologyUploadMetadataException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadException thrown = assertThatExceptionOfType(OntologyUploadMetadataException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        verify(jenaTDB2Repository).deleteGraph(anyString());
+        assertThat(thrown).as(thrown.getMessage()).hasMessageContaining("Concept extraction error");
+        verify(jenaTDB2Repository).deleteGraph("https://example.com/ontology");
     }
 
     @Test
     void uploadFromFile_malformedTurtle_shouldThrowParseExceptionWithParserMessage() throws IOException {
         MultipartFile file = createTurtleFile("<https://example.com/ontology> a undeclared:Ontology .");
 
-        OntologyUploadParseException thrown = assertThrows(OntologyUploadParseException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyUploadParseException thrown = assertThatExceptionOfType(OntologyUploadParseException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("undeclared"), thrown.getMessage());
+        assertThat(thrown).as(thrown.getMessage()).hasMessageContaining("undeclared");
         verifyNoInteractions(jenaTDB2Repository);
     }
 
     @Test
     void uploadFromFile_noOntologyIri_shouldThrowMissingIriException() throws IOException {
         MultipartFile file = createTurtleFile("@prefix owl: <http://www.w3.org/2002/07/owl#> .");
-        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
 
-        assertThrows(OntologyUploadMissingIriException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadMissingIriException.class);
 
         verifyNoInteractions(jenaTDB2Repository);
     }
 
     @Test
     void uploadFromFile_fileOverLimit_shouldThrowFileTooLargeException() throws IOException {
-        MultipartFile file = createTurtleFile("<https://example.com/ontology> a <http://www.w3.org/2002/07/owl#Ontology> .");
+        // Rejected on size alone, before the file is read.
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.isEmpty()).thenReturn(false);
         when(file.getSize()).thenReturn(11L * 1024 * 1024);
 
-        assertThrows(OntologyUploadFileTooLargeException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        assertThatThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .isInstanceOf(OntologyUploadFileTooLargeException.class);
 
         verifyNoInteractions(jenaTDB2Repository);
     }
@@ -228,13 +224,13 @@ class OntologyUploadTransactionalTest {
         String ttl = "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n<https://example.com/ontology> a owl:Ontology .";
         MultipartFile file = createTurtleFile(ttl);
 
-        when(deviationChecker.checkPublishedResourcesInNKD(any(), any())).thenReturn(Collections.emptyList());
         when(ontologyMetadataRepository.findBySlug(anyString())).thenReturn(Optional.of(new OntologyMetadataEntity()));
 
-        OntologyAlreadyExistsException thrown = assertThrows(OntologyAlreadyExistsException.class,
-                () -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null));
+        OntologyAlreadyExistsException thrown = assertThatExceptionOfType(OntologyAlreadyExistsException.class)
+                .isThrownBy(() -> uploadService.uploadFromFile(file, "user1", NormalizeMode.NORMALIZE_ALL, null))
+                .actual();
 
-        assertTrue(thrown.getMessage().contains("https://example.com/ontology"));
+        assertThat(thrown).hasMessageContaining("https://example.com/ontology");
         verifyNoInteractions(jenaTDB2Repository);
         verify(ontologyMetadataRepository, never()).save(any());
     }

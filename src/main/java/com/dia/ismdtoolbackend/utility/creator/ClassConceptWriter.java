@@ -53,6 +53,9 @@ final class ClassConceptWriter {
     }
 
     void addSpecificClassType(Resource classResource, String type) {
+        if (type == null) {
+            return;
+        }
         if (type.contains("subjekt")) {
             classResource.addProperty(RDF.type, ontModel.getResource(OFN_NAMESPACE + TSP));
         } else if (type.contains("objekt")) {

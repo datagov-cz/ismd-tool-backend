@@ -1,13 +1,10 @@
 package com.dia.ismdtoolbackend.outbox;
 
-import com.dia.ismdtoolbackend.config.security.TestSecurityConfig;
 import com.dia.ismdtoolbackend.config.security.WithMockSecurityUser;
 import com.dia.ismdtoolbackend.outbox.dto.OutboxStatusDto;
+import com.dia.ismdtoolbackend.testsupport.web.ControllerSliceTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -25,16 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Web-layer tests for {@link OutboxController}: admin-only authorization, the status shape, and the
  * retry 409-when-not-retryable contract. Mirrors {@code ReconcilerControllerTest}.
  */
-@WebMvcTest(controllers = OutboxController.class,
-    excludeAutoConfiguration = {
-        org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration.class,
-        org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.client.autoconfigure.servlet.OAuth2ClientWebSecurityAutoConfiguration.class,
-        org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerAutoConfiguration.class
-    })
-@Import(TestSecurityConfig.class)
-@ActiveProfiles("junit")
+@ControllerSliceTest(controllers = OutboxController.class)
 class OutboxControllerTest {
 
     @Autowired

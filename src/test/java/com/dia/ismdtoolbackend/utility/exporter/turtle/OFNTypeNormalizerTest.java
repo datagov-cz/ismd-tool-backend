@@ -19,7 +19,9 @@ import java.util.Set;
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.POJEM;
 import static com.dia.constants.VocabularyConstants.SKOS_NS;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Regression tests for the missing {@code skos:inScheme} write-path bug. The
@@ -46,8 +48,9 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertTrue(cls.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "OWL Class concept should get skos:inScheme → enclosing ontology IRI");
+        assertThat(cls.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("OWL Class concept should get skos:inScheme → enclosing ontology IRI")
+                .isTrue();
     }
 
     @Test
@@ -60,8 +63,9 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertTrue(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "Datatype property concept should get skos:inScheme → enclosing ontology IRI");
+        assertThat(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("Datatype property concept should get skos:inScheme → enclosing ontology IRI")
+                .isTrue();
     }
 
     @Test
@@ -74,8 +78,9 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertTrue(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "Object property concept should get skos:inScheme → enclosing ontology IRI");
+        assertThat(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("Object property concept should get skos:inScheme → enclosing ontology IRI")
+                .isTrue();
     }
 
     @Test
@@ -90,10 +95,12 @@ class OFNTypeNormalizerTest {
 
         OFNTypeNormalizer.normalizeForNkd(model);
 
-        assertTrue(prop.hasProperty(inScheme, model.createResource(otherScheme)),
-                "Existing skos:inScheme must be preserved");
-        assertFalse(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "Normalizer must not add a competing skos:inScheme when one already exists");
+        assertThat(prop.hasProperty(inScheme, model.createResource(otherScheme)))
+                .as("Existing skos:inScheme must be preserved")
+                .isTrue();
+        assertThat(prop.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("Normalizer must not add a competing skos:inScheme when one already exists")
+                .isFalse();
     }
 
     @Test
@@ -105,8 +112,9 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalizeForNkd(model);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertFalse(prop.hasProperty(inScheme),
-                "Resources outside the /pojem/ shape are not concepts and must be left alone");
+        assertThat(prop.hasProperty(inScheme))
+                .as("Resources outside the /pojem/ shape are not concepts and must be left alone")
+                .isFalse();
     }
 
     // --- Graph-aware (upload-path) overload: normalize(model, graphName) ---
@@ -114,16 +122,16 @@ class OFNTypeNormalizerTest {
     @Test
     void normalizeWithGraphName_throws_whenGraphNameNull() {
         Model model = ModelFactory.createDefaultModel();
-        assertThrows(IllegalArgumentException.class,
-                () -> OFNTypeNormalizer.normalize(model, null),
-                "Upload-path normalizer requires an authoritative graphName");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .as("Upload-path normalizer requires an authoritative graphName")
+                .isThrownBy(() -> OFNTypeNormalizer.normalize(model, null));
     }
 
     @Test
     void normalizeWithGraphName_throws_whenGraphNameBlank() {
         Model model = ModelFactory.createDefaultModel();
-        assertThrows(IllegalArgumentException.class,
-                () -> OFNTypeNormalizer.normalize(model, "   "));
+        assertThatThrownBy(() -> OFNTypeNormalizer.normalize(model, "   "))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     /**
@@ -159,12 +167,14 @@ class OFNTypeNormalizerTest {
                 continue;
             }
             checked++;
-            assertTrue(c.hasProperty(inScheme),
-                    "Every owned skos:Concept must carry skos:inScheme after normalize: " + c.getURI());
-            assertTrue(c.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                    "inScheme must point to the authoritative graphName, not a /pojem/-derived value: " + c.getURI());
+            assertThat(c.hasProperty(inScheme))
+                    .as("Every owned skos:Concept must carry skos:inScheme after normalize: " + c.getURI())
+                    .isTrue();
+            assertThat(c.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                    .as("inScheme must point to the authoritative graphName, not a /pojem/-derived value: " + c.getURI())
+                    .isTrue();
         }
-        assertEquals(3, checked, "All three owned concepts should have been checked");
+        assertThat(checked).as("All three owned concepts should have been checked").isEqualTo(3);
     }
 
     /**
@@ -182,8 +192,9 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalize(model, ONTOLOGY);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertTrue(concept.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "Bare skos:Concept under graphName must get inScheme → graphName");
+        assertThat(concept.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("Bare skos:Concept under graphName must get inScheme → graphName")
+                .isTrue();
     }
 
     /**
@@ -201,8 +212,9 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalize(model, ONTOLOGY);
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertFalse(alien.hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "Alien concept must NOT be claimed with inScheme → graphName");
+        assertThat(alien.hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("Alien concept must NOT be claimed with inScheme → graphName")
+                .isFalse();
     }
 
     // --- detectOwnedConceptsMissingInScheme (pure detection) ---
@@ -218,10 +230,10 @@ class OFNTypeNormalizerTest {
         long sizeBefore = model.size();
         List<String> result = OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY);
 
-        assertEquals(List.of(missing), result, "Should report the one owned concept missing inScheme");
-        assertEquals(sizeBefore, model.size(), "detect must not mutate the model");
+        assertThat(result).as("Should report the one owned concept missing inScheme").isEqualTo(List.of(missing));
+        assertThat(model.size()).as("detect must not mutate the model").isEqualTo(sizeBefore);
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertFalse(concept.hasProperty(inScheme), "detect must not add inScheme");
+        assertThat(concept.hasProperty(inScheme)).as("detect must not add inScheme").isFalse();
     }
 
     @Test
@@ -232,8 +244,9 @@ class OFNTypeNormalizerTest {
         concept.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
         concept.addProperty(model.createProperty(SKOS_INSCHEME), model.createResource(ONTOLOGY));
 
-        assertTrue(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY).isEmpty(),
-                "A concept that already has inScheme is not 'missing'");
+        assertThat(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY))
+                .as("A concept that already has inScheme is not 'missing'")
+                .isEmpty();
     }
 
     @Test
@@ -243,8 +256,9 @@ class OFNTypeNormalizerTest {
         alien.addProperty(RDF.type, SKOS.Concept);
         alien.addProperty(RDF.type, model.createResource(OFN_NAMESPACE + POJEM));
 
-        assertTrue(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY).isEmpty(),
-                "Alien concepts are not owned and must not appear in the missing list");
+        assertThat(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, ONTOLOGY))
+                .as("Alien concepts are not owned and must not appear in the missing list")
+                .isEmpty();
     }
 
     // --- normalize(model, graphName, allowList) selective stamping ---
@@ -263,10 +277,12 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalize(model, ONTOLOGY, Set.of(keep));
 
         Property inScheme = model.createProperty(SKOS_INSCHEME);
-        assertTrue(model.getResource(keep).hasProperty(inScheme, model.createResource(ONTOLOGY)),
-                "Allow-listed concept must be stamped");
-        assertFalse(model.getResource(drop).hasProperty(inScheme),
-                "Concept not in the allow-list must be left without inScheme (excluded)");
+        assertThat(model.getResource(keep).hasProperty(inScheme, model.createResource(ONTOLOGY)))
+                .as("Allow-listed concept must be stamped")
+                .isTrue();
+        assertThat(model.getResource(drop).hasProperty(inScheme))
+                .as("Concept not in the allow-list must be left without inScheme (excluded)")
+                .isFalse();
     }
 
     @Test
@@ -278,8 +294,9 @@ class OFNTypeNormalizerTest {
 
         OFNTypeNormalizer.normalize(model, ONTOLOGY, Set.of());
 
-        assertFalse(c.hasProperty(model.createProperty(SKOS_INSCHEME)),
-                "Empty allow-list (EXCLUDE_ALL) must add no inScheme");
+        assertThat(c.hasProperty(model.createProperty(SKOS_INSCHEME)))
+                .as("Empty allow-list (EXCLUDE_ALL) must add no inScheme")
+                .isFalse();
     }
 
     // --- Read-path split: local does NOT derive inScheme, NKD does ---
@@ -294,11 +311,13 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalizeForLocalDetail(model);
 
         // Role tags still inferred so the concept survives TurtleFilterUtil...
-        assertTrue(cls.hasProperty(RDF.type, SKOS.Concept),
-                "Local path must still infer skos:Concept role tag");
+        assertThat(cls.hasProperty(RDF.type, SKOS.Concept))
+                .as("Local path must still infer skos:Concept role tag")
+                .isTrue();
         // ...but inScheme is NOT derived: local data is authoritative post-upload-fix.
-        assertFalse(cls.hasProperty(model.createProperty(SKOS_INSCHEME)),
-                "Local path must NOT derive skos:inScheme (redundant; trusts authoritative upload)");
+        assertThat(cls.hasProperty(model.createProperty(SKOS_INSCHEME)))
+                .as("Local path must NOT derive skos:inScheme (redundant; trusts authoritative upload)")
+                .isFalse();
     }
 
     @Test
@@ -310,8 +329,9 @@ class OFNTypeNormalizerTest {
 
         OFNTypeNormalizer.normalizeForNkd(model);
 
-        assertTrue(cls.hasProperty(model.createProperty(SKOS_INSCHEME), model.createResource(ONTOLOGY)),
-                "NKD path must derive skos:inScheme by stripping /pojem/ from the concept IRI");
+        assertThat(cls.hasProperty(model.createProperty(SKOS_INSCHEME), model.createResource(ONTOLOGY)))
+                .as("NKD path must derive skos:inScheme by stripping /pojem/ from the concept IRI")
+                .isTrue();
     }
 
     // --- pruneUnreferencedExcludedConcepts: close the "excluded leaks into TDB2" gap ---
@@ -326,8 +346,8 @@ class OFNTypeNormalizerTest {
     @Test
     void prune_throws_whenGraphNameNull() {
         Model model = ModelFactory.createDefaultModel();
-        assertThrows(IllegalArgumentException.class,
-                () -> OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, null));
+        assertThatThrownBy(() -> OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -339,9 +359,10 @@ class OFNTypeNormalizerTest {
 
         int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
 
-        assertEquals(1, pruned, "The single unreferenced excluded concept should be pruned");
-        assertFalse(model.listStatements(model.createResource(excludedIri), null, (RDFNode) null).hasNext(),
-                "Excluded concept body must be removed from the model");
+        assertThat(pruned).as("The single unreferenced excluded concept should be pruned").isEqualTo(1);
+        assertThat(model.listStatements(model.createResource(excludedIri), null, (RDFNode) null).hasNext())
+                .as("Excluded concept body must be removed from the model")
+                .isFalse();
     }
 
     @Test
@@ -359,11 +380,13 @@ class OFNTypeNormalizerTest {
 
         int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
 
-        assertEquals(0, pruned, "A referenced excluded concept must NOT be pruned");
-        assertTrue(model.listStatements(excluded, null, (RDFNode) null).hasNext(),
-                "Referenced excluded concept must keep its triples (inert context)");
-        assertTrue(owned.hasProperty(RDFS.subClassOf, excluded),
-                "Owned concept's edge to the excluded concept must survive (no dangling reference)");
+        assertThat(pruned).as("A referenced excluded concept must NOT be pruned").isEqualTo(0);
+        assertThat(model.listStatements(excluded, null, (RDFNode) null).hasNext())
+                .as("Referenced excluded concept must keep its triples (inert context)")
+                .isTrue();
+        assertThat(owned.hasProperty(RDFS.subClassOf, excluded))
+                .as("Owned concept's edge to the excluded concept must survive (no dangling reference)")
+                .isTrue();
     }
 
     @Test
@@ -375,9 +398,10 @@ class OFNTypeNormalizerTest {
 
         int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
 
-        assertEquals(0, pruned, "Concepts carrying inScheme are owned, not excluded");
-        assertTrue(model.listStatements(kept, null, (RDFNode) null).hasNext(),
-                "Normalized owned concept must be left intact");
+        assertThat(pruned).as("Concepts carrying inScheme are owned, not excluded").isEqualTo(0);
+        assertThat(model.listStatements(kept, null, (RDFNode) null).hasNext())
+                .as("Normalized owned concept must be left intact")
+                .isTrue();
     }
 
     @Test
@@ -392,9 +416,10 @@ class OFNTypeNormalizerTest {
 
         int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
 
-        assertEquals(0, pruned, "Alien concepts are not owned candidates and must be left alone");
-        assertTrue(model.listStatements(alien, null, (RDFNode) null).hasNext(),
-                "Alien concept triples must remain");
+        assertThat(pruned).as("Alien concepts are not owned candidates and must be left alone").isEqualTo(0);
+        assertThat(model.listStatements(alien, null, (RDFNode) null).hasNext())
+                .as("Alien concept triples must remain")
+                .isTrue();
     }
 
     @Test
@@ -412,10 +437,12 @@ class OFNTypeNormalizerTest {
         OFNTypeNormalizer.normalize(model, ONTOLOGY, Set.of()); // EXCLUDE_ALL
         int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, ONTOLOGY);
 
-        assertEquals(1, pruned, "Only the unreferenced excluded concept (a) is pruned");
-        assertFalse(model.listStatements(model.createResource(aIri), null, (RDFNode) null).hasNext(),
-                "Unreferenced excluded concept 'a' must be removed");
-        assertTrue(model.listStatements(b, null, (RDFNode) null).hasNext(),
-                "Referenced excluded concept 'b' must be kept");
+        assertThat(pruned).as("Only the unreferenced excluded concept (a) is pruned").isEqualTo(1);
+        assertThat(model.listStatements(model.createResource(aIri), null, (RDFNode) null).hasNext())
+                .as("Unreferenced excluded concept 'a' must be removed")
+                .isFalse();
+        assertThat(model.listStatements(b, null, (RDFNode) null).hasNext())
+                .as("Referenced excluded concept 'b' must be kept")
+                .isTrue();
     }
 }

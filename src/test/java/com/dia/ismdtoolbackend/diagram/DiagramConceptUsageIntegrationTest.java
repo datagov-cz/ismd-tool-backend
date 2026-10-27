@@ -3,52 +3,32 @@ package com.dia.ismdtoolbackend.diagram;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramConceptUsageKind;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
-import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.repository.ConceptHierarchyLinks;
 import com.dia.ismdtoolbackend.service.impl.DiagramConceptUsageService;
 import com.dia.ismdtoolbackend.service.impl.ReferencedConceptResolutionEngine;
+import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,20 +44,11 @@ import static org.mockito.Mockito.when;
  * <p>The other axis is the overlay merge: what a canvas SHOWS is live RDF ⊕ that diagram's staged edit,
  * so two diagrams can legitimately disagree about the same concept.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramConceptUsageIntegrationTest.Beans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@DiagramServiceIT
 class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/usage";
     private static final String SLUG = "usage-ontology";
-    private static final String USER = "user123";
 
     private static final String CLASS_IRI = GRAPH + "/pojem/zamestnanec";
     private static final String OTHER_CLASS_IRI = GRAPH + "/pojem/organizace";
@@ -85,18 +56,17 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     private static final String VZTAH_IRI = GRAPH + "/pojem/je-zamestnan-u";
     private static final String VLASTNOST_IRI = GRAPH + "/pojem/datum-narozeni";
 
-    @Autowired private ConceptMetadataRepository conceptRepo;
-    @Autowired private OntologyMetadataRepository ontologyRepo;
     @Autowired private DiagramRepository diagramRepo;
-    @Autowired private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramConceptUsageService usageService;
     @Autowired private JenaTDB2Repository tdb2;
     @Autowired private ReferencedConceptResolutionEngine resolutionEngine;
+    @Autowired private PgTestData data;
+
+    private OntologyMetadataEntity ontology;
 
     @BeforeEach
     void setUp() {
-        reset(tdb2, resolutionEngine);
         when(tdb2.fetchConceptHierarchy(any(), any()))
                 .thenReturn(ConceptHierarchyLinks.empty());
         // Resolve every requested IRI to a stub, so an assertion about WHICH IRIs were resolved is not
@@ -106,20 +76,12 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
             return iris.stream().collect(java.util.stream.Collectors.toMap(i -> i, this::stub));
         });
 
-        txTemplate.executeWithoutResult(tx -> {
-            pendingEditRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity o = ontology();
-            seedConcept(o, CLASS_IRI, "Zaměstnanec", ConceptType.TRIDA);
-            seedConcept(o, OTHER_CLASS_IRI, "Organizace", ConceptType.TRIDA);
-            seedConcept(o, PARENT_CLASS_IRI, "Osoba", ConceptType.TRIDA);
-            seedConcept(o, VZTAH_IRI, "je zaměstnán u", ConceptType.VZTAH);
-            seedConcept(o, VLASTNOST_IRI, "datum narození", ConceptType.VLASTNOST);
-        });
+        ontology = data.createOntology(SLUG, GRAPH);
+        data.createConcept(ontology, CLASS_IRI, "Zaměstnanec", ConceptType.TRIDA);
+        data.createConcept(ontology, OTHER_CLASS_IRI, "Organizace", ConceptType.TRIDA);
+        data.createConcept(ontology, PARENT_CLASS_IRI, "Osoba", ConceptType.TRIDA);
+        data.createConcept(ontology, VZTAH_IRI, "je zaměstnán u", ConceptType.VZTAH);
+        data.createConcept(ontology, VLASTNOST_IRI, "datum narození", ConceptType.VLASTNOST);
     }
 
     // ---- the three membership shapes -------------------------------------------------------------
@@ -385,7 +347,7 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
         return txTemplate.execute(tx -> {
             DiagramEntity d = new DiagramEntity();
             d.setName(name);
-            d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
+            d.setOntologyMetadata(ontology);
             populate.accept(d);
             return diagramRepo.saveAndFlush(d).getId();
         });
@@ -412,56 +374,6 @@ class DiagramConceptUsageIntegrationTest extends PostgresIntegrationTestBase {
     }
 
     private void stage(Long diagramId, String conceptIri, DiagramPendingEdit edit) {
-        txTemplate.executeWithoutResult(tx -> {
-            DiagramPendingEditEntity row = new DiagramPendingEditEntity();
-            row.setDiagram(diagramRepo.findById(diagramId).orElseThrow());
-            row.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
-            row.setConceptIri(conceptIri);
-            row.setPendingEdit(edit);
-            pendingEditRepo.saveAndFlush(row);
-        });
-    }
-
-    private OntologyMetadataEntity ontology() {
-        OntologyMetadataEntity o = new OntologyMetadataEntity();
-        o.setSlug(SLUG);
-        o.setGraphName(GRAPH);
-        o.setUserId(USER);
-        o.setIsPublished(false);
-        o.setCreatedAt(LocalDateTime.now());
-        return ontologyRepo.save(o);
-    }
-
-    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name, ConceptType type) {
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setConceptName(name);
-        c.setConceptType(type);
-        c.setGraphName(GRAPH);
-        c.setUserId(ontology.getUserId());
-        c.setOntologyMetadata(ontology);
-        c.setSlug(slugOf(iri));
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        conceptRepo.save(c);
-    }
-
-    @TestConfiguration
-    static class Beans {
-
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        @Bean ReferencedConceptResolutionEngine referencedConceptResolutionEngine() {
-            return mock(ReferencedConceptResolutionEngine.class);
-        }
-
-        @Bean DiagramConceptUsageService diagramConceptUsageService(
-                DiagramRepository diagramRepo, DiagramPendingEditRepository pendingEditRepo,
-                ConceptMetadataRepository conceptRepo, JenaTDB2Repository tdb2,
-                ReferencedConceptResolutionEngine engine) {
-            return new DiagramConceptUsageService(diagramRepo, pendingEditRepo, conceptRepo, tdb2, engine);
-        }
+        data.stagePendingEdit(diagramId, ontology, conceptIri, edit);
     }
 }

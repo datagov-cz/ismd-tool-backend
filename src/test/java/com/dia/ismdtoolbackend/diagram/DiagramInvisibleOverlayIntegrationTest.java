@@ -3,55 +3,29 @@ package com.dia.ismdtoolbackend.diagram;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.DiagramLayoutDto;
 import com.dia.ismdtoolbackend.controller.dto.diagram.PositionDto;
-import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
-import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.DiagramMapper;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel.ConceptDetailModel;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
-import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
-import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
-import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
-import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
-import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.service.impl.DiagramLayoutReconciler;
-import com.dia.ismdtoolbackend.service.OntologyLabelLookup;
-import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
-import com.dia.ismdtoolbackend.service.impl.DiagramServiceBeans;
 import com.dia.ismdtoolbackend.service.impl.DiagramServiceImpl;
+import com.dia.ismdtoolbackend.testsupport.pg.DiagramServiceIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 /**
@@ -68,20 +42,11 @@ import static org.mockito.Mockito.when;
  * <p>Unlike {@link DiagramOverlayVersionIntegrationTest}, live content is stubbed with real concepts so
  * edges actually project — an empty graph would make every edge absent for the wrong reason.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramInvisibleOverlayIntegrationTest.Beans.class, DiagramServiceBeans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@DiagramServiceIT
 class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/vg";
     private static final String SLUG = "invisible-overlay-ontology";
-    private static final String USER = "user123";
     private static final String CLASS_A = GRAPH + "/pojem/trida-a";
     private static final String CLASS_B = GRAPH + "/pojem/trida-b";
     private static final String CLASS_C = GRAPH + "/pojem/trida-c";
@@ -90,18 +55,16 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
     /** A VLASTNOST whose live domain is A. Renders as a row inside A, never as a node. */
     private static final String PROP = GRAPH + "/pojem/vlastnost-a";
 
-    @Autowired private ConceptMetadataRepository conceptRepo;
-    @Autowired private OntologyMetadataRepository ontologyRepo;
-    @Autowired private DiagramRepository diagramRepo;
-    @Autowired private DiagramNodeRepository nodeRepo;
-    @Autowired private TransactionTemplate txTemplate;
     @Autowired private DiagramServiceImpl diagramService;
     @Autowired private JenaTDB2Repository tdb2;
+    /** Stubbed per test so live content can carry real domain/range and edges actually project. */
     @Autowired private OntologyDetailExtractor extractor;
+    @Autowired private PgTestData data;
+
+    private Long diagramId;
 
     @BeforeEach
     void setUp() {
-        reset(tdb2, extractor);
         // liveConcepts() short-circuits on an EMPTY model, and a bare createResource() adds no statement —
         // the model needs a real triple or the extractor stub below is never consulted.
         Model nonEmpty = ModelFactory.createDefaultModel();
@@ -112,26 +75,13 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
         when(extractor.applyOFNTransformations(any())).thenAnswer(inv -> inv.getArgument(0));
         stubLiveContent(concept(CLASS_A, "Třída A"), concept(CLASS_B, "Třída B"), concept(CLASS_C, "Třída C"));
 
-        txTemplate.executeWithoutResult(tx -> {
-            nodeRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity ont = new OntologyMetadataEntity();
-            ont.setSlug(SLUG);
-            ont.setGraphName(GRAPH);
-            ont.setUserId(USER);
-            ont.setIsPublished(false);
-            ont.setCreatedAt(LocalDateTime.now());
-            OntologyMetadataEntity saved = ontologyRepo.save(ont);
-            seedConcept(saved, CLASS_A, "Třída A", ConceptType.TRIDA);
-            seedConcept(saved, CLASS_B, "Třída B", ConceptType.TRIDA);
-            seedConcept(saved, CLASS_C, "Třída C", ConceptType.TRIDA);
-            seedConcept(saved, REL, "vztah A-B", ConceptType.VZTAH);
-            seedConcept(saved, PROP, "vlastnost A", ConceptType.VLASTNOST);
-        });
+        OntologyMetadataEntity ontology = data.createOntology(SLUG, GRAPH);
+        data.createConcept(ontology, CLASS_A, "Třída A", ConceptType.TRIDA);
+        data.createConcept(ontology, CLASS_B, "Třída B", ConceptType.TRIDA);
+        data.createConcept(ontology, CLASS_C, "Třída C", ConceptType.TRIDA);
+        data.createConcept(ontology, REL, "vztah A-B", ConceptType.VZTAH);
+        data.createConcept(ontology, PROP, "vlastnost A", ConceptType.VLASTNOST);
+        diagramId = data.createDiagram(ontology, "Test diagram");
     }
 
     // ---- fixtures -------------------------------------------------------------------------------
@@ -158,27 +108,8 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
                 .iri(PROP).name(Map.of("cs", "vlastnost A")).domain(CLASS_A).build();
     }
 
-    private void seedConcept(OntologyMetadataEntity ontology, String iri, String name, ConceptType type) {
-        ConceptMetadataEntity c = new ConceptMetadataEntity();
-        c.setConceptIri(iri);
-        c.setConceptName(name);
-        c.setConceptType(type);
-        c.setGraphName(GRAPH);
-        c.setUserId(USER);
-        c.setOntologyMetadata(ontology);
-        c.setSlug(iri.substring(iri.lastIndexOf('/') + 1));
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
-        conceptRepo.save(c);
-    }
-
     private DiagramLayoutDto.Node node(String iri, double x, double y) {
         return new DiagramLayoutDto.Node(DiagramMapper.NODE_ID_PREFIX + iri, new PositionDto(x, y), null, false, List.of());
-    }
-
-    /** The version a fresh GET would report — null before the first save provisions the diagram row. */
-    private Long storedVersion() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream().findFirst().map(DiagramEntity::getVersion).orElse(null);
     }
 
     /** Save with exactly these classes on the canvas, carrying these overlays. */
@@ -189,8 +120,8 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
             nodes.add(node(iri, x, 0));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null, nodes, PLACED_EDGES,
+        return diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
+                data.diagramVersion(diagramId), null, nodes, PLACED_EDGES,
                 overlays.length == 0 ? null : List.of(overlays)));
     }
 
@@ -204,8 +135,8 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
                     null, false, iri.equals(hostClass) ? List.of(PROP) : List.of()));
             x += 100;
         }
-        return diagramService.saveLayout(SLUG, diagramId(), new DiagramLayoutDto(
-                storedVersion(), null, nodes, PLACED_EDGES,
+        return diagramService.saveLayout(SLUG, diagramId, new DiagramLayoutDto(
+                data.diagramVersion(diagramId), null, nodes, PLACED_EDGES,
                 overlays.length == 0 ? null : List.of(overlays)));
     }
 
@@ -485,53 +416,5 @@ class DiagramInvisibleOverlayIntegrationTest extends PostgresIntegrationTestBase
                 .as("and is listed regardless — membership must never decide where an edit lives")
                 .extracting(DiagramDto.PendingEditEntry::iri)
                 .containsExactly(CLASS_C);
-    }
-
-    @TestConfiguration
-    static class Beans {
-
-        @Bean JenaTDB2Repository jenaTDB2Repository() {
-            return mock(JenaTDB2Repository.class);
-        }
-
-        /** Stubbed per-test so live content can carry real domain/range and edges actually project. */
-        @Bean OntologyDetailExtractor ontologyDetailExtractor() {
-            return mock(OntologyDetailExtractor.class);
-        }
-
-        @Bean DiagramMapper diagramMapper() {
-            return new DiagramMapper();
-        }
-
-        @Bean DiagramLayoutReconciler diagramLayoutReconciler(DiagramMapper mapper,
-                                                              ConceptMetadataRepository conceptRepo,
-                                                              DiagramPendingEditRepository pendingEditRepo) {
-            return new DiagramLayoutReconciler(mapper, conceptRepo, pendingEditRepo);
-        }
-
-        @Bean OntologyLabelLookup ontologyLabelLookup() {
-            return mock(OntologyLabelLookup.class);
-        }
-
-        @Bean DiagramMaterializeService diagramMaterializeService() {
-            return mock(DiagramMaterializeService.class);
-        }
-    }
-
-    private Long ontologyId() {
-        return ontologyRepo.findBySlug(SLUG).orElseThrow().getId();
-    }
-
-    /** The ontology's diagram, created on first use — every write is now addressed by diagram id. */
-    private Long diagramId() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
-                .findFirst()
-                .map(DiagramEntity::getId)
-                .orElseGet(() -> txTemplate.execute(tx -> {
-                    DiagramEntity d = new DiagramEntity();
-                    d.setOntologyMetadata(ontologyRepo.findBySlug(SLUG).orElseThrow());
-                    d.setName("Test diagram");
-                    return diagramRepo.saveAndFlush(d).getId();
-                }));
     }
 }

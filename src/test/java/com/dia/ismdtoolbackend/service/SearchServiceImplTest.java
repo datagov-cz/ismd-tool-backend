@@ -15,7 +15,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.concurrent.Executor;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -45,20 +46,23 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 20, 0, "cs", null, null, null);
 
-        assertEquals(SearchSourceStatus.OK, response.getSourceStatuses().get(SearchSource.NKD).getStatus());
-        assertEquals(SearchSourceStatus.SKIPPED, response.getSourceStatuses().get(SearchSource.ISMD).getStatus());
+        assertThat(response.getSourceStatuses().get(SearchSource.NKD).getStatus()).isEqualTo(SearchSourceStatus.OK);
+        assertThat(response.getSourceStatuses().get(SearchSource.ISMD).getStatus())
+                .isEqualTo(SearchSourceStatus.SKIPPED);
     }
 
     @Test
     void search_anonymousWithSourceISMD_throwsSecurityException() {
-        assertThrows(SecurityException.class, () ->
-                searchService.search("osoba", null, SearchSource.ISMD, 20, 0, "cs", null, null, null));
+        assertThatThrownBy(() ->
+                searchService.search("osoba", null, SearchSource.ISMD, 20, 0, "cs", null, null, null))
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
     void search_anonymousWithSourceALL_throwsSecurityException() {
-        assertThrows(SecurityException.class, () ->
-                searchService.search("osoba", null, SearchSource.ALL, 20, 0, "cs", null, null, null));
+        assertThatThrownBy(() ->
+                searchService.search("osoba", null, SearchSource.ALL, 20, 0, "cs", null, null, null))
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
@@ -88,9 +92,9 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 20, 0, "cs", null, null, user);
 
-        assertEquals(SearchSourceStatus.OK, response.getSourceStatuses().get(SearchSource.NKD).getStatus());
-        assertEquals(SearchSourceStatus.OK, response.getSourceStatuses().get(SearchSource.ISMD).getStatus());
-        assertEquals(2, response.getReturnedCount());
+        assertThat(response.getSourceStatuses().get(SearchSource.NKD).getStatus()).isEqualTo(SearchSourceStatus.OK);
+        assertThat(response.getSourceStatuses().get(SearchSource.ISMD).getStatus()).isEqualTo(SearchSourceStatus.OK);
+        assertThat(response.getReturnedCount()).isEqualTo(2);
     }
 
     @Test
@@ -103,8 +107,9 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, SearchSource.NKD, 20, 0, "cs", null, null, user);
 
-        assertEquals(SearchSourceStatus.OK, response.getSourceStatuses().get(SearchSource.NKD).getStatus());
-        assertEquals(SearchSourceStatus.SKIPPED, response.getSourceStatuses().get(SearchSource.ISMD).getStatus());
+        assertThat(response.getSourceStatuses().get(SearchSource.NKD).getStatus()).isEqualTo(SearchSourceStatus.OK);
+        assertThat(response.getSourceStatuses().get(SearchSource.ISMD).getStatus())
+                .isEqualTo(SearchSourceStatus.SKIPPED);
     }
 
     @Test
@@ -122,8 +127,8 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 20, 0, "cs", null, null, null);
 
-        assertEquals(1, response.getResults().size());
-        assertEquals("https://example.org/concept/1", response.getResults().get(0).getIri());
+        assertThat(response.getResults()).hasSize(1);
+        assertThat(response.getResults().get(0).getIri()).isEqualTo("https://example.org/concept/1");
     }
 
     @Test
@@ -134,8 +139,8 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 20, 0, "cs", null, null, null);
 
-        assertEquals(SearchSourceStatus.ERROR, response.getSourceStatuses().get(SearchSource.NKD).getStatus());
-        assertEquals(0, response.getReturnedCount());
+        assertThat(response.getSourceStatuses().get(SearchSource.NKD).getStatus()).isEqualTo(SearchSourceStatus.ERROR);
+        assertThat(response.getReturnedCount()).isEqualTo(0);
     }
 
     @Test
@@ -146,8 +151,11 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 50, 10, "cs", null, null, null);
 
-        assertEquals(50, response.getLimit());
-        assertEquals(10, response.getOffset());
+        assertThat(response.getLimit()).isEqualTo(50);
+        assertThat(response.getOffset()).isEqualTo(10);
+        // The page window reaches the provider unchanged.
+        verify(nkdSearchProvider).search(eq("osoba"), isNull(), eq(50), eq(10), eq("cs"),
+                any(), any(), any(), anyBoolean(), any());
     }
 
     @Test
@@ -160,8 +168,9 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, SearchSource.ISMD, 20, 0, "cs", null, null, user);
 
-        assertEquals(SearchSourceStatus.OK, response.getSourceStatuses().get(SearchSource.ISMD).getStatus());
-        assertEquals(SearchSourceStatus.SKIPPED, response.getSourceStatuses().get(SearchSource.NKD).getStatus());
+        assertThat(response.getSourceStatuses().get(SearchSource.ISMD).getStatus()).isEqualTo(SearchSourceStatus.OK);
+        assertThat(response.getSourceStatuses().get(SearchSource.NKD).getStatus())
+                .isEqualTo(SearchSourceStatus.SKIPPED);
         verifyNoInteractions(nkdSearchProvider);
     }
 
@@ -193,11 +202,11 @@ class SearchServiceImplTest {
 
         // An ISMD working copy shares its NKD original's IRI verbatim; the two are
         // distinct resources, so both survive the merge and are told apart by source.
-        assertEquals(2, response.getReturnedCount());
-        assertEquals(List.of("From NKD", "From ISMD"),
-                response.getResults().stream().map(SearchResultDto::getLabel).toList());
-        assertEquals(List.of(SearchSource.NKD, SearchSource.ISMD),
-                response.getResults().stream().map(SearchResultDto::getSource).toList());
+        assertThat(response.getReturnedCount()).isEqualTo(2);
+        assertThat(response.getResults().stream().map(SearchResultDto::getLabel).toList())
+                .isEqualTo(List.of("From NKD", "From ISMD"));
+        assertThat(response.getResults().stream().map(SearchResultDto::getSource).toList())
+                .isEqualTo(List.of(SearchSource.NKD, SearchSource.ISMD));
     }
 
     @Test
@@ -222,8 +231,8 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, SearchSource.NKD, 20, 0, "cs", null, null, user);
 
-        assertEquals(1, response.getReturnedCount());
-        assertEquals("First", response.getResults().get(0).getLabel());
+        assertThat(response.getReturnedCount()).isEqualTo(1);
+        assertThat(response.getResults().get(0).getLabel()).isEqualTo("First");
     }
 
     @Test
@@ -256,12 +265,14 @@ class SearchServiceImplTest {
                 "škol", SearchType.ONTOLOGY, null, 20, 0, "cs", null, null, user);
 
         // The local copy must not be swallowed by the NKD original it was cloned from.
-        assertEquals(2, response.getReturnedCount());
-        assertEquals(2, response.getTotalOntologies());
-        assertTrue(response.getResults().stream()
-                .anyMatch(r -> r.getSource() == SearchSource.ISMD));
-        assertTrue(response.getResults().stream()
-                .anyMatch(r -> r.getSource() == SearchSource.NKD));
+        assertThat(response.getReturnedCount()).isEqualTo(2);
+        assertThat(response.getTotalOntologies()).isEqualTo(2);
+        assertThat(response.getResults().stream()
+                .anyMatch(r -> r.getSource() == SearchSource.ISMD))
+                .isTrue();
+        assertThat(response.getResults().stream()
+                .anyMatch(r -> r.getSource() == SearchSource.NKD))
+                .isTrue();
     }
 
     @Test
@@ -283,8 +294,8 @@ class SearchServiceImplTest {
         SearchResponseDto response = searchService.search(
                 "osoba", null, null, 20, 0, "cs", null, null, user);
 
-        assertEquals(SearchSourceStatus.OK, response.getSourceStatuses().get(SearchSource.NKD).getStatus());
-        assertEquals(SearchSourceStatus.ERROR, response.getSourceStatuses().get(SearchSource.ISMD).getStatus());
-        assertEquals(1, response.getReturnedCount());
+        assertThat(response.getSourceStatuses().get(SearchSource.NKD).getStatus()).isEqualTo(SearchSourceStatus.OK);
+        assertThat(response.getSourceStatuses().get(SearchSource.ISMD).getStatus()).isEqualTo(SearchSourceStatus.ERROR);
+        assertThat(response.getReturnedCount()).isEqualTo(1);
     }
 }

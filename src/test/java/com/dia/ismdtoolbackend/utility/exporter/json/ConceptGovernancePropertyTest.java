@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Governance Properties")
 class ConceptGovernancePropertyTest {
@@ -34,10 +34,10 @@ class ConceptGovernancePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(ZPUSOBY_SDILENI_ALT));
+        assertThat(result).containsKey(ZPUSOBY_SDILENI_ALT);
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) result.get(ZPUSOBY_SDILENI_ALT);
-        assertFalse(values.isEmpty());
+        assertThat(values).isNotEmpty();
     }
 
     @Test
@@ -53,9 +53,9 @@ class ConceptGovernancePropertyTest {
 
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) result.get(ZPUSOBY_SDILENI_ALT);
-        assertEquals(2, values.size());
-        assertTrue(values.contains("publikace jako otevřená data"));
-        assertTrue(values.contains("sdílení v PPDF"));
+        assertThat(values).hasSize(2);
+        assertThat(values).contains("publikace jako otevřená data");
+        assertThat(values).contains("sdílení v PPDF");
     }
 
     @Test
@@ -68,8 +68,8 @@ class ConceptGovernancePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(ZPUSOB_ZISKANI_ALT));
-        assertEquals("automaticky", result.get(ZPUSOB_ZISKANI_ALT));
+        assertThat(result).containsKey(ZPUSOB_ZISKANI_ALT);
+        assertThat(result.get(ZPUSOB_ZISKANI_ALT)).isEqualTo("automaticky");
     }
 
     @Test
@@ -82,8 +82,8 @@ class ConceptGovernancePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertTrue(result.containsKey(TYP_OBSAHU_ALT));
-        assertEquals("identifikační", result.get(TYP_OBSAHU_ALT));
+        assertThat(result).containsKey(TYP_OBSAHU_ALT);
+        assertThat(result.get(TYP_OBSAHU_ALT)).isEqualTo("identifikační");
     }
 
     @Test
@@ -95,9 +95,9 @@ class ConceptGovernancePropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(ZPUSOBY_SDILENI_ALT));
-        assertFalse(result.containsKey(ZPUSOB_ZISKANI_ALT));
-        assertFalse(result.containsKey(TYP_OBSAHU_ALT));
+        assertThat(result).doesNotContainKey(ZPUSOBY_SDILENI_ALT);
+        assertThat(result).doesNotContainKey(ZPUSOB_ZISKANI_ALT);
+        assertThat(result).doesNotContainKey(TYP_OBSAHU_ALT);
     }
 
     @Test
@@ -113,7 +113,7 @@ class ConceptGovernancePropertyTest {
 
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) result.get(ZPUSOBY_SDILENI_ALT);
-        assertEquals("otevřená data", values.get(0));
+        assertThat(values.get(0)).isEqualTo("otevřená data");
     }
 
     @Test
@@ -129,6 +129,6 @@ class ConceptGovernancePropertyTest {
 
         @SuppressWarnings("unchecked")
         List<String> values = (List<String>) result.get(ZPUSOBY_SDILENI_ALT);
-        assertEquals("https://example.org/sdileni/otevrena-data", values.get(0));
+        assertThat(values.get(0)).isEqualTo("https://example.org/sdileni/otevrena-data");
     }
 }

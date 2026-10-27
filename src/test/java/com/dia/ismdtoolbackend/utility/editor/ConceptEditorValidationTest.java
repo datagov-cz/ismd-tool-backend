@@ -17,7 +17,9 @@ import static com.dia.constants.VocabularyConstants.DEFAULT_NS;
 import static com.dia.constants.VocabularyConstants.OFN_NAMESPACE;
 import static com.dia.constants.VocabularyConstants.TRIDA;
 import static com.dia.constants.VocabularyConstants.VZTAH;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * Strict pre-flight validation: a concept edit that carries any invalid value is
@@ -52,9 +54,11 @@ class ConceptEditorValidationTest {
 
     private ConceptValidationException editExpectingRejection(ClassConceptEditModel m) {
         long sizeBefore = model.size();
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
-                conceptEditor.editConcept(conceptIri, m, model, null));
-        assertEquals(sizeBefore, model.size(), "rejected edit must not mutate the model");
+        ConceptValidationException ex = assertThatExceptionOfType(ConceptValidationException.class)
+                .isThrownBy(() ->
+                conceptEditor.editConcept(conceptIri, m, model, null))
+                .actual();
+        assertThat(model.size()).as("rejected edit must not mutate the model").isEqualTo(sizeBefore);
         return ex;
     }
 
@@ -63,7 +67,7 @@ class ConceptEditorValidationTest {
         ClassConceptEditModel m = baseModel();
         m.setExactMatch(List.of("not-an-iri"));
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("exactMatch"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("exactMatch");
     }
 
     @Test
@@ -71,7 +75,7 @@ class ConceptEditorValidationTest {
         ClassConceptEditModel m = baseModel();
         m.setDefiningLegalSource(List.of("https://example.org/not-eli"));
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("definingLegalSource"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("definingLegalSource");
     }
 
     @Test
@@ -79,7 +83,7 @@ class ConceptEditorValidationTest {
         ClassConceptEditModel m = baseModel();
         m.setPrivacyProvisions(List.of("https://example.org/not-eli"));
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("privacyProvisions"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("privacyProvisions");
     }
 
     @Test
@@ -90,15 +94,14 @@ class ConceptEditorValidationTest {
         m.setDefiningLegalSource(List.of(
                 "https://opendata.eselpoint.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8"));
 
-        assertDoesNotThrow(() -> conceptEditor.editConcept(conceptIri, m, model, null));
+        assertThatCode(() -> conceptEditor.editConcept(conceptIri, m, model, null)).doesNotThrowAnyException();
 
         org.apache.jena.rdf.model.Property defining =
                 model.createProperty(OFN_NAMESPACE + com.dia.constants.VocabularyConstants.DEFINUJICI_USTANOVENI);
         String stored = model.getResource(conceptIri).listProperties(defining)
                 .nextStatement().getObject().asResource().getURI();
-        assertEquals(
-                "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8",
-                stored);
+        assertThat(stored)
+                .isEqualTo("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2013/357/2024-01-01/dokument/norma/cast_2/hlava_2/par_8");
     }
 
     @Test
@@ -107,8 +110,8 @@ class ConceptEditorValidationTest {
         m.setDefiningNonLegalSource(List.of(new DigitalObjectModel("Doc", "Popis", "")));
         m.setRelatedNonLegalSource(List.of(new DigitalObjectModel("Doc2", "Popis", "not a url")));
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("definingNonLegalSource"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("relatedNonLegalSource"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("definingNonLegalSource");
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("relatedNonLegalSource");
     }
 
     @Test
@@ -117,8 +120,8 @@ class ConceptEditorValidationTest {
         m.setAgendaCode("not-a-valid-agenda");
         m.setAgendaSystemCode("not-a-valid-ais");
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("agendaCode"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("agendaSystemCode"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("agendaCode");
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("agendaSystemCode");
     }
 
     @Test
@@ -128,9 +131,9 @@ class ConceptEditorValidationTest {
         m.setDefiningLegalSource(List.of("https://example.org/not-eli"));
         m.setAgendaCode("bad-agenda");
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("exactMatch"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("definingLegalSource"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("agendaCode"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("exactMatch");
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("definingLegalSource");
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("agendaCode");
     }
 
     @Test
@@ -145,8 +148,8 @@ class ConceptEditorValidationTest {
 
         // Should succeed (no exception), leaving a valid concept.
         ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, m, model, null);
-        assertNotNull(result);
-        assertFalse(result.iriChanged);
+        assertThat(result).isNotNull();
+        assertThat(result.iriChanged).isFalse();
     }
 
     @Test
@@ -155,10 +158,10 @@ class ConceptEditorValidationTest {
         ClassConceptEditModel m = baseModel();
         m.setInTezaurus(Boolean.TRUE);
         ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, m, model, null);
-        assertNotNull(result);
+        assertThat(result).isNotNull();
     }
 
-    // ---- domain rules folded in from the (previously unwired) *EditModel.validateSpecificFields ----
+    // ---- domain rules: privacy/public conflict, NKOD dataset, governance allowlist ----
 
     @Test
     void rejectsPrivacyPublicConflict() {
@@ -166,7 +169,7 @@ class ConceptEditorValidationTest {
         m.setIsPublic(Boolean.TRUE);
         m.setPrivacyProvisions(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187"));
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("veřejn");
     }
 
     @Test
@@ -174,7 +177,7 @@ class ConceptEditorValidationTest {
         ClassConceptEditModel m = baseModel();
         m.setCodeListDataset("https://not-nkod.example/dataset/x");
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("NKOD"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("NKOD");
     }
 
     @Test
@@ -182,7 +185,7 @@ class ConceptEditorValidationTest {
         ClassConceptEditModel m = baseModel();
         m.setSharingMethod(List.of("not-a-real-sharing-method"));
         ConceptValidationException ex = editExpectingRejection(m);
-        assertTrue(ex.getMessage().contains("způsob sdílení"), ex.getMessage());
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("způsob sdílení");
     }
 
     @Test
@@ -192,7 +195,7 @@ class ConceptEditorValidationTest {
         m.setAcquisitionMethod("vlastní");
         m.setContentType("provozní");
         ConceptEditor.EditResult result = conceptEditor.editConcept(conceptIri, m, model, null);
-        assertNotNull(result);
+        assertThat(result).isNotNull();
     }
 
     @Test
@@ -210,8 +213,10 @@ class ConceptEditorValidationTest {
         m.setIsPublic(Boolean.TRUE);
         m.setPrivacyProvisions(List.of("https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187"));
 
-        ConceptValidationException ex = assertThrows(ConceptValidationException.class, () ->
-                conceptEditor.editConcept(relIri, m, relModel, null));
-        assertTrue(ex.getMessage().contains("veřejn"), ex.getMessage());
+        ConceptValidationException ex = assertThatExceptionOfType(ConceptValidationException.class)
+                .isThrownBy(() ->
+                conceptEditor.editConcept(relIri, m, relModel, null))
+                .actual();
+        assertThat(ex).as(ex.getMessage()).hasMessageContaining("veřejn");
     }
 }

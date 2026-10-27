@@ -4,22 +4,28 @@ import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.enums.SnapshotLinkType;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
+import com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotOwnerWarmer.Target;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -33,6 +39,7 @@ class NkdSnapshotWarmerTest {
     private static final String SUBCLASS_OF = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
     private static final String NKD_A = "https://slovník.gov.cz/agendový/104/pojem/a";
     private static final String NKD_B = "https://slovník.gov.cz/agendový/104/pojem/b";
+    private static final String NKD_UNPUBLISHED = "https://slovník.gov.cz/agendový/104/pojem/nepublikovany";
 
     @Mock private ConceptMetadataRepository conceptMetadataRepository;
     @Mock private JenaTDB2Repository jenaTDB2Repository;
@@ -81,20 +88,31 @@ class NkdSnapshotWarmerTest {
         ConceptMetadataEntity a = owner(1L, "x", NKD_A);
         ConceptMetadataEntity b = owner(2L, "y", NKD_B);
         List<ConceptMetadataEntity> owners = List.of(a, b);
+        Model graph = graphWith(owners);
+        // B also links a target NKD does not publish; it must not reach the owner warmer.
+        graph.add(graph.getResource(b.getConceptIri()), graph.createProperty(SUBCLASS_OF),
+                graph.getResource(NKD_UNPUBLISHED));
+        String subClassOf = SnapshotLinkType.BROADER_CLASS.value();
 
         when(conceptMetadataRepository.findByGraphName(GRAPH)).thenReturn(owners);
         when(jenaTDB2Repository.graphHasData(GRAPH)).thenReturn(true);
-        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graphWith(owners));
-        when(nkdSparqlClient.getPublishedResourcesList(anyList())).thenReturn(List.of(NKD_A, NKD_B));
+        when(jenaTDB2Repository.fetchGraph(GRAPH)).thenReturn(graph);
+        when(nkdSparqlClient.getPublishedResourcesList(
+                argThat(l -> l != null && Set.copyOf(l).equals(Set.of(NKD_A, NKD_B, NKD_UNPUBLISHED)))))
+                .thenReturn(List.of(NKD_A, NKD_B));
         // Owner A's isolated unit throws (simulating its REQUIRES_NEW tx rolling back); B must still run.
         when(ownerWarmer.warmOwner(eq(GRAPH), eq(a), anyList())).thenThrow(new RuntimeException("boom"));
         when(ownerWarmer.warmOwner(eq(GRAPH), eq(b), anyList())).thenReturn(true);
 
         warmer.warmGraph(GRAPH);
 
-        // Both owners attempted; A's failure did not abort the batch.
-        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(a), anyList());
-        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(b), anyList());
+        // Both owners attempted with only their published targets; A's failure did not abort the batch.
+        ArgumentCaptor<List<Target>> aTargets = ArgumentCaptor.captor();
+        ArgumentCaptor<List<Target>> bTargets = ArgumentCaptor.captor();
+        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(a), aTargets.capture());
+        verify(ownerWarmer).warmOwner(eq(GRAPH), eq(b), bTargets.capture());
+        assertThat(aTargets.getValue()).containsExactly(new Target(NKD_A, subClassOf));
+        assertThat(bTargets.getValue()).containsExactly(new Target(NKD_B, subClassOf));
     }
 
     @Test

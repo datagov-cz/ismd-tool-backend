@@ -19,7 +19,8 @@ import java.util.stream.Stream;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 @DisplayName("ConceptJsonMapper - Type Detection & Mapping")
 class ConceptTypeDetectionTest {
@@ -53,10 +54,10 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertNotNull(types);
-        assertTrue(types.contains(POJEM_JSON_LD), "Should always contain Pojem");
-        assertTrue(types.contains("Koncept"), "Should always contain Koncept");
-        assertTrue(types.contains(expectedJsonLd), "Should contain " + expectedJsonLd);
+        assertThat(types).isNotNull();
+        assertThat(types).as("Should always contain Pojem").contains(POJEM_JSON_LD);
+        assertThat(types).as("Should always contain Koncept").contains("Koncept");
+        assertThat(types).as("Should contain " + expectedJsonLd).contains(expectedJsonLd);
     }
 
     static Stream<Arguments> legalTypeProvider() {
@@ -78,7 +79,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(expectedJsonLd));
+        assertThat(types).contains(expectedJsonLd);
     }
 
     @Test
@@ -93,7 +94,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(TRIDA_JSON_LD));
+        assertThat(types).contains(TRIDA_JSON_LD);
     }
 
     @Test
@@ -108,7 +109,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VZTAH_JSON_LD));
+        assertThat(types).contains(VZTAH_JSON_LD);
     }
 
     @Test
@@ -123,7 +124,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(VLASTNOST_JSON_LD));
+        assertThat(types).contains(VLASTNOST_JSON_LD);
     }
 
     @Test
@@ -139,8 +140,8 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertTrue(types.contains(TRIDA_JSON_LD));
-        assertTrue(types.contains(TSP_JSON_LD));
+        assertThat(types).contains(TRIDA_JSON_LD);
+        assertThat(types).contains(TSP_JSON_LD);
     }
 
     static Stream<Arguments> mixedPropertyRelationshipSignals() {
@@ -162,14 +163,16 @@ class ConceptTypeDetectionTest {
         concept.addProperty(RDF.type, model.createResource(secondType));
         ModelStructure structure = createModelStructure(model);
 
-        ModelProcessingException single = assertThrows(ModelProcessingException.class,
-                () -> processor.processConceptByIri(model, structure, concept.getURI()));
-        assertTrue(single.getMessage().contains(concept.getURI()));
+        ModelProcessingException single = assertThatExceptionOfType(ModelProcessingException.class)
+                .isThrownBy(() -> processor.processConceptByIri(model, structure, concept.getURI()))
+                .actual();
+        assertThat(single).hasMessageContaining(concept.getURI());
 
         // The whole-vocabulary path must fail too, not drop the concept and carry on.
-        ModelProcessingException all = assertThrows(ModelProcessingException.class,
-                () -> processor.processAllConcepts(model, structure));
-        assertTrue(all.getMessage().contains(concept.getURI()));
+        ModelProcessingException all = assertThatExceptionOfType(ModelProcessingException.class)
+                .isThrownBy(() -> processor.processAllConcepts(model, structure))
+                .actual();
+        assertThat(all).hasMessageContaining(concept.getURI());
     }
 
     static Stream<Arguments> agreeingSignals() {
@@ -193,7 +196,7 @@ class ConceptTypeDetectionTest {
 
         @SuppressWarnings("unchecked")
         List<String> types = (List<String>) result.get("typ");
-        assertEquals(1, Collections.frequency(types, expected));
-        assertFalse(types.contains(absent));
+        assertThat(Collections.frequency(types, expected)).isEqualTo(1);
+        assertThat(types).doesNotContain(absent);
     }
 }

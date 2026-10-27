@@ -14,7 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -34,8 +34,8 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("osoba", null, 20, 0, "cs", null, null, null, false, null);
 
-        assertTrue(result.results().isEmpty());
-        assertEquals(0, result.totalCount());
+        assertThat(result.results()).isEmpty();
+        assertThat(result.totalCount()).isEqualTo(0);
     }
 
     @Test
@@ -57,20 +57,20 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("osoba", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
+        assertThat(result.results()).hasSize(1);
         SearchResultDto dto = result.results().get(0);
-        assertEquals("https://example.org/concept/1", dto.getIri());
-        assertEquals("Osoba", dto.getLabel());
-        assertEquals("cs", dto.getLabelLang());
-        assertEquals("Fyzická osoba", dto.getAltName());
-        assertEquals("Popis osoby", dto.getDescription());
-        assertEquals("Definice osoby", dto.getDefinition());
-        assertEquals("https://example.org/ontology/1", dto.getOntologyIri());
-        assertEquals(SearchType.CONCEPT, dto.getType());
+        assertThat(dto.getIri()).isEqualTo("https://example.org/concept/1");
+        assertThat(dto.getLabel()).isEqualTo("Osoba");
+        assertThat(dto.getLabelLang()).isEqualTo("cs");
+        assertThat(dto.getAltName()).isEqualTo("Fyzická osoba");
+        assertThat(dto.getDescription()).isEqualTo("Popis osoby");
+        assertThat(dto.getDefinition()).isEqualTo("Definice osoby");
+        assertThat(dto.getOntologyIri()).isEqualTo("https://example.org/ontology/1");
+        assertThat(dto.getType()).isEqualTo(SearchType.CONCEPT);
         // Unfiltered search (type=CONCEPT → roleFilter null): conceptType is derived
         // from the projected role marker, not left null.
-        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA, dto.getConceptType());
-        assertEquals(SearchSource.NKD, dto.getSource());
+        assertThat(dto.getConceptType()).isEqualTo(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA);
+        assertThat(dto.getSource()).isEqualTo(SearchSource.NKD);
     }
 
     @Test
@@ -95,10 +95,11 @@ class NkdSearchProviderTest {
         for (SearchResultDto dto : result.results()) {
             byIri.put(dto.getIri(), dto.getConceptType());
         }
-        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA, byIri.get("https://example.org/c/trida"));
-        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.VLASTNOST, byIri.get("https://example.org/c/vlastnost"));
-        assertEquals(com.dia.ismdtoolbackend.enums.ConceptType.VZTAH, byIri.get("https://example.org/c/vztah"));
-        assertNull(byIri.get("https://example.org/c/untyped"));
+        assertThat(byIri.get("https://example.org/c/trida")).isEqualTo(com.dia.ismdtoolbackend.enums.ConceptType.TRIDA);
+        assertThat(byIri.get("https://example.org/c/vlastnost"))
+                .isEqualTo(com.dia.ismdtoolbackend.enums.ConceptType.VLASTNOST);
+        assertThat(byIri.get("https://example.org/c/vztah")).isEqualTo(com.dia.ismdtoolbackend.enums.ConceptType.VZTAH);
+        assertThat(byIri.get("https://example.org/c/untyped")).isNull();
     }
 
     private static Map<String, String> conceptRow(String iri) {
@@ -121,27 +122,39 @@ class NkdSearchProviderTest {
         row.put("description", "Ontologie pro osoby");
         row.put("ontologyIri", "https://example.org/ontology/1");
 
-        // Two-stage call: IRI list → page query → count query.
-        stubOntologyIriList(List.of("https://example.org/ontology/1"));
-        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
-                .thenReturn(List.of(row))
-                .thenReturn(List.of(Map.of("total", "1")));
+        stubQueries(List.of("https://example.org/ontology/1"), List.of(row), List.of());
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("osoby", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
+        assertThat(result.results()).hasSize(1);
         SearchResultDto dto = result.results().get(0);
-        assertEquals(SearchType.ONTOLOGY, dto.getType());
-        assertEquals(SearchSource.NKD, dto.getSource());
-        assertEquals("Slovník osob", dto.getLabel());
+        assertThat(dto.getType()).isEqualTo(SearchType.ONTOLOGY);
+        assertThat(dto.getSource()).isEqualTo(SearchSource.NKD);
+        assertThat(dto.getLabel()).isEqualTo("Slovník osob");
     }
 
     /**
-     * Stubs the candidate-IRI-list query (the first NKD call when wantsOntologies
-     * is true). The IRI list query is the only one that contains "owl:Ontology"
-     * but does NOT invoke bif:contains, so we match on that fingerprint.
+     * Answers each NKD query by its fingerprint, so the test does not depend on call order:
+     * the candidate-IRI list, the ontology and concept pages, the concept-count batch
+     * (empty) and both totals (1).
      */
+    private void stubQueries(List<String> ontologyIris, List<Map<String, String>> ontologyRows,
+                             List<Map<String, String>> conceptRows) {
+        when(nkdSparqlClient.executeSelect(anyString())).thenAnswer(inv -> {
+            String q = inv.getArgument(0);
+            if (q.contains("AS ?total")) return List.of(Map.of("total", "1"));
+            if (q.contains("AS ?cnt")) return List.of();
+            if (q.contains("?roleTrida")) return conceptRows;
+            if (q.contains("?ontologyIri")) return ontologyRows;
+            if (q.contains("owl:Ontology")) {
+                return ontologyIris.stream().map(iri -> Map.of("resource", iri)).toList();
+            }
+            throw new AssertionError("Unexpected NKD query: " + q);
+        });
+    }
+
+    /** Stubs the candidate-IRI-list query: the only one with "owl:Ontology" and no bif:contains. */
     private void stubOntologyIriList(List<String> iris) {
         List<Map<String, String>> rows = iris.stream()
                 .map(iri -> Map.of("resource", iri))
@@ -165,19 +178,12 @@ class NkdSearchProviderTest {
         conceptRow.put("label", "Koncept");
         conceptRow.put("ontology", "https://example.org/ontology/1");
 
-        // Two-stage ontology path: IRI list → page + count queries.
-        // Concept path: page + count queries (no IRI list prelude).
-        stubOntologyIriList(List.of("https://example.org/ontology/1"));
-        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
-                .thenReturn(List.of(ontologyRow))
-                .thenReturn(List.of(conceptRow))
-                .thenReturn(List.of(Map.of("total", "1")))
-                .thenReturn(List.of(Map.of("total", "1")));
+        stubQueries(List.of("https://example.org/ontology/1"), List.of(ontologyRow), List.of(conceptRow));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(2, result.results().size());
+        assertThat(result.results()).hasSize(2);
     }
 
     @Test
@@ -185,28 +191,31 @@ class NkdSearchProviderTest {
         when(nkdSparqlClient.isEndpointConfigured()).thenReturn(true);
 
         // Same IRI returned from ontology and concept searches
-        Map<String, String> row1 = new LinkedHashMap<>();
-        row1.put("resource", "https://example.org/resource/1");
-        row1.put("label", "First");
-        row1.put("ontologyIri", "https://example.org/resource/1");
+        String iri = "https://example.org/resource/1";
+        Map<String, String> ontologyRow = new LinkedHashMap<>();
+        ontologyRow.put("resource", iri);
+        ontologyRow.put("label", "First");
+        ontologyRow.put("description", "Popis slovníku");
+        ontologyRow.put("ontologyIri", iri);
 
-        Map<String, String> row2 = new LinkedHashMap<>();
-        row2.put("resource", "https://example.org/resource/1");
-        row2.put("label", "Second");
-        row2.put("ontology", "https://example.org/resource/1");
+        Map<String, String> conceptRow = new LinkedHashMap<>();
+        conceptRow.put("resource", iri);
+        conceptRow.put("label", "Second");
+        conceptRow.put("definition", "Definice pojmu");
+        conceptRow.put("ontology", iri);
 
-        stubOntologyIriList(List.of("https://example.org/resource/1"));
-        when(nkdSparqlClient.executeSelect(org.mockito.ArgumentMatchers.contains("bif:contains")))
-                .thenReturn(List.of(row1))
-                .thenReturn(List.of(row2))
-                .thenReturn(List.of(Map.of("total", "1")))
-                .thenReturn(List.of(Map.of("total", "1")));
+        stubQueries(List.of(iri), List.of(ontologyRow), List.of(conceptRow));
 
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
 
-        // Should be deduped to 1 result
-        assertEquals(1, result.results().size());
+        // The ontology row is kept; non-null concept fields fold into it.
+        assertThat(result.results()).singleElement().satisfies(dto -> {
+            assertThat(dto.getType()).isEqualTo(SearchType.ONTOLOGY);
+            assertThat(dto.getLabel()).isEqualTo("Second");
+            assertThat(dto.getDescription()).isEqualTo("Popis slovníku");
+            assertThat(dto.getDefinition()).isEqualTo("Definice pojmu");
+        });
     }
 
     @Test
@@ -217,8 +226,8 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("xyz", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
-        assertTrue(result.results().isEmpty());
-        assertEquals(0, result.totalCount());
+        assertThat(result.results()).isEmpty();
+        assertThat(result.totalCount()).isEqualTo(0);
     }
 
     @Test
@@ -239,8 +248,8 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
-        assertEquals("https://example.org/concept/1", result.results().get(0).getIri());
+        assertThat(result.results()).hasSize(1);
+        assertThat(result.results().get(0).getIri()).isEqualTo("https://example.org/concept/1");
     }
 
     @Test
@@ -267,12 +276,12 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("slovník", SearchType.ONTOLOGY, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
+        assertThat(result.results()).hasSize(1);
         SearchResultDto dto = result.results().get(0);
-        assertEquals("2024-03-04", dto.getLastModified());
-        assertEquals(42, dto.getConceptCount());
-        assertEquals(1, result.totalOntologies());
-        assertEquals(0, result.totalConcepts());
+        assertThat(dto.getLastModified()).isEqualTo("2024-03-04");
+        assertThat(dto.getConceptCount()).isEqualTo(42);
+        assertThat(result.totalOntologies()).isEqualTo(1);
+        assertThat(result.totalConcepts()).isEqualTo(0);
     }
 
     @Test
@@ -293,13 +302,13 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("pojem", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
+        assertThat(result.results()).hasSize(1);
         SearchResultDto dto = result.results().get(0);
-        assertEquals("2025-06-15T10:30:00", dto.getLastModified());
+        assertThat(dto.getLastModified()).isEqualTo("2025-06-15T10:30:00");
         // Concept results don't carry conceptCount (it's an ontology-only field).
-        assertNull(dto.getConceptCount());
-        assertEquals(0, result.totalOntologies());
-        assertEquals(1, result.totalConcepts());
+        assertThat(dto.getConceptCount()).isNull();
+        assertThat(result.totalOntologies()).isEqualTo(0);
+        assertThat(result.totalConcepts()).isEqualTo(1);
     }
 
     @Test
@@ -326,12 +335,12 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("test", null, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
-        assertEquals("https://example.org/concept/1", result.results().get(0).getIri());
+        assertThat(result.results()).hasSize(1);
+        assertThat(result.results().get(0).getIri()).isEqualTo("https://example.org/concept/1");
         // Ontology branch returns empty results — totalOntologies must be 0,
         // not null (we attempted the count and got a deterministic zero).
-        assertEquals(0, result.totalOntologies());
-        assertEquals(1, result.totalConcepts());
+        assertThat(result.totalOntologies()).isEqualTo(0);
+        assertThat(result.totalConcepts()).isEqualTo(1);
     }
 
     @Test
@@ -351,8 +360,8 @@ class NkdSearchProviderTest {
         SearchProvider.SearchProviderResult result =
                 nkdSearchProvider.search("pojem", SearchType.CONCEPT, 20, 0, "cs", null, null, null, false, null);
 
-        assertEquals(1, result.results().size());
+        assertThat(result.results()).hasSize(1);
         // Total-count failure must not blank the page — just leave totals null.
-        assertNull(result.totalConcepts());
+        assertThat(result.totalConcepts()).isNull();
     }
 }

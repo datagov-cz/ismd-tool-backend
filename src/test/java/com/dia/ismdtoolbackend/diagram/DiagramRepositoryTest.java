@@ -4,27 +4,22 @@ import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
 import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
-import com.dia.ismdtoolbackend.config.JpaAuditingConfig;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
 import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
+import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
-import org.springframework.context.annotation.Import;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -33,14 +28,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Diagram schema applies under Liquibase + {@code ddl-auto=validate} on real Postgres, and the three
- * entities round-trip. {@code @EntityScan} is scoped so strict validation checks only this feature.
+ * entities round-trip.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@EntityScan(basePackageClasses = DiagramEntity.class)
-@EnableJpaRepositories(basePackageClasses = DiagramRepository.class)
-@Import(JpaAuditingConfig.class)
+@PlainJpaIT
+@Transactional
 class DiagramRepositoryTest extends PostgresIntegrationTestBase {
 
     @Autowired private DiagramRepository diagramRepository;
@@ -501,14 +492,14 @@ class DiagramRepositoryTest extends PostgresIntegrationTestBase {
         edgeRepository.flush();
         em.clear();
 
-        em.createNativeQuery("set enable_seqscan = off").executeUpdate();
+        // SET LOCAL ends with the test transaction, so the pooled connection never keeps it.
+        em.createNativeQuery("set local enable_seqscan = off").executeUpdate();
         String plan = String.join("\n", em.createNativeQuery("""
                 explain select e.diagram_id from ismd_schema.diagram_edges e
                 where md5(e.edge_key) = md5(cast(:iri as text)) and e.edge_key = :iri
                 """)
                 .setParameter("iri", "https://x/pojem/rel-7")
                 .getResultList().stream().map(String::valueOf).toList());
-        em.createNativeQuery("set enable_seqscan = on").executeUpdate();
 
         assertThat(plan)
                 .as("the md5 expression index must be reachable; a plain col = $1 predicate cannot use it")

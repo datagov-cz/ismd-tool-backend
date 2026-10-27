@@ -120,8 +120,7 @@ class OntologyDetailExtractorRefTest {
 
     @Test
     void extractOntologyDetail_batchesSlugLookups_intoOneQuery() {
-        // The whole-ontology path used to run one findByConceptIri per property AND per relationship of
-        // every concept. One batched query must cover them all.
+        // One batched query covers the slugs of every property and relationship of every concept.
         ConceptMetadataEntity propertyEntity = new ConceptMetadataEntity();
         propertyEntity.setConceptIri(PROPERTY_IRI);
         propertyEntity.setSlug("vocab-věk");

@@ -1,19 +1,16 @@
 package com.dia.ismdtoolbackend.diagram;
 
+import com.dia.constants.VocabularyConstants;
 import com.dia.ismdtoolbackend.config.security.SecurityUser;
 import com.dia.ismdtoolbackend.controller.dto.diagram.MaterializeResultDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEdgeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramEntity;
-import com.dia.ismdtoolbackend.entity.DiagramNodeEntity;
 import com.dia.ismdtoolbackend.entity.DiagramPendingEditEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.ismdtoolbackend.enums.DiagramNodeBacking;
 import com.dia.ismdtoolbackend.enums.DiagramFailureCode;
 import com.dia.ismdtoolbackend.enums.DiagramOp;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapper;
-import com.dia.ismdtoolbackend.mapper.ConceptMetadataMapperImpl;
 import com.dia.ismdtoolbackend.models.NameModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
@@ -21,58 +18,34 @@ import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
 import com.dia.ismdtoolbackend.models.diagram.DiagramPendingEdit;
 import com.dia.ismdtoolbackend.models.diagram.EdgeWaypoint;
 import com.dia.ismdtoolbackend.outbox.InMemoryTdb2;
-import com.dia.ismdtoolbackend.outbox.OutboxConfig;
-import com.dia.ismdtoolbackend.outbox.OutboxEntry;
-import com.dia.ismdtoolbackend.outbox.OutboxEntryRepository;
-import com.dia.ismdtoolbackend.outbox.OutboxRelay;
-import com.dia.ismdtoolbackend.outbox.OutboxRelayTrigger;
-import com.dia.ismdtoolbackend.outbox.OutboxWriter;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import com.dia.ismdtoolbackend.outbox.TransactionTemplateConfig;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.DiagramEdgeRepository;
-import com.dia.ismdtoolbackend.repository.DiagramNodeRepository;
 import com.dia.ismdtoolbackend.repository.DiagramPendingEditRepository;
 import com.dia.ismdtoolbackend.repository.DiagramRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.service.impl.ConceptDeviationComparator;
 import com.dia.ismdtoolbackend.service.impl.ConceptServiceImpl;
-import com.dia.ismdtoolbackend.service.impl.ConceptServiceWiring;
 import com.dia.ismdtoolbackend.service.impl.DiagramChangeApplier;
 import com.dia.ismdtoolbackend.service.impl.DiagramMaterializeService;
-import com.dia.ismdtoolbackend.service.impl.MetadataTouchService;
-import com.dia.ismdtoolbackend.service.impl.ReferencedConceptsEnricher;
-import com.dia.ismdtoolbackend.service.impl.WorkingCopyDeviationServiceImpl;
-import com.dia.ismdtoolbackend.service.rpp.RppSnapshotHolder;
-import com.dia.ismdtoolbackend.utility.creator.ConceptCreator;
-import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
-import com.dia.ismdtoolbackend.utility.editor.ConceptEditor;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowIT;
+import com.dia.ismdtoolbackend.testsupport.pg.OutboxFlowTestBase;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.sys.JenaSystem;
+import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
-import org.junit.jupiter.api.BeforeAll;
+import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,8 +57,6 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
 
 /**
  * End-to-end materialize (Převzít): the REAL {@link ConceptServiceImpl} (real editor/creator/mapper, real
@@ -98,76 +69,48 @@ import static org.mockito.Mockito.mock;
  * <p>Harness mirrors {@code ConceptOutboxFlowIntegrationTest}: Spring-managed beans so {@code REQUIRES_NEW}
  * on the applier is actually proxied; {@code NOT_SUPPORTED} so each change commits on a real boundary.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
-@Import({DiagramMaterializeIntegrationTest.Beans.class, TransactionTemplateConfig.class,
-        com.dia.ismdtoolbackend.config.JpaAuditingConfig.class})
-@EntityScan(basePackageClasses = {OutboxEntry.class, ConceptMetadataEntity.class, DiagramEntity.class})
-@EnableJpaRepositories(basePackageClasses = {OutboxEntryRepository.class, ConceptMetadataRepository.class,
-        DiagramRepository.class})
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
+@OutboxFlowIT
+@Import(DiagramMaterializeIntegrationTest.Beans.class)
+class DiagramMaterializeIntegrationTest extends OutboxFlowTestBase {
 
     private static final String GRAPH = "https://slovnik.gov.cz/g";
     private static final String USER = "user123";
     private static final String VICTIM_GRAPH = "https://slovnik.gov.cz/victim";
     private static final String VICTIM_USER = "victim-user-999";
+    private static final String VEREJNY = VocabularyConstants.OFN_NAMESPACE_LEGAL + VocabularyConstants.VEREJNY_UDAJ;
 
     @Autowired private ConceptMetadataRepository conceptRepo;
     @Autowired private OntologyMetadataRepository ontologyRepo;
-    @Autowired private OutboxEntryRepository outboxRepo;
     @Autowired private DiagramRepository diagramRepo;
-    @Autowired private DiagramNodeRepository nodeRepo;
     @Autowired private DiagramEdgeRepository edgeRepo;
     /** Spied so the work-list's read count can be asserted, not just its ordering. */
     @MockitoSpyBean private DiagramPendingEditRepository pendingEditRepo;
     @Autowired private TransactionTemplate txTemplate;
     @Autowired private ConceptServiceImpl conceptService;
     @Autowired private DiagramMaterializeService materializeService;
-    @Autowired private OutboxConfig outboxConfig;
-    @Autowired private InMemoryTdb2 tdb2;
+    @Autowired private PgTestData data;
 
-    @BeforeAll
-    static void initJena() {
-        JenaSystem.init();
-    }
+    private Long diagramId;
 
     @BeforeEach
     void setUp() {
         // No authenticated principal by default: the materialize tests drive the service as a non-request
         // caller, which the ownership assertion deliberately lets through.
         SecurityContextHolder.clearContext();
-        outboxConfig.setBatchSize(100);
-        txTemplate.executeWithoutResult(tx -> {
-            outboxRepo.deleteAllInBatch();
-            nodeRepo.deleteAllInBatch();
-            diagramRepo.deleteAllInBatch();
-            conceptRepo.deleteAllInBatch();
-            ontologyRepo.deleteAllInBatch();
-        });
-        // Separate tx so the deletes are committed before the insert — avoids racing the FK/unique index.
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity ont = new OntologyMetadataEntity();
-            ont.setSlug("g-ontology");
-            ont.setGraphName(GRAPH);
-            ont.setUserId(USER);
-            ont.setIsPublished(false);
-            ont.setCreatedAt(LocalDateTime.now());
-            ontologyRepo.save(ont);
-        });
-        tdb2.reset();
+        OntologyMetadataEntity ontology = data.createOntology("g-ontology", GRAPH, USER, false);
+        // Staged edits hang off a diagram; this is the ontology's first one.
+        diagramId = data.createDiagram(ontology, "Test diagram");
     }
 
     // ---- concept-graph seeding via the real service ---------------------------------------------
 
-    private ClassConceptModel classModel(String name, boolean isPublic) {
+    private ClassConceptModel classModel(String name) {
         ClassConceptModel m = new ClassConceptModel();
         m.setConceptType("třída");
         m.setType("objekt");
         m.setOntologyGraphName(GRAPH);
         m.setNamespace(GRAPH);
-        m.setIsPublic(isPublic);
+        m.setIsPublic(true);
         m.setNameModel(name(name));
         return m;
     }
@@ -233,15 +176,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
      * resolves the ontology by graph name).
      */
     private void seedVictimOntology() {
-        txTemplate.executeWithoutResult(tx -> {
-            OntologyMetadataEntity victim = new OntologyMetadataEntity();
-            victim.setSlug("victim-ontology");
-            victim.setGraphName(VICTIM_GRAPH);
-            victim.setUserId(VICTIM_USER);
-            victim.setIsPublished(false);
-            victim.setCreatedAt(LocalDateTime.now());
-            ontologyRepo.save(victim);
-        });
+        data.createOntology("victim-ontology", VICTIM_GRAPH, VICTIM_USER, false);
     }
 
     /** Create a class in the VICTIM's graph, owned by the victim — never legitimately on this diagram. */
@@ -276,7 +211,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     private void stageNode(String conceptIri, DiagramPendingEdit overlay) {
         txTemplate.executeWithoutResult(tx -> {
             DiagramPendingEditEntity row = new DiagramPendingEditEntity();
-            row.setDiagram(diagramRepo.findById(diagramId()).orElseThrow());
+            row.setDiagram(diagramRepo.findById(diagramId).orElseThrow());
             row.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
             row.setConceptIri(conceptIri);
             overlay.setBaseUpdatedAt(conceptRepo.findByConceptIri(conceptIri)
@@ -290,10 +225,10 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     private void restage(String conceptIri, DiagramPendingEdit overlay) {
         txTemplate.executeWithoutResult(tx -> {
             DiagramPendingEditEntity row = pendingEditRepo
-                    .findByDiagramIdAndConceptIri(diagramId(), conceptIri)
+                    .findByDiagramIdAndConceptIri(diagramId, conceptIri)
                     .orElseGet(() -> {
                         DiagramPendingEditEntity fresh = new DiagramPendingEditEntity();
-                        fresh.setDiagram(diagramRepo.findById(diagramId()).orElseThrow());
+                        fresh.setDiagram(diagramRepo.findById(diagramId).orElseThrow());
                         fresh.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
                         fresh.setConceptIri(conceptIri);
                         return fresh;
@@ -305,7 +240,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
     /** The staged edit for a concept, or null when nothing is staged. */
     private DiagramPendingEdit stagedEdit(String conceptIri) {
-        return pendingEditRepo.findByDiagramIdAndConceptIri(diagramId(), conceptIri)
+        return pendingEditRepo.findByDiagramIdAndConceptIri(diagramId, conceptIri)
                 .map(DiagramPendingEditEntity::getPendingEdit)
                 .orElse(null);
     }
@@ -314,21 +249,16 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         return ontologyRepo.findBySlug("g-ontology").orElseThrow().getId();
     }
 
-    /** The g-ontology's diagram, created on first use — staged edits now hang off a diagram. */
-    private Long diagramId() {
-        return diagramRepo.findByOntologyMetadataIdOrderByIdAsc(ontologyId()).stream()
-                .findFirst()
-                .map(DiagramEntity::getId)
-                .orElseGet(() -> txTemplate.execute(tx -> {
-                    DiagramEntity d = new DiagramEntity();
-                    d.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
-                    d.setName("Test diagram");
-                    return diagramRepo.saveAndFlush(d).getId();
-                }));
-    }
-
     private Model graph() {
         return tdb2.dataset().getNamedModel(GRAPH);
+    }
+
+    /** The concept's current objects for one predicate in the live graph. */
+    private List<String> objectsOf(String conceptIri, org.apache.jena.rdf.model.Property predicate) {
+        Model g = graph();
+        return g.listObjectsOfProperty(g.getResource(conceptIri), predicate).toList().stream()
+                .map(Object::toString)
+                .toList();
     }
 
     /** The concept's current {@code rdfs:subClassOf} targets in the live graph. */
@@ -347,10 +277,14 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // V4/V5: a domain-only overlay does NOT drop the public/private classification.
     @Test
     void materializeDomainOverlay_keepsIriAndClassification() {
-        ConceptMetadataEntity a = create(classModel("Třída A", true));
-        ConceptMetadataEntity b = create(classModel("Třída B", true));
-        ConceptMetadataEntity rel = create(relModel("je u", a.getConceptIri(), a.getConceptIri()));
+        ConceptMetadataEntity a = create(classModel("Třída A"));
+        ConceptMetadataEntity b = create(classModel("Třída B"));
+        RelationshipConceptModel publicRel = relModel("je u", a.getConceptIri(), a.getConceptIri());
+        publicRel.setIsPublic(true);
+        ConceptMetadataEntity rel = create(publicRel);
         String relIri = rel.getConceptIri();
+        assertThat(graph().contains(graph().getResource(relIri), RDF.type, graph().getResource(VEREJNY)))
+                .as("the VZTAH starts out classified veřejný").isTrue();
 
         // Overlay: repoint the VZTAH's range to B (a structural, field-scoped change).
         DiagramPendingEdit overlay = new DiagramPendingEdit();
@@ -358,7 +292,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setRange(b.getConceptIri());
         stageNode(relIri, overlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.materialized()).hasSize(1);
         assertThat(result.materialized().get(0).op()).isEqualTo(DiagramOp.SWAP_DIRECTION);
@@ -366,10 +300,12 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
         // V1: the IRI is unchanged (no rename on Převzít).
         assertThat(conceptRepo.findById(rel.getId()).orElseThrow().getConceptIri()).isEqualTo(relIri);
-        // V4/V5: the VZTAH still carries its classification type in RDF (not stripped by the field-scoped edit).
+        // V4/V5: the field-scoped edit keeps the veřejný classification and applies the new range.
         Model g = graph();
-        assertThat(g.getResource(relIri).listProperties(org.apache.jena.vocabulary.RDF.type).toList())
-                .as("classification/type triples survive a structural-only materialize").isNotEmpty();
+        assertThat(g.contains(g.getResource(relIri), RDF.type, g.getResource(VEREJNY)))
+                .as("the classification survives a structural-only materialize").isTrue();
+        assertThat(g.getResource(relIri).getPropertyResourceValue(RDFS.range).getURI())
+                .isEqualTo(b.getConceptIri());
         // The staged edit was cleared on success.
         assertThat(stagedEdit(relIri)).isNull();
     }
@@ -378,32 +314,35 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // unmentioned fields null, and the field updaters treat null as "unchanged" (empty clears).
     @Test
     void materializeExactMatchOnlyOverlay_keepsDomainAndRange() {
-        ConceptMetadataEntity a = create(classModel("EM Třída A", true));
-        ConceptMetadataEntity b = create(classModel("EM Třída B", true));
+        ConceptMetadataEntity a = create(classModel("EM Třída A"));
+        ConceptMetadataEntity b = create(classModel("EM Třída B"));
         ConceptMetadataEntity rel = create(relModel("em vztah", a.getConceptIri(), b.getConceptIri()));
         String relIri = rel.getConceptIri();
 
+        String match = "https://slovnik.gov.cz/g/pojem/jiny";
         DiagramPendingEdit overlay = new DiagramPendingEdit();
-        overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/jiny"));
+        overlay.setExactMatch(List.of(match));
         stageNode(relIri, overlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).isEmpty();
         assertThat(result.materialized()).hasSize(1);
 
         Model g = graph();
-        assertThat(g.getResource(relIri).getProperty(RDFS.domain))
-                .as("an exactMatch-only overlay must not drop rdfs:domain").isNotNull();
-        assertThat(g.getResource(relIri).getProperty(RDFS.range))
-                .as("an exactMatch-only overlay must not drop rdfs:range").isNotNull();
+        assertThat(objectsOf(relIri, RDFS.domain))
+                .as("an exactMatch-only overlay keeps rdfs:domain").containsExactly(a.getConceptIri());
+        assertThat(objectsOf(relIri, RDFS.range))
+                .as("an exactMatch-only overlay keeps rdfs:range").containsExactly(b.getConceptIri());
+        assertThat(objectsOf(relIri, SKOS.exactMatch))
+                .as("the staged exactMatch is written").containsExactly(match);
     }
 
     // Stale-base: the concept was edited (via normal /api/concept) after the overlay was staged → 409.
     @Test
     void materialize_staleBase_reports409() {
-        ConceptMetadataEntity a = create(classModel("Stale A", true));
-        ConceptMetadataEntity b = create(classModel("Stale B", true));
+        ConceptMetadataEntity a = create(classModel("Stale A"));
+        ConceptMetadataEntity b = create(classModel("Stale B"));
 
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of(b.getConceptIri()));
@@ -418,7 +357,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
             restage(a.getConceptIri(), staged);
         });
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
@@ -432,8 +371,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // rdfs:domain and the canvas draws the property on a class that no longer exists.
     @Test
     void materialize_domainTargetDeletedFromOwnGraph_reportsStaleBaseAndWritesNoDanglingTriple() {
-        ConceptMetadataEntity owner = create(classModel("Domain Owner", true));
-        ConceptMetadataEntity doomed = create(classModel("Doomed Target", true));
+        ConceptMetadataEntity owner = create(classModel("Domain Owner"));
+        ConceptMetadataEntity doomed = create(classModel("Doomed Target"));
         ConceptMetadataEntity prop = create(propModel("má vlastnost", owner.getConceptIri()));
         String propIri = prop.getConceptIri();
         String doomedIri = doomed.getConceptIri();
@@ -448,7 +387,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         conceptService.deleteConcept(doomed.getId());
         assertThat(conceptRepo.findByConceptIri(doomedIri)).isEmpty();
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
@@ -467,7 +406,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // object, so tightening the guard to "must resolve" would break legitimate cross-vocabulary references.
     @Test
     void materialize_domainTargetForeignAndUnresolvable_isStillApplied() {
-        ConceptMetadataEntity owner = create(classModel("Foreign Owner", true));
+        ConceptMetadataEntity owner = create(classModel("Foreign Owner"));
         ConceptMetadataEntity prop = create(propModel("má cizí vlastnost", owner.getConceptIri()));
         String propIri = prop.getConceptIri();
         String foreignIri = "https://slovnik.gov.cz/datovy/cizi/pojem/trida";
@@ -476,10 +415,12 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setDomain(foreignIri);
         stageNode(propIri, overlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).as("a foreign, unresolvable domain is not a stale reference").isEmpty();
         assertThat(result.materialized()).hasSize(1);
+        assertThat(objectsOf(propIri, RDFS.domain))
+                .as("the foreign domain replaces the old one in RDF").containsExactly(foreignIri);
     }
 
     // skippedStale: the referenced concept no longer exists.
@@ -489,7 +430,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setBroaderConcept(List.of("https://x/pojem/whatever"));
         stageNode("https://slovnik.gov.cz/g/pojem/ghost", overlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.skippedStale()).hasSize(1);
         assertThat(result.materialized()).isEmpty();
@@ -500,15 +441,15 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // the projection, and the edge silently leaves the canvas after Převzít — taking its waypoints with it.
     @Test
     void materializeRepointedHierarchy_movesMembershipToTheNewEdgeId() {
-        ConceptMetadataEntity child = create(classModel("Rekey Child", true));
-        ConceptMetadataEntity oldBroader = create(classModel("Rekey Old Broader", true));
-        ConceptMetadataEntity newBroader = create(classModel("Rekey New Broader", true));
+        ConceptMetadataEntity child = create(classModel("Rekey Child"));
+        ConceptMetadataEntity oldBroader = create(classModel("Rekey Old Broader"));
+        ConceptMetadataEntity newBroader = create(classModel("Rekey New Broader"));
 
         // The child already subclasses oldBroader in RDF...
         DiagramPendingEdit seed = new DiagramPendingEdit();
         seed.setBroaderConcept(List.of(oldBroader.getConceptIri()));
         stageNode(child.getConceptIri(), seed);
-        materializeService.materialize(diagramId(), ontologyId());
+        materializeService.materialize(diagramId, ontologyId());
 
         // ...and the user placed that edge on the canvas, with waypoints.
         String oldKey = "edge|SUBCLASS_OF|" + child.getConceptIri() + "|" + oldBroader.getConceptIri();
@@ -519,10 +460,10 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         DiagramPendingEdit repoint = new DiagramPendingEdit();
         repoint.setBroaderConcept(List.of(newBroader.getConceptIri()));
         restage(child.getConceptIri(), repoint);
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).isEmpty();
-        List<DiagramEdgeEntity> rows = edgeRepo.findByDiagramId(diagramId());
+        List<DiagramEdgeEntity> rows = edgeRepo.findByDiagramId(diagramId);
         assertThat(rows).as("membership follows the edge to its new identity").singleElement()
                 .satisfies(row -> {
                     assertThat(row.getEdgeKey()).isEqualTo(newKey);
@@ -533,37 +474,37 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     /** An unplaced repoint writes no membership — re-keying must not invent a row. */
     @Test
     void materializeRepointedHierarchy_withNoMembership_writesNone() {
-        ConceptMetadataEntity child = create(classModel("Bare Child", true));
-        ConceptMetadataEntity oldBroader = create(classModel("Bare Old", true));
-        ConceptMetadataEntity newBroader = create(classModel("Bare New", true));
+        ConceptMetadataEntity child = create(classModel("Bare Child"));
+        ConceptMetadataEntity oldBroader = create(classModel("Bare Old"));
+        ConceptMetadataEntity newBroader = create(classModel("Bare New"));
 
         DiagramPendingEdit seed = new DiagramPendingEdit();
         seed.setBroaderConcept(List.of(oldBroader.getConceptIri()));
         stageNode(child.getConceptIri(), seed);
-        materializeService.materialize(diagramId(), ontologyId());
+        materializeService.materialize(diagramId, ontologyId());
 
         DiagramPendingEdit repoint = new DiagramPendingEdit();
         repoint.setBroaderConcept(List.of(newBroader.getConceptIri()));
         restage(child.getConceptIri(), repoint);
-        materializeService.materialize(diagramId(), ontologyId());
+        materializeService.materialize(diagramId, ontologyId());
 
-        assertThat(edgeRepo.findByDiagramId(diagramId())).isEmpty();
+        assertThat(edgeRepo.findByDiagramId(diagramId)).isEmpty();
     }
 
     // Op 6 deletes the VZTAH. Its row on the converting canvas used to survive and render stale from the
     // tombstone, so the relationship appeared to live on beside the hierarchy that replaced it.
     @Test
     void op6_movesTheVztahRowToTheNewHierarchyEdge_keepingItsWaypoints() {
-        ConceptMetadataEntity a = create(classModel("Conv A", true));
-        ConceptMetadataEntity b = create(classModel("Conv B", true));
+        ConceptMetadataEntity a = create(classModel("Conv A"));
+        ConceptMetadataEntity b = create(classModel("Conv B"));
         ConceptMetadataEntity v = create(relModel("conv-rel", a.getConceptIri(), b.getConceptIri()));
         placeEdge(v.getConceptIri(), List.of(new EdgeWaypoint(10, 20)));
         stageNode(v.getConceptIri(), convert(b.getConceptIri(), a.getConceptIri()));
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).isEmpty();
-        assertThat(edgeRepo.findByDiagramId(diagramId())).singleElement().satisfies(row -> {
+        assertThat(edgeRepo.findByDiagramId(diagramId)).singleElement().satisfies(row -> {
             assertThat(row.getEdgeKey())
                     .isEqualTo("edge|SUBCLASS_OF|" + b.getConceptIri() + "|" + a.getConceptIri());
             assertThat(row.getSegments()).containsExactly(new EdgeWaypoint(10, 20));
@@ -573,17 +514,17 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     /** The client already placed the hierarchy edge, so the VZTAH row is dropped rather than colliding. */
     @Test
     void op6_withTheHierarchyEdgeAlreadyPlaced_dropsTheVztahRow() {
-        ConceptMetadataEntity a = create(classModel("Both A", true));
-        ConceptMetadataEntity b = create(classModel("Both B", true));
+        ConceptMetadataEntity a = create(classModel("Both A"));
+        ConceptMetadataEntity b = create(classModel("Both B"));
         ConceptMetadataEntity v = create(relModel("both-rel", a.getConceptIri(), b.getConceptIri()));
         String hierarchyKey = "edge|SUBCLASS_OF|" + b.getConceptIri() + "|" + a.getConceptIri();
         placeEdge(v.getConceptIri(), null);
         placeEdge(hierarchyKey, null);
         stageNode(v.getConceptIri(), convert(b.getConceptIri(), a.getConceptIri()));
 
-        materializeService.materialize(diagramId(), ontologyId());
+        materializeService.materialize(diagramId, ontologyId());
 
-        assertThat(edgeRepo.findByDiagramId(diagramId()))
+        assertThat(edgeRepo.findByDiagramId(diagramId))
                 .extracting(DiagramEdgeEntity::getEdgeKey)
                 .containsExactly(hierarchyKey);
     }
@@ -591,11 +532,10 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     /** Another canvas did not convert anything; the deletion is external to it and must render stale. */
     @Test
     void op6_leavesTheVztahRowOnOtherDiagramsForThemToRenderStale() {
-        ConceptMetadataEntity a = create(classModel("Other A", true));
-        ConceptMetadataEntity b = create(classModel("Other B", true));
+        ConceptMetadataEntity a = create(classModel("Other A"));
+        ConceptMetadataEntity b = create(classModel("Other B"));
         ConceptMetadataEntity v = create(relModel("other-rel", a.getConceptIri(), b.getConceptIri()));
-        // diagramId() is the ontology's FIRST diagram, so it must exist before the other one does.
-        Long convertingDiagramId = diagramId();
+        Long convertingDiagramId = diagramId;
         Long otherDiagramId = txTemplate.execute(tx -> {
             DiagramEntity d = new DiagramEntity();
             d.setOntologyMetadata(ontologyRepo.findBySlug("g-ontology").orElseThrow());
@@ -630,7 +570,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     private void placeEdge(String edgeKey, List<EdgeWaypoint> segments) {
         txTemplate.executeWithoutResult(tx -> {
             DiagramEdgeEntity row = new DiagramEdgeEntity();
-            row.setDiagram(diagramRepo.findById(diagramId()).orElseThrow());
+            row.setDiagram(diagramRepo.findById(diagramId).orElseThrow());
             row.setEdgeKey(edgeKey);
             row.setSegments(segments);
             edgeRepo.saveAndFlush(row);
@@ -651,17 +591,17 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     @Test
     void orderedWorkList_classifiesInOneRead_notOnePerComparison() {
         for (int i = 0; i < 10; i++) {
-            ConceptMetadataEntity c = create(classModel("Order " + i, true));
+            ConceptMetadataEntity c = create(classModel("Order " + i));
             DiagramPendingEdit overlay = new DiagramPendingEdit();
             overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/x" + i));
             stageNode(c.getConceptIri(), overlay);
         }
 
         clearInvocations(pendingEditRepo);
-        materializeService.materialize(diagramId(), ontologyId());
+        materializeService.materialize(diagramId, ontologyId());
 
         // One findByDiagramId builds and classifies the whole work-list.
-        verify(pendingEditRepo, times(1)).findByDiagramId(diagramId());
+        verify(pendingEditRepo, times(1)).findByDiagramId(diagramId);
         // The old shape issued ~44 of these for 10 rows just to order them; now only the applier's own
         // per-change lookup remains (one per staged edit).
         verify(pendingEditRepo, atMost(10)).findByDiagramIdAndConceptIri(any(), any());
@@ -680,7 +620,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     void materialize_fetchesTheGraphAtMostTwicePerStagedEdit() {
         int edits = 10;
         for (int i = 0; i < edits; i++) {
-            ConceptMetadataEntity c = create(classModel("Fanout " + i, true));
+            ConceptMetadataEntity c = create(classModel("Fanout " + i));
             DiagramPendingEdit overlay = new DiagramPendingEdit();
             overlay.setExactMatch(List.of("https://slovnik.gov.cz/g/pojem/x" + i));
             stageNode(c.getConceptIri(), overlay);
@@ -690,7 +630,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         placeEdge("edge|SUBCLASS_OF|a|b", null);
 
         tdb2.resetFetchCount();
-        materializeService.materialize(diagramId(), ontologyId());
+        materializeService.materialize(diagramId, ontologyId());
 
         assertThat(tdb2.fetchGraphCount())
                 .as("whole-graph fetches must stay linear in the staged-edit count, at most 2 per change")
@@ -703,8 +643,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
      */
     @Test
     void aFailedChange_reportsItsOp() {
-        ConceptMetadataEntity a = create(classModel("Op A", true));
-        ConceptMetadataEntity b = create(classModel("Op B", true));
+        ConceptMetadataEntity a = create(classModel("Op A"));
+        ConceptMetadataEntity b = create(classModel("Op B"));
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setExactMatch(List.of(b.getConceptIri()));
         stageNode(a.getConceptIri(), overlay);
@@ -716,7 +656,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
             restage(a.getConceptIri(), staged);
         });
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).singleElement().satisfies(f -> {
             assertThat(f.error()).isEqualTo(DiagramFailureCode.STALE_BASE);
@@ -731,9 +671,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // The fix orders op-6 LAST, so A materializes (and clears) before op 6 bumps it → no false stale-base.
     @Test
     void op6AndTargetOverlay_inSameMaterialize_noFalseStaleBase() {
-        ConceptMetadataEntity a = create(classModel("Coll A", true));
-        ConceptMetadataEntity b = create(classModel("Coll B", true));
-        ConceptMetadataEntity broader = create(classModel("Coll Broader", true));
+        ConceptMetadataEntity a = create(classModel("Coll A"));
+        ConceptMetadataEntity b = create(classModel("Coll B"));
+        ConceptMetadataEntity broader = create(classModel("Coll Broader"));
         // VZTAH V with domain A, range B — convertible to a hierarchy on A.
         ConceptMetadataEntity v = create(relModel("v-rel", a.getConceptIri(), b.getConceptIri()));
 
@@ -751,7 +691,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         aOverlay.setExactMatch(List.of(b.getConceptIri()));
         stageNode(a.getConceptIri(), aOverlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         // Fix asserted: NO stale-base failure — A's own change is not collided by the op-6 bump.
         assertThat(result.failed())
@@ -770,8 +710,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // V8: op-6 blocked when another concept's domain/range points at the VZTAH (deleting it would cascade).
     @Test
     void op6_withIncomingReference_reportsCascadeConflict() {
-        ConceptMetadataEntity a = create(classModel("Casc A", true));
-        ConceptMetadataEntity broader = create(classModel("Casc Broader", true));
+        ConceptMetadataEntity a = create(classModel("Casc A"));
+        ConceptMetadataEntity broader = create(classModel("Casc Broader"));
         ConceptMetadataEntity v = create(relModel("casc-rel", a.getConceptIri(), a.getConceptIri()));
         // A property W whose rdfs:domain IS the VZTAH V → findRelatedConceptUris(V) is non-empty.
         create(propModel("casc-prop", v.getConceptIri()));
@@ -783,7 +723,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).hasSize(1);
         assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.CASCADE_CONFLICT);
@@ -801,10 +741,10 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // all use freshly-created classes with no hierarchy, where replace and add are indistinguishable.
     @Test
     void op6_preservesTargetClassExistingBroaderConcepts() {
-        ConceptMetadataEntity a = create(classModel("Merge A", true));
-        ConceptMetadataEntity b = create(classModel("Merge B", true));
-        ConceptMetadataEntity existingParent = create(classModel("Merge Existing Parent", true));
-        ConceptMetadataEntity newBroader = create(classModel("Merge New Broader", true));
+        ConceptMetadataEntity a = create(classModel("Merge A"));
+        ConceptMetadataEntity b = create(classModel("Merge B"));
+        ConceptMetadataEntity existingParent = create(classModel("Merge Existing Parent"));
+        ConceptMetadataEntity newBroader = create(classModel("Merge New Broader"));
         ConceptMetadataEntity v = create(relModel("merge-rel", a.getConceptIri(), b.getConceptIri()));
 
         // Give A a pre-existing super-class through the normal edit path.
@@ -822,7 +762,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        assertThat(materializeService.materialize(diagramId(), ontologyId()).materialized()).hasSize(1);
+        assertThat(materializeService.materialize(diagramId, ontologyId()).materialized()).hasSize(1);
 
         assertThat(broaderOf(a.getConceptIri()))
                 .as("op-6 adds its broader and keeps the class's existing hierarchy")
@@ -832,9 +772,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     /** An already-present broader must not be duplicated, and must not disturb the existing set. */
     @Test
     void op6_broaderAlreadyPresent_isNoOpOnHierarchy() {
-        ConceptMetadataEntity a = create(classModel("Dup A", true));
-        ConceptMetadataEntity b = create(classModel("Dup B", true));
-        ConceptMetadataEntity parent = create(classModel("Dup Parent", true));
+        ConceptMetadataEntity a = create(classModel("Dup A"));
+        ConceptMetadataEntity b = create(classModel("Dup B"));
+        ConceptMetadataEntity parent = create(classModel("Dup Parent"));
         ConceptMetadataEntity v = create(relModel("dup-rel", a.getConceptIri(), b.getConceptIri()));
 
         ClassConceptEditModel seed = new ClassConceptEditModel();
@@ -850,7 +790,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        assertThat(materializeService.materialize(diagramId(), ontologyId()).materialized()).hasSize(1);
+        assertThat(materializeService.materialize(diagramId, ontologyId()).materialized()).hasSize(1);
 
         assertThat(broaderOf(a.getConceptIri())).containsExactly(parent.getConceptIri());
     }
@@ -859,9 +799,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // the same convert tolerates the already-deleted VZTAH (skippedStale) rather than erroring.
     @Test
     void op6_retryAfterDelete_isIdempotent() {
-        ConceptMetadataEntity a = create(classModel("Idem A", true));
-        ConceptMetadataEntity b = create(classModel("Idem B", true));
-        ConceptMetadataEntity broader = create(classModel("Idem Broader", true));
+        ConceptMetadataEntity a = create(classModel("Idem A"));
+        ConceptMetadataEntity b = create(classModel("Idem B"));
+        ConceptMetadataEntity broader = create(classModel("Idem Broader"));
         ConceptMetadataEntity v = create(relModel("idem-rel", a.getConceptIri(), b.getConceptIri()));
 
         DiagramPendingEdit convert = new DiagramPendingEdit();
@@ -872,7 +812,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         stageNode(v.getConceptIri(), convert);
 
         // First materialize: succeeds, deletes V, clears the overlay.
-        assertThat(materializeService.materialize(diagramId(), ontologyId()).materialized()).hasSize(1);
+        assertThat(materializeService.materialize(diagramId, ontologyId()).materialized()).hasSize(1);
         assertThat(graph().containsResource(graph().getResource(v.getConceptIri()))).isFalse();
 
         // Re-stage the same convert on the now-deleted concept and materialize again.
@@ -883,7 +823,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         again.setConvertToHierarchy(m2);
         restage(v.getConceptIri(), again);
 
-        MaterializeResultDto retry = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto retry = materializeService.materialize(diagramId, ontologyId());
 
         // The concept row is gone (delete removed it) → the retry resolves to skippedStale, not an error.
         assertThat(retry.skippedStale()).hasSize(1);
@@ -894,9 +834,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     // one failed, and the failed change's overlay is retained while the good one's is cleared.
     @Test
     void materialize_partialCommit_reportsPerChangeAndRetainsFailedOverlay() {
-        ConceptMetadataEntity good = create(classModel("Partial Good", true));
-        ConceptMetadataEntity target = create(classModel("Partial Target", true));
-        ConceptMetadataEntity bad = create(classModel("Partial Bad", true));
+        ConceptMetadataEntity good = create(classModel("Partial Good"));
+        ConceptMetadataEntity target = create(classModel("Partial Target"));
+        ConceptMetadataEntity bad = create(classModel("Partial Bad"));
 
         // Good: a valid subClassOf change on `good`.
         DiagramPendingEdit goodOverlay = new DiagramPendingEdit();
@@ -912,7 +852,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         badOverlay.setConvertToHierarchy(marker);
         stageNode(bad.getConceptIri(), badOverlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.materialized())
                 .anyMatch(m -> good.getConceptIri().equals(m.conceptIri()));
@@ -925,7 +865,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
 
     @Test
     void materialize_unexpectedFailure_reportsGenericMessageNotRawException() {
-        ConceptMetadataEntity subject = create(classModel("Leak Probe", true));
+        ConceptMetadataEntity subject = create(classModel("Leak Probe"));
 
         DiagramPendingEdit overlay = new DiagramPendingEdit();
         overlay.setBroaderConcept(List.of("https://slovnik.gov.cz/g/pojem/leak-target"));
@@ -939,7 +879,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
             conceptRepo.saveAndFlush(row);
         });
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).hasSize(1);
         MaterializeResultDto.Failed failure = result.failed().get(0);
@@ -964,7 +904,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     void materialize_foreignGraphNode_refusedAndVictimConceptUntouched() {
         seedVictimOntology();
         ConceptMetadataEntity victimConcept = createVictimClass("Victim Secret");
-        ConceptMetadataEntity localTarget = create(classModel("Local Target", true));
+        ConceptMetadataEntity localTarget = create(classModel("Local Target"));
         List<String> before = triplesOf(victimGraph(), victimConcept.getConceptIri());
         assertThat(before).as("victim concept has triples to protect").isNotEmpty();
 
@@ -973,7 +913,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         overlay.setBroaderConcept(List.of(localTarget.getConceptIri()));
         stageNode(victimConcept.getConceptIri(), overlay);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.materialized())
                 .as("a foreign concept must never be materialized").isEmpty();
@@ -994,8 +934,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     void op6_foreignAddBroaderOn_refusedAndNothingDeleted() {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Class");
-        ConceptMetadataEntity a = create(classModel("Op6 Foreign A", true));
-        ConceptMetadataEntity b = create(classModel("Op6 Foreign B", true));
+        ConceptMetadataEntity a = create(classModel("Op6 Foreign A"));
+        ConceptMetadataEntity b = create(classModel("Op6 Foreign B"));
         ConceptMetadataEntity v = create(relModel("op6-foreign-rel", a.getConceptIri(), b.getConceptIri()));
         List<String> victimBefore = triplesOf(victimGraph(), victimClass.getConceptIri());
 
@@ -1007,7 +947,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.materialized()).isEmpty();
         assertThat(result.failed()).hasSize(1);
@@ -1030,8 +970,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     void op6_foreignBroader_isApplied() {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Broader");
-        ConceptMetadataEntity a = create(classModel("Op6 Broader A", true));
-        ConceptMetadataEntity b = create(classModel("Op6 Broader B", true));
+        ConceptMetadataEntity a = create(classModel("Op6 Broader A"));
+        ConceptMetadataEntity b = create(classModel("Op6 Broader B"));
         ConceptMetadataEntity v = create(relModel("op6-broader-rel", a.getConceptIri(), b.getConceptIri()));
 
         DiagramPendingEdit convert = new DiagramPendingEdit();
@@ -1041,7 +981,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).isEmpty();
         // Our class gained the foreign super-class — a triple in OUR graph, naming theirs.
@@ -1060,8 +1000,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         seedVictimOntology();
         ConceptMetadataEntity victimClass = createVictimClass("Victim Target");
         String victimBefore = victimClass.getConceptIri();
-        ConceptMetadataEntity a = create(classModel("Op6 Target A", true));
-        ConceptMetadataEntity b = create(classModel("Op6 Target B", true));
+        ConceptMetadataEntity a = create(classModel("Op6 Target A"));
+        ConceptMetadataEntity b = create(classModel("Op6 Target B"));
         ConceptMetadataEntity v = create(relModel("op6-target-rel", a.getConceptIri(), b.getConceptIri()));
 
         DiagramPendingEdit convert = new DiagramPendingEdit();
@@ -1071,7 +1011,7 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
         convert.setConvertToHierarchy(marker);
         stageNode(v.getConceptIri(), convert);
 
-        MaterializeResultDto result = materializeService.materialize(diagramId(), ontologyId());
+        MaterializeResultDto result = materializeService.materialize(diagramId, ontologyId());
 
         assertThat(result.failed()).hasSize(1);
         assertThat(result.failed().get(0).error()).isEqualTo(DiagramFailureCode.FOREIGN_CONCEPT);
@@ -1113,8 +1053,8 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
     /** The owner is unaffected — the assertion gates non-owners, not the legitimate edit path. */
     @Test
     void edit_byOwner_isPermitted() {
-        ConceptMetadataEntity a = create(classModel("Owner Edit A", true));
-        ConceptMetadataEntity parent = create(classModel("Owner Edit Parent", true));
+        ConceptMetadataEntity a = create(classModel("Owner Edit A"));
+        ConceptMetadataEntity parent = create(classModel("Owner Edit Parent"));
 
         authenticateAs(USER, false);
         try {
@@ -1160,50 +1100,9 @@ class DiagramMaterializeIntegrationTest extends PostgresIntegrationTestBase {
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }
 
+    /** The real applier and materialize service on top of the {@link OutboxFlowIT} beans. */
     @TestConfiguration
     static class Beans {
-        @Bean OutboxConfig outboxConfig() {
-            OutboxConfig c = new OutboxConfig();
-            return c;
-        }
-        @Bean InMemoryTdb2 inMemoryTdb2() { return new InMemoryTdb2(); }
-        @Bean @Primary ConceptMetadataMapper conceptMetadataMapper() { return new ConceptMetadataMapperImpl(); }
-        @Bean OutboxWriter outboxWriter(OutboxEntryRepository r) { return new OutboxWriter(r); }
-        @Bean OutboxRelay outboxRelay(OutboxEntryRepository r, InMemoryTdb2 t, OutboxConfig c) {
-            return new OutboxRelay(r, t, c);
-        }
-        @Bean OutboxRelayTrigger outboxRelayTrigger(OutboxRelay relay) { return new OutboxRelayTrigger(relay); }
-
-        @Bean MetadataTouchService metadataTouchService(
-                ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo) {
-            return new MetadataTouchService(conceptRepo, ontologyRepo);
-        }
-
-        @Bean ConceptServiceImpl conceptServiceImpl(
-                ConceptMetadataRepository conceptRepo, OntologyMetadataRepository ontologyRepo,
-                MetadataTouchService touchService,
-                ConceptMetadataMapper mapper, InMemoryTdb2 tdb2,
-                OutboxConfig outboxConfig, OutboxWriter writer, OutboxEntryRepository outboxRepository,
-                OutboxRelayTrigger trigger) {
-            return ConceptServiceWiring.build(
-                    conceptRepo, ontologyRepo, touchService, mapper,
-                    new ConceptCreator(), new ConceptEditor(), tdb2,
-                    mock(OntologyDetailExtractor.class),
-                    mock(com.dia.ismdtoolbackend.repository.CommentRepository.class),
-                    mock(com.dia.ismdtoolbackend.client.NkdSparqlClient.class),
-                    mock(ConceptDeviationComparator.class),
-                    mock(RppSnapshotHolder.class),
-                    mock(com.dia.ismdtoolbackend.service.nkod.NkodCodelistService.class),
-                    mock(ReferencedConceptsEnricher.class),
-                    writer, outboxRepository, trigger,
-                    mock(com.dia.ismdtoolbackend.service.NkdSnapshotService.class),
-                    new com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector(),
-                    new com.dia.ismdtoolbackend.utility.published.WorkingCopySyncFields(),
-                    mock(com.dia.ismdtoolbackend.service.snapshot.NkdSnapshotWarmer.class),
-                    new com.dia.ismdtoolbackend.config.NkdConfig(),
-                    mock(WorkingCopyDeviationServiceImpl.class));
-        }
-
         @Bean DiagramChangeApplier diagramChangeApplier(
                 ConceptServiceImpl conceptService, ConceptMetadataRepository conceptRepo,
                 DiagramPendingEditRepository pendingEditRepo, DiagramEdgeRepository edgeRepo,

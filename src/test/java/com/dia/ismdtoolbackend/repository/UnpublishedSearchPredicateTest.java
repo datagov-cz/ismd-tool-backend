@@ -3,13 +3,13 @@ package com.dia.ismdtoolbackend.repository;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
-import com.dia.ismdtoolbackend.outbox.PostgresIntegrationTestBase;
-import org.junit.jupiter.api.BeforeEach;
+import com.dia.ismdtoolbackend.testsupport.pg.PgTestData;
+import com.dia.ismdtoolbackend.testsupport.pg.PlainJpaIT;
+import com.dia.ismdtoolbackend.testsupport.pg.PostgresIntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,9 +27,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (which severs that one concept to {@code false}), so a draft-state filter returned almost nothing.
  * Draft state is surfaced through ordering instead.
  */
-@DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("junit")
+@PlainJpaIT
+@Transactional
 class UnpublishedSearchPredicateTest extends PostgresIntegrationTestBase {
 
     private static final String Q = "rozpracovany";
@@ -40,21 +39,14 @@ class UnpublishedSearchPredicateTest extends PostgresIntegrationTestBase {
     @Autowired
     private OntologyMetadataRepository ontologyRepository;
 
-    @BeforeEach
-    void clean() {
-        conceptRepository.deleteAll();
-        ontologyRepository.deleteAll();
-    }
+    @Autowired
+    private PgTestData data;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private OntologyMetadataEntity ontology(String slug, Boolean isPublished) {
-        OntologyMetadataEntity o = new OntologyMetadataEntity();
-        o.setSlug(slug);
-        o.setGraphName("https://example.test/" + slug);
-        o.setUserId("user-1");
-        o.setIsPublished(isPublished);
-        o.setCreatedAt(LocalDateTime.now());
-        o.setUpdatedAt(LocalDateTime.now());
-        return ontologyRepository.save(o);
+        return data.createOntology(slug, "https://example.test/" + slug, "user-1", isPublished);
     }
 
     private ConceptMetadataEntity concept(OntologyMetadataEntity o, String name, Boolean isPublished) {
@@ -67,9 +59,17 @@ class UnpublishedSearchPredicateTest extends PostgresIntegrationTestBase {
         c.setUserId("user-1");
         c.setIsPublished(isPublished);
         c.setOntologyMetadata(o);
-        c.setCreatedAt(LocalDateTime.now());
-        c.setUpdatedAt(LocalDateTime.now());
         return conceptRepository.save(c);
+    }
+
+    /**
+     * Moves a row's {@code updated_at} into the past. JPA auditing stamps every save with "now", as in
+     * production, so an older row is made by flushing it and rewriting the column in SQL.
+     */
+    private void backdate(String table, Long id, int days) {
+        conceptRepository.flush();
+        jdbc.update("UPDATE ismd_schema." + table + " SET updated_at = ? WHERE id = ?",
+                LocalDateTime.now().minusDays(days), id);
     }
 
     private List<String> unpublishedConceptNames() {
@@ -166,11 +166,8 @@ class UnpublishedSearchPredicateTest extends PostgresIntegrationTestBase {
         OntologyMetadataEntity workingCopy = ontology("rozpracovany-order", true);
         // Published row is the most recently touched, so recency alone would float it to the top.
         ConceptMetadataEntity draft = concept(workingCopy, "rozpracovany-order-draft", false);
-        draft.setUpdatedAt(LocalDateTime.now().minusDays(3));
-        conceptRepository.save(draft);
-        ConceptMetadataEntity published = concept(workingCopy, "rozpracovany-order-published", true);
-        published.setUpdatedAt(LocalDateTime.now());
-        conceptRepository.save(published);
+        concept(workingCopy, "rozpracovany-order-published", true);
+        backdate("concepts", draft.getId(), 3);
 
         assertThat(unpublishedConceptNames())
                 .containsExactly("rozpracovany-order-draft", "rozpracovany-order-published");
@@ -180,11 +177,9 @@ class UnpublishedSearchPredicateTest extends PostgresIntegrationTestBase {
     @Test
     void ordersDraftOntologiesBeforePublishedOnes() {
         OntologyMetadataEntity draftOntology = ontology("rozpracovany-ord-draft", false);
-        draftOntology.setUpdatedAt(LocalDateTime.now().minusDays(3));
-        ontologyRepository.save(draftOntology);
-        OntologyMetadataEntity workingCopy = ontology("rozpracovany-ord-wc", true);
-        workingCopy.setUpdatedAt(LocalDateTime.now());
-        ontologyRepository.save(workingCopy);
+        // The working copy is the most recently touched, so recency alone would float it to the top.
+        ontology("rozpracovany-ord-wc", true);
+        backdate("ontologies", draftOntology.getId(), 3);
 
         assertThat(ontologyRepository.searchByTextUnpublished(Q))
                 .extracting(OntologyMetadataEntity::getSlug)

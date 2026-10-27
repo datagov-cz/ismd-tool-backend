@@ -13,7 +13,7 @@ import java.util.Map;
 
 import static com.dia.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.exporter.RdfTestModelFactory.*;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ConceptJsonMapper - Multilingual Properties (prefLabel, definition, description)")
 class ConceptMultilingualPropertyTest {
@@ -36,8 +36,8 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
-        assertEquals("Osoba", nazev.get("cs"));
+        assertThat(nazev).isNotNull();
+        assertThat(nazev.get("cs")).isEqualTo("Osoba");
     }
 
     @Test
@@ -53,9 +53,9 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
-        assertEquals("Osoba", nazev.get("cs"));
-        assertEquals("Person", nazev.get("en"));
+        assertThat(nazev).isNotNull();
+        assertThat(nazev.get("cs")).isEqualTo("Osoba");
+        assertThat(nazev.get("en")).isEqualTo("Person");
     }
 
     @Test
@@ -73,8 +73,8 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
-        assertEquals("Bez značky", nazev.get("cs"));
+        assertThat(nazev).isNotNull();
+        assertThat(nazev.get("cs")).isEqualTo("Bez značky");
     }
 
     @Test
@@ -90,12 +90,12 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertNotNull(nazev);
+        assertThat(nazev).isNotNull();
         Object csValue = nazev.get("cs");
-        assertInstanceOf(List.class, csValue, "Duplicate lang values should produce an array");
+        assertThat(csValue).as("Duplicate lang values should produce an array").isInstanceOf(List.class);
         @SuppressWarnings("unchecked")
         List<Object> csArray = (List<Object>) csValue;
-        assertEquals(2, csArray.size());
+        assertThat(csArray).hasSize(2);
     }
 
     @Test
@@ -110,7 +110,7 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> nazev = (Map<String, Object>) result.get(NAZEV);
-        assertEquals(diacritics, nazev.get("cs"));
+        assertThat(nazev.get("cs")).isEqualTo(diacritics);
     }
 
     @Test
@@ -126,9 +126,9 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> definice = (Map<String, Object>) result.get(DEFINICE);
-        assertNotNull(definice);
-        assertEquals("Toto je definice", definice.get("cs"));
-        assertEquals("This is a definition", definice.get("en"));
+        assertThat(definice).isNotNull();
+        assertThat(definice.get("cs")).isEqualTo("Toto je definice");
+        assertThat(definice.get("en")).isEqualTo("This is a definition");
     }
 
     @Test
@@ -143,8 +143,8 @@ class ConceptMultilingualPropertyTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> popis = (Map<String, Object>) result.get(POPIS);
-        assertNotNull(popis);
-        assertEquals("Detailní popis", popis.get("cs"));
+        assertThat(popis).isNotNull();
+        assertThat(popis.get("cs")).isEqualTo("Detailní popis");
     }
 
     @Test
@@ -159,6 +159,6 @@ class ConceptMultilingualPropertyTest {
 
         Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
 
-        assertFalse(result.containsKey(NAZEV));
+        assertThat(result).doesNotContainKey(NAZEV);
     }
 }

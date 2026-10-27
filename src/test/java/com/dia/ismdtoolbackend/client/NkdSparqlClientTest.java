@@ -3,17 +3,14 @@ package com.dia.ismdtoolbackend.client;
 import com.dia.ismdtoolbackend.config.NkdConfig;
 import com.dia.ismdtoolbackend.controller.dto.ResolvedConceptDto;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
 import com.dia.ismdtoolbackend.utility.sparql.HttpSparqlExecutor;
-import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentMatchers;
 
 import java.net.http.HttpClient;
@@ -21,23 +18,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.literal;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlJson.uri;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.sparqlJson;
+import static com.dia.ismdtoolbackend.testsupport.sparql.SparqlStubs.turtle;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
-import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NkdSparqlClientTest {
 
     private static final String CONCEPT_IRI = "https://data.gov.cz/zdroj/pojem/koncept-1";
@@ -45,29 +40,12 @@ class NkdSparqlClientTest {
     private static final String ONTOLOGY_IRI = "https://data.gov.cz/zdroj/slovník/test";
     private static final String IN_SCHEME = "http://www.w3.org/2004/02/skos/core#inScheme";
 
-    private WireMockServer wm;
+    private static final HttpClient HTTP = HttpClient.newHttpClient();
 
-    @BeforeAll
-    void startServer() {
-        wm = new WireMockServer(wireMockConfig().dynamicPort());
-        wm.start();
-        com.github.tomakehurst.wiremock.client.WireMock.configureFor("localhost", wm.port());
-    }
-
-    @AfterAll
-    void stopServer() {
-        wm.stop();
-    }
-
-    @BeforeEach
-    void reset() {
-        wm.resetAll();
-    }
-
-    @AfterEach
-    void tearDown() {
-        wm.resetAll();
-    }
+    @RegisterExtension
+    static final WireMockExtension WM = WireMockExtension.newInstance()
+            .options(wireMockConfig().dynamicPort())
+            .build();
 
     // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -80,7 +58,7 @@ class NkdSparqlClientTest {
     }
 
     private NkdSparqlClient newClient(OntologyDetailExtractor extractor) {
-        return newClient(configWithEndpoint(wm.baseUrl() + "/sparql"), extractor);
+        return newClient(configWithEndpoint(WM.baseUrl() + "/sparql"), extractor);
     }
 
     private NkdSparqlClient newUnconfiguredClient(OntologyDetailExtractor extractor) {
@@ -93,25 +71,21 @@ class NkdSparqlClientTest {
                 NkdSparqlClient.NKD_LABEL,
                 cfg.getSparql().getEndpoint(),
                 cfg.getSparql().getTimeout(),
-                HttpClient.newHttpClient(),
+                HTTP,
                 cfg.getSparql().getMaxConcurrentRequests());
         return new NkdSparqlClient(executor, extractor, new NkdPublishedResourceFetcher(executor, extractor));
     }
 
-    private static void stubTurtle(String turtle) {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "text/turtle")
-                .withBody(turtle)));
+    private static void stubTurtle(String body) {
+        WM.stubFor(any(anyUrl()).willReturn(turtle(body)));
     }
 
     private static void stubEmptyTurtle() {
         stubTurtle("");
     }
 
-    private static void stubSparqlJson(String body) {
-        stubFor(any(anyUrl()).willReturn(aResponse()
-                .withHeader("Content-Type", "application/sparql-results+json")
-                .withBody(body)));
+    private static void stubSparqlJson(SparqlJson result) {
+        WM.stubFor(any(anyUrl()).willReturn(sparqlJson(result)));
     }
 
     // ─── fetchPublishedConcept / fetchPublishedConceptWithScheme ────────────────
@@ -131,9 +105,9 @@ class NkdSparqlClientTest {
         Optional<NkdSparqlClient.PublishedConcept> out =
                 newClient(extractor).fetchPublishedConceptWithScheme(CONCEPT_IRI);
 
-        assertTrue(out.isPresent());
-        assertEquals(detail, out.get().detail());
-        assertEquals(ONTOLOGY_IRI, out.get().ontologyIri());
+        assertThat(out).isPresent();
+        assertThat(out.get().detail()).isEqualTo(detail);
+        assertThat(out.get().ontologyIri()).isEqualTo(ONTOLOGY_IRI);
     }
 
     @Test
@@ -144,7 +118,7 @@ class NkdSparqlClientTest {
         Optional<OntologyDetailModel.ConceptDetailModel> out =
                 newClient(extractor).fetchPublishedConcept(CONCEPT_IRI);
 
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
         verify(extractor, never()).applyOFNTransformations(ArgumentMatchers.any());
     }
 
@@ -164,8 +138,8 @@ class NkdSparqlClientTest {
         Optional<NkdSparqlClient.PublishedConcept> out =
                 newClient(extractor).fetchPublishedConceptWithScheme(CONCEPT_IRI);
 
-        assertTrue(out.isPresent());
-        assertNull(out.get().ontologyIri());
+        assertThat(out).isPresent();
+        assertThat(out.get().ontologyIri()).isNull();
     }
 
     @Test
@@ -182,8 +156,8 @@ class NkdSparqlClientTest {
         Optional<NkdSparqlClient.PublishedConcept> out =
                 newClient(extractor).fetchPublishedConceptWithScheme(CONCEPT_IRI);
 
-        assertTrue(out.isPresent());
-        assertNull(out.get().ontologyIri());
+        assertThat(out).isPresent();
+        assertThat(out.get().ontologyIri()).isNull();
     }
 
     // ─── fetchPublishedOntology / fetchPublishedOntologyRaw ─────────────────────
@@ -198,8 +172,8 @@ class NkdSparqlClientTest {
         stubTurtle("<" + ONTOLOGY_IRI + "> <http://purl.org/dc/terms/title> \"T\"@cs .");
 
         Optional<OntologyDetailModel> out = newClient(extractor).fetchPublishedOntology(ONTOLOGY_IRI);
-        assertTrue(out.isPresent());
-        assertEquals(detail, out.get());
+        assertThat(out).isPresent();
+        assertThat(out.get()).isEqualTo(detail);
     }
 
     @Test
@@ -208,7 +182,7 @@ class NkdSparqlClientTest {
         stubEmptyTurtle();
 
         Optional<Model> out = newClient(extractor).fetchPublishedOntologyRaw(ONTOLOGY_IRI);
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -217,8 +191,8 @@ class NkdSparqlClientTest {
         stubTurtle("<" + ONTOLOGY_IRI + "> <http://purl.org/dc/terms/title> \"T\"@cs .");
 
         Optional<Model> out = newClient(extractor).fetchPublishedOntologyRaw(ONTOLOGY_IRI);
-        assertTrue(out.isPresent());
-        assertFalse(out.get().isEmpty());
+        assertThat(out).isPresent();
+        assertThat(out.get().isEmpty()).isFalse();
     }
 
     // ─── fetchConceptResolutions ────────────────────────────────────────────────
@@ -227,14 +201,14 @@ class NkdSparqlClientTest {
     void fetchConceptResolutions_nullInput_returnsEmpty() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         Map<String, ResolvedConceptDto> out = newClient(extractor).fetchConceptResolutions(null);
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
     void fetchConceptResolutions_emptyList_returnsEmpty() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         Map<String, ResolvedConceptDto> out = newClient(extractor).fetchConceptResolutions(List.of());
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -242,7 +216,7 @@ class NkdSparqlClientTest {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         Map<String, ResolvedConceptDto> out =
                 newUnconfiguredClient(extractor).fetchConceptResolutions(List.of(CONCEPT_IRI));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -251,7 +225,7 @@ class NkdSparqlClientTest {
         // SparqlIriValidator rejects non-http(s) and otherwise unsafe IRIs.
         Map<String, ResolvedConceptDto> out = newClient(extractor)
                 .fetchConceptResolutions(List.of("not an iri", "javascript:alert(1)"));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -261,7 +235,7 @@ class NkdSparqlClientTest {
 
         Map<String, ResolvedConceptDto> out =
                 newClient(extractor).fetchConceptResolutions(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -273,7 +247,7 @@ class NkdSparqlClientTest {
         // crash the call and the result is an empty map (upstream returned nothing).
         Map<String, ResolvedConceptDto> out = newClient(extractor)
                 .fetchConceptResolutions(List.of(CONCEPT_IRI, "not an iri"));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     // ─── getPublishedResourcesList ──────────────────────────────────────────────
@@ -282,21 +256,21 @@ class NkdSparqlClientTest {
     void getPublishedResourcesList_nullInput_returnsEmptyList() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         List<String> out = newClient(extractor).getPublishedResourcesList(null);
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
     void getPublishedResourcesList_emptyInput_returnsEmptyList() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         List<String> out = newClient(extractor).getPublishedResourcesList(List.of());
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
     void getPublishedResourcesList_endpointNotConfigured_returnsEmptyList() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         List<String> out = newUnconfiguredClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -309,7 +283,7 @@ class NkdSparqlClientTest {
                 + "<http://www.w3.org/2004/02/skos/core#Concept> .");
 
         List<String> out = newClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
-        assertEquals(List.of(CONCEPT_IRI), out);
+        assertThat(out).isEqualTo(List.of(CONCEPT_IRI));
     }
 
     @Test
@@ -322,7 +296,7 @@ class NkdSparqlClientTest {
                 + "<http://www.w3.org/2004/02/skos/core#Concept> .");
 
         List<String> out = newClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
@@ -330,7 +304,7 @@ class NkdSparqlClientTest {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         stubEmptyTurtle();
         List<String> out = newClient(extractor).getPublishedResourcesList(List.of(CONCEPT_IRI));
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     // ─── executeSelect ──────────────────────────────────────────────────────────
@@ -340,31 +314,23 @@ class NkdSparqlClientTest {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         List<Map<String, String>> out =
                 newUnconfiguredClient(extractor).executeSelect("SELECT * WHERE { ?s ?p ?o }");
-        assertTrue(out.isEmpty());
+        assertThat(out).isEmpty();
     }
 
     @Test
     void executeSelect_resourceAndLiteralBindings_areProjected() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
-        String json = """
-                {
-                  "head": { "vars": ["s", "label"] },
-                  "results": { "bindings": [
-                    { "s": {"type":"uri","value":"https://example.org/x"},
-                      "label": {"type":"literal","value":"Hello"} },
-                    { "s": {"type":"uri","value":"https://example.org/y"} }
-                  ] }
-                }
-                """;
-        stubSparqlJson(json);
+        stubSparqlJson(SparqlJson.select("s", "label")
+                .row(uri("s", "https://example.org/x"), literal("label", "Hello"))
+                .row(uri("s", "https://example.org/y")));
 
         List<Map<String, String>> rows = newClient(extractor).executeSelect("SELECT * WHERE { ?s ?p ?o }");
-        assertEquals(2, rows.size());
-        assertEquals("https://example.org/x", rows.get(0).get("s"));
-        assertEquals("Hello", rows.get(0).get("label"));
-        assertEquals("https://example.org/y", rows.get(1).get("s"));
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).get("s")).isEqualTo("https://example.org/x");
+        assertThat(rows.get(0).get("label")).isEqualTo("Hello");
+        assertThat(rows.get(1).get("s")).isEqualTo("https://example.org/y");
         // The second row lacks "label" so it should not be present in the map.
-        assertFalse(rows.get(1).containsKey("label"));
+        assertThat(rows.get(1)).doesNotContainKey("label");
     }
 
     // ─── isEndpointConfigured ───────────────────────────────────────────────────
@@ -372,8 +338,8 @@ class NkdSparqlClientTest {
     @Test
     void isEndpointConfigured_reflectsConstruction() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
-        assertTrue(newClient(extractor).isEndpointConfigured());
-        assertFalse(newUnconfiguredClient(extractor).isEndpointConfigured());
+        assertThat(newClient(extractor).isEndpointConfigured()).isTrue();
+        assertThat(newUnconfiguredClient(extractor).isEndpointConfigured()).isFalse();
     }
 
     // ─── strict-construct unconfigured throw ────────────────────────────────────
@@ -382,15 +348,15 @@ class NkdSparqlClientTest {
     void fetchPublishedConcept_endpointNotConfigured_throws() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         // strict construct() pre-check fires SparqlEndpointUnavailableException directly.
-        assertThrows(RuntimeException.class,
-                () -> newUnconfiguredClient(extractor).fetchPublishedConcept(CONCEPT_IRI));
+        assertThatThrownBy(() -> newUnconfiguredClient(extractor).fetchPublishedConcept(CONCEPT_IRI))
+                .isInstanceOf(RuntimeException.class);
     }
 
     @Test
     void fetchPublishedOntology_endpointNotConfigured_throws() {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
-        assertThrows(RuntimeException.class,
-                () -> newUnconfiguredClient(extractor).fetchPublishedOntology(ONTOLOGY_IRI));
+        assertThatThrownBy(() -> newUnconfiguredClient(extractor).fetchPublishedOntology(ONTOLOGY_IRI))
+                .isInstanceOf(RuntimeException.class);
     }
 
     // ─── fetchPublishedConceptsBatched ──────────────────────────────────────────
@@ -414,11 +380,11 @@ class NkdSparqlClientTest {
         Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
                 newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
 
-        assertEquals(d1, out.get(CONCEPT_IRI).orElseThrow().detail());
-        assertEquals(d2, out.get(CONCEPT_IRI_2).orElseThrow().detail());
-        assertEquals(ONTOLOGY_IRI, out.get(CONCEPT_IRI).orElseThrow().ontologyIri());
+        assertThat(out.get(CONCEPT_IRI).orElseThrow().detail()).isEqualTo(d1);
+        assertThat(out.get(CONCEPT_IRI_2).orElseThrow().detail()).isEqualTo(d2);
+        assertThat(out.get(CONCEPT_IRI).orElseThrow().ontologyIri()).isEqualTo(ONTOLOGY_IRI);
         // One HTTP call for the whole batch — the entire point.
-        wm.verify(1, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        WM.verify(1, anyRequestedFor(anyUrl()));
     }
 
     @Test
@@ -443,10 +409,12 @@ class NkdSparqlClientTest {
         newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
 
         Model slice = seen.get();
-        assertNotNull(slice);
-        assertTrue(slice.contains(slice.getResource(CONCEPT_IRI), null, (org.apache.jena.rdf.model.RDFNode) null));
-        assertFalse(slice.contains(slice.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null),
-                "slice must not carry a neighbouring concept's triples");
+        assertThat(slice).isNotNull();
+        assertThat(slice.contains(slice.getResource(CONCEPT_IRI), null, (org.apache.jena.rdf.model.RDFNode) null))
+                .isTrue();
+        assertThat(slice.contains(slice.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null))
+                .as("slice must not carry a neighbouring concept's triples")
+                .isFalse();
     }
 
     @Test
@@ -468,8 +436,8 @@ class NkdSparqlClientTest {
         newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI));
 
         Model slice = seen.get();
-        assertNotNull(slice);
-        assertEquals(2, slice.size(), "blank-node sub-graph must be included in the slice");
+        assertThat(slice).isNotNull();
+        assertThat(slice.size()).as("blank-node sub-graph must be included in the slice").isEqualTo(2);
     }
 
     @Test
@@ -486,8 +454,8 @@ class NkdSparqlClientTest {
         Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
                 newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
 
-        assertTrue(out.get(CONCEPT_IRI).isPresent());
-        assertTrue(out.get(CONCEPT_IRI_2).isEmpty(), "absent concept must map to empty, as per-IRI does");
+        assertThat(out.get(CONCEPT_IRI)).isPresent();
+        assertThat(out.get(CONCEPT_IRI_2)).as("absent concept must map to empty, as per-IRI does").isEmpty();
     }
 
     @Test
@@ -498,8 +466,8 @@ class NkdSparqlClientTest {
         Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
                 newClient(extractor).fetchPublishedConceptsBatched(List.of(CONCEPT_IRI, CONCEPT_IRI_2));
 
-        assertTrue(out.get(CONCEPT_IRI).isEmpty());
-        assertTrue(out.get(CONCEPT_IRI_2).isEmpty());
+        assertThat(out.get(CONCEPT_IRI)).isEmpty();
+        assertThat(out.get(CONCEPT_IRI_2)).isEmpty();
         verify(extractor, never()).applyOFNTransformationsForNkd(ArgumentMatchers.any());
     }
 
@@ -511,9 +479,9 @@ class NkdSparqlClientTest {
         Map<String, Optional<NkdSparqlClient.PublishedConcept>> out =
                 newClient(extractor).fetchPublishedConceptsBatched(List.of("not a valid iri"));
 
-        assertTrue(out.containsKey("not a valid iri"));
-        assertTrue(out.get("not a valid iri").isEmpty());
-        wm.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        assertThat(out).containsKey("not a valid iri");
+        assertThat(out.get("not a valid iri")).isEmpty();
+        WM.verify(0, anyRequestedFor(anyUrl()));
     }
 
     // ─── derivePublishedConceptsFromOntology (merged round-trip) ────────────────
@@ -552,19 +520,21 @@ class NkdSparqlClientTest {
                 newClient(extractor).derivePublishedConceptsFromOntology(
                         ontologyModel, List.of(CONCEPT_IRI, CONCEPT_IRI_2));
 
-        assertEquals(d1, out.get(CONCEPT_IRI).orElseThrow().detail());
-        assertEquals(ONTOLOGY_IRI, out.get(CONCEPT_IRI).orElseThrow().ontologyIri());
-        assertTrue(out.get(CONCEPT_IRI_2).isPresent());
+        assertThat(out.get(CONCEPT_IRI).orElseThrow().detail()).isEqualTo(d1);
+        assertThat(out.get(CONCEPT_IRI).orElseThrow().ontologyIri()).isEqualTo(ONTOLOGY_IRI);
+        assertThat(out.get(CONCEPT_IRI_2)).isPresent();
         // No network at all — the saving the whole change exists for.
-        wm.verify(0, com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor(anyUrl()));
+        WM.verify(0, anyRequestedFor(anyUrl()));
         // Same slicing discipline as the batched path: a slice carries only its own subject, so the
         // scheme's triples and the neighbouring concept stay out.
         Model slice = slicesSeen.get(CONCEPT_IRI);
-        assertNotNull(slice);
-        assertFalse(slice.contains(slice.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null),
-                "slice must not carry a neighbouring concept's triples");
-        assertFalse(slice.contains(slice.getResource(ONTOLOGY_IRI), null, (org.apache.jena.rdf.model.RDFNode) null),
-                "slice must not carry the scheme's own triples");
+        assertThat(slice).isNotNull();
+        assertThat(slice.contains(slice.getResource(CONCEPT_IRI_2), null, (org.apache.jena.rdf.model.RDFNode) null))
+                .as("slice must not carry a neighbouring concept's triples")
+                .isFalse();
+        assertThat(slice.contains(slice.getResource(ONTOLOGY_IRI), null, (org.apache.jena.rdf.model.RDFNode) null))
+                .as("slice must not carry the scheme's own triples")
+                .isFalse();
     }
 
     @Test
@@ -585,8 +555,8 @@ class NkdSparqlClientTest {
                 newClient(extractor).derivePublishedConceptsFromOntology(
                         ontologyModel, List.of(CONCEPT_IRI, CONCEPT_IRI_2));
 
-        assertTrue(out.get(CONCEPT_IRI).isPresent());
-        assertTrue(out.get(CONCEPT_IRI_2).isEmpty());
+        assertThat(out.get(CONCEPT_IRI)).isPresent();
+        assertThat(out.get(CONCEPT_IRI_2)).isEmpty();
     }
 
     @Test
@@ -609,8 +579,8 @@ class NkdSparqlClientTest {
         newClient(extractor).derivePublishedConceptsFromOntology(ontologyModel, List.of(CONCEPT_IRI));
 
         Model slice = seen.get();
-        assertNotNull(slice);
-        assertEquals(2, slice.size(), "blank-node sub-graph must be included, as in the batched path");
+        assertThat(slice).isNotNull();
+        assertThat(slice.size()).as("blank-node sub-graph must be included, as in the batched path").isEqualTo(2);
     }
 
     @Test
@@ -618,10 +588,12 @@ class NkdSparqlClientTest {
         OntologyDetailExtractor extractor = mock(OntologyDetailExtractor.class);
         NkdSparqlClient client = newClient(extractor);
 
-        assertTrue(client.derivePublishedConceptsFromOntology(null, List.of(CONCEPT_IRI))
-                .get(CONCEPT_IRI).isEmpty());
-        assertTrue(client.derivePublishedConceptsFromOntology(ModelFactory.createDefaultModel(), List.of(CONCEPT_IRI))
-                .get(CONCEPT_IRI).isEmpty());
+        assertThat(client.derivePublishedConceptsFromOntology(null, List.of(CONCEPT_IRI))
+                .get(CONCEPT_IRI))
+                .isEmpty();
+        assertThat(client.derivePublishedConceptsFromOntology(ModelFactory.createDefaultModel(), List.of(CONCEPT_IRI))
+                .get(CONCEPT_IRI))
+                .isEmpty();
         verify(extractor, never()).applyOFNTransformationsForNkd(ArgumentMatchers.any());
     }
 
@@ -636,19 +608,7 @@ class NkdSparqlClientTest {
                 newClient(extractor).derivePublishedConceptsFromOntology(
                         ontologyModel, List.of("not a valid iri"));
 
-        assertTrue(out.containsKey("not a valid iri"));
-        assertTrue(out.get("not a valid iri").isEmpty());
-    }
-
-    // ─── compile-time noop to keep ModelFactory import alive in case of evolution ───
-
-    @SuppressWarnings("unused")
-    private static Model emptyModel() {
-        return ModelFactory.createDefaultModel();
-    }
-
-    @SuppressWarnings("unused")
-    private static void unusedCheck() {
-        assertNotNull(IN_SCHEME);
+        assertThat(out).containsKey("not a valid iri");
+        assertThat(out.get("not a valid iri")).isEmpty();
     }
 }

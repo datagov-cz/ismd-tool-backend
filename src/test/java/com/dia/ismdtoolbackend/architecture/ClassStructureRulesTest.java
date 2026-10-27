@@ -82,7 +82,7 @@ class ClassStructureRulesTest {
     @Test
     void springBeansStayWithinTheDependencyLimit() {
         classes().that().areMetaAnnotatedWith(Component.class)
-                .should(haveAtMostConstructorParameters(MAX_INJECTED_DEPENDENCIES))
+                .should(haveAtMostConstructorParameters())
                 .check(MAIN_CLASSES);
     }
 
@@ -172,13 +172,13 @@ class ClassStructureRulesTest {
         };
     }
 
-    private static ArchCondition<JavaClass> haveAtMostConstructorParameters(int max) {
-        return new ArchCondition<>("have at most " + max + " constructor parameters") {
+    private static ArchCondition<JavaClass> haveAtMostConstructorParameters() {
+        return new ArchCondition<>("have at most " + ClassStructureRulesTest.MAX_INJECTED_DEPENDENCIES + " constructor parameters") {
             @Override
             public void check(JavaClass javaClass, ConditionEvents events) {
                 for (JavaConstructor constructor : javaClass.getConstructors()) {
                     int count = constructor.getRawParameterTypes().size();
-                    if (count > max) {
+                    if (count > ClassStructureRulesTest.MAX_INJECTED_DEPENDENCIES) {
                         events.add(SimpleConditionEvent.violated(javaClass,
                                 javaClass.getName() + " takes " + count + " constructor parameters"));
                     }
