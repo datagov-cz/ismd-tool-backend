@@ -53,7 +53,7 @@ public final class OntologyServiceWiring {
                 new OntologyEditOperation(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
                         ontologyEditor, metadataTouchService, ontologyMetadataMapper, enricher, initialGraphGuard),
                 new OntologyDeleteOperation(ontologyMetadataRepository, conceptMetadataRepository,
-                        validationReportRepository, jenaTDB2Repository, nkdSnapshotService, outboxWriter,
+                        validationReportRepository, nkdSnapshotService, outboxWriter,
                         outboxRelayTrigger, initialGraphGuard),
                 new OntologyDetailReader(ontologyMetadataRepository, conceptMetadataRepository, jenaTDB2Repository,
                         commentRepository, ontologyMetadataMapper, conceptMetadataMapper, detailExtractor,

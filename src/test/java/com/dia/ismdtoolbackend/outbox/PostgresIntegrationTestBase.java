@@ -3,7 +3,7 @@ package com.dia.ismdtoolbackend.outbox;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Base for JPA/Liquibase integration tests that need REAL Postgres semantics the H2 PG-compat
@@ -21,8 +21,8 @@ public abstract class PostgresIntegrationTestBase {
     // container (connection refused). Ryuk terminates it at JVM exit.
     @ServiceConnection
     @SuppressWarnings("resource")
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine")
                     // Raise the 100-slot default: each subclass is a separate Spring context with
                     // its own pool, and all of them stay cached for the JVM's lifetime.
                     .withCommand("postgres", "-c", "max_connections=300")

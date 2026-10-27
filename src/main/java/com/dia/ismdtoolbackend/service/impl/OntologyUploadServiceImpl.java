@@ -3,6 +3,7 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.enums.NormalizeMode;
+import com.dia.ismdtoolbackend.exception.OntologyUploadConflictingTypesException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadMetadataException;
 import com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException;
@@ -11,6 +12,7 @@ import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
+import com.dia.ismdtoolbackend.utility.validation.ConceptRoleConflict;
 import com.dia.ismdtoolbackend.utility.validation.UploadIriNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -92,6 +94,12 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             int normalizedCount = OFNTypeNormalizer.normalize(finalModel, graphName, conceptsToStamp);
             if (normalizedCount > 0) {
                 log.info("Normalized OFN types on {} resources", normalizedCount);
+            }
+
+            // A concept typed as both a property and a relationship fails the whole upload.
+            List<String> conflictingTypes = ConceptRoleConflict.findPropertyAndRelationship(finalModel);
+            if (!conflictingTypes.isEmpty()) {
+                throw new OntologyUploadConflictingTypesException(conflictingTypes);
             }
 
             // 4b. Concept gate. A concept that declares no single role, breaks a create/edit
