@@ -287,6 +287,11 @@ public class JenaTDB2Repository {
         graphWriter.deleteGraph(graphName);
     }
 
+    /** Runs one SPARQL Update request as is (used by the RDF migration runner). Throws on failure. */
+    public void executeUpdate(String label, String sparqlUpdate) {
+        executor.executeVoid(label, "Nepodařilo se provést migraci RDF dat", conn -> conn.update(sparqlUpdate));
+    }
+
     // Concept-level reads, delegated to FusekiConceptQueries.
 
     public Model fetchExternalDomainMembers(String conceptIri) {
