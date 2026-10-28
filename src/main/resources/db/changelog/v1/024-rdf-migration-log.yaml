@@ -1,6 +1,6 @@
 databaseChangeLog:
   # Applied RDF (TDB2) changesets, written by RdfMigrationRunner at startup. See
-  # src/main/resources/rdf-migrations/README.md.
+  # src/main/resources/db/rdf-changelog/README.md.
   - changeSet:
       id: 024-create-rdf-migration-log
       author: richard.koubek

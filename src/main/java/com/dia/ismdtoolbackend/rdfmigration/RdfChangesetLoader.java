@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 public final class RdfChangesetLoader {
 
     /** Where the application's changesets live. */
-    public static final String DEFAULT_LOCATION = "classpath*:rdf-migrations";
+    public static final String DEFAULT_LOCATION = "classpath*:db/rdf-changelog";
 
     private static final Pattern FILE_NAME = Pattern.compile("\\d{3}-[a-z0-9-]+\\.ru");
     private static final String PROBE_GRAPH = "https://example.org/rdf-migration-probe";

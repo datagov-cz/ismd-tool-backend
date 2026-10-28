@@ -1,0 +1,61 @@
+<https://slovník.gov.cz/parity-test-brana> <http://www.w3.org/2004/02/skos/core#prefLabel> "Parity test brána"@cs .
+<https://slovník.gov.cz/parity-test-brana> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Ontology> .
+<https://slovník.gov.cz/parity-test-brana> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#ConceptScheme> .
+<https://slovník.gov.cz/parity-test-brana> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/2004/02/skos/core#prefLabel> "Vztah do NKD"@cs .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/parity-test-brana> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/2000/01/rdf-schema#range> <https://slovník.gov.cz/qa-overovaci-slovnik-nkd-sync-20260803/pojem/zkusebni-entita-beta> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/2000/01/rdf-schema#domain> <https://slovník.gov.cz/parity-test-brana/pojem/dobry> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vztah-do-nkd> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#ObjectProperty> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/definující-ustanovení> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348/2026-01-01/dokument/norma/cast_1/par_2/odst_1> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/2004/02/skos/core#prefLabel> "Dobrý"@cs .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/parity-test-brana> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/třída> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/parity-test-brana/pojem/dobry> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+_:Ba7e8f240b4841d6c3beaec13d7966ee2 <http://schema.org/url> "not a url" .
+_:Ba7e8f240b4841d6c3beaec13d7966ee2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt> .
+<https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> <https://slovník.gov.cz/definující-nelegislativní-zdroj> _:Ba7e8f240b4841d6c3beaec13d7966ee2 .
+<https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> <http://www.w3.org/2004/02/skos/core#prefLabel> "Špatná URL"@cs .
+<https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/třída> .
+<https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+<https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/parity-test-brana/pojem/spatna-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+_:B12d1249c07e393ee8ae44c0f508f2765 <http://purl.org/dc/terms/title> "Směrnice EU"@cs .
+_:B12d1249c07e393ee8ae44c0f508f2765 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt> .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <https://slovník.gov.cz/definující-nelegislativní-zdroj> _:B12d1249c07e393ee8ae44c0f508f2765 .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <http://www.w3.org/2004/02/skos/core#prefLabel> "Bez URL"@cs .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/parity-test-brana> .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/třída> .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/parity-test-brana/pojem/bez-url> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/2004/02/skos/core#prefLabel> "Vlastnost na pracovní kopii"@cs .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/parity-test-brana> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/2000/01/rdf-schema#domain> <https://slovník.gov.cz/qa-overovaci-slovnik-nkd-sync-20260803/pojem/zkusebni-entita-alfa> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#DatatypeProperty> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vlastnost-na-pracovni-kopii> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost> .
+_:B5f4e6352f1b653d10efe2232fef66ebc <http://schema.org/url> <https://example.org/dokument/> .
+_:B5f4e6352f1b653d10efe2232fef66ebc <http://purl.org/dc/terms/title> "Dokument"@cs .
+_:B5f4e6352f1b653d10efe2232fef66ebc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/digitální-objekty/pojem/digitální-objekt> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <https://slovník.gov.cz/parity-test-brana/ustanovení-dokládající-neveřejnost-údaje> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997/49> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <https://slovník.gov.cz/parity-test-brana/nadřazená-třída> <https://slovník.gov.cz/parity-test-brana/pojem/bez-url> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <https://slovník.gov.cz/parity-test-brana/definující-nelegislativní-zdroj> _:B5f4e6352f1b653d10efe2232fef66ebc .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <https://slovník.gov.cz/legislativní/sbírka/111/2009/pojem/ustanovení-dokládající-neveřejnost-údaje> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/1997/49> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/definující-ustanovení> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <https://slovník.gov.cz/agendový/104/pojem/sdružuje-údaje-vedené-nebo-vytvářené-v-rámci-agendy> <https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A105> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/2004/02/skos/core#prefLabel> "Vytvořený s lomítky"@cs .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/parity-test-brana> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/2004/02/skos/core#exactMatch> <https://example.org/pojem/upraveny> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://slovník.gov.cz/parity-test-brana/pojem/bez-url> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/třída> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/parity-test-brana/pojem/vytvořený-s-lomítky> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/typ-objektu-práva> .

@@ -1,6 +1,7 @@
 # RDF migrations
 
-SPARQL Update changesets for the ISMD vocabulary graphs in TDB2. `RdfMigrationRunner` applies the pending
+SPARQL Update changesets for the ISMD vocabulary graphs in TDB2, next to the Liquibase changelog for
+PostgreSQL (`../changelog/`). `RdfMigrationRunner` applies the pending
 ones at startup, like Liquibase does for PostgreSQL: after Liquibase, before the schedulers (outbox relay,
 reconciler) start and before the server takes requests. A failure fails startup.
 
