@@ -42,6 +42,10 @@ public enum ErrorCode {
     ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION(HttpStatus.BAD_REQUEST,
             "Slovník nelze stáhnout, protože obsahuje závažné chyby."),
     EXPORT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Export slovníku selhal."),
+    ONTOLOGY_DOWNLOAD_BLOCKED_BY_OFN(HttpStatus.BAD_REQUEST,
+            "Slovník nelze stáhnout, protože nesplňuje standard OFN Slovníky."),
+    OFN_WRITE_NONCONFORMANT(HttpStatus.INTERNAL_SERVER_ERROR,
+            "Zápis by uložil data nesplňující standard OFN Slovníky."),
 
     // Upload
     UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Nahrání slovníku selhalo."),
@@ -55,6 +59,7 @@ public enum ErrorCode {
     UPLOAD_IRI_TRAILING_SLASH_COLLISION(HttpStatus.BAD_REQUEST,
             "Nahraný soubor obsahuje IRI, která se liší pouze koncovým lomítkem."),
     UPLOAD_IN_PROGRESS(HttpStatus.CONFLICT, "Tento slovník se právě nahrává."),
+    UPLOAD_OFN_NONCONFORMANT(HttpStatus.BAD_REQUEST, "Nahraný slovník nesplňuje standard OFN Slovníky."),
     UPLOAD_CONCEPT_TYPE_CONFLICT(HttpStatus.BAD_REQUEST,
             "Nahraný slovník obsahuje pojmy typované zároveň jako vlastnost i vztah."),
     UPLOAD_RDF_STORE_FAILED(HttpStatus.BAD_GATEWAY, "Nahraný slovník se nepodařilo zapsat do úložiště RDF."),

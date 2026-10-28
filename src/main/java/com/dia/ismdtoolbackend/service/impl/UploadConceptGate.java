@@ -3,7 +3,10 @@ package com.dia.ismdtoolbackend.service.impl;
 import com.dia.ismdtoolbackend.controller.dto.RejectedConceptDto;
 import com.dia.ismdtoolbackend.entity.ConceptMetadataEntity;
 import com.dia.ismdtoolbackend.enums.ConceptType;
+import com.dia.ismdtoolbackend.exception.OfnConformanceException;
 import com.dia.ismdtoolbackend.models.OntologyDetailModel;
+import com.dia.ismdtoolbackend.ofn.ConformanceIssue;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.service.snapshot.NkdLinkDetector;
 import com.dia.ismdtoolbackend.utility.detail.OntologyDetailExtractor;
@@ -32,12 +35,13 @@ import java.util.stream.Collectors;
 import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 
 /**
- * Applies the create/edit concept rules to the concepts of an uploaded vocabulary, so an
- * upload cannot import a concept in a state the edit path rejects.
+ * Applies the create/edit concept rules and the OFN gate to the concepts of an uploaded vocabulary,
+ * so an upload cannot import a concept in a state the edit path rejects or OFN does not allow.
  *
- * <p>Two rule sets: {@link ConceptInputValidator} over the values the detail read returns for
- * the concept, and the edit path's ban on a domain/range that points at a concept published
- * in NKD.
+ * <p>Three rule sets: {@link ConceptInputValidator} over the values the detail read returns for
+ * the concept, the edit path's ban on a domain/range that points at a concept published in NKD, and
+ * the OFN shape and concept-kind tiers ({@link OfnWriteGate}). Completeness never rejects: an
+ * incomplete concept is stored as a draft.
  */
 @Component
 @RequiredArgsConstructor
@@ -47,6 +51,7 @@ class UploadConceptGate {
     private final OntologyDetailExtractor detailExtractor;
     private final NkdLinkDetector nkdLinkDetector;
     private final ConceptMetadataRepository conceptMetadataRepository;
+    private final OfnWriteGate ofnWriteGate;
 
     /**
      * The domain/range targets outside the vocabulary that must not be published in NKD.
@@ -113,6 +118,44 @@ class UploadConceptGate {
             }
         });
         return rejected;
+    }
+
+    /**
+     * The OFN check of the upload as it will be stored. A vocabulary-level shape issue rejects the whole
+     * upload; a concept with a shape or concept-kind issue is rejected with every reason.
+     *
+     * @throws OfnConformanceException when the vocabulary itself does not conform
+     */
+    public List<RejectedConceptDto> findNonConformant(Model model, String graphName) {
+        List<ConformanceIssue> blocking = OfnWriteGate.blocking(ofnWriteGate.checkVocabulary(model, graphName));
+        List<ConformanceIssue> vocabulary = blocking.stream().filter(issue -> issue.conceptIri() == null).toList();
+        if (!vocabulary.isEmpty()) {
+            throw new OfnConformanceException(OfnConformanceException.Context.UPLOAD, graphName, vocabulary);
+        }
+        Map<String, List<String>> reasons = new LinkedHashMap<>();
+        for (ConformanceIssue issue : blocking) {
+            reasons.computeIfAbsent(issue.conceptIri(), iri -> new ArrayList<>()).add(reason(issue));
+        }
+        return reasons.entrySet().stream()
+                .map(entry -> new RejectedConceptDto(entry.getKey(), "OFN: " + String.join("; ", entry.getValue())))
+                .toList();
+    }
+
+    /** One entry per concept, its reasons joined in the order found. */
+    public static List<RejectedConceptDto> mergeByConcept(List<RejectedConceptDto> rejected) {
+        Map<String, List<String>> reasons = new LinkedHashMap<>();
+        rejected.forEach(dto -> reasons.computeIfAbsent(dto.iri(), iri -> new ArrayList<>()).add(dto.reason()));
+        return reasons.entrySet().stream()
+                .map(entry -> new RejectedConceptDto(entry.getKey(), String.join("; ", entry.getValue())))
+                .toList();
+    }
+
+    /** "field: message", the field being the path below the concept (e.g. {@code je-sdílen-v-ppdf}). */
+    private static String reason(ConformanceIssue issue) {
+        String location = issue.location() == null ? "" : issue.location();
+        int conceptEnd = location.indexOf("]/");
+        String field = location.startsWith("pojmy[") && conceptEnd > 0 ? location.substring(conceptEnd + 2) : "";
+        return field.isEmpty() ? issue.message() : field + ": " + issue.message();
     }
 
     private Map<String, OntologyDetailModel.ConceptDetailModel> readDetails(Model model) {

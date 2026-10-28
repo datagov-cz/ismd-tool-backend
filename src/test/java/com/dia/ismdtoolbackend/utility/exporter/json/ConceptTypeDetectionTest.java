@@ -145,10 +145,8 @@ class ConceptTypeDetectionTest {
     }
 
     static Stream<Arguments> mixedPropertyRelationshipSignals() {
+        // The OWL kind decides the role (D4); a disagreeing marker is the OFN gate's concern, not the exporter's.
         return Stream.of(
-                Arguments.of(OFN_NAMESPACE + VLASTNOST, OWL2.ObjectProperty.getURI()),
-                Arguments.of(OFN_NAMESPACE + VZTAH, OWL2.DatatypeProperty.getURI()),
-                Arguments.of(OFN_NAMESPACE + VLASTNOST, OFN_NAMESPACE + VZTAH),
                 Arguments.of(OWL2.DatatypeProperty.getURI(), OWL2.ObjectProperty.getURI())
         );
     }

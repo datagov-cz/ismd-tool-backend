@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.ValidationMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.*;
 
@@ -22,30 +21,40 @@ import java.util.*;
  *       (e.g. a non-IRI where the context says {@code @id}), are dropped. Shapes that only differ
  *       in wrapping (single value vs. {@code @set}) are normalised instead.</li>
  *   <li><b>Concepts:</b> each concept is checked against the schema variant of each of its types.
- *       A concept that fails is excluded.</li>
+ *       A concept that fails is excluded, unless the only failures are missing required fields: such a
+ *       concept is incomplete (a draft), kept and reported.</li>
  *   <li><b>Cascade:</b> references to excluded concepts are removed from the remaining ones, which
  *       are then checked again (e.g. a Vlastnost whose {@code definiční-obor} was excluded).</li>
- *   <li><b>Vocabulary:</b> the vocabulary's own fields are checked against the schema.</li>
+ *   <li><b>Vocabulary:</b> the vocabulary's own fields are checked against the schema; missing
+ *       required fields are reported as incomplete, other failures as invalid.</li>
  * </ol>
  * Every rule comes from the context and schema in {@link OfnSpecification}; nothing here names an
- * OFN term, so a new OFN version needs no code change.
+ * OFN term, so a new OFN version needs no code change. The only exception is a caller-supplied set of
+ * tolerated type IRIs, kept in {@code typ} although the context does not define them.
  */
 @Slf4j
-@Component
 public class OfnConformanceGate {
 
     private static final String LANGUAGE_TAG = "[a-zA-Z]{2,3}(-[a-zA-Z0-9]+)*";
+    private static final String REQUIRED = "required";
 
     private final OfnSpecification specification;
     private final OfnContextIndex context;
     private final String idKey;
     private final String typeKey;
+    private final Set<String> toleratedTypeIris;
 
     public OfnConformanceGate(OfnSpecification specification) {
+        this(specification, Set.of());
+    }
+
+    /** @param toleratedTypeIris type IRIs kept in {@code typ} (as IRIs or compact IRIs) without an issue */
+    public OfnConformanceGate(OfnSpecification specification, Set<String> toleratedTypeIris) {
         this.specification = specification;
         this.context = specification.contextIndex();
         this.idKey = context.idAlias();
         this.typeKey = context.typeAlias();
+        this.toleratedTypeIris = Set.copyOf(toleratedTypeIris);
     }
 
     public GateResult apply(ObjectNode vocabulary) {
@@ -57,9 +66,9 @@ public class OfnConformanceGate {
         checkVocabulary(document, issues);
 
         if (!issues.isEmpty()) {
-            log.info("OFN conformance gate: {} value(s) dropped, {} concept(s) excluded, {} reference(s) removed",
+            log.info("OFN conformance gate: {} value(s) dropped, {} concept(s) excluded, {} incomplete, {} reference(s) removed",
                     count(issues, Kind.VALUE_DROPPED), count(issues, Kind.CONCEPT_EXCLUDED),
-                    count(issues, Kind.REFERENCE_REMOVED));
+                    count(issues, Kind.CONCEPT_INCOMPLETE), count(issues, Kind.REFERENCE_REMOVED));
         }
         return new GateResult(document, issues);
     }
@@ -109,10 +118,14 @@ public class OfnConformanceGate {
         Deque<Scope> result = new ArrayDeque<>(scopes);
         ArrayNode kept = JsonNodeFactory.instance.arrayNode();
         for (JsonNode type : asList(types)) {
+            if (type.isTextual() && toleratedTypeIris.contains(context.expand(type.asText()))) {
+                kept.add(type);
+                continue;
+            }
             Optional<Term> typeTerm = type.isTextual()
                     ? OfnContextIndex.resolve(scopes, type.asText())
                     : Optional.empty();
-            if (typeTerm.isEmpty() || typeTerm.get().isTypeTerm()) {
+            if (typeTerm.isEmpty() || typeTerm.get().isPropertyTerm()) {
                 issues.add(new ConformanceIssue(Kind.VALUE_DROPPED, conceptIri, location + "/" + typeKey,
                         "typ " + type + " není definován v kontextu OFN", type.asText()));
                 continue;
@@ -247,21 +260,23 @@ public class OfnConformanceGate {
             }
         });
 
-        Set<String> excluded = new HashSet<>();
         Deque<ObjectNode> toCheck = new ArrayDeque<>(kept);
         while (!toCheck.isEmpty()) {
             Set<String> newlyExcluded = new LinkedHashSet<>();
             for (ObjectNode concept : toCheck) {
-                List<String> errors = schemaErrors(concept);
-                if (!errors.isEmpty()) {
-                    String iri = concept.path(idKey).asText(null);
+                SchemaErrors errors = schemaErrors(concept);
+                String iri = concept.path(idKey).asText(null);
+                if (!errors.invalid().isEmpty()) {
                     newlyExcluded.add(iri);
                     issues.add(new ConformanceIssue(Kind.CONCEPT_EXCLUDED, iri, conceptLocation(concept),
-                            "pojem nesplňuje OFN schéma: " + String.join("; ", errors)));
+                            "pojem nesplňuje OFN schéma: " + String.join("; ", errors.all())));
+                } else if (!errors.missing().isEmpty()) {
+                    issues.removeIf(issue -> issue.kind() == Kind.CONCEPT_INCOMPLETE && Objects.equals(issue.conceptIri(), iri));
+                    issues.add(new ConformanceIssue(Kind.CONCEPT_INCOMPLETE, iri, conceptLocation(concept),
+                            "pojem není úplný: " + String.join("; ", errors.missing())));
                 }
             }
             kept.removeIf(concept -> newlyExcluded.contains(concept.path(idKey).asText(null)));
-            excluded.addAll(newlyExcluded);
 
             toCheck.clear();
             if (!newlyExcluded.isEmpty()) {
@@ -278,8 +293,38 @@ public class OfnConformanceGate {
         document.set(OfnSpecification.CONCEPTS_KEY, result);
     }
 
+    /** Schema errors split into missing required fields (completeness) and every other failure. */
+    private record SchemaErrors(List<String> missing, List<String> invalid) {
+        List<String> all() {
+            List<String> all = new ArrayList<>(invalid);
+            all.addAll(missing);
+            return all;
+        }
+    }
+
+    private static SchemaErrors split(Collection<ValidationMessage> messages) {
+        Set<String> missing = new TreeSet<>();
+        Set<String> invalid = new TreeSet<>();
+        for (ValidationMessage message : messages) {
+            if (REQUIRED.equals(message.getType())) {
+                missing.add(missingField(message));
+            } else {
+                invalid.add(message.getMessage());
+            }
+        }
+        return new SchemaErrors(List.copyOf(missing), List.copyOf(invalid));
+    }
+
+    /** "chybí povinné pole X", with the parent path when the field is nested. */
+    private static String missingField(ValidationMessage message) {
+        String parent = message.getInstanceLocation() == null ? "" : message.getInstanceLocation().toString();
+        String field = message.getProperty() != null ? message.getProperty() : String.valueOf(message.getArguments()[0]);
+        String where = parent.equals("$") || parent.isEmpty() ? "" : " v " + parent.replaceFirst("^\\$\\.?", "");
+        return "chybí povinné pole " + field + where;
+    }
+
     /** Schema errors of a concept: against the variant of each of its types, or any variant if none match. */
-    private List<String> schemaErrors(ObjectNode concept) {
+    private SchemaErrors schemaErrors(ObjectNode concept) {
         List<JsonSchema> variants = new ArrayList<>();
         for (JsonNode type : asList(concept.path(typeKey))) {
             JsonSchema variant = specification.conceptSchemasByType().get(type.asText());
@@ -290,11 +335,11 @@ public class OfnConformanceGate {
         if (variants.isEmpty()) {
             variants.add(specification.conceptSchema());
         }
-        Set<String> errors = new TreeSet<>();
+        List<ValidationMessage> messages = new ArrayList<>();
         for (JsonSchema variant : variants) {
-            variant.validate(concept).stream().map(ValidationMessage::getMessage).forEach(errors::add);
+            messages.addAll(variant.validate(concept));
         }
-        return List.copyOf(errors);
+        return split(messages);
     }
 
     /** Removes IRI references to the given concepts. Returns true when anything was removed. */
@@ -346,11 +391,9 @@ public class OfnConformanceGate {
     private void checkVocabulary(ObjectNode document, List<ConformanceIssue> issues) {
         ObjectNode vocabularyOnly = document.deepCopy();
         vocabularyOnly.set(OfnSpecification.CONCEPTS_KEY, JsonNodeFactory.instance.arrayNode());
-        specification.schema().validate(vocabularyOnly).stream()
-                .map(ValidationMessage::getMessage)
-                .sorted()
-                .forEach(message -> issues.add(
-                        new ConformanceIssue(Kind.VOCABULARY_INVALID, null, "", message)));
+        SchemaErrors errors = split(specification.schema().validate(vocabularyOnly));
+        errors.invalid().forEach(message -> issues.add(new ConformanceIssue(Kind.VOCABULARY_INVALID, null, "", message)));
+        errors.missing().forEach(message -> issues.add(new ConformanceIssue(Kind.VOCABULARY_INCOMPLETE, null, "", message)));
     }
 
     // ---------------------------------------------------------------- helpers

@@ -1,12 +1,9 @@
 package com.dia.ismdtoolbackend.service.impl;
 
-import com.dia.ismdtoolbackend.exception.JsonExportException;
+import com.dia.ismdtoolbackend.ofn.OfnVocabularyExporter;
 import com.dia.ismdtoolbackend.entity.OntologyMetadataEntity;
 import com.dia.ismdtoolbackend.exception.EmptyDataException;
 import com.dia.ismdtoolbackend.exception.OntologyNotFoundException;
-import com.dia.ismdtoolbackend.utility.exporter.json.JsonExporter;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
 import com.dia.ismdtoolbackend.service.OntologyDownloadService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +15,6 @@ import org.apache.jena.rdfconnection.RDFConnection;
 import org.apache.jena.rdfconnection.RDFConnectionRemote;
 import org.springframework.stereotype.Service;
 
-import java.io.StringWriter;
 import java.net.http.HttpClient;
 import java.util.Optional;
 import java.util.concurrent.Semaphore;
@@ -32,7 +28,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
     private final String fusekiEndpoint;
     private final HttpClient fusekiHttpClient;
     private final OntologyMetadataRepository ontologyMetadataRepository;
-    private final JsonExporter jsonExporter;
+    private final OfnVocabularyExporter exporter;
     private final Semaphore fusekiSemaphore;
     private final int fusekiSemaphoreTimeout;
 
@@ -45,6 +41,7 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
         }
 
         String graphName = ontologyMetadataOpt.get().getGraphName();
+        OfnVocabularyExporter.Format ofnFormat = OfnVocabularyExporter.Format.of(format);
 
         boolean acquired;
         try {
@@ -63,52 +60,17 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 .httpClient(fusekiHttpClient)
                 .build()) {
             Model model = fetchGraph(conn, graphName);
-            Model processedModel = null;
             try {
                 if (model.isEmpty()) {
                     log.error("Ontology model is empty.");
                     throw new EmptyDataException("Slovník je prázdný, nebo nebyl nalezen.");
                 }
-
-                processedModel = applyAllOFNTransformations(model);
-                model.close();
-                model = null;
-
-                String result;
-                if ("json-ld".equalsIgnoreCase(format)) {
-                    result = exportToOFNJson(processedModel);
-                } else if ("ttl".equalsIgnoreCase(format)) {
-                    StringWriter writer = new StringWriter();
-                    processedModel.write(writer, "TTL");
-                    result = writer.toString();
-                } else {
-                    log.error("Output format {} not supported.", format);
-                    throw new IllegalArgumentException("Nepodporovaný formát: " + format);
-                }
-
-                return result;
+                return exporter.export(model, graphName, ofnFormat);
             } finally {
-                if (model != null) model.close();
-                if (processedModel != null) processedModel.close();
+                model.close();
             }
         } finally {
             fusekiSemaphore.release();
-        }
-    }
-
-    private Model applyAllOFNTransformations(Model rawModel) {
-        log.debug("Applying consolidated OFN transformations");
-
-        Model filteredModel = TurtleFilterUtil.createFilteredModel(rawModel);
-        try {
-            Model ofnFormattedModel = TurtleFormatterUtil.transformToOFNFormat(filteredModel);
-
-            log.debug("OFN transformation complete: {} -> {} -> {} statements",
-                    rawModel.size(), filteredModel.size(), ofnFormattedModel.size());
-
-            return ofnFormattedModel;
-        } finally {
-            filteredModel.close();
         }
     }
 
@@ -122,15 +84,6 @@ public class OntologyDownloadServiceImpl implements OntologyDownloadService {
                 return ModelFactory.createDefaultModel();
             }
             throw e;
-        }
-    }
-
-    private String exportToOFNJson(Model processedModel) {
-        try {
-            return jsonExporter.exportToJson(processedModel);
-        } catch (Exception e) {
-            log.error("Error exporting to OFN JSON format: {}", e.getMessage(), e);
-            throw new JsonExportException("Chyba při exportu do JSON formátu: " + e.getMessage(), e);
         }
     }
 }

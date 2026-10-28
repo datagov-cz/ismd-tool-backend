@@ -281,7 +281,7 @@ class JsonExporterContextConformanceTest {
     @DisplayName("A concept typed as both vztah and vlastnost fails the export")
     void propertyAndRelationshipConflictFailsExport() {
         assertThatThrownBy(() -> exporter.exportToJson(Ttl.parseOnt(VOCABULARY_HEADER
-                + "pojem:x a slovníky:vztah, slovníky:vlastnost ; skos:prefLabel \"X\"@cs .")))
+                + "pojem:x a owl:ObjectProperty, owl:DatatypeProperty ; skos:prefLabel \"X\"@cs .")))
                 .isInstanceOf(JsonExportException.class)
                 .hasMessageContaining(Ttl.POJEM + "x");
     }

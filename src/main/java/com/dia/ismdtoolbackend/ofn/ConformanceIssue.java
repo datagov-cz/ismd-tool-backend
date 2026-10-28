@@ -41,6 +41,15 @@ public record ConformanceIssue(Kind kind, String conceptIri, String location, St
         /** A reference to an excluded concept was removed. */
         REFERENCE_REMOVED,
         /** The vocabulary itself fails the OFN JSON Schema. */
-        VOCABULARY_INVALID
+        VOCABULARY_INVALID,
+        /** A concept lacks fields the OFN JSON Schema requires (a draft); it is kept. */
+        CONCEPT_INCOMPLETE,
+        /** The vocabulary lacks fields the OFN JSON Schema requires. */
+        VOCABULARY_INCOMPLETE;
+
+        /** Completeness (T3): missing required fields only; never blocks a write. */
+        public boolean isCompleteness() {
+            return this == CONCEPT_INCOMPLETE || this == VOCABULARY_INCOMPLETE;
+        }
     }
 }

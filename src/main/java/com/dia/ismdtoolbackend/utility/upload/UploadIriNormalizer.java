@@ -1,4 +1,4 @@
-package com.dia.ismdtoolbackend.utility.validation;
+package com.dia.ismdtoolbackend.utility.upload;
 
 import com.dia.ismdtoolbackend.exception.OntologyUploadIriCollisionException;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
@@ -24,11 +24,11 @@ import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 /**
  * Strips trailing slashes from the IRIs of an uploaded vocabulary, in place, so an uploaded
  * vocabulary gets the same IRIs as one entered through create/edit
- * (see {@link ConceptIriNormalizer}).
+ * (see {@link com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer}).
  *
  * <p>Renames the vocabulary and its concepts, which also rewrites every reference to them
  * inside the file, and strips the IRIs a concept references through the fields
- * {@link ConceptIriNormalizer} covers. Non-legal source URLs and code-list IRIs are left as
+ * {@link com.dia.ismdtoolbackend.utility.validation.ConceptIriNormalizer} covers. Non-legal source URLs and code-list IRIs are left as
  * supplied.
  */
 public final class UploadIriNormalizer {
