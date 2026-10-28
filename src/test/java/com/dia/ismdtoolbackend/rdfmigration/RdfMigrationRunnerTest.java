@@ -52,6 +52,9 @@ class RdfMigrationRunnerTest {
     private final Dataset dataset = DatasetFactory.createTxnMem();
     private final List<String> updates = new ArrayList<>();
     private boolean failOnV2;
+    private List<String> stored = List.of(V1, V2);
+    private long unsettled;
+    private long updateDelayMs;
 
     private final RdfMigrationTarget target = new RdfMigrationTarget() {
         @Override
@@ -60,7 +63,25 @@ class RdfMigrationRunnerTest {
         }
 
         @Override
+        public List<String> storedGraphNames() {
+            return stored;
+        }
+
+        @Override
+        public long unsettledWrites() {
+            return unsettled;
+        }
+
+        @Override
         public void update(String sparqlUpdate) {
+            if (updateDelayMs > 0) {
+                try {
+                    Thread.sleep(updateDelayMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
             if (failOnV2 && sparqlUpdate.contains("<" + V2 + ">")) {
                 throw new IllegalStateException("Fuseki down");
             }
@@ -80,7 +101,8 @@ class RdfMigrationRunnerTest {
     }
 
     private RdfMigrationRunner runner() {
-        return new RdfMigrationRunner(new RdfChangesetLoader("file:" + dir.toAbsolutePath()), history, target, CLOCK);
+        return new RdfMigrationRunner(new RdfChangesetLoader("file:" + dir.toAbsolutePath()), history, target, CLOCK,
+                java.time.Duration.ofMillis(300));
     }
 
     private boolean migrated(String graph) {
@@ -164,5 +186,53 @@ class RdfMigrationRunnerTest {
     void noChangesetsTouchesNoGraph() {
         assertThat(runner().migrate()).isEmpty();
         assertThat(updates).isEmpty();
+    }
+
+    @Test
+    void unsettledOutboxFailsBeforeAnyGraphIsTouched() throws IOException {
+        Files.writeString(dir.resolve("001-mark.ru"), MARK);
+        unsettled = 2;
+
+        assertThatThrownBy(() -> runner().migrate())
+                .hasMessageContaining("2 outbox row(s) are PENDING or FAILED")
+                .hasMessageContaining("001-mark");
+        assertThat(updates).isEmpty();
+        assertThat(history.count()).isZero();
+    }
+
+    @Test
+    void unsettledOutboxDoesNotBlockStartupWhenNothingIsPending() {
+        unsettled = 5;
+
+        assertThat(runner().migrate()).isEmpty();
+    }
+
+    @Test
+    void vocabularyGraphMissingFromTdb2FailsBeforeAnyGraphIsTouched() throws IOException {
+        Files.writeString(dir.resolve("001-mark.ru"), MARK);
+        stored = List.of(V1, "https://example.org/v%32");
+
+        assertThatThrownBy(() -> runner().migrate())
+                .hasMessageContaining("in PostgreSQL but not in TDB2: [" + V2 + "]");
+        assertThat(updates).isEmpty();
+    }
+
+    @Test
+    void tdb2GraphWithoutAVocabularyIsLeftAloneAndTheRestMigrates() throws IOException {
+        Files.writeString(dir.resolve("001-mark.ru"), MARK);
+        stored = List.of(V1, V2, "https://example.org/orphan");
+
+        assertThat(runner().migrate()).containsExactly("001-mark");
+        assertThat(updates).hasSize(2).noneMatch(update -> update.contains("orphan"));
+    }
+
+    @Test
+    void updateThatOutlivesTheTimeoutFailsAndRecordsNothing() throws IOException {
+        Files.writeString(dir.resolve("001-mark.ru"), MARK);
+        updateDelayMs = 5_000;
+
+        assertThatThrownBy(() -> runner().migrate())
+                .hasMessageContaining("001-mark timed out after PT0.3S on graph " + V1);
+        assertThat(history.count()).isZero();
     }
 }

@@ -55,8 +55,8 @@ class RdfChangesetLoaderTest {
     void boundToSetsTheGraph() throws IOException {
         write("001-first.ru", UPDATE);
 
-        assertThat(load().get(0).boundTo("https://example.org/v"))
-                .contains("GRAPH <https://example.org/v>")
+        assertThat(load().get(0).boundTo("https://slovník.gov.cz/datový/v"))
+                .contains("GRAPH <https://slovník.gov.cz/datový/v>")
                 .doesNotContain("?graph");
     }
 
@@ -91,5 +91,37 @@ class RdfChangesetLoaderTest {
     void bundledChangesetsAllLoad() {
         assertThat(new RdfChangesetLoader(RdfChangesetLoader.DEFAULT_LOCATION).load())
                 .allSatisfy(changeset -> assertThat(changeset.description()).isNotBlank());
+    }
+
+    @Test
+    void byteOrderMarkChangesNeitherTheChecksumNorTheDescription() throws IOException {
+        write("001-first.ru", "\uFEFF" + UPDATE);
+
+        RdfChangeset changeset = load().get(0);
+        assertThat(changeset.checksum()).isEqualTo(RdfChangesetLoader.sha256(UPDATE));
+        assertThat(changeset.description()).isEqualTo("Adds a marker. Second line.");
+    }
+
+    @Test
+    void graphVariableInsideALiteralIsNotSubstituted() throws IOException {
+        write("001-first.ru", """
+                INSERT { GRAPH ?graph { ?s <https://example.org/note> "?graph stays" } }
+                WHERE { GRAPH ?graph { ?s ?p ?o FILTER(CONTAINS(STR(?o), "?graph")) } }
+                """);
+
+        String bound = load().get(0).boundTo("https://slovník.gov.cz/agendový/104");
+
+        assertThat(bound).contains("GRAPH <https://slovník.gov.cz/agendový/104>")
+                .contains("\"?graph stays\"").contains("\"?graph\"");
+    }
+
+    @Test
+    void graphVariableOnlyInACommentOrLiteralCountsAsUnused() throws IOException {
+        write("001-first.ru", """
+                # uses ?graph only here
+                INSERT DATA { <https://example.org/a> <https://example.org/b> "?graph" }
+                """);
+
+        assertThatThrownBy(this::load).hasMessageContaining("001-first never uses ?graph");
     }
 }
