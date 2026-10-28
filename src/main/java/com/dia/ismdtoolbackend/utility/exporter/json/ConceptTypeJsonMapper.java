@@ -1,6 +1,7 @@
 package com.dia.ismdtoolbackend.utility.exporter.json;
 
 import com.dia.ismdtoolbackend.exception.ConflictingConceptTypeException;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.validation.ConceptRoleConflict;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
@@ -25,6 +26,8 @@ final class ConceptTypeJsonMapper {
                 ontModel.getResource(OFN_NAMESPACE + TRIDA),
                 ontModel.getResource(OFN_NAMESPACE + TSP),
                 ontModel.getResource(OFN_NAMESPACE + TOP),
+                ontModel.getResource(OfnIris.TYP_SUBJEKTU_PRAVA),
+                ontModel.getResource(OfnIris.TYP_OBJEKTU_PRAVA),
                 ontModel.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ),
                 ontModel.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ),
                 ontModel.createResource(SKOS_NS + "Concept"),
@@ -67,6 +70,13 @@ final class ConceptTypeJsonMapper {
             if (hasType(concept, ontModel, namespace + mapping[0])) {
                 types.add(mapping[1]);
             }
+        }
+        // Typ subjektu/objektu práva: the OFN vsgov: type (the slovníky: one above is the legacy shape).
+        if (hasType(concept, ontModel, OfnIris.TYP_SUBJEKTU_PRAVA) && !types.contains(TSP_JSON_LD)) {
+            types.add(TSP_JSON_LD);
+        }
+        if (hasType(concept, ontModel, OfnIris.TYP_OBJEKTU_PRAVA) && !types.contains(TOP_JSON_LD)) {
+            types.add(TOP_JSON_LD);
         }
 
         addOwlTypeIfPresent(concept, ontModel, types);

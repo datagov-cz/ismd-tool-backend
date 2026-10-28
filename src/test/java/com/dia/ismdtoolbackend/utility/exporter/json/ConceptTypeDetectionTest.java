@@ -60,6 +60,40 @@ class ConceptTypeDetectionTest {
         assertThat(types).as("Should contain " + expectedJsonLd).contains(expectedJsonLd);
     }
 
+    static Stream<Arguments> vsgovTypeProvider() {
+        return Stream.of(
+                Arguments.of(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_SUBJEKTU_PRAVA, TSP_JSON_LD),
+                Arguments.of(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_OBJEKTU_PRAVA, TOP_JSON_LD)
+        );
+    }
+
+    @ParameterizedTest(name = "OFN vsgov type {0} maps to {1}")
+    @MethodSource("vsgovTypeProvider")
+    @DisplayName("Typ subjektu/objektu práva in the OFN vsgov: namespace is detected")
+    void vsgovType_mapsToJsonLdType(String typeIri, String expectedJsonLd) {
+        OntModel model = createDefaultModel();
+        Resource concept = addConceptWithType(model, "test-vsgov", "Test", TRIDA);
+        concept.addProperty(RDF.type, model.createResource(typeIri));
+        ModelStructure structure = createModelStructure(model);
+
+        Map<String, Object> result = processor.processConceptByIri(model, structure, concept.getURI());
+
+        @SuppressWarnings("unchecked")
+        List<String> types = (List<String>) result.get("typ");
+        assertThat(types).containsOnlyOnce(expectedJsonLd);
+    }
+
+    @Test
+    @DisplayName("A concept typed only with the OFN vsgov: type is a concept")
+    void vsgovOnlyConceptIsDetected() {
+        OntModel model = createDefaultModel();
+        Resource concept = model.createResource("https://example.org/pojem/osoba");
+        concept.addProperty(RDF.type, model.createResource(com.dia.ismdtoolbackend.ofn.OfnIris.TYP_SUBJEKTU_PRAVA));
+
+        assertThat(new ConceptTypeJsonMapper().isConceptResource(concept,
+                new ConceptTypeJsonMapper().getConceptTypes(model))).isTrue();
+    }
+
     static Stream<Arguments> legalTypeProvider() {
         return Stream.of(
                 Arguments.of(VEREJNY_UDAJ, VEREJNY_UDAJ_JSON_LD),

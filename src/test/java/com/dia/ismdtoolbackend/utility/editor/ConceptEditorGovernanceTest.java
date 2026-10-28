@@ -102,10 +102,23 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
 
         @Test
         void unchangedPpdfFlagStagesNothing() {
-            seedProperty("; a104:%s \"true\"".formatted(JE_PPDF_LONG));
+            seedProperty("; a104:%s true".formatted(JE_PPDF_LONG));
             propertyConceptEditModel.setIsInPPDF(Boolean.TRUE);
 
             assertThat(edit().changesCount).isZero();
+        }
+
+        @Test
+        void ppdfFlagStoredAsAStringIsRewrittenAsABoolean() {
+            seedProperty("; a104:%s \"true\"".formatted(JE_PPDF_LONG));
+            propertyConceptEditModel.setIsInPPDF(Boolean.TRUE);
+
+            edit();
+
+            assertThat(model.getResource(CONCEPT).listProperties(PPDF).toList())
+                    .singleElement()
+                    .satisfies(statement -> assertThat(statement.getLiteral().getDatatypeURI())
+                            .isEqualTo("http://www.w3.org/2001/XMLSchema#boolean"));
         }
 
         @Test
@@ -185,8 +198,9 @@ class ConceptEditorGovernanceTest extends ConceptEditorTestBase {
 
             assertThat(model.isIsomorphicWith(Ttl.parse("""
                     <%s> a ofn:vlastnost ; skos:prefLabel "Vlastnost"@cs ;
-                        sl:%s [ a <%s> ; <%s> <https://example.com/doc> ] .
-                    """.formatted(CONCEPT, DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT, SCHEMA_URL))))
+                        slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
+                                schema:url "https://example.com/doc"^^xsd:anyURI ] .
+                    """.formatted(CONCEPT))))
                     .isTrue();
         }
     }

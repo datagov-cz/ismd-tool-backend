@@ -30,7 +30,7 @@ class VocabularyConceptBuilderTest {
         assertThat(attribute.getDefinitionModel().getDefinition()).isEqualTo(Map.of("cs", "Hmotnost vozidla"));
         assertThat(attribute.getDefiningLegalSource())
                 .isEqualTo(List.of(LEGAL.replace("https://e-sbirka.gov.cz", "https://opendata.eselpoint.gov.cz/esel-esb")));
-        assertThat(attribute.getDataType()).isEqualTo("xsd:decimal");
+        assertThat(attribute.getDataType()).isEqualTo("xsd:double");
         assertThat(request.attributes().get(0).associatedClass().ref()).isEqualTo("vehicle");
         assertThat(result.conceptIris().values().stream().allMatch(iri -> iri.startsWith(GRAPH + "/"))).isTrue();
     }

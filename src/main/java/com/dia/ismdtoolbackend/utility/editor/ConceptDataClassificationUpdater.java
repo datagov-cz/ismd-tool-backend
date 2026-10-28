@@ -1,8 +1,8 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
-import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
@@ -10,45 +10,46 @@ import org.apache.jena.vocabulary.RDF;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
-import static com.dia.ismdtoolbackend.constants.VocabularyConstants.*;
 import static com.dia.ismdtoolbackend.utility.editor.ConceptEditStatements.*;
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 
-/** Edits the rdf:type classification of a concept (subjekt/objekt, veřejný/neveřejný) and its privacy provisions. */
+/**
+ * Edits the rdf:type classification of a concept (subjekt/objekt, veřejný/neveřejný) and its privacy
+ * provisions. Writes the OFN shapes only; the pre-OFN copies of an edited field are removed.
+ */
 @Slf4j
 class ConceptDataClassificationUpdater {
 
-    private final ConceptIriFactory iriFactory;
-
-    ConceptDataClassificationUpdater(ConceptIriFactory iriFactory) {
-        this.iriFactory = iriFactory;
-    }
+    /** Pre-OFN provision predicates: either local name, in any namespace but the OFN term's. */
+    private static final Predicate<Property> LEGACY_PROVISION = legacyCopyOf(OfnIris.USTANOVENI_NEVEREJNOST,
+            OfnIris.LEGACY_USTANOVENI_LOCAL_NAME, OfnIris.localName(OfnIris.USTANOVENI_NEVEREJNOST));
 
     void updateClassType(Resource newConcept, String newType, Resource oldConcept,
                           Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         if (newType == null) return;
 
-        Resource tspType = model.getResource(OFN_NAMESPACE + TSP);
-        Resource topType = model.getResource(OFN_NAMESPACE + TOP);
+        String type = newType.toLowerCase();
+        updateLegalType(newConcept, oldConcept, type.contains("subjekt"), OfnIris.TYP_SUBJEKTU_PRAVA,
+                OfnIris.LEGACY_TYP_SUBJEKTU_PRAVA, model, toRemove, toAdd);
+        updateLegalType(newConcept, oldConcept, type.contains("objekt"), OfnIris.TYP_OBJEKTU_PRAVA,
+                OfnIris.LEGACY_TYP_OBJEKTU_PRAVA, model, toRemove, toAdd);
+    }
 
-        boolean oldHasTSP = oldConcept.hasProperty(RDF.type, tspType);
-        boolean oldHasTOP = oldConcept.hasProperty(RDF.type, topType);
-
-        boolean newHasTSP = newType.toLowerCase().contains("subjekt");
-        boolean newHasTOP = newType.toLowerCase().contains("objekt");
-
-        if (oldHasTSP && !newHasTSP) {
-            removeTypeStatement(newConcept, oldConcept, tspType, model, toRemove, toAdd);
+    /** Stages the OFN {@code vsgov:} type when wanted and drops the legacy {@code slovníky:} one. */
+    private void updateLegalType(Resource newConcept, Resource oldConcept, boolean wanted, String ofnType,
+                                 String legacyType, Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
+        Resource ofn = model.getResource(ofnType);
+        Resource legacy = model.getResource(legacyType);
+        if (oldConcept.hasProperty(RDF.type, legacy)) {
+            removeTypeStatement(newConcept, oldConcept, legacy, model, toRemove, toAdd);
         }
-        if (oldHasTOP && !newHasTOP) {
-            removeTypeStatement(newConcept, oldConcept, topType, model, toRemove, toAdd);
-        }
-        if (!oldHasTSP && newHasTSP) {
-            toAdd.add(model.createStatement(newConcept, RDF.type, tspType));
-        }
-        if (!oldHasTOP && newHasTOP) {
-            toAdd.add(model.createStatement(newConcept, RDF.type, topType));
+        boolean has = oldConcept.hasProperty(RDF.type, ofn);
+        if (has && !wanted) {
+            removeTypeStatement(newConcept, oldConcept, ofn, model, toRemove, toAdd);
+        } else if (!has && wanted) {
+            toAdd.add(model.createStatement(newConcept, RDF.type, ofn));
         }
     }
 
@@ -64,14 +65,15 @@ class ConceptDataClassificationUpdater {
             return;
         }
 
-        Resource verejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-        Resource neverejnyLegal = model.getResource(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
+        Resource verejnyLegal = model.getResource(OfnIris.VEREJNY_UDAJ);
+        Resource neverejnyLegal = model.getResource(OfnIris.NEVEREJNY_UDAJ);
 
         // Non-public needs a provision the concept ends up with: a valid one in this edit, or,
-        // when the edit leaves the provisions alone, one it already carries.
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        // when the edit leaves the provisions alone, one it already carries (in any stored shape).
+        Property provisionProperty = model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST);
         boolean endsUpWithProvisions = privacyProvisions == null
-                ? oldConcept.hasProperty(provisionProperty)
+                ? oldConcept.listProperties().toList().stream().map(Statement::getPredicate)
+                        .anyMatch(p -> p.equals(provisionProperty) || LEGACY_PROVISION.test(p))
                 : privacyProvisions.stream().anyMatch(p -> p != null && !p.trim().isEmpty()
                         && SparqlIriValidator.isEsbirkaEliIri(EsbirkaEliParser.canonicalizeHost(p.trim())));
 
@@ -98,7 +100,7 @@ class ConceptDataClassificationUpdater {
                                              Set<Statement> toAdd) {
         if (privacyProvisions == null) return;
 
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        Property provisionProperty = model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST);
         Set<String> oldProvisions = getResourceURIs(oldConcept, provisionProperty);
         Set<String> newProvisions = new HashSet<>();
 
@@ -112,56 +114,12 @@ class ConceptDataClassificationUpdater {
             }
         }
 
-        if (privacyProvisions.isEmpty() || newProvisions.isEmpty()) {
-            if (!oldProvisions.isEmpty()) {
-                removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
-            }
-        } else if (!oldProvisions.equals(newProvisions)) {
+        if (!oldProvisions.equals(newProvisions)) {
             removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
             for (String provisionURI : newProvisions) {
                 toAdd.add(model.createStatement(newConcept, provisionProperty, model.createResource(provisionURI)));
             }
         }
-
-        syncPrivacyProvisionCopies(newConcept, oldConcept, provisionProperty, newProvisions, model, toRemove, toAdd);
-    }
-
-    /**
-     * Keeps the other stored copies of the provisions in step with the edit. Create also writes
-     * them under the vocabulary's own namespace, and uploaded data may carry them under that or
-     * the canonical OFN property; the vocabulary-namespace copy is rewritten to the new set and
-     * any other copy is dropped. A copy already equal to the new set is left untouched, so an
-     * unchanged edit stages nothing.
-     */
-    private void syncPrivacyProvisionCopies(Resource newConcept, Resource oldConcept, Property provisionProperty,
-                                            Set<String> newProvisions, Model model,
-                                            Set<Statement> toRemove, Set<Statement> toAdd) {
-        Property namespaceCopy = model.createProperty(iriFactory.getEffectiveNamespace() + USTANOVENI_NEVEREJNOST);
-
-        Set<Property> otherCopies = new HashSet<>();
-        oldConcept.listProperties().forEachRemaining(stmt -> {
-            Property predicate = stmt.getPredicate();
-            String localName = UtilityMethods.extractNameFromIRI(predicate.getURI());
-            if ((USTANOVENI_NEVEREJNOST.equals(localName) || USTANOVENI_LONG.equals(localName))
-                    && !predicate.equals(provisionProperty) && !predicate.equals(namespaceCopy)) {
-                otherCopies.add(predicate);
-            }
-        });
-        for (Property copy : otherCopies) {
-            removeAllByPredicate(newConcept, copy, toRemove, toAdd);
-            if (!newConcept.equals(oldConcept)) {
-                removeAllByPredicate(oldConcept, copy, toRemove, toAdd);
-            }
-        }
-
-        if (!getResourceURIs(oldConcept, namespaceCopy).equals(newProvisions)) {
-            removeAllByPredicate(newConcept, namespaceCopy, toRemove, toAdd);
-            if (!newConcept.equals(oldConcept)) {
-                removeAllByPredicate(oldConcept, namespaceCopy, toRemove, toAdd);
-            }
-            for (String provisionURI : newProvisions) {
-                toAdd.add(model.createStatement(newConcept, namespaceCopy, model.createResource(provisionURI)));
-            }
-        }
+        removeLegacyPredicates(newConcept, oldConcept, LEGACY_PROVISION, toRemove, toAdd);
     }
 }

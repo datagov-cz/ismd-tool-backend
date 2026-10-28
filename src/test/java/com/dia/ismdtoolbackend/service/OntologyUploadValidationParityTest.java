@@ -29,7 +29,6 @@ import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -286,9 +285,6 @@ class OntologyUploadValidationParityTest {
 
     /** A concept the create path writes must pass on upload: the two paths share one rule set. */
     @Test
-    @Disabled("Acceptance test of the OFN writer fixes (FIX-PROGRESS step 4): the create path still writes "
-            + "slovníky:typ-* (C3), <ns> provision copies (C4) and <ns> source predicates (C5). On re-enabling, also "
-            + "drop the owl:Class workaround below (C2).")
     void conceptWrittenByTheCreatePathImportsUntouched() throws Exception {
         ClassConceptModel model = new ClassConceptModel();
         model.setConceptType("TRIDA");
@@ -318,7 +314,6 @@ class OntologyUploadValidationParityTest {
         Model graph = ModelFactory.createDefaultModel().add(created.getModel());
         graph.createResource(VOCABULARY).addProperty(RDF.type, OWL2.Ontology).addProperty(RDF.type, SKOS.ConceptScheme)
                 .addProperty(RDF.type, graph.createResource(OfnIris.SLOVNIK));
-        created.inModel(graph).addProperty(RDF.type, OWL2.Class);
         StringWriter turtle = new StringWriter();
         graph.write(turtle, "TTL");
         when(file.getBytes()).thenReturn(turtle.toString().getBytes(StandardCharsets.UTF_8));

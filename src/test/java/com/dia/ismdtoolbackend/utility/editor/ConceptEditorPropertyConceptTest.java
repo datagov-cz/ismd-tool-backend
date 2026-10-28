@@ -46,7 +46,7 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
                     rdfs:domain <https://example.com/new-domain> ;
                     rdfs:range xsd:string ;
                     rdfs:subPropertyOf <https://example.com/new-super> ;
-                    a104:%s "true" ;
+                    a104:%s true ;
                     ofn:%s <%sevidenční> .
                 """.formatted(CONCEPT, JE_PPDF_LONG, TYP_OBSAHU, CONTENT_TYPE_ITEMS)))).isTrue();
     }
@@ -89,13 +89,29 @@ class ConceptEditorPropertyConceptTest extends ConceptEditorTestBase {
     }
 
     @Test
-    void blankDataTypeClearsTheRange() {
+    void blankDataTypeBecomesLiteral() {
         seedProperty("; rdfs:range xsd:string");
         propertyConceptEditModel.setDataType(" ");
 
         conceptEditor.editConcept(CONCEPT, propertyConceptEditModel, model, null);
 
-        assertThat(model.getResource(CONCEPT).hasProperty(RDFS.range)).isFalse();
+        assertThat(Ttl.iris(model, CONCEPT, RDFS.range)).containsExactly(RDFS.Literal.getURI());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "boolean, http://www.w3.org/2001/XMLSchema#boolean",
+            "xsd:date, http://www.w3.org/2001/XMLSchema#date",
+            "http://www.w3.org/2001/XMLSchema#anyURI, http://www.w3.org/2001/XMLSchema#anyURI",
+            "neznámý, http://www.w3.org/2000/01/rdf-schema#Literal"
+    })
+    void dataTypeResolvesLikeCreate(String dataType, String expectedRange) {
+        seedProperty("; rdfs:range xsd:string");
+        propertyConceptEditModel.setDataType(dataType);
+
+        conceptEditor.editConcept(CONCEPT, propertyConceptEditModel, model, null);
+
+        assertThat(Ttl.iris(model, CONCEPT, RDFS.range)).containsExactly(expectedRange);
     }
 
     @Test

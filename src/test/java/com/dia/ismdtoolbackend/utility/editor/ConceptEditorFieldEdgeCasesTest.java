@@ -1,5 +1,7 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
+import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import com.dia.ismdtoolbackend.models.concept.ClassConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptEditModel;
@@ -83,24 +85,24 @@ class ConceptEditorFieldEdgeCasesTest {
 
         editor.editConcept(iri, m, model, null);
 
-        assertThat(model.getResource(iri).hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP))).isTrue();
+        assertThat(model.getResource(iri).hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA))).isTrue();
     }
 
     @Test
     void classType_removesTSP_whenNoLongerSubjekt() {
         String iri = DEFAULT_NS + "ct-remove-tsp";
         Resource r = seedClass(iri);
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP));
+        r.addProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA));
         ClassConceptEditModel m = classModel();
         m.setType("Typ objektu práva");   // objekt, not subjekt
 
         editor.editConcept(iri, m, model, null);
 
         Resource updated = model.getResource(iri);
-        assertThat(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP)))
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA)))
                 .as("TSP should be removed when no longer subjekt")
                 .isFalse();
-        assertThat(updated.hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TOP)))
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_OBJEKTU_PRAVA)))
                 .as("TOP should be added for objekt")
                 .isTrue();
     }
@@ -109,13 +111,28 @@ class ConceptEditorFieldEdgeCasesTest {
     void classType_noChange_whenStillSubjekt() {
         String iri = DEFAULT_NS + "ct-noop";
         Resource r = seedClass(iri);
-        r.addProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP));
+        r.addProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA));
         ClassConceptEditModel m = classModel();
         m.setType("Typ subjektu práva");   // still subjekt
 
         editor.editConcept(iri, m, model, null);
 
-        assertThat(model.getResource(iri).hasProperty(RDF.type, model.getResource(OFN_NAMESPACE + TSP))).isTrue();
+        assertThat(model.getResource(iri).hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA))).isTrue();
+    }
+
+    @Test
+    void classType_legacyTypeIsReplacedByTheOfnOne() {
+        String iri = DEFAULT_NS + "ct-legacy";
+        Resource r = seedClass(iri);
+        r.addProperty(RDF.type, model.getResource(OfnIris.LEGACY_TYP_SUBJEKTU_PRAVA));
+        ClassConceptEditModel m = classModel();
+        m.setType("Typ subjektu práva");
+
+        editor.editConcept(iri, m, model, null);
+
+        Resource updated = model.getResource(iri);
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.TYP_SUBJEKTU_PRAVA))).isTrue();
+        assertThat(updated.hasProperty(RDF.type, model.getResource(OfnIris.LEGACY_TYP_SUBJEKTU_PRAVA))).isFalse();
     }
 
     @Test
@@ -173,7 +190,7 @@ class ConceptEditorFieldEdgeCasesTest {
     // ---- updateDataTypeRange: clear / change ----
 
     @Test
-    void dataType_clearedWhenBlank() {
+    void dataType_blankBecomesLiteral() {
         String iri = DEFAULT_NS + "dt-clear";
         Resource r = seedProperty(iri);
         r.addProperty(RDFS.range, model.createResource("http://www.w3.org/2001/XMLSchema#string"));
@@ -181,7 +198,7 @@ class ConceptEditorFieldEdgeCasesTest {
         m.setDataType("");
 
         editor.editConcept(iri, m, model, null);
-        assertThat(model.getResource(iri).hasProperty(RDFS.range)).isFalse();
+        assertThat(Ttl.iris(model, iri, RDFS.range)).containsExactly(RDFS.Literal.getURI());
     }
 
     // ---- updateBroaderConceptList: clear when emptied ----

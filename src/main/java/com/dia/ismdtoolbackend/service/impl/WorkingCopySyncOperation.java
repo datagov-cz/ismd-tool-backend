@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.client.NkdSparqlClient;
 import com.dia.ismdtoolbackend.controller.dto.GetConceptDto;
 import com.dia.ismdtoolbackend.enums.SnapshotOrigin;
@@ -244,17 +245,23 @@ class WorkingCopySyncOperation {
         return null;
     }
 
+    /** The concept's provisions under the OFN predicate or the pre-OFN one (until the migration has run). */
     List<String> currentPrivacyProvisions(Model model, Resource concept) {
-        Property provisionProperty = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
         List<String> provisions = new ArrayList<>();
-        StmtIterator it = model.listStatements(concept, provisionProperty, (RDFNode) null);
-        try {
-            while (it.hasNext()) {
-                RDFNode object = it.next().getObject();
-                provisions.add(object.isURIResource() ? object.asResource().getURI() : object.toString());
+        for (Property provisionProperty : List.of(model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST),
+                model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST))) {
+            StmtIterator it = model.listStatements(concept, provisionProperty, (RDFNode) null);
+            try {
+                while (it.hasNext()) {
+                    RDFNode object = it.next().getObject();
+                    String value = object.isURIResource() ? object.asResource().getURI() : object.toString();
+                    if (!provisions.contains(value)) {
+                        provisions.add(value);
+                    }
+                }
+            } finally {
+                it.close();
             }
-        } finally {
-            it.close();
         }
         return provisions;
     }

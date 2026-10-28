@@ -2,10 +2,12 @@ package com.dia.ismdtoolbackend.utility.editor;
 
 import com.dia.ismdtoolbackend.models.concept.ConceptEditModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.ismdtoolbackend.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 
@@ -22,12 +24,6 @@ import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPr
 @Slf4j
 class ConceptSourceUpdater {
 
-    private final ConceptIriFactory iriFactory;
-
-    ConceptSourceUpdater(ConceptIriFactory iriFactory) {
-        this.iriFactory = iriFactory;
-    }
-
     void updateLegalSources(Resource newConcept, ConceptEditModel editModel, Resource oldConcept,
                              Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
         Property definingProp = model.createProperty(OFN_NAMESPACE + DEFINUJICI_USTANOVENI);
@@ -41,8 +37,8 @@ class ConceptSourceUpdater {
 
     void updateNonLegalSources(Resource newConcept, ConceptEditModel editModel, Resource oldConcept,
                                 Model model, Set<Statement> toRemove, Set<Statement> toAdd) {
-        Property definingProp = model.createProperty(iriFactory.getEffectiveNamespace() + DEFINUJICI_NELEGISLATIVNI_ZDROJ);
-        Property relatedProp = model.createProperty(iriFactory.getEffectiveNamespace() + SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
+        Property definingProp = model.createProperty(OfnIris.DEFINUJICI_NELEGISLATIVNI_ZDROJ);
+        Property relatedProp = model.createProperty(OfnIris.SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
 
         updateNonLegalSourceList(newConcept, definingProp, editModel.getDefiningNonLegalSource(),
                 oldConcept, model, toRemove, toAdd);
@@ -88,6 +84,11 @@ class ConceptSourceUpdater {
                                            Set<Statement> toAdd) {
         if (newSources == null) return;
 
+        // Sources stored under a pre-OFN predicate (vocabulary namespace or https://slovník.gov.cz/…)
+        // are dropped and rewritten under the OFN one.
+        boolean hadLegacy = removeLegacyPredicates(newConcept, oldConcept,
+                legacyCopyOf(property.getURI(), OfnIris.localName(property.getURI())), toRemove, toAdd);
+
         List<DigitalObjectModel> validSources = newSources.stream()
                 .filter(this::isValidDigitalObject)
                 .toList();
@@ -105,7 +106,7 @@ class ConceptSourceUpdater {
         validSources.forEach(source -> wanted.add(SourceRecord.of(source)));
         Set<SourceRecord> current = currentSources(oldConcept, property, schemaUrlProperty, dctermsTitle,
                 dctermsDescription);
-        if (wanted.equals(current)) {
+        if (!hadLegacy && wanted.equals(current)) {
             return;
         }
 
@@ -121,7 +122,7 @@ class ConceptSourceUpdater {
 
             toAdd.add(model.createStatement(digitalDocument, RDF.type, digitalObjectType));
             toAdd.add(model.createStatement(digitalDocument, schemaUrlProperty,
-                    model.createResource(source.getUrl().trim())));
+                    model.createTypedLiteral(source.getUrl().trim(), XSDDatatype.XSDanyURI)));
 
             if (source.getName() != null && !source.getName().trim().isEmpty()) {
                 toAdd.add(model.createStatement(digitalDocument, dctermsTitle,
@@ -150,8 +151,9 @@ class ConceptSourceUpdater {
     }
 
     /**
-     * The concept's stored sources under {@code property}, or {@code null} when one is not a digital-object
-     * blank node, so it never equals an edit and gets rewritten.
+     * The concept's stored sources under {@code property}, or {@code null} when one is not in the OFN
+     * shape (a digital-object blank node whose url is an {@code xsd:anyURI} literal), so it never equals
+     * an edit and gets rewritten.
      */
     private Set<SourceRecord> currentSources(Resource concept, Property property, Property url,
                                              Property title, Property description) {
@@ -162,7 +164,8 @@ class ConceptSourceUpdater {
             }
             Resource document = link.getObject().asResource();
             Statement urlValue = document.getProperty(url);
-            if (urlValue == null) {
+            if (urlValue == null || !urlValue.getObject().isLiteral()
+                    || !XSDDatatype.XSDanyURI.getURI().equals(urlValue.getLiteral().getDatatypeURI())) {
                 return null;
             }
             sources.add(new SourceRecord(lexical(urlValue), text(document, title), text(document, description)));

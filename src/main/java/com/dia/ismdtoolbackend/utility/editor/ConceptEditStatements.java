@@ -1,11 +1,13 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
 
 import java.util.HashSet;
-import java.util.Objects;
+import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import static com.dia.ismdtoolbackend.utility.editor.RdfLangValues.removeAllByPredicate;
 
@@ -52,18 +54,54 @@ final class ConceptEditStatements {
                         stmt.getObject().equals(typeValue));
     }
 
-    /** Rewrites a boolean literal property when the value differs; {@code null} leaves it untouched. */
+    /**
+     * Writes the property as one {@code xsd:boolean} literal; {@code null} leaves it untouched. A stored
+     * value that is already exactly that literal stages nothing; any other shape (an {@code xsd:string}
+     * "true", several values) is rewritten.
+     */
     static void updateBooleanLiteral(Resource newConcept, Property property, Boolean newValue,
                                      Resource oldConcept, Model model, Set<Statement> toRemove,
                                      Set<Statement> toAdd) {
         if (newValue == null) return;
 
-        String oldValue = getPropertyValue(oldConcept, property);
-        String newValueStr = newValue.toString();
-
-        if (!Objects.equals(oldValue, newValueStr)) {
-            removeAllByPredicate(newConcept, property, toRemove, toAdd);
-            toAdd.add(model.createStatement(newConcept, property, model.createLiteral(newValueStr)));
+        Literal wanted = model.createTypedLiteral(newValue);
+        List<RDFNode> current = oldConcept.listProperties(property).mapWith(Statement::getObject).toList();
+        if (current.size() == 1 && current.get(0).equals(wanted)) {
+            return;
         }
+        removeAllByPredicate(newConcept, property, toRemove, toAdd);
+        toAdd.add(model.createStatement(newConcept, property, wanted));
+    }
+
+    /**
+     * Removes every statement of the concept whose predicate {@code isLegacy} matches, plus the
+     * statements of any blank node such a statement points to. Used to drop pre-OFN copies of a field
+     * when that field is edited. Returns true when anything was staged for removal.
+     */
+    static boolean removeLegacyPredicates(Resource newConcept, Resource oldConcept, Predicate<Property> isLegacy,
+                                          Set<Statement> toRemove, Set<Statement> toAdd) {
+        Set<Property> legacy = new HashSet<>();
+        for (Statement statement : oldConcept.listProperties().toList()) {
+            if (isLegacy.test(statement.getPredicate())) {
+                legacy.add(statement.getPredicate());
+                if (statement.getObject().isAnon()) {
+                    toRemove.addAll(statement.getObject().asResource().listProperties().toList());
+                }
+            }
+        }
+        for (Property property : legacy) {
+            removeAllByPredicate(newConcept, property, toRemove, toAdd);
+            if (!newConcept.equals(oldConcept)) {
+                removeAllByPredicate(oldConcept, property, toRemove, toAdd);
+            }
+        }
+        return !legacy.isEmpty();
+    }
+
+    /** A predicate named {@code localName} in any namespace other than {@code ofnIri}'s own. */
+    static Predicate<Property> legacyCopyOf(String ofnIri, String... localNames) {
+        Set<String> names = Set.of(localNames);
+        return property -> !property.getURI().equals(ofnIri)
+                && names.contains(OfnIris.localName(property.getURI()));
     }
 }
