@@ -27,7 +27,6 @@ public final class RdfChangesetLoader {
     public static final String DEFAULT_LOCATION = "classpath*:rdf-migrations";
 
     private static final Pattern FILE_NAME = Pattern.compile("\\d{3}-[a-z0-9-]+\\.ru");
-    private static final Pattern GRAPH_USE = Pattern.compile("\\?" + RdfChangeset.GRAPH_VARIABLE + "\\b");
     private static final String PROBE_GRAPH = "https://example.org/rdf-migration-probe";
 
     private final ResourcePatternResolver resolver;
@@ -74,15 +73,18 @@ public final class RdfChangesetLoader {
         } catch (IOException e) {
             throw new IllegalStateException("RDF migrations: cannot read " + name, e);
         }
-        String normalised = text.replace("\r\n", "\n");
-        if (!GRAPH_USE.matcher(normalised).find()) {
-            throw new IllegalStateException("RDF migrations: " + id + " never uses ?graph");
-        }
+        String normalised = (text.startsWith("\uFEFF") ? text.substring(1) : text).replace("\r\n", "\n");
         RdfChangeset changeset = new RdfChangeset(id, description(normalised), normalised, sha256(normalised));
+        String parsed;
+        String bound;
         try {
-            UpdateFactory.create(changeset.boundTo(PROBE_GRAPH));
+            parsed = UpdateFactory.create(normalised).toString();
+            bound = changeset.boundTo(PROBE_GRAPH);
         } catch (RuntimeException e) {
             throw new IllegalStateException("RDF migrations: " + id + " is not valid SPARQL Update: " + e.getMessage(), e);
+        }
+        if (parsed.equals(bound)) {
+            throw new IllegalStateException("RDF migrations: " + id + " never uses ?graph");
         }
         return changeset;
     }

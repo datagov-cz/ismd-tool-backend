@@ -14,4 +14,14 @@ reconciler) start and before the server takes requests. A failure fails startup.
 - **Before merging:** a test that runs the changeset on an in-memory dataset (old shapes in, OFN shapes out, a
   second run changes nothing), plus a run over the local graph dumps with gate counts before and after. There is
   no dry-run mode: changesets apply on the first startup in every environment.
-- Switch: `rdf-migration.enabled` (`RDF_MIGRATION_ENABLED`), on by default; off only in test contexts.
+- **Preconditions** (checked only when something is pending; each failure stops startup before any graph is
+  touched): the outbox has no PENDING or FAILED rows (they hold pre-migration RDF the relay would write over
+  the migrated data), and every vocabulary graph in PostgreSQL exists in TDB2. TDB2 graphs with no vocabulary
+  row are logged and left alone.
+- **Deploy:** stop the old instance before starting the new one, so nothing writes old shapes while the
+  migration runs, and let it drain the outbox first.
+- `?graph` is substituted in the parsed update (Jena `UpdateTransformOps`), so it is never replaced inside a
+  string literal or a comment; a file using it only there is rejected.
+- Settings: `rdf-migration.enabled` (`RDF_MIGRATION_ENABLED`, on by default; off only in test contexts),
+  `rdf-migration.update-timeout` (`RDF_MIGRATION_UPDATE_TIMEOUT`, default `PT30M`, per graph update; a
+  timeout stops startup, and Fuseki may still finish the update, so idempotency matters here too).

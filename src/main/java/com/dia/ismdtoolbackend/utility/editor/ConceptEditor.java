@@ -106,6 +106,7 @@ public class ConceptEditor {
                         "Unsupported concept type: " + editModel.getConceptTypeEnum());
             }
             typeEditor.edit(editModel, context, model, statementsToRemove, statementsToAdd);
+            BlankChildRestaging.apply(context.oldConcept, context.newConcept, statementsToRemove, statementsToAdd);
 
             model.remove(statementsToRemove.toArray(new Statement[0]));
             model.add(statementsToAdd.toArray(new Statement[0]));

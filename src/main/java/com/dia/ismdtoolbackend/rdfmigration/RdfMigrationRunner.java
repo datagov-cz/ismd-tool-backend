@@ -4,9 +4,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -15,10 +25,14 @@ import java.util.stream.Collectors;
  * singleton exists (Liquibase has run), and before the context refresh completes, so before the
  * schedulers (outbox relay, reconciler) start and before the web server accepts requests.
  *
+ * <p>Before a pending changeset runs, the outbox must be settled (its rows hold pre-migration RDF the
+ * relay would write back afterwards) and every vocabulary graph must exist in TDB2 (a missing or
+ * differently spelled graph would match nothing and still count as migrated).
+ *
  * <p>Each changeset is applied to every ISMD vocabulary graph, then recorded in
  * {@code rdf_migration_log}. TDB2 and PostgreSQL share no transaction: a crash after the TDB2 update
  * and before the row reruns the changeset, which is why every changeset must be idempotent. Any
- * failure, and any applied changeset whose file has changed, fails startup.
+ * failure, a timed-out update, and an applied changeset whose file has changed all fail startup.
  */
 @Slf4j
 public class RdfMigrationRunner implements SmartInitializingSingleton {
@@ -27,13 +41,15 @@ public class RdfMigrationRunner implements SmartInitializingSingleton {
     private final RdfMigrationRepository history;
     private final RdfMigrationTarget target;
     private final Clock clock;
+    private final Duration updateTimeout;
 
     public RdfMigrationRunner(RdfChangesetLoader loader, RdfMigrationRepository history,
-                              RdfMigrationTarget target, Clock clock) {
+                              RdfMigrationTarget target, Clock clock, Duration updateTimeout) {
         this.loader = loader;
         this.history = history;
         this.target = target;
         this.clock = clock;
+        this.updateTimeout = updateTimeout;
     }
 
     @Override
@@ -60,22 +76,64 @@ public class RdfMigrationRunner implements SmartInitializingSingleton {
             return List.of();
         }
 
-        List<String> graphs = target.graphNames();
+        List<String> graphs = checkPreconditions(pending);
         log.info("RDF migrations: applying {} pending changeset(s) to {} graph(s)", pending.size(), graphs.size());
-        for (RdfChangeset changeset : pending) {
-            apply(changeset, graphs);
+        ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "rdf-migration");
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            for (RdfChangeset changeset : pending) {
+                apply(changeset, graphs, executor);
+            }
+        } finally {
+            executor.shutdownNow();
         }
         return pending.stream().map(RdfChangeset::id).toList();
     }
 
-    private void apply(RdfChangeset changeset, List<String> graphs) {
+    private List<String> checkPreconditions(List<RdfChangeset> pending) {
+        long unsettled = target.unsettledWrites();
+        if (unsettled > 0) {
+            throw new IllegalStateException("RDF migrations: " + unsettled + " outbox row(s) are PENDING or FAILED. "
+                    + "They hold pre-migration RDF that would be written over the migrated data. Let the previous "
+                    + "version drain the outbox (or resolve the FAILED rows), then start again. Pending changesets: "
+                    + pending.stream().map(RdfChangeset::id).toList());
+        }
+        List<String> graphs = target.graphNames();
+        Set<String> stored = new HashSet<>(target.storedGraphNames());
+        List<String> missing = graphs.stream().filter(graph -> !stored.contains(graph)).toList();
+        if (!missing.isEmpty()) {
+            throw new IllegalStateException("RDF migrations: vocabulary graph(s) in PostgreSQL but not in TDB2: "
+                    + missing + ". Fix the graph names (or the data) first; a changeset would match nothing there.");
+        }
+        List<String> untracked = new ArrayList<>(stored);
+        untracked.removeAll(new HashSet<>(graphs));
+        if (!untracked.isEmpty()) {
+            log.warn("RDF migrations: TDB2 graph(s) with no vocabulary in PostgreSQL are not migrated: {}", untracked);
+        }
+        return graphs;
+    }
+
+    private void apply(RdfChangeset changeset, List<String> graphs, ExecutorService executor) {
         long started = clock.millis();
         for (String graph : graphs) {
+            String update = changeset.boundTo(graph);
+            Future<?> running = executor.submit(() -> target.update(update));
             try {
-                target.update(changeset.boundTo(graph));
-            } catch (RuntimeException e) {
+                running.get(updateTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                running.cancel(true);
+                throw new IllegalStateException("RDF migration " + changeset.id() + " timed out after "
+                        + updateTimeout + " on graph " + graph + "; Fuseki may still finish it, so the "
+                        + "changeset must be idempotent (it reruns on the next startup)", e);
+            } catch (ExecutionException e) {
                 throw new IllegalStateException("RDF migration " + changeset.id() + " failed on graph " + graph
-                        + ": " + e.getMessage(), e);
+                        + ": " + e.getCause().getMessage(), e.getCause());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("RDF migration " + changeset.id() + " interrupted", e);
             }
         }
         RdfMigrationEntity row = new RdfMigrationEntity();

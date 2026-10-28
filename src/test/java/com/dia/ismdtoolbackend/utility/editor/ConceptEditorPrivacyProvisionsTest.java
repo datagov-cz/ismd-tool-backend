@@ -279,4 +279,34 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
 
         assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isTrue();
     }
+
+    @Test
+    void edit_publicWithoutProvisionsClearsEveryStoredProvision() {
+        String iri = DEFAULT_NS + "prop-goes-public";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(type, nonPublicType());
+        concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
+        concept.addProperty(legacyProp(), model.createResource(OTHER_ELI));
+        propertyConceptEditModel.setIsPublic(Boolean.TRUE);
+
+        conceptEditor.editConcept(iri, propertyConceptEditModel, model, null);
+
+        Resource updated = model.getResource(iri);
+        assertThat(updated.hasProperty(provisionProp())).isFalse();
+        assertThat(updated.hasProperty(legacyProp())).isFalse();
+        assertThat(updated.hasProperty(type, model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ))).isTrue();
+    }
+
+    @Test
+    void edit_publicAndAlreadyWithoutProvisionsStagesNoProvisionChange() {
+        String iri = DEFAULT_NS + "prop-public";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(type, model.getResource(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ));
+        propertyConceptEditModel.setIsPublic(Boolean.TRUE);
+
+        ConceptEditor.EditResult result = conceptEditor.editConcept(iri, propertyConceptEditModel, model, null);
+
+        assertThat(result.statementsToRemove).isEmpty();
+        assertThat(result.statementsToAdd).isEmpty();
+    }
 }

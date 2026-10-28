@@ -84,6 +84,12 @@ class ConceptDataClassificationUpdater {
             wanted = neverejnyLegal;
         }
 
+        // A Veřejný údaj carries no provision: a public edit that leaves the provisions out clears them.
+        if (Boolean.TRUE.equals(isPublic) && privacyProvisions == null) {
+            removeAllByPredicate(newConcept, provisionProperty, toRemove, toAdd);
+            removeLegacyPredicates(newConcept, oldConcept, LEGACY_PROVISION, toRemove, toAdd);
+        }
+
         // Only the difference is staged, so an edit that keeps the classification changes nothing.
         for (Resource classification : List.of(verejnyLegal, neverejnyLegal)) {
             boolean has = oldConcept.hasProperty(RDF.type, classification);
