@@ -1,0 +1,43 @@
+<https://slovník.gov.cz/pojem> <http://www.w3.org/2000/01/rdf-schema#label> "pojem"@cs .
+<https://slovník.gov.cz/pojem> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Class> .
+<https://slovník.gov.cz/doprava> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/okamžik-vytvoření> <https://slovník.gov.cz/doprava/casovy-okamzik-vytvoreni> .
+<https://slovník.gov.cz/doprava> <http://www.w3.org/2004/02/skos/core#prefLabel> "Doprava"@cs .
+<https://slovník.gov.cz/doprava> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Ontology> .
+<https://slovník.gov.cz/doprava> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#ConceptScheme> .
+<https://slovník.gov.cz/doprava> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/slovník> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/definující-ustanovení> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-01-01> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/2004/02/skos/core#prefLabel> "Má vlastníka"@cs .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/doprava> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/2000/01/rdf-schema#range> <https://slovník.gov.cz/doprava/pojem/osoba> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/2000/01/rdf-schema#domain> <https://slovník.gov.cz/doprava/pojem/vozidlo> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vztah> .
+<https://slovník.gov.cz/doprava/pojem/má-vlastníka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#ObjectProperty> .
+<https://slovník.gov.cz/doprava/pojem/osoba> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/definující-ustanovení> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2025/34/2025-02-19/dokument/norma/par_2> .
+<https://slovník.gov.cz/doprava/pojem/osoba> <https://slovník.gov.cz/doprava/inTezaurus> "false" .
+<https://slovník.gov.cz/doprava/pojem/osoba> <https://slovník.gov.cz/agendový/104/pojem/je-sdílen-v-propojeném-datovém-fondu> "false" .
+<https://slovník.gov.cz/doprava/pojem/osoba> <http://www.w3.org/2004/02/skos/core#prefLabel> "Osoba"@cs .
+<https://slovník.gov.cz/doprava/pojem/osoba> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/doprava> .
+<https://slovník.gov.cz/doprava/pojem/osoba> <http://www.w3.org/2004/02/skos/core#definition> "§ 2"@cs .
+<https://slovník.gov.cz/doprava/pojem/osoba> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/třída> .
+<https://slovník.gov.cz/doprava/pojem/osoba> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/doprava/pojem/osoba> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/definující-ustanovení> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-01-01> .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <http://www.w3.org/2004/02/skos/core#prefLabel> "Vozidlo"@cs .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/doprava> .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <http://www.w3.org/2004/02/skos/core#definition> "Dopravní prostředek."@cs .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/třída> .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/doprava/pojem/vozidlo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/doprava/casovy-okamzik-vytvoreni> <https://slovník.gov.cz/generický/čas/pojem/datum-a-čas> "2026-10-07T13:47:18.858014" .
+<https://slovník.gov.cz/doprava/casovy-okamzik-vytvoreni> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/čas/pojem/časový-okamžik> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/definující-ustanovení> <https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2000/361/2024-01-01> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/2004/02/skos/core#prefLabel> "Registrační značka"@cs .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/2004/02/skos/core#inScheme> <https://slovník.gov.cz/doprava> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/2000/01/rdf-schema#range> <http://www.w3.org/2000/01/rdf-schema#Literal> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/2000/01/rdf-schema#domain> <https://slovník.gov.cz/doprava/pojem/vozidlo> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2004/02/skos/core#Concept> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/pojem> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#DatatypeProperty> .
+<https://slovník.gov.cz/doprava/pojem/registrační-značka> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://slovník.gov.cz/generický/datový-slovník-ofn-slovníků/pojem/vlastnost> .
