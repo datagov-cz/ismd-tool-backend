@@ -187,4 +187,17 @@ class WorkingCopySyncOperationTest {
         assertThatCode(() -> operation.validateAcceptedKeys(Set.of("popis"), Set.of("popis", "definice")))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void currentPrivacyProvisionsReadTheOfnAndThePreOfnPredicateOnce() {
+        String ofn = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2006/187";
+        String legacy = "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348";
+        concept.addProperty(graph.createProperty(com.dia.ismdtoolbackend.ofn.OfnIris.USTANOVENI_NEVEREJNOST),
+                graph.createResource(ofn));
+        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST), graph.createResource(ofn));
+        concept.addProperty(graph.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST),
+                graph.createResource(legacy));
+
+        assertThat(operation.currentPrivacyProvisions(graph, concept)).containsExactly(ofn, legacy);
+    }
 }

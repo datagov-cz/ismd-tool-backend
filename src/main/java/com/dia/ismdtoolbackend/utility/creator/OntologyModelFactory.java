@@ -1,68 +1,72 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.OntologyCreateModel;
-import com.dia.models.OFNBaseModel;
+import com.dia.ismdtoolbackend.ofn.OfnDates;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.utility.DataTypeConverter;
 import org.apache.jena.ontology.OntModel;
+import org.apache.jena.ontology.OntModelSpec;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.vocabulary.OWL2;
 import org.apache.jena.vocabulary.RDF;
+import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.SKOS;
-import java.time.LocalDateTime;
-import java.util.Map;
-import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
-import static com.dia.constants.VocabularyConstants.*;
 
+import java.time.Clock;
+import java.util.Map;
+
+import static com.dia.constants.ExportConstants.Common.DEFAULT_LANG;
+
+/** Builds a new vocabulary's own triples: its three types, name, description and creation time. */
 public final class OntologyModelFactory {
     private OntologyModelFactory() {}
 
     public static OntModel create(String ontologyIRI, OntologyCreateModel ontologyCreateModel) {
-        OFNBaseModel ofnModel = new OFNBaseModel();
+        return create(ontologyIRI, ontologyCreateModel, Clock.systemUTC());
+    }
 
-        OntModel model = ofnModel.getOntModel();
+    static OntModel create(String ontologyIRI, OntologyCreateModel ontologyCreateModel, Clock clock) {
+        OntModel model = ModelFactory.createOntologyModel(OntModelSpec.OWL_MEM);
+        model.setNsPrefix("cz", "https://slovník.gov.cz/");
+        model.setNsPrefix("rdf", RDF.getURI());
+        model.setNsPrefix("rdfs", RDFS.getURI());
+        model.setNsPrefix("owl", OWL2.getURI());
+        model.setNsPrefix("xsd", OfnIris.XSD);
+        model.setNsPrefix("čas", OfnIris.CAS);
+        model.setNsPrefix("slovníky", OfnIris.SLOVNIKY);
+
         model.createOntology(ontologyIRI);
         Resource ontologyResource = model.getResource(ontologyIRI);
 
-        Property prefLabel = model.createProperty(SKOS_NS + "prefLabel");
         if (ontologyCreateModel.getNameModel() != null && ontologyCreateModel.getNameModel().getName() != null) {
-            for (Map.Entry<String, String> entry : ontologyCreateModel.getNameModel().getName().entrySet()) {
-                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
-                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                            ? entry.getKey()
-                            : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(ontologyResource, prefLabel,
-                            entry.getValue().trim(), languageTag, model);
-                }
-            }
+            addLangValues(ontologyResource, SKOS.prefLabel, ontologyCreateModel.getNameModel().getName(), model);
         }
-        ontologyResource.addProperty(RDF.type, model.getResource("http://www.w3.org/2002/07/owl#Ontology"));
+        ontologyResource.addProperty(RDF.type, OWL2.Ontology);
         ontologyResource.addProperty(RDF.type, SKOS.ConceptScheme);
-        ontologyResource.addProperty(RDF.type, model.getResource(SLOVNIKY_NS + SLOVNIK));
+        ontologyResource.addProperty(RDF.type, model.getResource(OfnIris.SLOVNIK));
 
-        if (ontologyCreateModel.getDescriptionModel() != null && ontologyCreateModel.getDescriptionModel().getDescription() != null) {
-            Property descProperty = model.createProperty("http://purl.org/dc/terms/description");
-            for (Map.Entry<String, String> entry : ontologyCreateModel.getDescriptionModel().getDescription().entrySet()) {
-                if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
-                    String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
-                            ? entry.getKey()
-                            : DEFAULT_LANG;
-                    DataTypeConverter.addTypedProperty(ontologyResource, descProperty,
-                            entry.getValue().trim(), languageTag, model);
-                }
-            }
+        if (ontologyCreateModel.getDescriptionModel() != null
+                && ontologyCreateModel.getDescriptionModel().getDescription() != null) {
+            addLangValues(ontologyResource, model.createProperty(OfnIris.DCTERMS + "description"),
+                    ontologyCreateModel.getDescriptionModel().getDescription(), model);
         }
 
-        String temporalMomentIRI = ontologyIRI + "/casovy-okamzik-vytvoreni";
-        Resource temporalMoment = model.createResource(temporalMomentIRI);
-        temporalMoment.addProperty(RDF.type, model.createResource(CAS_NS + CASOVY_OKAMZIK));
-
-        Property datumACasProperty = model.createProperty(CAS_NS + DATUM_A_CAS);
-        String currentDateTime = LocalDateTime.now().toString();
-        temporalMoment.addProperty(datumACasProperty, currentDateTime);
-
-        Property okamzikVytvoreniProperty = model.createProperty(SLOVNIKY_NS + OKAMZIK_VYTVORENI);
-        ontologyResource.addProperty(okamzikVytvoreniProperty, temporalMoment);
+        ontologyResource.addProperty(model.createProperty(OfnIris.OKAMZIK_VYTVORENI),
+                OfnDates.instant(model, OfnDates.now(clock)));
 
         return model;
+    }
+
+    private static void addLangValues(Resource resource, Property property, Map<String, String> values, OntModel model) {
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            if (entry.getValue() != null && !entry.getValue().trim().isEmpty()) {
+                String languageTag = entry.getKey() != null && !entry.getKey().trim().isEmpty()
+                        ? entry.getKey()
+                        : DEFAULT_LANG;
+                DataTypeConverter.addTypedProperty(resource, property, entry.getValue().trim(), languageTag, model);
+            }
+        }
     }
 }

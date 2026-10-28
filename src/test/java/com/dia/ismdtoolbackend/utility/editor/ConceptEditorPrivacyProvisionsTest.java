@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.exception.ConceptValidationException;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
@@ -23,6 +24,11 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
     private static final String INVALID_ELI = "https://example.org/not-eli";
 
     private Property provisionProp() {
+        return model.createProperty(OfnIris.USTANOVENI_NEVEREJNOST);
+    }
+
+    /** The pre-OFN predicate create used to write. */
+    private Property legacyProp() {
         return model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
     }
 
@@ -104,12 +110,12 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         assertThat(model.size()).as("rejected edit must not mutate the model").isEqualTo(sizeBefore);
     }
 
-    // --- Other stored copies of the provisions ------------------------------
+    // --- Pre-OFN copies of the provisions -----------------------------------
 
     private static final String OTHER_ELI =
             "https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/2005/348";
 
-    /** The copy create writes under the vocabulary's own namespace. */
+    /** The copy create used to write under the vocabulary's own namespace. */
     private Property namespaceCopy() {
         return model.createProperty(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
     }
@@ -127,7 +133,7 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
     private ConceptEditor.EditResult lastResult;
 
     @Test
-    void edit_replacesTheNamespaceCopyAlongWithTheProvisions() {
+    void edit_dropsTheNamespaceCopy() {
         String iri = DEFAULT_NS + "prop-copy";
         Resource concept = seedProperty(iri);
         concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
@@ -138,8 +144,8 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         Resource updated = model.getResource(iri);
         assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(OTHER_ELI));
         assertThat(objects(updated, namespaceCopy()))
-                .as("the stale provision must not survive under the vocabulary-namespace property")
-                .isEqualTo(java.util.Set.of(OTHER_ELI));
+                .as("no provision is written under the vocabulary-namespace property")
+                .isEmpty();
     }
 
     @Test
@@ -162,15 +168,17 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         Resource concept = seedProperty(iri);
         Property foreignNamespace = model.createProperty(
                 "https://slovník.gov.cz/jiný-slovník/" + USTANOVENI_NEVEREJNOST);
-        Property canonicalOfn = model.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_LONG);
+        Property longNameElsewhere = model.createProperty("https://slovník.gov.cz/jiný-slovník/" + USTANOVENI_LONG);
         concept.addProperty(foreignNamespace, model.createResource(VALID_ELI));
-        concept.addProperty(canonicalOfn, model.createResource(VALID_ELI));
+        concept.addProperty(longNameElsewhere, model.createResource(VALID_ELI));
+        concept.addProperty(legacyProp(), model.createResource(VALID_ELI));
 
         editProvisions(iri, List.of(OTHER_ELI));
 
         Resource updated = model.getResource(iri);
         assertThat(updated.hasProperty(foreignNamespace)).isFalse();
-        assertThat(updated.hasProperty(canonicalOfn)).isFalse();
+        assertThat(updated.hasProperty(longNameElsewhere)).isFalse();
+        assertThat(updated.hasProperty(legacyProp())).isFalse();
         assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(OTHER_ELI));
     }
 
@@ -180,14 +188,39 @@ class ConceptEditorPrivacyProvisionsTest extends ConceptEditorTestBase {
         String iri = DEFAULT_NS + "prop-same";
         Resource concept = seedProperty(iri);
         concept.addProperty(provisionProp(), model.createResource(VALID_ELI));
-        concept.addProperty(namespaceCopy(), model.createResource(VALID_ELI));
 
         editProvisions(iri, List.of(VALID_ELI));
 
         java.util.function.Predicate<org.apache.jena.rdf.model.Statement> aboutProvisions =
-                s -> s.getPredicate().getURI().endsWith(USTANOVENI_NEVEREJNOST);
+                s -> s.getPredicate().getURI().endsWith(USTANOVENI_NEVEREJNOST)
+                        || s.getPredicate().equals(provisionProp());
         assertThat(lastResult.statementsToRemove.stream().noneMatch(aboutProvisions)).isTrue();
         assertThat(lastResult.statementsToAdd.stream().noneMatch(aboutProvisions)).isTrue();
+    }
+
+    @Test
+    void edit_movesUnchangedProvisionsFromTheLegacyPredicateToTheOfnOne() {
+        String iri = DEFAULT_NS + "prop-legacy";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(legacyProp(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, List.of(VALID_ELI));
+
+        Resource updated = model.getResource(iri);
+        assertThat(objects(updated, provisionProp())).isEqualTo(java.util.Set.of(VALID_ELI));
+        assertThat(updated.hasProperty(legacyProp())).isFalse();
+    }
+
+    @Test
+    void edit_isPublicFalseKeepsTheNonPublicTypeWhenTheOnlyProvisionIsLegacy() {
+        String iri = DEFAULT_NS + "prop-legacy-flag";
+        Resource concept = seedProperty(iri);
+        concept.addProperty(type, nonPublicType());
+        concept.addProperty(legacyProp(), model.createResource(VALID_ELI));
+
+        editProvisions(iri, null);
+
+        assertThat(model.getResource(iri).hasProperty(type, nonPublicType())).isTrue();
     }
 
     // --- Non-public classification ------------------------------------------

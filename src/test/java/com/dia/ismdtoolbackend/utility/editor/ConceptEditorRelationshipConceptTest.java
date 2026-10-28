@@ -49,7 +49,7 @@ class ConceptEditorRelationshipConceptTest extends ConceptEditorTestBase {
                     rdfs:domain <https://example.com/new-domain> ;
                     rdfs:range <https://example.com/new-range> ;
                     rdfs:subPropertyOf <https://example.com/new-super> ;
-                    a104:%s "true" ;
+                    a104:%s true ;
                     ofn:%s <%stypy-obsahu-údajů/položky/identifikační> ;
                     ofn:%s <%szpůsoby-sdílení-údajů/položky/poskytované-na-žádost> ;
                     ofn:%s <%szpůsoby-získání-údajů/položky/jiných-agend> .

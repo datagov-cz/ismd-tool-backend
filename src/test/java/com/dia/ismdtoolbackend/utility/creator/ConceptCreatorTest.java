@@ -5,6 +5,7 @@ import com.dia.ismdtoolbackend.models.concept.ClassConceptModel;
 import com.dia.ismdtoolbackend.models.concept.DigitalObjectModel;
 import com.dia.ismdtoolbackend.models.concept.PropertyConceptModel;
 import com.dia.ismdtoolbackend.models.concept.RelationshipConceptModel;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.testsupport.fixtures.ConceptModels;
 import com.dia.ismdtoolbackend.testsupport.fixtures.Texts;
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
@@ -48,10 +49,10 @@ class ConceptCreatorTest {
     private static final Property CONTENT_TYPE = Ttl.property(OFN_NAMESPACE + TYP_OBSAHU);
     private static final Property AGENDA = Ttl.property(DEFAULT_NS + AGENDOVY_104 + AGENDA_LONG);
     private static final Property AIS = Ttl.property(DEFAULT_NS + AGENDOVY_104 + UDAJE_AIS);
-    private static final Property PPDF = Ttl.property(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG);
+    private static final Property PPDF = Ttl.property(OfnIris.JE_SDILEN_V_PPDF);
     private static final Property NAMESPACE_PROVISION = Ttl.property(DEFAULT_NS + USTANOVENI_NEVEREJNOST);
-    private static final Property LEGAL_PROVISION = Ttl.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
-    private static final Property HIERARCHY = Ttl.property(DEFAULT_NS + "nadřazená-třída");
+    private static final Property LEGACY_PROVISION = Ttl.property(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+    private static final Property PROVISION_PREDICATE = Ttl.property(OfnIris.USTANOVENI_NEVEREJNOST);
     private static final Property CODE_LIST_LINK = Ttl.property(OFN_NAMESPACE + MA_INSTANCE_DEFINOVANE_CISELNIKEM);
 
     private final ConceptCreator conceptCreator = new ConceptCreator();
@@ -93,7 +94,7 @@ class ConceptCreatorTest {
             String iri = GRAPH + "/pojem/id-123";
             assertThat(created.getURI()).isEqualTo(iri);
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, ofn:třída, ofn:typ-subjektu-práva, l111:veřejný-údaj ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-subjektu-práva, l111:veřejný-údaj ;
                         skos:prefLabel "Test class"@cs ;
                         dct:description "Test description"@cs ;
                         skos:definition "Test definition"@cs ;
@@ -108,7 +109,8 @@ class ConceptCreatorTest {
 
             assertThat(created.getURI()).isEqualTo(DEFAULT_NS + "pojem/věc");
             assertThat(types(created.getModel(), created.getURI())).containsExactlyInAnyOrder(
-                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OFN_NAMESPACE + TRIDA, OFN_NAMESPACE + TOP);
+                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(), OFN_NAMESPACE + TRIDA,
+                    OfnIris.TYP_OBJEKTU_PRAVA);
             assertThat(created.hasProperty(SKOS.inScheme)).isFalse();
         }
 
@@ -117,7 +119,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Věc", m -> m.setType("jiný")));
 
             assertThat(types(created.getModel(), created.getURI())).containsExactlyInAnyOrder(
-                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OFN_NAMESPACE + TRIDA);
+                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(), OFN_NAMESPACE + TRIDA);
         }
 
         @Test
@@ -125,7 +127,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Věc"));
 
             assertThat(types(created.getModel(), created.getURI())).containsExactlyInAnyOrder(
-                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OFN_NAMESPACE + TRIDA);
+                    SKOS.Concept.getURI(), OFN_NAMESPACE + POJEM, OWL2.Class.getURI(), OFN_NAMESPACE + TRIDA);
         }
 
         @Test
@@ -166,7 +168,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(model);
 
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, ofn:třída, ofn:typ-objektu-práva ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-objektu-práva ;
                         skos:prefLabel "Osoba"@cs ; dct:description "Popis"@cs ;
                         skos:definition "Definice"@cs ; skos:altLabel "Alias"@cs .
                     """.formatted(DEFAULT_NS + "pojem/osoba"));
@@ -189,7 +191,7 @@ class ConceptCreatorTest {
             Resource created = conceptCreator.createSingleConcept(model);
 
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, ofn:třída, ofn:typ-objektu-práva ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-objektu-práva ;
                         skos:prefLabel "Osoba"@cs ; skos:altLabel "Person"@en .
                     """.formatted(DEFAULT_NS + "pojem/osoba"));
         }
@@ -208,7 +210,7 @@ class ConceptCreatorTest {
         }
 
         @Test
-        void broaderConceptsAreWrittenAsSubClassAndHierarchyLinks() {
+        void broaderConceptsAreWrittenAsSubClassOfOnly() {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Dítě", m -> {
                 m.setType("objekt");
                 m.setBroaderConcept(List.of("Rodič jedna", "https://example.org/pojem/rodič-dva", " "));
@@ -216,7 +218,8 @@ class ConceptCreatorTest {
 
             List<String> expected = List.of(DEFAULT_NS + "pojem/rodič-jedna", "https://example.org/pojem/rodič-dva");
             assertThat(iris(created, RDFS.subClassOf)).containsExactlyInAnyOrderElementsOf(expected);
-            assertThat(iris(created, HIERARCHY)).containsExactlyInAnyOrderElementsOf(expected);
+            assertThat(created.listProperties().toList()).noneMatch(
+                    statement -> statement.getPredicate().getURI().endsWith("nadřazená-třída"));
         }
 
         @Test
@@ -247,6 +250,8 @@ class ConceptCreatorTest {
             assertThat(iris(created, AGENDA)).containsExactly("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/agenda/A123");
             assertThat(iris(created, AIS)).containsExactly("https://rpp-opendata.egon.gov.cz/odrpp/zdroj/isvs/456");
             assertThat(created.getProperty(PPDF).getBoolean()).isTrue();
+            assertThat(created.getProperty(PPDF).getLiteral().getDatatypeURI())
+                    .isEqualTo("http://www.w3.org/2001/XMLSchema#boolean");
         }
 
         @Test
@@ -274,7 +279,7 @@ class ConceptCreatorTest {
             }));
 
             assertModelIs(created, """
-                    <%1$s> a skos:Concept, ofn:pojem, ofn:třída, ofn:typ-objektu-práva ;
+                    <%1$s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-objektu-práva ;
                         skos:prefLabel "Cíl"@cs ;
                         ofn:%2$s <%3$s> .
                     <%3$s> a l111:%4$s ; l111:%5$s <%6$s> .
@@ -410,13 +415,14 @@ class ConceptCreatorTest {
             }));
 
             assertModelIs(created, """
-                    <%s> a skos:Concept, ofn:pojem, ofn:třída, ofn:typ-subjektu-práva ;
+                    <%s> a skos:Concept, ofn:pojem, owl:Class, ofn:třída, vsgov:typ-subjektu-práva ;
                         skos:prefLabel "Třída"@cs ;
-                        sl:%s [ a <%s> ; schema:url <https://example.org/doc1> ;
+                        slovníky:definující-nelegislativní-zdroj [ a do:digitální-objekt ;
+                                schema:url "https://example.org/doc1"^^xsd:anyURI ;
                                 dct:title "Doc A"@cs ; dct:description "Popis A"@cs ] ;
-                        sl:%s [ a <%s> ; schema:url <https://example.org/doc2> ] .
-                    """.formatted(DEFAULT_NS + "pojem/třída", DEFINUJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT,
-                    SOUVISEJICI_NELEGISLATIVNI_ZDROJ, DIGITALNI_OBJEKT));
+                        slovníky:související-nelegislativní-zdroj [ a do:digitální-objekt ;
+                                schema:url "https://example.org/doc2"^^xsd:anyURI ] .
+                    """.formatted(DEFAULT_NS + "pojem/třída"));
         }
 
         @Test
@@ -437,20 +443,21 @@ class ConceptCreatorTest {
         private static final String PROVISION = ELI + "2020/50";
 
         @Test
-        void provisionWithoutClassificationIsKeptUnderTheVocabularyNamespaceOnly() {
+        void provisionWithoutTheNonPublicClassificationIsNotWritten() {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.trida("Třída", m -> {
                 m.setType("objekt");
                 m.setPrivacyProvisions(List.of(PROVISION));
             }));
 
-            assertThat(iris(created, NAMESPACE_PROVISION)).containsExactly(PROVISION);
-            assertThat(created.hasProperty(LEGAL_PROVISION)).isFalse();
+            assertThat(created.hasProperty(NAMESPACE_PROVISION)).isFalse();
+            assertThat(created.hasProperty(LEGACY_PROVISION)).isFalse();
+            assertThat(created.hasProperty(PROVISION_PREDICATE)).isFalse();
             assertThat(types(created.getModel(), created.getURI()))
                     .doesNotContain(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ, OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ);
         }
 
         @Test
-        void nonPublicWithAProvisionIsNeverejnyUdajWithTheProvisionInBothForms() {
+        void nonPublicWithAProvisionIsNeverejnyUdajWithTheOfnProvisionOnly() {
             Resource created = conceptCreator.createSingleConcept(ConceptModels.vztah("Soukromý vztah", m -> {
                 m.setIsPublic(false);
                 m.setPrivacyProvisions(List.of(PROVISION, "http://example.org/not-eli"));
@@ -459,8 +466,9 @@ class ConceptCreatorTest {
             assertThat(types(created.getModel(), created.getURI()))
                     .contains(OFN_NAMESPACE_LEGAL + NEVEREJNY_UDAJ)
                     .doesNotContain(OFN_NAMESPACE_LEGAL + VEREJNY_UDAJ);
-            assertThat(iris(created, LEGAL_PROVISION)).containsExactly(PROVISION);
-            assertThat(iris(created, NAMESPACE_PROVISION)).containsExactly(PROVISION);
+            assertThat(iris(created, PROVISION_PREDICATE)).containsExactly(PROVISION);
+            assertThat(created.hasProperty(LEGACY_PROVISION)).isFalse();
+            assertThat(created.hasProperty(NAMESPACE_PROVISION)).isFalse();
         }
 
         @Test
@@ -495,7 +503,7 @@ class ConceptCreatorTest {
         void fullPropertyIsWrittenAsTheseTriples() {
             PropertyConceptModel model = ConceptModels.vlastnost("Hmotnost", m -> {
                 m.setOntologyGraphName(GRAPH);
-                m.setDataType("xsd:decimal");
+                m.setDataType("xsd:double");
                 m.setDomain("Vozidlo");
                 m.setSuperProperty(List.of("https://example.org/pojem/velicina", " "));
                 m.setIsPublic(true);
@@ -509,7 +517,7 @@ class ConceptCreatorTest {
                         skos:prefLabel "Hmotnost"@cs ;
                         skos:inScheme <%2$s> ;
                         rdfs:domain <%2$s/pojem/vozidlo> ;
-                        rdfs:range xsd:decimal ;
+                        rdfs:range xsd:double ;
                         rdfs:subPropertyOf <https://example.org/pojem/velicina> .
                     """.formatted(iri, GRAPH));
         }
@@ -519,7 +527,10 @@ class ConceptCreatorTest {
                 "xsd:string, http://www.w3.org/2001/XMLSchema#string",
                 "SomeOtherClass, http://www.w3.org/2000/01/rdf-schema#Literal",
                 "xsd:notAType, http://www.w3.org/2000/01/rdf-schema#Literal",
-                "https://example.org/typ, https://example.org/typ",
+                "https://example.org/typ, http://www.w3.org/2000/01/rdf-schema#Literal",
+                "boolean, http://www.w3.org/2001/XMLSchema#boolean",
+                "dateTimeStamp, http://www.w3.org/2001/XMLSchema#dateTimeStamp",
+                "http://www.w3.org/2001/XMLSchema#date, http://www.w3.org/2001/XMLSchema#date",
                 "' ', http://www.w3.org/2000/01/rdf-schema#Literal",
                 "NULL, http://www.w3.org/2000/01/rdf-schema#Literal"
         })

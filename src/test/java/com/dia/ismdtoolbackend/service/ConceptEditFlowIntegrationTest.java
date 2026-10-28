@@ -122,7 +122,7 @@ class ConceptEditFlowIntegrationTest {
         assertThat(concept.hasProperty(descProp, addedModel.createLiteral("Nový popis", "cs")))
                 .as("the new description must be written")
                 .isTrue();
-        Property provisionProp = addedModel.createProperty(OFN_NAMESPACE_LEGAL + USTANOVENI_NEVEREJNOST);
+        Property provisionProp = addedModel.createProperty(com.dia.ismdtoolbackend.ofn.OfnIris.USTANOVENI_NEVEREJNOST);
         assertThat(concept.hasProperty(provisionProp, addedModel.createResource(VALID_ELI)))
                 .as("privacy provision must be written end-to-end")
                 .isTrue();

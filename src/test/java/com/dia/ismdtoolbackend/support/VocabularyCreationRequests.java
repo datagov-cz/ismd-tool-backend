@@ -25,7 +25,7 @@ public final class VocabularyCreationRequests {
         return new OntologyCreateWithConceptsRequestDto(ontology,
                 List.of(clazz("driver", "Řidič"), clazz("vehicle", "Vozidlo")),
                 List.of(new AttributeDto("weight", ref("vehicle"), Map.of("cs", "Hmotnost"),
-                        Map.of("cs", "Hmotnost vozidla"), Map.of("cs", "Hmotnost v kilogramech"), LEGAL, "xsd:decimal")),
+                        Map.of("cs", "Hmotnost vozidla"), Map.of("cs", "Hmotnost v kilogramech"), LEGAL, "xsd:double")),
                 List.of(new RelationshipDto("drives", ref("driver"), ref("vehicle"), Map.of("cs", "řídí"),
                         null, null, LEGAL)));
     }

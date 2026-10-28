@@ -1,5 +1,6 @@
 package com.dia.ismdtoolbackend.utility.editor;
 
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.utility.DataTypeConverter;
 import com.dia.utility.UtilityMethods;
 import org.apache.jena.rdf.model.*;
@@ -27,7 +28,7 @@ class ConceptGovernanceUpdater {
                                                  String acquisitionMethod, String contentType,
                                                  Resource oldConcept, Model model, Set<Statement> toRemove,
                                                  Set<Statement> toAdd) {
-        updateBooleanLiteral(newConcept, model.createProperty(DEFAULT_NS + AGENDOVY_104 + JE_PPDF_LONG), isInPPDF,
+        updateBooleanLiteral(newConcept, model.createProperty(OfnIris.JE_SDILEN_V_PPDF), isInPPDF,
                 oldConcept, model, toRemove, toAdd);
         updateAgenda(newConcept, agendaCode, oldConcept, model, toRemove, toAdd);
         updateAIS(newConcept, agendaSystemCode, oldConcept, model, toRemove, toAdd);

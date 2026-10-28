@@ -1,12 +1,13 @@
 package com.dia.ismdtoolbackend.utility.creator;
 
 import com.dia.ismdtoolbackend.models.concept.*;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.ismdtoolbackend.utility.eli.EsbirkaEliParser;
 import com.dia.ismdtoolbackend.utility.security.SparqlIriValidator;
 import com.dia.utility.DataTypeConverter;
-import com.dia.utility.URIGenerator;
 import com.dia.utility.UtilityMethods;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.vocabulary.RDF;
@@ -21,11 +22,9 @@ import static com.dia.constants.VocabularyConstants.*;
 final class ConceptSourceWriter {
 
     private final OntModel ontModel;
-    private final URIGenerator uriGenerator;
 
     ConceptSourceWriter(ConceptBuildContext context) {
         this.ontModel = context.ontModel();
-        this.uriGenerator = context.uriGenerator();
     }
 
     void addSourceMetadata(Resource resource, ConceptCreateModel model) {
@@ -94,14 +93,14 @@ final class ConceptSourceWriter {
     }
 
     void processNonLegalSource(Resource resource, DigitalObjectModel source, boolean isDefining) {
-        String propertyName = isDefining ? DEFINUJICI_NELEGISLATIVNI_ZDROJ : SOUVISEJICI_NELEGISLATIVNI_ZDROJ;
-        Property property = ontModel.createProperty(uriGenerator.getEffectiveNamespace() + propertyName);
+        Property property = ontModel.createProperty(isDefining
+                ? OfnIris.DEFINUJICI_NELEGISLATIVNI_ZDROJ : OfnIris.SOUVISEJICI_NELEGISLATIVNI_ZDROJ);
 
         Resource digitalDocument = ontModel.createResource();
         digitalDocument.addProperty(RDF.type, ontModel.createResource(DIGITALNI_OBJEKT));
 
-        Property schemaUrlProperty = ontModel.createProperty(SCHEMA_URL);
-        digitalDocument.addProperty(schemaUrlProperty, ontModel.createResource(source.getUrl().trim()));
+        digitalDocument.addLiteral(ontModel.createProperty(OfnIris.SCHEMA_URL),
+                ontModel.createTypedLiteral(source.getUrl().trim(), XSDDatatype.XSDanyURI));
 
         if (source.getName() != null && !source.getName().trim().isEmpty()) {
             Property titleProperty = ontModel.createProperty(DCT_NS + "title");

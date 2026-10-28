@@ -81,7 +81,7 @@ class OntologyCreateWithConceptsIntegrationTest extends OutboxFlowTestBase {
         assertThat(graph.contains(graph.getResource(GRAPH), RDF.type, SKOS.ConceptScheme)).isTrue();
         assertThat(graph.contains(graph.getResource(iris.get("weight")), RDFS.domain, graph.getResource(iris.get("vehicle"))))
                 .isTrue();
-        assertThat(graph.contains(graph.getResource(iris.get("weight")), RDFS.range, graph.getResource("http://www.w3.org/2001/XMLSchema#decimal")))
+        assertThat(graph.contains(graph.getResource(iris.get("weight")), RDFS.range, graph.getResource("http://www.w3.org/2001/XMLSchema#double")))
                 .isTrue();
         assertThat(graph.contains(graph.getResource(iris.get("drives")), RDFS.domain, graph.getResource(iris.get("driver"))))
                 .isTrue();
