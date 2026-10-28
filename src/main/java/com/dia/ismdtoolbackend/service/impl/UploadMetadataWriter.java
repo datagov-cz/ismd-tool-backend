@@ -9,7 +9,7 @@ import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.models.UserModel;
 import com.dia.ismdtoolbackend.repository.ConceptMetadataRepository;
 import com.dia.ismdtoolbackend.repository.OntologyMetadataRepository;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
+import com.dia.ismdtoolbackend.ofn.OfnIris;
 import com.dia.utility.UtilityMethods;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -163,7 +163,7 @@ class UploadMetadataWriter {
         // reference). Don't claim it with a Postgres ownership row — it stays a
         // referenced concept, resolved later via its own vocabulary / NKD. Mirrors
         // the resolution invariant STRSTARTS(conceptIri, graphName).
-        if (!OFNTypeNormalizer.isOwnedConcept(conceptIri, graphName)) {
+        if (!OfnIris.isOwnedBy(conceptIri, graphName)) {
             log.debug("Skipping alien concept not owned by {}: {}", graphName, conceptIri);
             return true;
         }

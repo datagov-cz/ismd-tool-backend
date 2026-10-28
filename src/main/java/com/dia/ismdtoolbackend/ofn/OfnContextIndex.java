@@ -37,8 +37,8 @@ public final class OfnContextIndex {
             return scope.children.get(name);
         }
 
-        /** By convention of the OFN contexts, capitalised terms name types (classes). */
-        public boolean isTypeTerm() {
+        /** By convention of the OFN contexts, capitalised terms name types (classes) and the rest name properties. */
+        public boolean isPropertyTerm() {
             return name.isEmpty() || !Character.isUpperCase(name.codePointAt(0));
         }
     }
@@ -152,6 +152,16 @@ public final class OfnContextIndex {
             }
         }
         return bestPrefix == null ? iri : bestPrefix + ":" + iri.substring(bestNamespace.length());
+    }
+
+    /** The full IRI of a compact IRI whose prefix the context defines; any other value unchanged. */
+    public String expand(String value) {
+        int colon = value.indexOf(':');
+        if (colon <= 0) {
+            return value;
+        }
+        String namespace = prefixes.get(value.substring(0, colon));
+        return namespace == null ? value : namespace + value.substring(colon + 1);
     }
 
     /** True for an absolute http(s) IRI or a compact IRI whose prefix the context defines. */

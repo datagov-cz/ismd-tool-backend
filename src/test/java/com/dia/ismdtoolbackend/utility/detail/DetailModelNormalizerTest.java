@@ -1,33 +1,24 @@
-package com.dia.ismdtoolbackend.utility.exporter.turtle;
+package com.dia.ismdtoolbackend.utility.detail;
 
 import com.dia.ismdtoolbackend.testsupport.rdf.Ttl;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.vocabulary.SKOS;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.util.Set;
 
 import static com.dia.ismdtoolbackend.testsupport.rdf.RdfAssert.assertIsomorphic;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Role-tag and label inference of {@link OFNTypeNormalizer}, checked as whole-model output, and the
- * argument guards of the upload-path entry points.
- */
-@DisplayName("OFNTypeNormalizer - role tags, labels and guards")
-class OFNTypeNormalizerRoleTagTest {
-
-    private static final String GRAPH = Ttl.VOCABULARY;
+/** Role-tag, label and inScheme inference of {@link DetailModelNormalizer}, checked as whole-model output. */
+@DisplayName("DetailModelNormalizer - role tags, labels, NKD inScheme")
+class DetailModelNormalizerTest {
 
     private static Model normalizedForLocalDetail(String turtle) {
         Model model = Ttl.parse(turtle);
-        OFNTypeNormalizer.normalizeForLocalDetail(model);
+        DetailModelNormalizer.normalizeForLocalDetail(model);
         return model;
     }
 
@@ -40,7 +31,7 @@ class OFNTypeNormalizerRoleTagTest {
         void owlClassTagged() {
             Model model = Ttl.parse("pojem:osoba a owl:Class .");
 
-            int count = OFNTypeNormalizer.normalizeForLocalDetail(model);
+            int count = DetailModelNormalizer.normalizeForLocalDetail(model);
 
             assertIsomorphic("pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída .", model);
             assertThat(count).isEqualTo(1);
@@ -52,7 +43,7 @@ class OFNTypeNormalizerRoleTagTest {
             String input = "pojem:osoba a owl:Class, skos:Concept, slovníky:pojem, slovníky:třída .";
             Model model = Ttl.parse(input);
 
-            int count = OFNTypeNormalizer.normalizeForLocalDetail(model);
+            int count = DetailModelNormalizer.normalizeForLocalDetail(model);
 
             assertIsomorphic(input, model);
             assertThat(count).isZero();
@@ -121,6 +112,22 @@ class OFNTypeNormalizerRoleTagTest {
         }
     }
 
+    @Test
+    @DisplayName("normalizeForLocalDetail never derives skos:inScheme; normalizeForNkd does, for every OWL kind")
+    void inSchemeDerivedOnlyForNkd() {
+        String input = """
+                pojem:třída a owl:Class, slovníky:pojem .
+                pojem:vlastnost a owl:DatatypeProperty, slovníky:pojem .
+                pojem:vztah a owl:ObjectProperty, slovníky:pojem .
+                """;
+        Model local = normalizedForLocalDetail(input);
+        Model nkd = Ttl.parse(input);
+        DetailModelNormalizer.normalizeForNkd(nkd);
+
+        assertThat(local.listSubjectsWithProperty(SKOS.inScheme).toList()).isEmpty();
+        assertThat(nkd.listSubjectsWithProperty(SKOS.inScheme).toList()).hasSize(3);
+    }
+
     @Nested
     @DisplayName("normalizeForNkd")
     class Nkd {
@@ -135,7 +142,7 @@ class OFNTypeNormalizerRoleTagTest {
                     [ a skos:Concept ] .
                     """);
 
-            OFNTypeNormalizer.normalizeForNkd(model);
+            DetailModelNormalizer.normalizeForNkd(model);
 
             assertIsomorphic("""
                     pojem:osoba a skos:Concept ; skos:inScheme <https://slovník.gov.cz/datový/test-slovník> .
@@ -144,84 +151,5 @@ class OFNTypeNormalizerRoleTagTest {
                     [ a skos:Concept ] .
                     """, model);
         }
-    }
-
-    @Nested
-    @DisplayName("upload path")
-    class UploadPath {
-
-        @ParameterizedTest(name = "graphName \"{0}\"")
-        @NullAndEmptySource
-        @ValueSource(strings = "  ")
-        @DisplayName("every entry point rejects a missing graph name")
-        void missingGraphNameRejected(String graphName) {
-            Model model = Ttl.parse("pojem:osoba a skos:Concept .");
-
-            assertThatThrownBy(() -> OFNTypeNormalizer.normalize(model, graphName))
-                    .isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> OFNTypeNormalizer.normalize(model, graphName, Set.of()))
-                    .isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, graphName))
-                    .isInstanceOf(IllegalArgumentException.class);
-            assertThatThrownBy(() -> OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, graphName))
-                    .isInstanceOf(IllegalArgumentException.class);
-        }
-
-        @Test
-        @DisplayName("a null allow-list stamps no inScheme")
-        void nullAllowListStampsNothing() {
-            Model model = Ttl.parse("pojem:osoba a skos:Concept .");
-
-            OFNTypeNormalizer.normalize(model, GRAPH, null);
-
-            assertIsomorphic("pojem:osoba a skos:Concept .", model);
-        }
-
-        @Test
-        @DisplayName("detection ignores anonymous concepts and counts a concept typed twice once")
-        void detectionSkipsBlankNodesAndDuplicates() {
-            Model model = Ttl.parse("""
-                    pojem:osoba a skos:Concept, slovníky:pojem .
-                    [ a skos:Concept ] .
-                    """);
-
-            assertThat(OFNTypeNormalizer.detectOwnedConceptsMissingInScheme(model, GRAPH))
-                    .containsExactly(Ttl.POJEM + "osoba");
-        }
-
-        @Test
-        @DisplayName("prune removes an excluded concept referenced only by itself")
-        void selfReferenceDoesNotKeepExcludedConcept() {
-            Model model = Ttl.parse("""
-                    pojem:osoba a skos:Concept ; skos:related pojem:osoba .
-                    """);
-
-            int pruned = OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, GRAPH);
-
-            assertThat(pruned).isEqualTo(1);
-            assertThat(model.isEmpty()).isTrue();
-        }
-
-        @Test
-        @DisplayName("prune with nothing excluded leaves the model unchanged")
-        void pruneWithNothingExcluded() {
-            String input = "pojem:osoba a skos:Concept ; skos:inScheme ex: .";
-            Model model = Ttl.parse(input);
-
-            assertThat(OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(model, GRAPH)).isZero();
-            assertIsomorphic(input, model);
-        }
-    }
-
-    @ParameterizedTest(name = "isOwnedConcept({0}, {1}) = {2}")
-    @CsvSource(nullValues = "null", value = {
-            "https://slovník.gov.cz/datový/test-slovník/pojem/osoba, https://slovník.gov.cz/datový/test-slovník/, true",
-            "https://example.org/jiný/pojem/osoba, https://slovník.gov.cz/datový/test-slovník/, false",
-            "null, https://slovník.gov.cz/datový/test-slovník/, false",
-            "https://slovník.gov.cz/datový/test-slovník/pojem/osoba, null, false",
-    })
-    @DisplayName("isOwnedConcept is an IRI-prefix check")
-    void isOwnedConceptIsPrefixCheck(String conceptIri, String graphName, boolean owned) {
-        assertThat(OFNTypeNormalizer.isOwnedConcept(conceptIri, graphName)).isEqualTo(owned);
     }
 }

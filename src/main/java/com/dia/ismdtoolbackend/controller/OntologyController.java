@@ -224,7 +224,9 @@ public class OntologyController {
             summary = "Stažení slovníku",
             description = "Umožňuje stáhnout slovník v požadovaném formátu (TTL, JSON-LD). Pokud je povoleno omezení stahování slovníků s chybami, "
                     + "slovníky s validačními chybami nelze stáhnout a endpoint vrací 400 s kódem ONTOLOGY_DOWNLOAD_BLOCKED_BY_VALIDATION "
-                    + "a seznamem blokujících chyb. Veřejný endpoint."
+                    + "a seznamem blokujících chyb. Slovník, který nesplňuje standard OFN Slovníky (včetně neúplných pojmů), "
+                    + "nelze stáhnout: endpoint vrací 400 s kódem ONTOLOGY_DOWNLOAD_BLOCKED_BY_OFN a seznamem všech problémů. "
+                    + "JSON-LD i TTL popisují tentýž graf. Veřejný endpoint."
     )
     @GetMapping("/{ontologyId}/download")
     public ResponseEntity<Resource> downloadFile(

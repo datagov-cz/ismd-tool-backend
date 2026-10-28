@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Pins that the OFN transforms leave the caller's model untouched.
  *
- * <p>{@code OFNTypeNormalizer} mutates the model it is handed, and callers pass models they do not
+ * <p>{@code DetailModelNormalizer} mutates the model it is handed, and callers pass models they do not
  * own: {@code fetchPublishedOntology} passes the {@code @Cacheable} raw NKD model, and
  * {@code getConceptDetail} extracts from the same {@code rawModel} it hands to the {@code @Cacheable}
  * {@code canonicalLocalConcept}. Mutating either corrupts a cache entry or makes the response depend

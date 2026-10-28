@@ -10,10 +10,13 @@ import com.dia.ismdtoolbackend.exception.OntologyUploadRdfStoreException;
 import com.dia.ismdtoolbackend.models.OntologyMetadataModel;
 import com.dia.ismdtoolbackend.repository.JenaTDB2Repository;
 import com.dia.ismdtoolbackend.service.OntologyUploadService;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
 import com.dia.ismdtoolbackend.utility.published.PublishedResourceUtil;
 import com.dia.ismdtoolbackend.utility.validation.ConceptRoleConflict;
-import com.dia.ismdtoolbackend.utility.validation.UploadIriNormalizer;
+import com.dia.ismdtoolbackend.utility.upload.ExcludedConceptPruning;
+import com.dia.ismdtoolbackend.utility.upload.InSchemeStamping;
+import com.dia.ismdtoolbackend.utility.upload.RoleMarkerDerivation;
+import com.dia.ismdtoolbackend.utility.upload.UploadGraphNameResolver;
+import com.dia.ismdtoolbackend.utility.upload.UploadIriNormalizer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.jena.ontology.OntModel;
@@ -41,7 +44,6 @@ import java.util.stream.Collectors;
 public class OntologyUploadServiceImpl implements OntologyUploadService {
 
     private final UploadFileReader fileReader;
-    private final UploadModelNormalizer modelNormalizer;
     private final UploadVocabularyLock vocabularyLock;
     private final UploadConceptRoleResolver roleResolver;
     private final UploadConceptGate uploadConceptGate;
@@ -65,35 +67,27 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
         OntModel finalModel = fileReader.read(file);
         UploadVocabularyLock.Claim claim = null;
         try {
-            // 0. Strip trailing slashes from IRIs first, so every later step sees the corrected ones.
+            // The upload is stored as uploaded. Each step below is one class; nothing else repairs data.
+            // 1. Trailing slashes off IRIs, so every later step sees the corrected ones.
             List<String> correctedIris = UploadIriNormalizer.normalize(finalModel);
             if (!correctedIris.isEmpty()) {
                 log.info("Stripped the trailing slash from {} IRI(s): {}", correctedIris.size(), correctedIris);
             }
 
-            String graphName = modelNormalizer.determineGraphName(finalModel);
+            // 2. The vocabulary IRI (graph name), read from the data.
+            String graphName = UploadGraphNameResolver.resolve(finalModel);
             log.info("Uploading final model with {} statements to graph: {}", finalModel.size(), graphName);
 
             // One upload per vocabulary at a time, so the existence check below is reliable.
             claim = vocabularyLock.claim(graphName);
-
-            modelNormalizer.normalizeOntologyType(finalModel, graphName);
-
-            // 1. Fail-fast validation — check slug uniqueness before any persistence
             metadataWriter.checkSlugUniqueness(graphName);
 
-            // 2. Missing-inScheme decision gate. Detect BEFORE normalize (normalize would
-            //    stamp inScheme and hide the gap). If any owned concept lacks inScheme and
-            //    the user hasn't decided, reject with the list — nothing persisted.
-            // 3. Resolve which missing concepts to normalize from the user's decision.
-            Set<String> conceptsToStamp =
-                    modelNormalizer.conceptsToStamp(finalModel, graphName, normalizeMode, conceptsToNormalize);
+            // 3. skos:inScheme for owned concepts lacking it, only as the user decided (asks when undecided).
+            Set<String> chosen = InSchemeStamping.chosen(finalModel, graphName, normalizeMode, conceptsToNormalize);
+            InSchemeStamping.stamp(finalModel, graphName, chosen);
 
-            // 4a. Normalize OFN types/labels + add inScheme only for the chosen concepts.
-            int normalizedCount = OFNTypeNormalizer.normalize(finalModel, graphName, conceptsToStamp);
-            if (normalizedCount > 0) {
-                log.info("Normalized OFN types on {} resources", normalizedCount);
-            }
+            // 4. Role markers derived from each concept's OWL kind (D4).
+            RoleMarkerDerivation.apply(finalModel, graphName);
 
             // A concept typed as both a property and a relationship fails the whole upload.
             List<String> conflictingTypes = ConceptRoleConflict.findPropertyAndRelationship(finalModel);
@@ -101,11 +95,10 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
                 throw new OntologyUploadConflictingTypesException(conflictingTypes);
             }
 
-            // 4b. Concept gate. A concept that declares no single role, breaks a create/edit
-            //     rule or points its domain/range at a concept published in NKD is not
-            //     imported: it loses skos:inScheme here, so the prune below and the metadata
-            //     step treat it like an excluded concept. The domain/range targets ride the
-            //     one NKD query that also decides isPublished.
+            // 5. Concept gate. A concept with no single role, one breaking a create/edit rule, one whose
+            //    domain/range points at a concept published in NKD, or one failing the OFN shape or
+            //    concept-kind tier is not imported: it loses skos:inScheme. A vocabulary that does not
+            //    conform itself fails the whole upload. Incomplete concepts are kept as drafts.
             List<RejectedConceptDto> rejectedConcepts = new ArrayList<>();
             Map<String, ConceptType> ownedConcepts = roleResolver.resolveOwnedConcepts(finalModel, graphName, rejectedConcepts);
             Map<String, List<String>> domainRangeTargets =
@@ -117,14 +110,12 @@ public class OntologyUploadServiceImpl implements OntologyUploadService {
             }
             rejectedConcepts.addAll(uploadConceptGate.findInvalid(
                     finalModel, ownedConcepts, domainRangeTargets, publishedConceptIris));
+            rejectedConcepts.addAll(uploadConceptGate.findNonConformant(finalModel, graphName));
+            rejectedConcepts = UploadConceptGate.mergeByConcept(rejectedConcepts);
             roleResolver.excludeRejectedConcepts(finalModel, graphName, rejectedConcepts);
 
-            // 4c. Prune owned-namespace concepts the user EXCLUDED (no inScheme → no PG
-            //     row) that nothing else references, so they don't leak into TDB2 as
-            //     subjects with no metadata row. Still-referenced excluded concepts are
-            //     kept as inert context (no dangling edges). This makes the upload path
-            //     honour "no PG row ⇒ no owned RDF", which the PG↔TDB2 reconciler relies on.
-            OFNTypeNormalizer.pruneUnreferencedExcludedConcepts(finalModel, graphName);
+            // 6. Excluded concepts nothing references are removed, so "no PG row ⇒ no owned RDF" holds.
+            ExcludedConceptPruning.apply(finalModel, graphName);
 
             // Serialized before anything is stored, so a failure here leaves no data behind.
             String ontologyContent = fileReader.convertOntModelToTtl(finalModel);

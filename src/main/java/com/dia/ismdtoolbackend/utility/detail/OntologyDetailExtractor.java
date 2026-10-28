@@ -7,7 +7,7 @@ import com.dia.ismdtoolbackend.utility.exporter.json.ConceptData;
 import com.dia.ismdtoolbackend.utility.exporter.json.ConceptJsonMapper;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelAnalyzer;
 import com.dia.ismdtoolbackend.utility.exporter.json.ModelStructure;
-import com.dia.ismdtoolbackend.utility.exporter.turtle.OFNTypeNormalizer;
+
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFilterUtil;
 import com.dia.ismdtoolbackend.utility.exporter.turtle.TurtleFormatterUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -82,8 +82,8 @@ public class OntologyDetailExtractor {
         // strip. Inferring the role tags (skos:Concept, slovníky:třída/vztah/
         // vlastnost) here keeps real concepts past the filter.
         int normalized = deriveInScheme
-                ? OFNTypeNormalizer.normalizeForNkd(workingModel)
-                : OFNTypeNormalizer.normalizeForLocalDetail(workingModel);
+                ? DetailModelNormalizer.normalizeForNkd(workingModel)
+                : DetailModelNormalizer.normalizeForLocalDetail(workingModel);
         if (normalized > 0) {
             log.debug("Inferred OFN role tags on {} resources before filtering", normalized);
         }

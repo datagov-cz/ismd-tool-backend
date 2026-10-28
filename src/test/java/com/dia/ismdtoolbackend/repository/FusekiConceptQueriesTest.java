@@ -136,8 +136,9 @@ class FusekiConceptQueriesTest {
     @DisplayName("fetchConceptResolutions: projects label and owning scheme; stray foreign inScheme ignored")
     void resolutionsUseOwningScheme() {
         store(GRAPH, """
-                ex: skos:prefLabel "Testovací slovník"@cs .
-                pojem:osoba skos:inScheme ex: ; skos:prefLabel "Osoba"@cs ; a slovníky:třída .
+                <https://slovník.gov.cz/datový/test-slovník> skos:prefLabel "Testovací slovník"@cs .
+                pojem:osoba skos:inScheme <https://slovník.gov.cz/datový/test-slovník> ;
+                    skos:prefLabel "Osoba"@cs ; a slovníky:třída .
                 pojem:adresa skos:inScheme <https://slovník.gov.cz/datový/jiný-slovník/> .
                 """);
 
@@ -146,7 +147,7 @@ class FusekiConceptQueriesTest {
         assertThat(out).containsOnlyKeys(OSOBA);
         ResolvedConceptDto dto = out.get(OSOBA);
         assertThat(dto.conceptName()).containsEntry("cs", "Osoba");
-        assertThat(dto.ontologyIri()).isEqualTo(GRAPH);
+        assertThat(dto.ontologyIri()).isEqualTo("https://slovník.gov.cz/datový/test-slovník");
         assertThat(dto.ontologyName()).containsEntry("cs", "Testovací slovník");
         assertThat(dto.source()).isEqualTo(SearchSource.ISMD);
     }
@@ -154,7 +155,7 @@ class FusekiConceptQueriesTest {
     @Test
     @DisplayName("fetchConceptResolutions: invalid IRIs are dropped and the rest resolve")
     void resolutionsDropInvalidIris() {
-        store(GRAPH, "pojem:osoba skos:inScheme ex: .");
+        store(GRAPH, "pojem:osoba skos:inScheme <https://slovník.gov.cz/datový/test-slovník> .");
 
         Map<String, ResolvedConceptDto> out = queries.fetchConceptResolutions(List.of(UNSAFE, OSOBA));
 

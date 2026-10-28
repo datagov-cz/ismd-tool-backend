@@ -1,5 +1,8 @@
 package com.dia.ismdtoolbackend.service.impl;
 
+import com.dia.ismdtoolbackend.ofn.OfnConfiguration;
+import com.dia.ismdtoolbackend.ofn.OfnSpecification;
+import com.dia.ismdtoolbackend.ofn.OfnWriteGate;
 import com.dia.ismdtoolbackend.client.ValidationClient;
 import com.dia.ismdtoolbackend.enums.ConceptType;
 import com.dia.ismdtoolbackend.mapper.OntologyMetadataMapper;
@@ -56,7 +59,7 @@ public final class OntologyUploadServiceFixture {
     public OntologyUploadServiceImpl build() {
         UploadConceptGate gate = uploadConceptGate != null ? uploadConceptGate
                 : new UploadConceptGate(new OntologyDetailExtractor(conceptMetadataRepository),
-                        new NkdLinkDetector(), conceptMetadataRepository);
+                        new NkdLinkDetector(), conceptMetadataRepository, ofnWriteGate());
         UploadConceptRoleResolver roleResolver = new UploadConceptRoleResolver();
         UploadMetadataWriter metadataWriter = new UploadMetadataWriter(ontologyMetadataMapper,
                 ontologyMetadataRepository, conceptMetadataRepository, roleResolver);
@@ -64,7 +67,6 @@ public final class OntologyUploadServiceFixture {
                 ontologyMetadataRepository, validationReportRepository, metadataWriter);
         return new OntologyUploadServiceImpl(
                 new UploadFileReader(MAX_FILE_SIZE, PARSE_TIMEOUT_SECONDS),
-                new UploadModelNormalizer(),
                 new UploadVocabularyLock(),
                 roleResolver,
                 gate,
@@ -73,6 +75,13 @@ public final class OntologyUploadServiceFixture {
                 metadataWriter,
                 transactions,
                 new UploadValidationRunner(validationClient, transactions, validationExecutor));
+    }
+
+    /** The real OFN gate, as the application configures it. */
+    public static OfnWriteGate ofnWriteGate() {
+        OfnConfiguration config = new OfnConfiguration();
+        OfnSpecification specification = config.ofnSpecification();
+        return new OfnWriteGate(config.ofnRdfReader(specification), config.ofnConformanceGate(specification));
     }
 
     /** Runs the post-upload validation step on its own. */
