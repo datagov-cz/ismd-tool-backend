@@ -1,11 +1,8 @@
 package com.dia.ismdtoolbackend.client.esbirka;
 
-import com.dia.ismdtoolbackend.config.EsbirkaConfig;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -14,8 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class EsbirkaDeadlineFilterTest {
 
-    private final EsbirkaDeadlineFilter filter = new EsbirkaDeadlineFilter(
-            new EsbirkaRestTransport(new EsbirkaConfig(), JsonMapper.builder().build(), new SimpleMeterRegistry()));
+    private final EsbirkaDeadlineFilter filter = new EsbirkaDeadlineFilter(60_000);
 
     @Test
     void eliRequestsRunUnderOneDeadlineThatIsClearedAfterwards() throws Exception {
