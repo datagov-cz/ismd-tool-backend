@@ -27,6 +27,8 @@ public class ResolvedLegalSourceDto {
     private String domain;
     private ParsedEli.Level level;
     private String lawIri;
+    /** The law's text page on the e-Sbírka website. */
+    private String lawWebUrl;
     private String versionIri;
     private String fragmentIri;
     private String lawNumber;
