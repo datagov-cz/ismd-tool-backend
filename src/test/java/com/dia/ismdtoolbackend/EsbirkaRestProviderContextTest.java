@@ -31,7 +31,8 @@ class EsbirkaRestProviderContextTest {
 
     @Test
     void restProviderWiresOnlyTheRestClient() {
-        runner.withPropertyValues("esbirka.provider=rest", "esbirka.rest.api-key=test-key")
+        runner.withPropertyValues("esbirka.provider=rest", "esbirka.rest.api-key=test-key",
+                        "esbirka.rest.request-deadline-ms=60000")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(EsbirkaClient.class).getClass().getSimpleName())

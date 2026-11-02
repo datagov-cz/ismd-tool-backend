@@ -32,7 +32,7 @@
         <jena.version>5.4.0</jena.version>
         <jacoco.version>0.8.15</jacoco.version>
         <!-- Coverage gate, the only place it is set. Raise it as coverage grows; never lower it.
-             Targets: line 92, instruction 92, branch 85, complexity 80, method 95. -->
+             Targets: line 95, instruction 96, branch 87, complexity 85, method 97. -->
         <jacoco.line.minimum>0.95</jacoco.line.minimum>
         <jacoco.instruction.minimum>0.96</jacoco.instruction.minimum>
         <jacoco.branch.minimum>0.87</jacoco.branch.minimum>
